@@ -182,12 +182,12 @@ Index: afni-0.20110610+1/CMakeLists.txt
 +SET(FILE_PERMISSIONS OWNER_READ OWNER_WRITE GROUP_READ WORLD_READ)
 +
 +# core libs pretty much everythings has to be linked against
++SET(SEGTOOLS_LIBS ${AFNI_LIBS} segtools ${GSL_LIBRARIES})
 +SET(AFNI_LIBS
 +   mri mrix coxplot
-+   ${VOLPACK_LIBRARY} ${NETCDF_LIBRARY} ${MOTIF_LIBRARIES} ${F2C_LIBRARY} m)
++   ${VOLPACK_LIBRARY} ${NETCDF_LIBRARY} ${MOTIF_LIBRARIES} ${F2C_LIBRARY} ${RICKR_LIBS} m)
 +SET(WARP_LIBS afni_warp ${AFNI_LIBS})
 +SET(RICKR_LIBS rickr ${WARP_LIBS} ${AFNI_LIBS})
-+
 +
 +# Showoff
 +ADD_DEFINITIONS(-DSHOWOFF=${AFNI_SHOWOFF})
@@ -284,7 +284,7 @@ Index: afni-0.20110610+1/CMakeLists_apps.txt
 +  3dFFT 1dgenARMA11 3dPeriodogram 1dAstrip 3dLocalPV 3dBandpass
 +  3dSetupGroupInCorr 3dGroupInCorr 3dSatCheck 3dTcorr1D 3dSimARMA11
 +  3dClustSim 3dRetinoPhase 3dMaskToASCII 3dttest++ 3dDTtoDWI niccc
-+  3dRankizer 3dXYZcat
++  3dRankizer 3dXYZcat 3dPolyfit 3dNwarpApply 1dCorrelate
 +  ${EXTRAS})
 +
 +SET(SCRIPTS
@@ -304,7 +304,8 @@ Index: afni-0.20110610+1/CMakeLists_apps.txt
 +  @make_plug_diff @build_afni_Xlib @update.afni.binaries @ROI_Corr_Mat
 +  @FS_roi_label @demo_prompt @ScriptCheck @NoPound @Reorder 3dMEMA
 +  @DiceMetric @R_funclist @TimeDiff @FullPath @RetinoProc @ANATICOR
-+  @MakeLabelTable @ElectroGrid ExamineXmat 1dRplot @2dwarper.Allin @help.AFNI)
++  @MakeLabelTable @ElectroGrid ExamineXmat 1dRplot @2dwarper.Allin
++  @help.AFNI @1dDiffMag @FSlabel2dset @Install_InstaCorr_Demo)
 +
 +
 +##
@@ -489,7 +490,7 @@ Index: afni-0.20110610+1/CMakeLists_libs.txt
 +  mri_dicom_stuff.c mri_check.c mri_allzero.c mri_subset.c mri_to_fvect.c
 +  mri_genalign_util.c rcmat.c dmat44.c mri_rbfinterp.c matrix.c
 +  gifti_choice.c zfun.c cs_pv.c cs_sort_iv.c cs_sort_d misc_math.c
-+  mri_genARMA11.c mri_catvol.c)
++  mri_genARMA11.c mri_catvol.c mri_polyfit.c)
 +
 +SET(THD_SRC
 +  thd_atr.c thd_dsetto1D.c thd_initalldir.c thd_reconpar.c thd_auxdata.c
@@ -517,7 +518,7 @@ Index: afni-0.20110610+1/CMakeLists_libs.txt
 +  thd_logafni.c thd_dset_nbhd.c thd_vcheck.c thd_matdaxes.c thd_niml.c
 +  afni_vedit.c thd_fdrcurve.c thd_dset_to_vectim.c thd_bandpass.c
 +  thd_instacorr.c thd_svdblur.c thd_ttest.c thd_satcheck.c thd_dumdset.c
-+  ktaub.c bilinear_warp3D.c thd_table.c thd_atlas.c thd_warp_tables.c)
++  ktaub.c bilinear_warp3D.c thd_table.c thd_atlas.c thd_warp_tables.c thd_lasso.c)
 +
 +SET(EDT_SRC
 +  edt_addbrick.c edt_blur.c edt_buildmask.c edt_checkargv.c edt_clust.c
@@ -580,7 +581,7 @@ Index: afni-0.20110610+1/CMakeLists_libs.txt
 +)
 +
 +SET(MRILIB_SOURCES
-+   parser.c parser_int.c ${MRI_SRC} ${THD_SRC} ${EDT_SRC} ${CS_SRC} ${SUMA_SRC})
++   afni_ports.c pbar_color_defs.c parser.c parser_int.c ${MRI_SRC} ${THD_SRC} ${EDT_SRC} ${CS_SRC} ${SUMA_SRC})
 +# Add source files residing in subdirectories
 +FOREACH(src ${NIML_SRC})
 +  LIST(APPEND MRILIB_SOURCES "niml/${src}")
@@ -797,7 +798,7 @@ Index: afni-0.20110610+1/SUMA/CMakeLists.txt
 +  SUMA_SphericalMapping.c SUMA_DataSets.c SUMA_HomerFunc.c SUMA_xColBar.c
 +  SUMA_IsoSurfaceFunc.c SUMA_BrainWrap.c
 +  SUMA_global.c SUMA_SurfaceToSurface.c SUMA_LocalStat.c SUMA_spharm.c
-+  SUMA_dot.c SUMA_plot.c SUMA_volume_render.c
++  SUMA_dot.c SUMA_plot.c SUMA_volume_render.c SUMA_SegFunc.c SUMA_SegOpts.c
 +  PLY/plyfile.c MarchingCubes/MarchingCubes.c)
 +
 +# add libGLw symbols if requested
@@ -808,7 +809,7 @@ Index: afni-0.20110610+1/SUMA/CMakeLists.txt
 +  FIND_LIBRARY(GLW_LIBRARY GLw)
 +ENDIF(AFNI_BUILD_LOCAL_GLW)
 +
-+INCLUDE_DIRECTORIES(${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/PLY)
++INCLUDE_DIRECTORIES(${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/PLY ${CMAKE_SOURCE_DIR}/avovk/)
 +
 +# TODO determine what this is for
 +ADD_DEFINITIONS(-DSUMA_COMPILED -DnoGLwidget)
@@ -820,7 +821,8 @@ Index: afni-0.20110610+1/SUMA/CMakeLists.txt
 +  ${WARP_LIBS}
 +  SUMA
 +  ${OPENGL_LIBRARIES}
-+  ${GLUT_LIBRARIES})
++  ${GLUT_LIBRARIES}
++  ${SEGTOOLS_LIBS})
 +
 +ADD_LIBRARY(SUMA ${LIBSUMA_SRCS})
 +TARGET_LINK_LIBRARIES(SUMA ${OPENGL_LIBRARIES} ${GLUT_LIBRARIES}
@@ -837,7 +839,7 @@ Index: afni-0.20110610+1/SUMA/CMakeLists.txt
 +  suma prompt_user MakeColorMap ScaleToMap
 +  inflate_compare SurfaceMetrics ConvertSurface
 +  ConvertDset ROI2dataset SurfSmooth SurfPatch SurfQual SurfClust IsoSurface
-+  ConvexHull 3dSkullStrip 3dCRUISEtoAFNI 3dBRAIN_VOYAGERtoAFNI 3dVol2Surf
++  ConvexHull 3dSkullStrip 3dSeg 3dCRUISEtoAFNI 3dGenPriors 3dBRAIN_VOYAGERtoAFNI 3dVol2Surf
 +  SurfMeasures FSread_annot SampBias volume_render 3dSurfMask SurfToSurf
 +  ROIgrow AnalyzeTrace DriveSuma SurfDist SpharmReco SpharmDeco SurfDsetInfo
 +  SurfLocalStat SurfFWHM NikoMap SurfInfo 3dSurf2Vol SurfRetinoMap ParseName
@@ -1021,11 +1023,10 @@ Index: afni-0.20110610+1/avovk/CMakeLists.txt
 +  ADD_EXECUTABLE(Aclustering Aclustering.c)
 +  ADD_EXECUTABLE(3dfit_onesign 3dfit_onesign.c)
 +  #ADD_EXECUTABLE(3dAclustering_fNM 3dAclustering_floatNM.c)
-+  ADD_EXECUTABLE(3dkmeans 3dkmeans.c)
++  ADD_EXECUTABLE(3dkmeans 3dkmeans.c cluster_floatNOMASK.c thd_segtools_fNM.c)
 +
-+  SET(SEGTOOLS_LIBS ${AFNI_LIBS} segtools ${GSL_LIBRARIES})
 +  FOREACH(program ${PROGRAMS})
-+    TARGET_LINK_LIBRARIES(${program} ${SEGTOOLS_LIBS})
++    TARGET_LINK_LIBRARIES(${program} ${AFNI_LIBS} ${SEGTOOLS_LIBS} ${GSL_LIBRARIES})
 +  ENDFOREACH(program)
 +
 +  INSTALL(TARGETS segtools ${PROGRAMS}
@@ -1217,7 +1218,7 @@ Index: afni-0.20110610+1/rickr/CMakeLists.txt
 +TARGET_LINK_LIBRARIES(rickr mri afni_warp)
 +
 +IF(NOT AFNI_BUILD_CORELIBS_ONLY)
-+  SET(PROGRAMS 3dresample file_tool Imon Dimon serial_helper)
++  SET(PROGRAMS 3dresample file_tool Dimon serial_helper)
 +
 +  ADD_EXECUTABLE(3dresample 3dresample.c)
 +  TARGET_LINK_LIBRARIES(3dresample ${AFNI_LIBS} ${WARP_LIBS} ${RICKR_LIBS})
@@ -1230,9 +1231,7 @@ Index: afni-0.20110610+1/rickr/CMakeLists.txt
 +  TARGET_LINK_LIBRARIES(Imon ${AFNI_LIBS}) # For thd_iochan
 +
 +  ADD_EXECUTABLE(Dimon
-+          Dimon.c dimon_afni.c ${CMAKE_SOURCE_DIR}/mri_dicom_hdr.c ${IMON_OBS})
-+  SET_SOURCE_FILES_PROPERTIES(${CMAKE_SOURCE_DIR}/mri_dicom_hdr.c
-+          PROPERTIES COMPILE_FLAGS "-DDONT_USE_MCW_MALLOC -DFOR_DIMON")
++          Dimon.c realtime.c)
 +  TARGET_LINK_LIBRARIES(Dimon ${AFNI_LIBS}) # For thd_iochan
 +
 +  ADD_EXECUTABLE(serial_helper serial_helper.c)
