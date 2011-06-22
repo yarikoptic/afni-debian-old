@@ -5,7 +5,7 @@ debver = $(shell LC_ALL=C dpkg-parsechangelog | grep '^Version:' | cut -d ' ' -f
 upstreamver = $(shell echo $(debver) | cut -d '-' -f 1,1 )
 # this figures out the last merge point from 'master' into the Debian branch and
 # then described this commit by parsing its commit message
-gitver = $(shell [ -x /usr/bin/git ] && git log -n 1 --oneline $$(git merge-base -a HEAD upstream) | cut -d ' ' -f 4,4')
+gitver = $(shell [ -x /usr/bin/git ] && git log -n 1 --oneline $$(git merge-base -a HEAD upstream) | cut -d ' ' -f '4,4')
 
 # get install locations for matlab packages
 include /usr/share/matlab/debian/defs.make
