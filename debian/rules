@@ -44,9 +44,7 @@ DEB_CMAKE_EXTRA_FLAGS = \
     -DAFNI_INSTALL_PLUGIN_DIR:STRING=/lib/afni/plugins \
     -DAFNI_INSTALL_SCRIPT_DIR:STRING=/share/afni/scripts \
     -DAFNI_INSTALL_PICS_DIR:STRING=/share/afni/pics \
-    -DAFNI_INSTALL_POEMS_DIR:STRING=/share/afni/poems \
-    -DGLW_LIBRARY:FILEPATH=/usr/lib/libGLw.a
-# static GLw config is a workaround for #624156
+    -DAFNI_INSTALL_POEMS_DIR:STRING=/share/afni/poems
 
 # one ring to rule them all ...
 %:
