@@ -183,7 +183,7 @@ Last-Update: 2010-09-21
 +SET(SEGTOOLS_LIBS ${AFNI_LIBS} segtools ${GSL_LIBRARIES})
 +SET(AFNI_LIBS
 +   mri mrix coxplot
-+   ${VOLPACK_LIBRARY} ${NETCDF_LIBRARY} ${MOTIF_LIBRARIES} ${F2C_LIBRARY} ${RICKR_LIBS} m)
++   ${VOLPACK_LIBRARY} ${NETCDF_LIBRARY} ${MOTIF_LIBRARIES} ${F2C_LIBRARY} m)
 +SET(WARP_LIBS afni_warp ${AFNI_LIBS})
 +SET(RICKR_LIBS rickr ${WARP_LIBS} ${AFNI_LIBS})
 +
@@ -240,7 +240,7 @@ Last-Update: 2010-09-21
 +ENDIF(NOT AFNI_BUILD_CORELIBS_ONLY)
 --- /dev/null
 +++ b/CMakeLists_apps.txt
-@@ -0,0 +1,205 @@
+@@ -0,0 +1,213 @@
 +##
 +## This file is to be included in the toplevel CMakeLists.txt
 +##
@@ -275,8 +275,8 @@ Last-Update: 2010-09-21
 +  1dMarry 3dEmpty 1dFlagMotion 3dTsort 1dTsort 3dTfitter 1dUpsample
 +  3dLocalSVD niml_feedme 3dErrtsCormat 3dUndump 3dREMLfit
 +  3dUpsample 3dTcorrMap 3dmatmult 3dmaskSVD 1dBandpass 3dBlurInMask 3dRank
-+  3dDeconvolve 1dGentimes 2dImReg 3dStatClust 3dDWItoDT 3dRegAna 3dTSgen
-+  3dUniformize 3ddelay 3dfim+ 3dNLfim 3dNeocon 3dConvolve RSFgen
++  3dDeconvolve 1dGentimes 2dImReg 3dStatClust 3dDWItoDT 3dRegAna
++  3dUniformize 3ddelay 3dfim+ 3dNeocon 3dConvolve RSFgen
 +  3dFFT 1dgenARMA11 3dPeriodogram 1dAstrip 3dLocalPV 3dBandpass
 +  3dSetupGroupInCorr 3dGroupInCorr 3dSatCheck 3dTcorr1D 3dSimARMA11
 +  3dClustSim 3dRetinoPhase 3dMaskToASCII 3dttest++ 3dDTtoDWI niccc
@@ -326,6 +326,14 @@ Last-Update: 2010-09-21
 +#
 +# Further customized targets
 +#
++ADD_EXECUTABLE(3dTSgen 3dTSgen.c)
++TARGET_LINK_LIBRARIES(3dTSgen ${AFNI_LIBS} -ldl)
++LIST(APPEND PROGRAMS 3dTSgen)
++
++ADD_EXECUTABLE(3dNLfim 3dNLfim.c)
++TARGET_LINK_LIBRARIES(3dNLfim ${AFNI_LIBS} -ldl)
++LIST(APPEND PROGRAMS 3dNLfim)
++
 +ADD_EXECUTABLE(1dSEM 1dSEM.c sqrmat.c)
 +TARGET_LINK_LIBRARIES(1dSEM ${AFNI_LIBS})
 +LIST(APPEND PROGRAMS 1dSEM)
@@ -395,7 +403,7 @@ Last-Update: 2010-09-21
 +SET_SOURCE_FILES_PROPERTIES(afni_pcor_update.c
 +                            PROPERTIES COMPILE_FLAGS "-DDTYPE=float")
 +ADD_EXECUTABLE(afni ${AFSRC})
-+TARGET_LINK_LIBRARIES(afni ${AFNI_LIBS} ${WARP_LIBS} ${RICKR_LIBS})
++TARGET_LINK_LIBRARIES(afni ${AFNI_LIBS} ${WARP_LIBS} ${RICKR_LIBS} -ldl)
 +LIST(APPEND PROGRAMS afni)
 +
 +
@@ -430,7 +438,7 @@ Last-Update: 2010-09-21
 +IF(GSL_LIBRARY)
 +  MESSAGE(STATUS "Found GSL library, compiling 'balloon'")
 +  ADD_EXECUTABLE(balloon balloon.c)
-+  TARGET_LINK_LIBRARIES(balloon gsl gslcblas)
++  TARGET_LINK_LIBRARIES(balloon gsl gslcblas m)
 +  LIST(APPEND PROGRAMS balloon)
 +ENDIF(GSL_LIBRARY)
 +
@@ -599,7 +607,7 @@ Last-Update: 2010-09-21
 +#
 +ADD_LIBRARY(mri ${MRILIB_SOURCES})
 +TARGET_LINK_LIBRARIES(mri ${X11_Xt_LIB} ${VOLPACK_LIBRARY} ${NETCDF_LIBRARY}
-+                          ${F2C_LIBRARY} giftiio nifticdf niftiio m)
++                          ${F2C_LIBRARY} giftiio nifticdf niftiio m rickr)
 +# if libmri doesn't have niftilib built-in, we need to link against it
 +IF(NOT AFNI_BUILD_LOCAL_NIFTICLIBS)
 +  TARGET_LINK_LIBRARIES(mri nifticdf niftiio)
@@ -794,7 +802,7 @@ Last-Update: 2010-09-21
 +  LIST(APPEND LIBSUMA_SRCS GLw_local/GLwDrawA.c)
 +  INCLUDE_DIRECTORIES(${CMAKE_CURRENT_SOURCE_DIR}/GLw_local)
 +ELSE(AFNI_BUILD_LOCAL_GLW)
-+  FIND_LIBRARY(GLW_LIBRARY GLw)
++  FIND_LIBRARY(GLW_LIBRARY GLw.a)
 +ENDIF(AFNI_BUILD_LOCAL_GLW)
 +
 +INCLUDE_DIRECTORIES(${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/PLY ${CMAKE_SOURCE_DIR}/avovk/)
@@ -1179,7 +1187,7 @@ Last-Update: 2010-09-21
 +SET(SOURCES r_idisp.c r_misc.c r_new_resam_dset.c)
 +
 +ADD_LIBRARY(rickr ${SOURCES})
-+TARGET_LINK_LIBRARIES(rickr mri afni_warp)
++#TARGET_LINK_LIBRARIES(rickr afni_warp)
 +
 +IF(NOT AFNI_BUILD_CORELIBS_ONLY)
 +  SET(PROGRAMS 3dresample file_tool Dimon serial_helper)

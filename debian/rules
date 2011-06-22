@@ -1,10 +1,18 @@
 #!/usr/bin/make -f
 
+srcpkg = $(shell LC_ALL=C dpkg-parsechangelog | grep '^Source:' | cut -d ' ' -f 2,2)
+debver = $(shell LC_ALL=C dpkg-parsechangelog | grep '^Version:' | cut -d ' ' -f 2,2 )
+upstreamver = $(shell echo $(debver) | cut -d '-' -f 1,1 )
+# this figures out the last merge point from 'master' into the Debian branch and
+# then described this commit by parsing its commit message
+gitver = $(shell [ -x /usr/bin/git ] && git log -n 1 --oneline $$(git merge-base -a HEAD upstream) | cut -d ' ' -f 4,4')
+
 # get install locations for matlab packages
 include /usr/share/matlab/debian/defs.make
 
 # TODO plugins do not handle this well
-#LDFLAGS = -Wl,--no-undefined
+LDFLAGS = -Wl,--allow-shlib-undefined
+export LDFLAGS
 
 # need to do it after inclusion of cmake class to get the flag
 # appended after -Wall
@@ -36,8 +44,9 @@ DEB_CMAKE_EXTRA_FLAGS = \
     -DAFNI_INSTALL_PLUGIN_DIR:STRING=/lib/afni/plugins \
     -DAFNI_INSTALL_SCRIPT_DIR:STRING=/share/afni/scripts \
     -DAFNI_INSTALL_PICS_DIR:STRING=/share/afni/pics \
-    -DAFNI_INSTALL_POEMS_DIR:STRING=/share/afni/poems
-
+    -DAFNI_INSTALL_POEMS_DIR:STRING=/share/afni/poems \
+    -DGLW_LIBRARY:FILEPATH=/usr/lib/libGLw.a
+# static GLw config is a workaround for #624156
 
 # one ring to rule them all ...
 %:
@@ -87,3 +96,13 @@ override_dh_auto_clean:
 	dh_auto_clean --builddirectory=$(DEB_BUILDDIR_STATIC)
 	# ensure proper permissions for the wrapper
 	chmod +x debian/afni_wrapper
+
+
+# make orig tarball from repository content
+get-orig-source:
+	-quilt pop -a
+	@echo "Testing for uncommited changes"
+	@git diff --quiet HEAD
+	# orig tarball, turn directory into something nicer
+	git archive --format=tar --prefix=$(srcpkg)-$(gitver)/ HEAD | \
+		gzip -9 > $(srcpkg)_$(gitver).orig.tar.gz
