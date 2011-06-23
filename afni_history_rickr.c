@@ -49,6 +49,16 @@
 
 afni_history_struct rickr_history[] = {
 
+ { 20, JUN, 2011, RCR, "afni_util.py", MINOR, TYPE_NEW_OPT,
+   "added eta2 function (alongside '3ddot -doeta2')",
+   NULL
+ } ,
+
+ { 17, JUN, 2011, RCR, "SUMA_MiscFunc.c", MICRO, TYPE_BUG_FIX,
+   "set 0-length BmP array to matching length 3",
+   NULL
+ } ,
+
  { 16, JUN, 2011, RCR, "3ddot", MINOR, TYPE_NEW_OPT,
    "added -doeta2 via new THD_eta_squared_masked",
    "Added for Shinchan."
