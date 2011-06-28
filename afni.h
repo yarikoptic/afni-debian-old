@@ -70,7 +70,7 @@ typedef struct {
       int disable_done ;      /* 21 Aug 2008 [rickr] */
 
       int yes_niml ;          /* 28 Feb 2002 */
-               
+
                /* port_niml no longer in use. ZSS June 2011 */
                /* int port_niml ;         10 Dec 2002 */
 
@@ -881,6 +881,7 @@ typedef struct {
 
       Widget picture ;
       int    picture_index ;
+      Widget tips_pb ;                    /* 27 Jun 2011 */
 
       Widget file_dialog , file_sbox ;
       XtCallbackProc file_cb ;
@@ -899,6 +900,17 @@ typedef struct {
 
       int butx , buty ;        /* 17 May 2005 */
 } AFNI_widget_set ;
+
+#define TIPS_PLUS_SHIFT   2
+#define TIPS_MINUS_SHIFT -60
+#define TIPS_TOTAL_SHIFT -90
+
+#define SHIFT_TIPS(iq,xx)                                                 \
+ do{ if( (iq)->vwid->tips_pb != NULL ){                                   \
+       XtVaSetValues( (iq)->vwid->tips_pb, XmNleftOffset, (xx), NULL ) ;  \
+       XMapRaised( XtDisplay( (iq)->vwid->tips_pb) ,                      \
+                    XtWindow( (iq)->vwid->tips_pb)  ) ;                   \
+     } } while(0)
 
 /** picture controls **/
 
@@ -1484,6 +1496,7 @@ extern void AFNI_quit_CB           ( Widget wcall , XtPointer cd , XtPointer cbs
 extern void AFNI_quit_timeout_CB   ( XtPointer , XtIntervalId * ) ;
 extern void AFNI_startup_timeout_CB( XtPointer , XtIntervalId * ) ;
 extern void AFNI_vcheck_flasher    ( Three_D_View * ) ;
+extern void AFNI_tips_CB           ( Widget , XtPointer , XtPointer ) ;
 
 extern void AFNI_startup_layout_CB  ( XtPointer, XtIntervalId * ) ;    /* 23 Sep 2000 */
 extern void AFNI_save_layout_CB     ( Widget, XtPointer, XtPointer ) ;
