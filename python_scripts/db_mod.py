@@ -2474,6 +2474,13 @@ def db_cmd_regress(proc, block):
                '3dTstat -sum -prefix %s %s"[$reg_cols]"\n\n' %             \
                (proc.xmat, "indices_interest", opt.parlist[0], proc.xmat)
 
+    # make a copy of the "final" anatomy, called "anat_final.$subj"
+    if proc.view == '+tlrc': aset = proc.tlrcanat
+    else:                    aset = proc.anat
+    if aset != None:
+       cmd += "# create an anat_final dataset, aligned with stats\n"    \
+              "3dcopy %s anat_final.%s\n\n" % (aset.pv(), proc.subj_label)
+
     # check for blur estimates
     bcmd = db_cmd_blur_est(proc, block)
     if bcmd == None: return  # error

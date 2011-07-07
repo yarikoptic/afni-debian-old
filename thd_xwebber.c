@@ -17,10 +17,37 @@ static MCW_action_item HWIN_act[] = {
 static void anchorCB( Widget widget, XtPointer client_data,
                       XmHTMLAnchorCallbackStruct *cbs      )
 {
-  cbs->doit = True ; cbs->visited = True ;
+  switch( cbs->url_type ){
+
+    case ANCHOR_JUMP:
+      cbs->doit = True ; cbs->visited = True ;
+    break ;
+
+    case ANCHOR_HTTP:{
+      static char *webb=NULL ; static int first=1 ;
+      if( first == 1 ){ webb = GetAfniWebBrowser() ; first = 2 ; }
+      if( webb != NULL ){
+        char *cmd = (char *)malloc( strlen(webb) + strlen(cbs->href) + 32 ) ;
+        sprintf( cmd , "%s %s &" , webb , cbs->href ) ;
+        system( cmd ) ; free( cmd ) ;
+      } else if( first == 2 ){
+          INFO_message("No command line Web browser program found in your path.") ;
+        ININFO_message("Set environment variable AFNI_WEB_BROWSER to the full"  ) ;
+        ININFO_message("pathname of a browser than can be started from the Unix") ;
+        ININFO_message("command line -- e.g., '/usr/local/bin/mozilla'"         ) ;
+        first = 0 ;
+      }
+    }
+    break ;
+
+  }
+
+  return ;
+  INFO_message("anchor: type=%d href=%s",cbs->url_type,cbs->href) ;
 }
 
 /*----------------------------------------------------------------------------*/
+/* Mangle a message to be good HTML for display */
 
 static char * htmlize( char *msg )
 {
@@ -68,7 +95,7 @@ static char * htmlize( char *msg )
 
 /*----------------------------------------------------------------------------*/
 /* Open a window with an XmHTML widget containing msg.
-   If msg starts with "file:", then it indicates a file to read.
+   If msg starts with "file:", then it indicates a file to read and display.
    Otherwise, it is the content of the page directly.
 *//*--------------------------------------------------------------------------*/
 
@@ -93,7 +120,7 @@ ENTRY("new_MCW_htmlwin") ;
    if( wpar == NULL || !XtIsRealized(wpar) || msg == NULL || *msg == '\0' )
      RETURN(NULL) ;
 
-   /* set position based on parent and screen geometry */
+   /*-- set position based on parent and screen geometry --*/
 
    MCW_widget_geom( wpar , &wx,&hy,&xx,&yy ) ;     /* geometry of parent */
    XtTranslateCoords( wpar, 0,0, &xroot,&yroot ) ; /* root coords */
@@ -111,7 +138,7 @@ ENTRY("new_MCW_htmlwin") ;
         if( ypr+50 > scr_height ){ yp = yy-8 ; ypr = yr-100 ;} /* too down */
    else if( ypr+10 < 0 )         { ypr = yp = 1 ;            } /* too up   */
 
-   /* create a popup shell */
+   /*-- create a popup shell --*/
 
    hw = myXtNew(MCW_htmlwin) ;
    hw->kill_func = kill_func ;
@@ -131,7 +158,7 @@ ENTRY("new_MCW_htmlwin") ;
         XmInternAtom( XtDisplay(hw->wshell) , "WM_DELETE_WINDOW" , False ) ,
         MCW_htmlwinkill_CB , (XtPointer)hw ) ;
 
-   /* create a form to hold everything else */
+   /*-- create a form to hold everything else --*/
 
    hw->wtop = XtVaCreateWidget(
                 wtype , xmFormWidgetClass , hw->wshell ,
@@ -141,7 +168,7 @@ ENTRY("new_MCW_htmlwin") ;
                   XmNinitialResourcesPersistent , False ,
                 NULL ) ;
 
-   /* create action area */
+   /*-- create action area --*/
 
    nact = 1 ;
    for( ii=0 ; ii < nact ; ii++ ){
@@ -159,7 +186,7 @@ ENTRY("new_MCW_htmlwin") ;
                      XmNtopOffset      , 4 ,
                   NULL ) ;
 
-   /* frame to hold HTML widget */
+   /*-- frame to hold HTML widget --*/
 
    hw->wframe = XtVaCreateManagedWidget(
                   wtype , xmFrameWidgetClass, hw->wtop ,
@@ -176,17 +203,17 @@ ENTRY("new_MCW_htmlwin") ;
                   XmNshadowThickness , 5 ,
                 NULL ) ;
 
-   /* create HTML area */
+   /*---- create HTML area ----*/
 
    if( afg == (Pixel)0 ){
-     afg  = XmHTMLAllocColor( hw->wtop , "yellow" , WhitePixelOfScreen(XtScreen(hw->wtop)) ) ;
-     afgv = XmHTMLAllocColor( hw->wtop , "#ffbb99", WhitePixelOfScreen(XtScreen(hw->wtop)) ) ;
+     afg  = XmHTMLAllocColor( hw->wtop, "#ffdd00", WhitePixelOfScreen(XtScreen(hw->wtop)) ) ;
+     afgv = XmHTMLAllocColor( hw->wtop, "#ffcc99", WhitePixelOfScreen(XtScreen(hw->wtop)) ) ;
    }
 
    swid = WidthOfScreen(XtScreen(wpar))  - 222 ; if( swid > 799 ) swid = 799 ;
    shi  = HeightOfScreen(XtScreen(wpar)) - 222 ; if( shi  > 899 ) shi  = 899 ;
 
-   mymsg = htmlize(msg) ;
+   mymsg = htmlize(msg) ;  /* edit the text */
 
    hw->whtml = XtVaCreateManagedWidget(
                   wtype , xmHTMLWidgetClass , hw->wframe ,
@@ -210,6 +237,8 @@ ENTRY("new_MCW_htmlwin") ;
    XtVaSetValues( hw->wshell , XmNwidth,swid , XmNheight,shi , NULL ) ;
 #endif
 
+   /*--- open the window for viewing, and place it on the screen ---*/
+
    XtPopup( hw->wshell , XtGrabNone ) ; RWC_sleep(16) ;
 
    RWC_visibilize_widget( hw->wshell ) ;
@@ -227,16 +256,15 @@ ENTRY("new_MCW_htmlwin") ;
    XmHTMLTextSetString( hw->whtml , mymsg ) ;
 #endif
 
-   if( mymsg != msg ) free(mymsg) ;
+   if( mymsg != msg ) free(mymsg) ;               /* toss the trash */
 
-   RWC_sleep(66) ;
-
-   XmHTMLRedisplay( hw->whtml ) ;
+   RWC_sleep(66) ; XmHTMLRedisplay( hw->whtml ) ; /* force redraw to be safe */
 
    RETURN(hw) ;
 }
 
 /*-------------------------------------------------------------------------*/
+/* replace the contents of an MCW_htmlwin */
 
 void MCW_htmlwin_alter( MCW_htmlwin *hw , char *mmm )
 {
@@ -257,8 +285,9 @@ ENTRY("MCW_htmlwin_alter") ;
 }
 
 /*-------------------------------------------------------------------------*/
+/* Called when the user presses an action button */
 
-static void MCW_htmlwin_CB( Widget w , XtPointer client_data , XtPointer call_data )
+static void MCW_htmlwin_CB( Widget w, XtPointer client_data, XtPointer call_data )
 {
    MCW_htmlwin *hw = (MCW_htmlwin *)client_data ;
    char *wname     = XtName(w) ;
@@ -277,6 +306,7 @@ static void MCW_htmlwin_CB( Widget w , XtPointer client_data , XtPointer call_da
 }
 
 /*-------------------------------------------------------------------------*/
+/* Called when the user kills the window via the window manager controls */
 
 static void MCW_htmlwinkill_CB( Widget w, XtPointer client_data, XtPointer call_data )
 {

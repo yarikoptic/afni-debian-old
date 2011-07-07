@@ -49,6 +49,16 @@
 
 afni_history_struct rickr_history[] = {
 
+ { 6, JUL, 2011, RCR, "uber_align_test.py", MICRO, TYPE_MODIFY,
+   "test use of SUBJ.set_var_with_defs",
+   NULL
+ } ,
+
+ { 6, JUL, 2011, RCR, "afni_proc.py", MICRO, TYPE_GENERAL,
+   "create anat_final dset, as one that is aligned with the stats",
+   "Also, suggest use of uber_subject.py in the -ask_me dialog."
+ } ,
+
  { 5, JUL, 2011, RCR, "afni-general", MINOR, TYPE_ENHANCE,
    "minor enhancements to 5 python files (prep for gen_ss_review_scripts.py)",
    NULL
