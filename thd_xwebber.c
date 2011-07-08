@@ -13,17 +13,37 @@ static MCW_action_item HWIN_act[] = {
 } ;
 
 /*----------------------------------------------------------------------------*/
+/* Not sure what this is for! */
+
+static void armCB( Widget w, XtPointer arg1, XmAnyCallbackStruct *href_data)
+{
+   XButtonEvent *event;
+
+   event             = (XButtonEvent*)href_data->event ;
+   event->window     = DefaultRootWindow(XtDisplay(w)) ;
+   event->root       = DefaultRootWindow(XtDisplay(w)) ;
+   event->subwindow  = DefaultRootWindow(XtDisplay(w)) ;
+   event->send_event = True ;
+
+   XUngrabPointer( XtDisplay(w) , CurrentTime ) ;
+   XSendEvent( XtDisplay(w) , DefaultRootWindow(XtDisplay(w)) ,
+               True , ButtonPressMask , (XEvent *)event        ) ;
+   XFlush(XtDisplay(w)) ;
+}
+
+/*----------------------------------------------------------------------------*/
+/* For dealing with clicks on links (anchors). */
 
 static void anchorCB( Widget widget, XtPointer client_data,
                       XmHTMLAnchorCallbackStruct *cbs      )
 {
   switch( cbs->url_type ){
 
-    case ANCHOR_JUMP:
+    case ANCHOR_JUMP:                                /* internal jumps */
       cbs->doit = True ; cbs->visited = True ;
     break ;
 
-    case ANCHOR_HTTP:{
+    case ANCHOR_HTTP:{                               /* external http links */
       static char *webb=NULL ; static int first=1 ;
       if( first == 1 ){ webb = GetAfniWebBrowser() ; first = 2 ; }
       if( webb != NULL ){
@@ -43,7 +63,6 @@ static void anchorCB( Widget widget, XtPointer client_data,
   }
 
   return ;
-  INFO_message("anchor: type=%d href=%s",cbs->url_type,cbs->href) ;
 }
 
 /*----------------------------------------------------------------------------*/
@@ -53,12 +72,14 @@ static char * htmlize( char *msg )
 {
    char *mmm=NULL ;
 
+ENTRY("htmlize") ;
+
    if( msg == NULL || *msg == '\0'  ){
      msg = strdup("<html><body><h1>Dummy</h1><h2>Message</h2></body></html>") ;
-     return msg ;
+     RETURN(msg) ;
    }
 
-   if( strncmp(msg,"<html>",6) == 0 ) return msg ;     /* already HTML format */
+   if( strncmp(msg,"<html>",6) == 0 ) RETURN(msg) ;     /* already HTML format */
 
    if( strncmp(msg,"file:",5) == 0 ){      /* read file */
      char *qqq=AFNI_suck_file(msg+5) ; char *dnam , *repl , *targ ;
@@ -90,7 +111,7 @@ static char * htmlize( char *msg )
      strcat(mmm,"\n</body></html>") ;
    }
 
-   return mmm ;
+   RETURN(mmm) ;
 }
 
 /*----------------------------------------------------------------------------*/
@@ -215,6 +236,8 @@ ENTRY("new_MCW_htmlwin") ;
 
    mymsg = htmlize(msg) ;  /* edit the text */
 
+STATUS("create HTML widget") ;
+
    hw->whtml = XtVaCreateManagedWidget(
                   wtype , xmHTMLWidgetClass , hw->wframe ,
                   XmNmarginWidth       , 8 ,
@@ -230,6 +253,9 @@ ENTRY("new_MCW_htmlwin") ;
                   XmNanchorVisitedForeground , afgv ,
                 NULL ) ;
    XtAddCallback( hw->whtml, XmNactivateCallback, (XtCallbackProc)anchorCB, NULL ) ;
+   XtAddCallback( hw->whtml, XmNarmCallback     , (XtCallbackProc)armCB   , NULL ) ;
+
+STATUS("manage HTML widgets") ;
 
    XtManageChild( hw->wtop ) ;
 
@@ -264,7 +290,7 @@ ENTRY("new_MCW_htmlwin") ;
 }
 
 /*-------------------------------------------------------------------------*/
-/* replace the contents of an MCW_htmlwin */
+/* replace the contents of an MCW_htmlwin (not tested) */
 
 void MCW_htmlwin_alter( MCW_htmlwin *hw , char *mmm )
 {
