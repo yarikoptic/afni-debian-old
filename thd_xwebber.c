@@ -1,5 +1,13 @@
 #include "mrilib.h"
 #include "xutil.h"
+
+#ifdef DONT_USE_HTMLWIN  /*-------------------- dummy routines ------------------------------*/
+
+MCW_htmlwin * new_MCW_htmlwin( Widget w, char *m, void_func *kf, XtPointer kd ){ return NULL ; }
+void MCW_htmlwin_alter( MCW_htmlwin *hw, char *mmm ){ return ; }
+
+#else                    /*---------- non-dummy routines --------------------*/
+
 #include "XmHTML/XmHTML.h"
 #include "debugtrace.h"    /* 12 Mar 2001 */
 
@@ -37,6 +45,8 @@ static void armCB( Widget w, XtPointer arg1, XmAnyCallbackStruct *href_data)
 static void anchorCB( Widget widget, XtPointer client_data,
                       XmHTMLAnchorCallbackStruct *cbs      )
 {
+ENTRY("anchorCB") ;
+
   switch( cbs->url_type ){
 
     case ANCHOR_JUMP:                                /* internal jumps */
@@ -62,7 +72,49 @@ static void anchorCB( Widget widget, XtPointer client_data,
 
   }
 
-  return ;
+  EXRETURN ;
+}
+
+/*----------------------------------------------------------------------------*/
+
+#undef  SSUB
+#define SSUB(a,b)                                        \
+ do{ char *qqq = string_substitute( mmm , (a) , (b) ) ;  \
+     if( qqq != NULL ){ free(mmm) ; mmm = qqq ; }        \
+ } while(0)
+
+#undef  NSUB
+#define NSUB(a) SSUB((a),"\0")
+
+#undef  UOSUB
+#undef  UXSUB
+#define UOSUB(a) SSUB((a),"<u>")
+#define UXSUB(a) SSUB((a),"</u>")
+
+static char * unfontize( char *msg )
+{
+   char *mmm , *qqq ;
+
+   if( msg == NULL || *msg == '\0' ) return msg ;
+
+   mmm = strdup(msg) ;
+   NSUB("<small>"); NSUB("</small>");
+   UOSUB("<big>") ; UXSUB("</big>") ;
+   UOSUB("<h1>")  ; UXSUB("</h1>")  ;
+   UOSUB("<h2>")  ; UXSUB("</h2>")  ;
+   UOSUB("<h3>")  ; UXSUB("</h3>")  ;
+   UOSUB("<h4>")  ; UXSUB("</h4>")  ;
+   UOSUB("<h5>")  ; UXSUB("</h5>")  ;
+   UOSUB("<h6>")  ; UXSUB("</h6>")  ;
+   UOSUB("<i>")   ; UXSUB("</i>")   ;
+   UOSUB("<b>")   ; UXSUB("</b>")   ;
+   UOSUB("<em>")  ; UXSUB("</em>")  ;
+   UOSUB("<tt>")  ; UXSUB("</tt>")  ;
+   SSUB("<font ","<u ") ; UXSUB("</font>") ;
+   SSUB("&nbsp;",".") ;
+
+   if( strcmp(mmm,msg) == 0 ){ free(mmm) ; mmm = msg ; }
+   return mmm ;
 }
 
 /*----------------------------------------------------------------------------*/
@@ -70,12 +122,12 @@ static void anchorCB( Widget widget, XtPointer client_data,
 
 static char * htmlize( char *msg )
 {
-   char *mmm=NULL ;
+   char *mmm=NULL ; int dounf ;
 
 ENTRY("htmlize") ;
 
-   if( msg == NULL || *msg == '\0'  ){
-     msg = strdup("<html><body><h1>Dummy</h1><h2>Message</h2></body></html>") ;
+   if( msg == NULL || *msg == '\0' ){
+     msg = strdup("<html><body><p>Dummy\n<p>Message</body></html>") ;
      RETURN(msg) ;
    }
 
@@ -109,6 +161,16 @@ ENTRY("htmlize") ;
      strcpy(mmm,"<html><body>\n") ;
      strcat(mmm,msg) ;
      strcat(mmm,"\n</body></html>") ;
+   }
+
+#ifdef UNFONTIZE_HTMLWIN
+   dounf = 1 ;
+#else
+   dounf = AFNI_yesenv("AFNI_UNFONTIZE_HTML") ;
+#endif
+   if( dounf ){
+     char *qqq = unfontize(mmm) ;
+     if( qqq != mmm ){ free(mmm) ; mmm = qqq ; }
    }
 
    RETURN(mmm) ;
@@ -284,6 +346,8 @@ STATUS("manage HTML widgets") ;
 
    if( mymsg != msg ) free(mymsg) ;               /* toss the trash */
 
+STATUS("force HTML redisplay") ;
+
    RWC_sleep(66) ; XmHTMLRedisplay( hw->whtml ) ; /* force redraw to be safe */
 
    RETURN(hw) ;
@@ -318,17 +382,19 @@ static void MCW_htmlwin_CB( Widget w, XtPointer client_data, XtPointer call_data
    MCW_htmlwin *hw = (MCW_htmlwin *)client_data ;
    char *wname     = XtName(w) ;
 
-   if( client_data == NULL ) return ;
+ENTRY("MCW_htmlwin_CB") ;
+
+   if( client_data == NULL ) EXRETURN ;
 
    if( strcmp(wname,"Quit") == 0 ){
       if( hw->kill_func != NULL )
         AFNI_CALL_VOID_1ARG( hw->kill_func , XtPointer , hw->kill_data ) ;
       XtDestroyWidget( hw->wshell ) ;
       myXtFree( hw ) ;
-      return ;
+      EXRETURN ;
    }
 
-   return ;
+   EXRETURN ;
 }
 
 /*-------------------------------------------------------------------------*/
@@ -338,9 +404,13 @@ static void MCW_htmlwinkill_CB( Widget w, XtPointer client_data, XtPointer call_
 {
    MCW_htmlwin *hw = (MCW_htmlwin *) client_data ;
 
+ENTRY("MCW_htmlwinkill_CB") ;
+
    if( hw->kill_func != NULL )
      AFNI_CALL_VOID_1ARG( hw->kill_func , XtPointer , hw->kill_data ) ;
    XtDestroyWidget( hw->wshell ) ;
    myXtFree( hw ) ;
-   return ;
+   EXRETURN ;
 }
+
+#endif /* DONT_USE_HTMLWIN */

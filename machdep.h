@@ -177,6 +177,12 @@ extern void machdep() ;
                  functions instead of the srand48/drand48 functions for
                  random number generation.
 
+    DONT_USE_HTMLWIN = #define this if the 'AFNI Tips' HTML widget
+                       causes trouble on your system
+
+    UNFONTIZE_HTMLWIN = #define this if the HTML widget works OK as
+                        long as font changes aren't ordered
+
   Some systems need extra header files included.  Some system header
   files don't give a prototype for alphasort.  This is a place to fix
   these things up.
@@ -263,6 +269,8 @@ extern long   strtol() ;
 # define DYNAMIC_LOADING_VIA_DL
 # define USE_LOCKF
 # define DONT_USE_MATRIX_MAT  /* 04 Mar 2005 */
+# undef  DONT_USE_HTMLWIN     /* 08 Jul 2011 */
+# define UNFONTIZE_HTMLWIN    /* 08 Jul 2011 */
 
 #ifdef SOLARIS_OLD            /* 03 Feb 2009 [rickr] */
 # define fabsf  fabs          /* 09 Jul 2007 */

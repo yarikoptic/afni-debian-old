@@ -5602,8 +5602,7 @@ ENTRY("AFNI_bucket_label_CB") ;
   Callback for the 'AFNI Tips' button [27 Jun 2011]
 -----------------------------------------------------------------*/
 
-#define USE_HTML
-#ifdef  USE_HTML
+#ifndef DONT_USE_HTMLWIN
 static int tips_open        = 0 ;
 static MCW_htmlwin *tips_hw = NULL ;
 void AFNI_tips_killfun( XtPointer junk ){
@@ -5619,11 +5618,11 @@ void AFNI_tips_CB( Widget w , XtPointer cd , XtPointer cbd )
 
 ENTRY("AFNI_tips_CB") ;
 
-#ifdef USE_HTML
+#ifndef DONT_USE_HTMLWIN
    if( tips_open && tips_hw != NULL ){
      XMapRaised( XtDisplay(tips_hw->wshell) , XtWindow(tips_hw->wshell) ) ;
      EXRETURN ;
-   } else {
+   } else if( !AFNI_noenv("AFNI_DONT_USE_HTMLWIN") ){
      fpt = THD_find_regular_file("afnigui.html") ;
      if( fpt != NULL && *fpt != '\0' ){
        inf = (char *)malloc(sizeof(char)*(strlen(fpt)+16)) ;
