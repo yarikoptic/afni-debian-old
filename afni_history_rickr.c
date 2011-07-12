@@ -49,6 +49,21 @@
 
 afni_history_struct rickr_history[] = {
 
+ { 11, JUL, 2011, RCR, "gen_group_command.py", MINOR, TYPE_BUG_FIX,
+   "fixed case of partial path match to dsets",
+   "Problem found by J Jarcho."
+ } ,
+
+ { 11, JUL, 2011, RCR, "gen_ss_review_scripts.py", MAJOR, TYPE_NEW_PROG,
+   "for generating single subject review scripts",
+   "To be run by the afni_proc.py proc script or directly by users."
+ } ,
+
+ { 8, JUL, 2011, RCR, "slow_surf_clustsim.py", MINOR, TYPE_MODIFY,
+   "added -on_surface, which might not end up being so useful",
+   NULL
+ } ,
+
  { 6, JUL, 2011, RCR, "uber_align_test.py", MICRO, TYPE_MODIFY,
    "test use of SUBJ.set_var_with_defs",
    NULL
