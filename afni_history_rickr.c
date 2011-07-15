@@ -49,6 +49,31 @@
 
 afni_history_struct rickr_history[] = {
 
+ { 14, JUL, 2011, RCR, "gen_ss_review_scripts.py", MINOR, TYPE_ENHANCE,
+   "added 'max motion displacement' to basic script",
+   NULL
+ } ,
+
+ { 14, JUL, 2011, RCR, "1d_tool.py", MINOR, TYPE_NEW_OPT,
+   "added -show_max_displace, for maximum motion displacement",
+   NULL
+ } ,
+
+ { 14, JUL, 2011, RCR, "slow_surf_clustsim.py", MICRO, TYPE_ENHANCE,
+   "show date per iter block and add ./ to 3dcalc prefix",
+   NULL
+ } ,
+
+ { 13, JUL, 2011, RCR, "afni_proc.py", MINOR, TYPE_ENHANCE,
+   "run gen_ss_review_scripts.py and any resulting 'basic' review script",
+   NULL
+ } ,
+
+ { 13, JUL, 2011, RCR, "gen_group_command.py", MICRO, TYPE_NEW_OPT,
+   "added -exit0 and babbled about possible artifact tests",
+   NULL
+ } ,
+
  { 11, JUL, 2011, RCR, "gen_group_command.py", MINOR, TYPE_BUG_FIX,
    "fixed case of partial path match to dsets",
    "Problem found by J Jarcho."

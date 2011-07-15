@@ -59,6 +59,7 @@ gen_ss_review_scripts.py - generate single subject analysis review scripts
       tcat_dset            pb00.FT.r01.tcat+orig.HEAD
       outlier_dset         outcount.rall.1D
       enorm_dset           motion_FT_enorm.1D
+      motion_dset          dfile.rall.1D
       volreg_dset          pb02.FT.r01.volreg+tlrc.HEAD
       xmat_regress         X.xmat.1D
       stats_dset           stats.FT+tlrc.HEAD
@@ -85,6 +86,7 @@ gen_ss_review_scripts.py - generate single subject analysis review scripts
 
    other options
 
+      -exit0                    : regardless of errors, exit with status 0
       -verb LEVEL               : set the verbosity level
 
    options for setting main variables
@@ -92,8 +94,9 @@ gen_ss_review_scripts.py - generate single subject analysis review scripts
       -subj SID                 : subject ID
       -rm_trs N                 : number of TRs removed per run
       -num_stim N               : number of main stimulus classes
-      -enorm_dset DSET          : euclidean norm of motion params
+      -motion_dset DSET         : motion parameters
       -outlier_dset DSET        : outlier fraction time series
+      -enorm_dset DSET          : euclidean norm of motion params
       -mot_limit LIMIT          : (optional) motion limit - maybe for censoring
       -out_limit LIMIT          : (optional) outlier fraction limit
       -xmat_regress XMAT        : X-matrix file used in regression (X.xmat.1D)
@@ -104,6 +107,40 @@ gen_ss_review_scripts.py - generate single subject analysis review scripts
 
       -uvar VAR PARAMS ...      : generic option form
 
+
+-----------------------------------------------------------------------------
+
+Here are some potential artifacts to ponder (just so they are saved
+somewhere), as noted by many of us, including D Glen and J Gonzalez.
+We can try to add to this list, and maybe even do something to take
+them off <gasp!>.
+
+    1. Striping - across slices - EPI, anatomical
+    2. Artifacts - checkerboard, ringing - EPI, anatomical
+    3. Spiking (regional or global)
+        - global would be caught in the outlier fractions
+    4. Shifts in baseline (regional or global)
+        - maybe @ANATICOR can help to deal with it, but how to notice?
+    5. "PURE" on or off / acquisition protocol changes
+    6. Poor contrast between CSF and WM/GM in EPI
+    7. Low resolution anatomical data
+    8. Noisy anatomical data
+    9. Left-right flipping between anatomical and EPI
+        - run align_epi_anat.py between flipped versions
+          (as was done by _____ on the fcon_1000 data)
+   10. Poor alignment between anatomical and EPI
+        - currently users can view as part of @ss_review_driver
+        - can use some large limit test on value from out.mask_overlap.txt
+   11. Excessive motion
+        - currently report average motion and censor details
+   12. "Reshimming-like" shears between EPI volumes
+   13. Non-uniformity because of surface coils
+   14. Incorrect DICOM data
+   15. Inconsistent data types within a study
+   16. TR not properly set
+   17. Missing data
+   18. Inconsistent number of TRs within multiple EPI datasets
+   19. Missing pre-steady state in EPI data
 
 -----------------------------------------------------------------------------
 
@@ -163,6 +200,12 @@ echo "average motion (per TR)   : $mmean"
 set mcount = `1deval -a $enorm_dset -expr "step(a-$mot_limit)"      \\
                         | grep -v ' 0$' | wc -l`
 echo "num TRs above mot limit   : $mcount"
+
+if ( $?motion_dset ) then
+    # compute the maximum motion displacement over all TR pairs
+    set disp = `1d_tool.py -infile $motion_dset -show_max_displace -verb 0`
+    echo "max motion displacement   : $disp"
+endif
 
 # ------------------------------------------------------------
 # report outlier limit, average and number of TRs exceeding limit
@@ -321,6 +364,7 @@ g_eg_uvar.subj            = 'FT'
 g_eg_uvar.rm_trs          = 2
 g_eg_uvar.num_stim        = 2
 g_eg_uvar.enorm_dset      = 'motion_FT_enorm.1D'
+g_eg_uvar.motion_dset     = 'dfile.rall.1D'
 g_eg_uvar.outlier_dset    = 'outcount.rall.1D'
 g_eg_uvar.mot_limit       = 0.3
 g_eg_uvar.out_limit       = 0.1
@@ -339,6 +383,7 @@ g_uvar_dict = {
  'rm_trs'           :'set number of TRs removed per run',
  'num_stim'         :'set number of main stimulus classes',
  'enorm_dset'       :'set motion_enorm file',
+ 'motion_dset'      :'set motion parameter file',
  'outlier_dset'     :'set outcount.rall file',
  'mot_limit'        :'set motion limit (maybe for censoring)',
  'out_limit'        :'set outlier limit (maybe for censoring)',
@@ -360,6 +405,7 @@ g_cvars_defs.scr_basic  = '@ss_review_basic'
 g_cvars_defs.scr_drive  = '@ss_review_driver'
 g_cvars_defs.cmds_drive = '@ss_review_driver_commands'
 g_cvars_defs.xstim      = 'X.stim.xmat.1D'
+g_cvars_defs.exit0      = 0     # if set, return 0 even on errors
 
 g_history = """
    gen_ss_review_scripts.py history:
@@ -369,19 +415,17 @@ g_history = """
         - some updates to the help
         - added more basic tests
         - updated driver script to useful level
+   0.2  Jul 11, 2011
+        - added -exit0, so errors would not terminate scripts 
+        - babbled in -help about our old list of artifacts to ponder
+   0.3  Jul 14, 2011 - added 'max motion displacement' to basic script
 """
 
-g_version = "gen_ss_review_scripts.py version 0.1, July 11, 2011"
+g_version = "gen_ss_review_scripts.py version 0.3, July 14, 2011"
 
 g_todo_str = """
-   x write basic script
-   x write inspect script
-   * in help: note required files, then tested files
-   * figure out (or pass in) final_anat and template_space
-   x mean motion
-   - reliable for all regression cases?
-     (what AP options are needed?)
-   - outliers post or separate from censoring (motion sep from censor?)
+   - figure out template_space
+   - add @epi_review execution as a run-time choice (in the 'drive' script)
    - generate and evaluate overlap mask(s) (atlas regions)
    - execute basic?  save output?
 """
@@ -425,6 +469,8 @@ class MyInterface:
                     helpstr='show all user variables in dictionary')
       vopts.add_opt('-show_uvar_eg', 0, [],
                     helpstr='show user var example (AFNI_data6)')
+      vopts.add_opt('-show_cvar_defs', 0, [],
+                    helpstr='show control var defaults')
       vopts.add_opt('-show_valid_opts', 0, [],\
                     helpstr='display all valid options')
       vopts.add_opt('-ver', 0, [], helpstr='display the current version number')
@@ -438,6 +484,7 @@ class MyInterface:
       # general options
       vopts.add_opt('-cvar', -2, [],
                     helpstr='set given control variable to given value(s)')
+      vopts.add_opt('-exit0', 0, [], helpstr='force return of 0 on exit')
       vopts.add_opt('-script_basic', 1, [],
                     helpstr='specify basic overview script name')
       vopts.add_opt('-script_driver', 1, [],
@@ -482,6 +529,10 @@ class MyInterface:
             print '   %-20s : %s' % (key, g_uvar_dict[key])
          return 1
 
+      if '-show_cvar_defs' in argv:
+         g_cvars_defs.show('control vars defaults', name=0)
+         return 1
+
       if '-show_uvar_eg' in argv:
          g_eg_uvar.show('user vars example', name=0)
          return 1
@@ -493,6 +544,9 @@ class MyInterface:
       if '-ver' in argv:
          print g_version
          return 1
+
+      # check this before any non-terminal return
+      if '-exit0' in argv: self.cvars.exit0 = 1
 
       # ============================================================
       # read options specified by the user
@@ -517,6 +571,7 @@ class MyInterface:
 
          # check for anything to skip
          if opt.name == '-verb':        continue
+         if opt.name == '-exit0':       continue
 
          # check uvar opts by name (process as strings)
          elif uvar in ukeys:
@@ -541,7 +596,7 @@ class MyInterface:
             val, err = uopts.get_string_list('', opt=opt)
             if val == None or err: return -1
             if self.cvars.set_var_with_defs(val[0], val[1:], g_cvars_defs,
-                        as_type=1, oname='uvars', verb=self.cvars.verb) < 0:
+                        as_type=1, oname='cvars', verb=self.cvars.verb) < 0:
                errs += 1
                continue
 
@@ -576,7 +631,7 @@ class MyInterface:
            - censor_dset     : afni_name (used iff censor limits passed)
 
          fill some of the basic vars:
-           - subj, rm_trs, enorm_dset, outlier_dset,
+           - subj, rm_trs, enorm_dset, motion_dset, outlier_dset,
              num_stim, xmat_regress, xmat_uncensored,
              stats_dset, final_view, final_anat
 
@@ -596,6 +651,7 @@ class MyInterface:
       if self.guess_final_view():  return 1
       if self.guess_volreg_dset(): return 1
       if self.guess_enorm_dset():  return 1
+      if self.guess_motion_dset(): return 1
       if self.guess_outlier_dset():return 1
       if self.guess_final_anat():  return 1
       if self.guess_mask_dset():   return 1
@@ -1065,6 +1121,23 @@ class MyInterface:
 
       return 1
 
+   def guess_motion_dset(self):
+      """set uvars.motion_dset"""
+
+      # check if already set
+      if self.uvars.is_not_empty('motion_dset'):
+         if self.cvars.verb > 3:
+            print '-- already set: motion_dset = %s' % self.uvars.motion_dset
+
+      gstr = 'dfile.rall.1D'
+      if os.path.isfile(gstr):
+         self.uvars.motion_dset = gstr
+         return 0
+
+      print '** failed to find motion parameter dset, continuing...'
+
+      return 0  # not fatal
+
    def guess_outlier_dset(self):
       """set uvars.outlier_dset"""
 
@@ -1379,6 +1452,10 @@ class MyInterface:
       else:
          print '** basic script: missing variable %s' % var
          errs += 1
+
+      var = 'motion_dset'
+      if uvars.is_not_empty(var):
+         txt += format % ('motion_dset', uvars.val(var))
 
       var = 'outlier_dset'
       if uvars.is_not_empty(var):
@@ -1796,13 +1873,17 @@ def main():
    if rv > 0: return 0  # valid and exit
    if rv < 0: # error and exit
       print '** failed to process options...'
+      if me.cvars.exit0: return 0
       return 1
 
    if me.init_basics():
       print '** failed to init basics...'
+      if me.cvars.exit0: return 0
       return 1
 
-   if me.write_scripts(): return 1
+   if me.write_scripts():
+      if me.cvars.exit0: return 0
+      return 1
 
    return 0
 
