@@ -184,6 +184,18 @@ float tictactoe_corr( int n , float *x , float rv , float *r )
    return ( ss/sqrtf(rv*xv) ) ;
 }
 
+/*------------------------------------------------------------------------------*/
+
+float THD_tictactoe_corr( int n , float *x , float *y )
+{
+   float yv , xv ; register float ss ; register int ii ;
+   if( n < 3 ) return 0.0f ;
+   xv = tictactoe_corr_prepare(n,x) ; if( xv <= 0.0f ) return 0.0f ;
+   yv = tictactoe_corr_prepare(n,y) ; if( yv <= 0.0f ) return 0.0f ;
+   for( ii=0,ss=0.0f ; ii < n ; ii++ ) ss += x[ii]*y[ii] ;
+   return( ss / sqrtf(xv*yv) ) ;
+}
+
 /*=============================================================================
   Compute correlations, destructively (i.e., mangling the input arrays)
 ===============================================================================*/
@@ -193,7 +205,9 @@ float tictactoe_corr( int n , float *x , float rv , float *r )
 
 float THD_spearman_corr( int n , float *x , float *y )
 {
-   float xv = spearman_rank_prepare(n,x) ;
+   float xv ;
+   if( n < 2 ) return 0.0f ;
+   xv =  spearman_rank_prepare(n,x) ;
    if( xv <= 0.0f ) return 0.0f ;
    return spearman_rank_corr( n,y,xv,x ) ;
 }
@@ -216,6 +230,7 @@ float THD_spearman_corr_nd( int n , float *x , float *y )
 
 float THD_ktaub_corr( int n , float *x , float *y )
 {
+   if( n < 2 ) return 0.0f ;
    qsort_floatfloat( n , x , y ) ;    /* preliminary sorting of x, carrying y */
    return kendallNlogN( x , y , n ) ; /* the actual work */
 }
@@ -225,7 +240,9 @@ float THD_ktaub_corr( int n , float *x , float *y )
 
 float THD_quadrant_corr( int n , float *x , float *y )
 {
-   float xv = quadrant_corr_prepare(n,x) ;
+   float xv ;
+   if( n < 2 ) return 0.0f ;
+   xv = quadrant_corr_prepare(n,x) ;
    if( xv <= 0.0f ) return 0.0f ;
    return quadrant_corr( n,y,xv,x ) ;
 }
@@ -276,6 +293,7 @@ float THD_pearson_corr( int n, float *x , float *y )
    float xm=0.0f , ym=0.0f ;
    register int ii ;
 
+   if( n < 2 ) return 0.0f ;
    for( ii=0 ; ii < n ; ii++ ){ xm += x[ii] ; ym += y[ii] ; }
    xm /= n ; ym /= n ;
    for( ii=0 ; ii < n ; ii++ ){
