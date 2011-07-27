@@ -49,6 +49,21 @@
 
 afni_history_struct rickr_history[] = {
 
+ { 26, JUL, 2011, RCR, "afni_proc.py", MINOR, TYPE_ENHANCE,
+   "if e2a, update current anat to skull-stripped anat from align block",
+   "This would avoid a second skull-strip step in @auto_tlrc."
+ } ,
+
+ { 25, JUL, 2011, RCR, "slow_surf_clustsim.py", MINOR, TYPE_ENHANCE,
+   "added keepblocks var, to limit kept intermediate datasets",
+   NULL
+ } ,
+
+ { 22, JUL, 2011, RCR, "slow_surf_clustsim.py", MINOR, TYPE_BUG_FIX,
+   "after blur, rescale noise to be normally distributed",
+   NULL
+ } ,
+
  { 21, JUL, 2011, RCR, "gen_ss_review_scripts.py", MINOR, TYPE_MODIFY,
    "changed TR counts to come via awk instead of grep",
    NULL
