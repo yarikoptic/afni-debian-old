@@ -3423,32 +3423,62 @@ THD_3dim_dataset *Atlas_Region_Mask(AFNI_ATLAS_REGION *aar,
       RETURN(maskset);
    }
 
-   if (!is_Atlas_Named(atlas, "CA_N27_PM")) {
+   if (!is_probabilistic_atlas(atlas)) {
       for (sb=0; sb < DSET_NVALS(ATL_DSET(atlas)); ++sb) {
          dset_kind = DSET_BRICK_TYPE(ATL_DSET(atlas),sb);
-         if(dset_kind == MRI_short) {
-            ba = DSET_BRICK_ARRAY(ATL_DSET(atlas),sb); /* short type */
-            if (!ba) { 
-               ERROR_message("Unexpected NULL array");
-               free(bmask); bmask = NULL;
-               RETURN(maskset);
-            }
+         if (DSET_BRICK_FACTOR(ATL_DSET(atlas),sb) != 0.0 &&
+             DSET_BRICK_FACTOR(ATL_DSET(atlas),sb) != 1.0) {
+            ERROR_message("Atlas dset %s'[%d]' has a brick factor of %f!\n",
+                  Atlas_Name(atlas), sb, DSET_BRICK_FACTOR(ATL_DSET(atlas),sb));
+            free(bmask); bmask = NULL;
+            RETURN(maskset);
          }
-         else {
-            bba = DSET_BRICK_ARRAY(ATL_DSET(atlas),sb); /* byte array */
-            if (!bba) { 
-               ERROR_message("Unexpected NULL array");
+         switch(dset_kind) {
+            case MRI_short :
+               ba = DSET_BRICK_ARRAY(ATL_DSET(atlas),sb); /* short type */
+               if (!ba) { 
+                  ERROR_message("Unexpected NULL array");
+                  free(bmask); bmask = NULL;
+                  RETURN(maskset);
+               }
+               break;
+            case MRI_byte:
+               bba = DSET_BRICK_ARRAY(ATL_DSET(atlas),sb); /* byte array */
+               if (!bba) { 
+                  ERROR_message("Unexpected NULL array");
+                  free(bmask); bmask = NULL;
+                  RETURN(maskset);
+               }
+               break;
+            case MRI_float:
+               if (LocalHead) 
+                  fprintf(stderr,"A float typed atlas? What's the big idea?\n");
+               fba = DSET_BRICK_ARRAY(ATL_DSET(atlas),sb); /* byte array */
+               if (!fba) { 
+                  ERROR_message("Unexpected NULL array");
+                  free(bmask); bmask = NULL;
+                  RETURN(maskset);
+               }
+               break;  
+            default:
+               ERROR_message("Bad dset type (%d) for %s", Atlas_Name(atlas));
                free(bmask); bmask = NULL;
                RETURN(maskset);
-            }
          }
 
          for (kk=0; kk < n_codes; ++kk) {
             for (ii=0; ii< nxyz; ++ii) {
                if (dset_kind == MRI_short)
-                  ba_val = ba[ii];
-               else
+                  ba_val = (int) ba[ii];
+               else if (dset_kind == MRI_byte)
                   ba_val = (int) bba[ii];
+               else if (dset_kind == MRI_float)
+                  ba_val = (int) fba[ii];
+               else {
+                  ERROR_message("Bad dset type (%d) for %s. Should not be here!",                                 Atlas_Name(atlas));
+                  free(bmask); bmask = NULL;
+                  RETURN(maskset);
+               }
                /* if voxel value matches code value
                   make byte mask 1 at that voxel */
                if (ba_val == codes[kk]) bmask[ii] = 1; 
@@ -5255,9 +5285,16 @@ char *prob_atlas_sb_to_label(ATLAS *atlas, int sb, int *key)
       ERROR_message("Dset labels too long! Max allowed is %d, proceeding...",
                     atlas->adh->mxlablen);
    }
+
+   if(wami_verb()>1)
+      INFO_message("Trying to find a match for sub-brick label in atlas point list %s\n",
+                  atlas->adh->adset->dblk->brick_lab[sb]);
    
    for (i=0; i<atlas->adh->apl2->n_points; ++i) {
-      lab_buf = Clean_Atlas_Label(atlas->adh->apl2->at_point[i].sblabel);
+      lab_buf = atlas->adh->apl2->at_point[i].sblabel;
+/*      lab_buf = Clean_Atlas_Label(atlas->adh->apl2->at_point[i].sblabel);*/
+      if(wami_verb()>1)
+         INFO_message("struct %d has label %s", i, lab_buf);
       if ( (nlab == strlen(lab_buf)) && 
             !strcmp(lab_buf, atlas->adh->adset->dblk->brick_lab[sb])) {
          *key = atlas->adh->apl2->at_point[i].tdval;
@@ -5445,6 +5482,7 @@ int whereami_in_atlas(  char *aname,
 
    if (  is_integral_atlas(atlas) && 
          !is_probabilistic_atlas(atlas)) { /* the multi-radius searches */
+      nfind = 0 ;
       for (sb=0; sb < DSET_NVALS(ATL_DSET(atlas)); ++sb) {
          if (LocalHead)
             fprintf(stderr,
@@ -5483,17 +5521,30 @@ int whereami_in_atlas(  char *aname,
          ny = DSET_NY(ATL_DSET(atlas)) ;
          nz = DSET_NZ(ATL_DSET(atlas)) ; nxy = nx*ny ;
 
-         nfind = 0 ;
-
          /*-- check the exact input location --*/
          kk = ix + jy*nx + kz*nxy ;        /* index into brick arrays */
-         b_find[0] = Atlas_Voxel_Value(atlas, sb, kk);
-         if( is_atlas_key_labeled(atlas, b_find[0] )) {
-            rr_find[0] = 0     ;
-            if (LocalHead)  
-               fprintf(stderr,"Adding b_find[%d]=%d rr_find[%d]=%d\n",
-                           nfind, b_find[nfind], nfind, rr_find[nfind]);
-            nfind++ ;
+         if( nfind >= MAX_FIND ) {
+           if (!getenv("AFNI_WHEREAMI_NO_WARN") && (!find_warn)) {
+            INFO_message(
+      "Potentially more regions could be found than the %d reported.\n"
+      "Set the environment variable AFNI_WHEREAMI_MAX_FIND to higher\n"
+      "than %d if you desire a larger report.\n"
+      "It behooves you to also checkout AFNI_WHEREAMI_MAX_SEARCH_RAD\n"
+      "and AFNI_WHEREAMI_NO_WARN. See whereami -help for detail.\n", 
+                              MAX_FIND, MAX_FIND);
+           find_warn = 1;
+           }
+           break ;  /* don't find TOO much */
+         }
+         else {
+             b_find[nfind] = Atlas_Voxel_Value(atlas, sb, kk);
+             if( is_atlas_key_labeled(atlas, b_find[0] )) {
+                rr_find[0] = 0     ;
+                if (LocalHead)  
+                   fprintf(stderr,"Adding b_find[%d]=%d rr_find[%d]=%d\n",
+                               nfind, b_find[nfind], nfind, rr_find[nfind]);
+                nfind++ ;
+             }
          }
 
          /*-- check locations near it --*/
@@ -5522,12 +5573,14 @@ int whereami_in_atlas(  char *aname,
 
             if( baf == 0 )                            continue ;
 
-            b_find[nfind] = baf ;  /* save what we found */
-            rr_find[nfind] = (int) wamiclust->mag[ii] ;
-            if (LocalHead)  
-               fprintf(stderr,"Adding b_find[%d]=%d rr_find[%d]=%d\n",
-                           nfind, b_find[nfind], nfind, rr_find[nfind]);
-            nfind++ ;
+            if(nfind < MAX_FIND) {
+               b_find[nfind] = baf ;  /* save what we found */
+               rr_find[nfind] = (int) wamiclust->mag[ii] ;
+               if (LocalHead)  
+                  fprintf(stderr,"Adding b_find[%d]=%d rr_find[%d]=%d\n",
+                              nfind, b_find[nfind], nfind, rr_find[nfind]);
+               nfind++ ;
+            }
 
             if( nfind >= MAX_FIND ) {
               if (!getenv("AFNI_WHEREAMI_NO_WARN") && (!find_warn)) {
@@ -5567,38 +5620,39 @@ int whereami_in_atlas(  char *aname,
          /* build query results */
          rff = -1 ;  /* rff = radius of last found label */
 
-         if (LocalHead) INFO_message("   %d findings...\n", nfind);
-
-         for( ff=0 ; ff < nfind ; ff++ ){
-            baf = b_find[ff] ; blab = NULL ;
-            blab = atlas_key_label(atlas, baf, &ac);
-            if( blab == NULL && is_atlas_key_labeled(atlas, baf)) {
-               if(nolabel_warn) {
-                  WARNING_message(
-                  "No label found for code %d in atlas %s\n"
-                  "Similar missing labels will be ignored. Continuing...", 
-                               baf, Atlas_Name(atlas));
-                 nolabel_warn = 0;
-               }
-               continue ;  /* no labels? */
-            }
-
-            zn = Get_Atlas_Zone (*wamip, (int)rr_find[ff] ); 
-                     /* zone levels are based on search radius */
-            zn = Atlas_Zone(  zn, zn->level,
-                              blab, baf, atlas->adh->probkey, rr_find[ff], 
-                              Atlas_Name(atlas));
-            if (LocalHead) 
-               INFO_message("Adding zone on %s to wami\n", 
-                               Atlas_Name(atlas)); 
-            *wamip = Add_To_Atlas_Query(*wamip, zn);
-
-            rff = rr_find[ff] ;  /* save for next time around */
-         }
       } /* for each sub-brick */
+      if (LocalHead) INFO_message("   %d findings...\n", nfind);
+
+      for( ff=0 ; ff < nfind ; ff++ ){
+         baf = b_find[ff] ; blab = NULL ;
+         blab = atlas_key_label(atlas, baf, &ac);
+         if( blab == NULL && is_atlas_key_labeled(atlas, baf)) {
+            if(nolabel_warn) {
+               WARNING_message(
+               "No label found for code %d in atlas %s\n"
+               "Similar missing labels will be ignored. Continuing...", 
+                            baf, Atlas_Name(atlas));
+              nolabel_warn = 0;
+            }
+            continue ;  /* no labels? */
+         }
+
+         zn = Get_Atlas_Zone (*wamip, (int)rr_find[ff] ); 
+                  /* zone levels are based on search radius */
+         zn = Atlas_Zone(  zn, zn->level,
+                           blab, baf, atlas->adh->probkey, rr_find[ff], 
+                           Atlas_Name(atlas));
+         if (LocalHead) 
+            INFO_message("Adding zone on %s to wami\n", 
+                            Atlas_Name(atlas)); 
+         *wamip = Add_To_Atlas_Query(*wamip, zn);
+
+         rff = rr_find[ff] ;  /* save for next time around */
+      }
+
    } else if (is_probabilistic_atlas(atlas)) { /* the PMAPS */
       if (LocalHead)  
-         fprintf(stderr,"Processing with %s\n", 
+         fprintf(stderr,"Processing with probabilistic atlas %s\n", 
                         atlas->atlas_dset_name);
 
       /*-- find locations near the given one that are in the Atlas --*/
@@ -6668,4 +6722,22 @@ char *Current_Atlas_Default_Name()
    if( ept != NULL ) return( ept ) ;
 
    return("TT_Daemon");
+}
+
+
+/* return list of atlas names */
+char **Atlas_Names_List(ATLAS_LIST *atl)
+{
+   char **atlas_names = NULL;
+   int k, natl=0;
+
+   if (atl->natlases == 0)
+      return(NULL);
+
+   /* use all atlases */
+   for (k=0; k<atl->natlases; ++k) {
+      atlas_names = add_to_names_list(atlas_names, &natl,
+          Atlas_Name(&(atl->atlas[k])));
+   }
+   return(atlas_names);
 }

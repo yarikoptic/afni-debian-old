@@ -483,6 +483,23 @@ void AFNI_syntax(void)
     "  * http://dx.doi.org/10.1016/j.neuroimage.2008.09.037\n"
     "  * http://afni.nimh.nih.gov/sscc/rwcox/papers/LocalPearson2009.pdf\n"
     "\n"
+    "ZS Saad, RC Reynolds, BD Argall, S Japee, RW Cox.\n"
+    "  SUMA: An interface for surface-based intra- and inter-subject analysis\n"
+    "  within AFNI.  2004 IEEE International Symposium on Biomedical Imaging:\n"
+    "  from Nano to Macro.  IEEE, Arlington VA, pp. 1510-1513.\n"
+    "\n"
+    "  * A brief description of SUMA.\n"
+    "  * http://dx.doi.org/10.1109/ISBI.2004.1398837\n"
+    "  * http://afni.nimh.nih.gov/sscc/rwcox/papers/SUMA2004paper.pdf\n"
+    "\n"
+    "BD Argall, ZS Saad, MS Beauchamp.\n"
+    "  Simplified intersubject averaging on the cortical surface using SUMA.\n"
+    "  Human Brain Mapping 27: 14-27, 2006.\n"
+    "\n"
+    "  * Describes the 'standard mesh' surface approach used in SUMA.\n"
+    "  * http://dx.doi.org/10.1002/hbm.20158\n"
+    "  * http://afni.nimh.nih.gov/sscc/rwcox/papers/SUMA2006paper.pdf\n"
+    "\n"
     "POSTERS on varied subjects from the AFNI development group can be found at\n"
     "  * http://afni.nimh.nih.gov/sscc/posters\n"
    ) ;
@@ -1397,6 +1414,12 @@ void AFNI_sigfunc_alrm(int sig)
      "Farewell, and may an elephant never sit on your computer"      ,
      "So long, and may the bluebird of happiness fly up your nose"   ,
      "Ta ta, and may an elephant caress you gently with his toes"    ,
+     "The Square Root of -1 said to Pi, 'Be Rational'"               ,
+     "Pi told the Square Root of -1 to 'Get Real'"                   ,
+     "By Grapthar's Hammer, you SHALL be avenged"                    ,
+     "We live to tell the tale"                                      ,
+     "Are we there yet?"                                             ,
+     "Never give up, never surrender"                                ,
 
      "May the Dark Side of the Force get lost on the way to your data"                ,
      "The Andromeda Galaxy is on a collision course with us -- be prepared"           ,
@@ -1776,7 +1799,7 @@ int main( int argc , char *argv[] )
    if( AFNI_yesenv("AFNI_TIME_LOCK") ){
        GLOBAL_library.time_lock = 1 ;
    }
-   
+
    /*-- now create first display context: MAIN_dc --*/
 
    GLOBAL_library.dc = MAIN_dc =
@@ -6276,9 +6299,10 @@ DUMP_IVEC3("  new_id",new_id) ;
            im3d->vedset.exinfo   = NULL ;
          break ;
        }
-       if( !im3d->vedskip )
-         changed = AFNI_vedit( im3d->fim_now , im3d->vedset ,
-                               im3d->vwid->func->clu_mask    ) ;
+       if( !im3d->vedskip ){
+         byte *mmm = (im3d->vednomask) ? NULL : im3d->vwid->func->clu_mask ;
+         changed = AFNI_vedit( im3d->fim_now , im3d->vedset , mmm ) ;
+       }
        if( !DSET_VEDIT_good(im3d->fim_now) ){
          UNCLUSTERIZE(im3d) ;
        } else if( changed ){
@@ -8804,6 +8828,11 @@ ENTRY("AFNI_crosshair_relabel") ;
   callback for crosshair label popup menu [12 Mar 2004]
 --------------------------------------------------------------------*/
 
+static char *last_jumpto_xyz_string = NULL ;  /* 23 Sep 2008 */
+static char *last_jumpto_ijk_string = NULL ;
+static char *last_mnito_string      = NULL ;
+static char *last_sumato_string     = NULL ;
+
 void AFNI_crosshair_pop_CB( Widget w ,
                             XtPointer client_data , XtPointer call_data )
 {
@@ -8815,6 +8844,24 @@ void AFNI_crosshair_pop_CB( Widget w ,
 ENTRY("AFNI_crosshair_pop_CB") ;
 
    if( !IM3D_OPEN(im3d) ) EXRETURN ;
+
+   /*-- jumpto stuff added 01 Aug 2011 --*/
+
+   if( w == im3d->vwid->imag->crosshair_jtxyz_pb ){
+     char tbuf[128] ;
+     sprintf(tbuf , "Enter new x y z (%s mm):" , GLOBAL_library.cord.orcode ) ;
+     MCW_choose_string( im3d->vwid->imag->crosshair_label , tbuf ,
+                        last_jumpto_xyz_string,
+                        AFNI_jumpto_CB, (XtPointer) im3d ) ;
+     EXRETURN ;
+   } else if ( w == im3d->vwid->imag->crosshair_jtijk_pb ){
+     MCW_choose_string( im3d->vwid->imag->crosshair_label , "Enter new i j k:" ,
+                        last_jumpto_ijk_string ,
+                        AFNI_jumpto_ijk_CB , (XtPointer) im3d ) ;
+     EXRETURN ;
+   }
+
+   /*-- the other options --*/
 
         if( w == im3d->vwid->imag->crosshair_dicom_pb ) val = cord_dicom ;
    else if( w == im3d->vwid->imag->crosshair_spm_pb   ) val = cord_spm   ;
@@ -8844,15 +8891,10 @@ ENTRY("AFNI_crosshair_pop_CB") ;
   callback for non-marker buttons on the popup
 --------------------------------------------------------------------*/
 
-static char *last_jumpto_xyz_string = NULL ;  /* 23 Sep 2008 */
-static char *last_jumpto_ijk_string = NULL ;
-static char *last_mnito_string      = NULL ;
-static char *last_sumato_string     = NULL ;
-
 void AFNI_imag_pop_CB( Widget w ,
                        XtPointer client_data , XtPointer call_data )
 {
-   Three_D_View *im3d = (Three_D_View *) client_data ;
+   Three_D_View *im3d = (Three_D_View *)client_data ;
    MCW_imseq *seq=NULL ;
 
 ENTRY("AFNI_imag_pop_CB") ;

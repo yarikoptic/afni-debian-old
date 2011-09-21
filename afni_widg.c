@@ -1076,6 +1076,28 @@ STATUS("making imag->rowcol") ;
     XtAddCallback( imag->crosshair_ijk_pb , XmNactivateCallback ,
                    AFNI_crosshair_pop_CB , im3d ) ;
 
+    imag->crosshair_jtxyz_pb =      /* 01 Aug 2011 */
+       XtVaCreateManagedWidget(
+          "menu" , xmPushButtonWidgetClass , imag->crosshair_menu ,
+             LABEL_ARG("Jump to (xyz)") ,
+             XmNmarginHeight , 0 ,
+             XmNtraversalOn , True  ,
+             XmNinitialResourcesPersistent , False ,
+          NULL ) ;
+    XtAddCallback( imag->crosshair_jtxyz_pb , XmNactivateCallback ,
+                   AFNI_crosshair_pop_CB , im3d ) ;
+
+    imag->crosshair_jtijk_pb =      /* 01 Aug 2011 */
+       XtVaCreateManagedWidget(
+          "menu" , xmPushButtonWidgetClass , imag->crosshair_menu ,
+             LABEL_ARG("Jump to (ijk)") ,
+             XmNmarginHeight , 0 ,
+             XmNtraversalOn , True  ,
+             XmNinitialResourcesPersistent , False ,
+          NULL ) ;
+    XtAddCallback( imag->crosshair_jtijk_pb , XmNactivateCallback ,
+                   AFNI_crosshair_pop_CB , im3d ) ;
+
    } /*- end of crosshair_label popup menu -*/
 
    /*--- 01 Jan 1997: horizontal rowcol for crosshair stuff ---*/
@@ -3510,6 +3532,7 @@ STATUS("making func->rowcol") ;
          NULL ) ;
    im3d->vedset.code = 0 ; im3d->vedset.ival = -1 ;
    im3d->vedskip = 0 ;  /* 20 Dec 2007 */
+   im3d->vednomask = 0 ; /* 01 Aug 2011 */
 
    func->clu_cluster_pb =
       XtVaCreateManagedWidget(

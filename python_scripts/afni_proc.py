@@ -282,12 +282,21 @@ g_history = """
         - added details to comments in align block
         - replaced help for -compute_tsnr with -regress and -volreg versions
           (thanks to B Benson for asking about obsolete -compute_tsnr)
+    2.61 Aug 03, 2011:
+        - changed aea.py -save_skullstrip to -save_orig_skullstrip
+        - previously the stripped anat would be warped to match any obliquity
+          of the EPI, which would throw off the alignment
+        - thanks to A Ellenstein for noting the problem and to Z Saad for
+          helping to figure it out
+    2.62 Aug 31, 2011:
+        - if censoring motion or outliers, add options to gen_ss_r command
+        - added help for -regress_make_cbucket
 """
 
-g_version = "version 2.60, July 26, 2011"
+g_version = "version 2.62, August 31, 2011"
 
 # version of AFNI required for script execution
-g_requires_afni = "13 Jul 2011"
+g_requires_afni = "3 Aug 2011"
 
 # ----------------------------------------------------------------------
 # dictionary of block types and modification functions
@@ -348,6 +357,9 @@ class SubjProcSream:
         self.mot_extern = ''            # from -regress_motion_file
         self.mot_demean = ''            # from demeaned motion file
         self.mot_deriv  = ''            # motion derivatives
+
+        self.mot_cen_lim= 0             # motion censor limit, if applied
+        self.out_cen_lim= 0             # outlier censor limit, if applied
 
         self.opt_src    = 'cmd'         # option source
         self.subj_id    = 'SUBJ'        # hopefully user will replace this

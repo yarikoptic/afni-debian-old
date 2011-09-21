@@ -368,7 +368,8 @@ typedef struct {
       Widget crosshair_frame , crosshair_rowcol , crosshair_label ;
 
       Widget crosshair_menu, crosshair_dicom_pb, crosshair_spm_pb ; /* 12 Mar 2004 */
-      Widget crosshair_ijk_pb ;   /* 04 Oct 2010 */
+      Widget crosshair_ijk_pb ;                                     /* 04 Oct 2010 */
+      Widget crosshair_jtxyz_pb , crosshair_jtijk_pb ;              /* 01 Aug 2011 */
 
       Widget        xhair_rowcol ;
       MCW_arrowval *crosshair_av ;
@@ -424,6 +425,8 @@ typedef struct {
   Widget top_menu , histrange_pb ;
   MCW_bbox *histsqrt_bbox ;
 
+  MCW_bbox *usemask_bbox ;  /* zero-th row of controls [01 Aug 2011] */
+
   MCW_arrowval *cmode_av ;  /* first row of controls */
   Widget clust3d_pb, savetable_pb, index_lab, prefix_tf, done_pb ;
   Widget savemask_pb ;      /* 01 May 2008 */
@@ -434,6 +437,7 @@ typedef struct {
 
   Widget dset_lab ;         /* label after second row */
 
+  Widget clusters_lab ;     /* label at top of clusters table */
   int nrow, nall, is_open ;
   Widget *clu_rc ;          /* rows of widgets */
   Widget *clu_lab ;
@@ -1070,6 +1074,7 @@ typedef struct Three_D_View {
       VEDIT_settings vedset ;                   /* 05 Sep 2006 */
       char *vedlabel ;                          /* 27 Mar 2007 */
       int   vedskip ;
+      int   vednomask ;                         /* 01 Aug 2011 */
 
       ICOR_setup   *iset ;                       /* 05 May 2009 */
       ICALC_setup  *icalc_setup ;                /* 18 Sep 2009 */
@@ -1104,6 +1109,7 @@ typedef struct Three_D_View {
      (iq)->vwid->func->clu_tabNN1 = NULL ;                                 \
       (iq)->vwid->func->clu_tabNN2 = NULL ;                                \
        (iq)->vwid->func->clu_tabNN3 = NULL ;                               \
+     (iq)->vednomask = 0 ;                                                 \
      if( (iq)->vedset.code ) redis++ ;                                     \
      (iq)->vedset.flags = (iq)->vedset.code = 0; AFNI_set_thr_pval((iq));  \
      if( (iq)->vinfo->func_visible && redis ) AFNI_redisplay_func((iq)) ;  \
@@ -1598,6 +1604,7 @@ extern void AFNI_see_func_CB          ( Widget , XtPointer , XtPointer ) ;
 extern void AFNI_marks_edits_CB       ( Widget , XtPointer , XtPointer ) ;
 extern void AFNI_marks_transform_CB   ( Widget , XtPointer , XtPointer ) ;
 extern void AFNI_imag_pop_CB          ( Widget , XtPointer , XtPointer ) ;
+extern void AFNI_crosshair_pop_CB     ( Widget , XtPointer , XtPointer ) ; /* 01 Aug 2011 */
 extern void AFNI_define_CB            ( Widget , XtPointer , XtPointer ) ;
 extern void AFNI_underlay_CB          ( Widget , XtPointer , XtPointer ) ;
 extern void AFNI_choose_dataset_CB    ( Widget , XtPointer , XtPointer ) ;

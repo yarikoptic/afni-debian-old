@@ -1782,6 +1782,8 @@ ENTRY("mri_genalign_scalar_warpone") ;
    RETURN(wim) ;
 }
 
+#ifndef HAVE_HEXVOL
+#define HAVE_HEXVOL
 /*----------------------------------------------------------------------------*/
 /* Volume of a hexahedron (distorted cube) given by 8 corners.
    Looking down from the top, the bottom plane points are numbered so:
@@ -1826,6 +1828,7 @@ static float hexahedron_volume( float_triple x0 , float_triple x1 ,
 #undef DA
 #undef DB
 #undef DC
+#endif /* HAVE_HEXVOL */
 
 /*----------------------------------------------------------------------------*/
 
@@ -2069,21 +2072,29 @@ void mri_genalign_affine_set_befafter( mat44 *ab , mat44 *af )
    return ;
 }
 
+/*--------------------------------------------------------------------------*/
+
 void mri_genalign_affine_get_befafter( mat44 *ab , mat44 *af )
 {
    if( ab != NULL ) *ab = aff_before ;
    if( af != NULL ) *af = aff_after  ;
 }
 
+/*--------------------------------------------------------------------------*/
+
 void mri_genalign_affine_get_gammaijk( mat44 *gg )
 {
   if( gg != NULL ) *gg = aff_gamijk ;
 }
 
+/*--------------------------------------------------------------------------*/
+
 void mri_genalign_affine_get_gammaxyz( mat44 *gg )
 {
   if( gg != NULL ) *gg = aff_gamxyz ;
 }
+
+/*--------------------------------------------------------------------------*/
 
 void mri_genalign_affine_use_befafter( int bb , int aa )
 {

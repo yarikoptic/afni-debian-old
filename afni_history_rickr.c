@@ -49,6 +49,106 @@
 
 afni_history_struct rickr_history[] = {
 
+ {  7, SEP, 2011, RCR, "Makefile.INCLUDE", MICRO, TYPE_MODIFY,
+   "added @radial_correlate to the install scripts (forgot earlier)",
+   NULL
+ } ,
+
+ {  6, SEP, 2011, RCR, "Dimon", MICRO, TYPE_NEW_OPT,
+   "added -fast option, short for: -sleep_init 50 -sleep_vol 50",
+   NULL
+ } ,
+
+ {  1, SEP, 2011, RCR, "afni_util.py", MICRO, TYPE_BUG_FIX,
+   "get_default_polort: run time should be TR * (NT-1)",
+   NULL
+ } ,
+
+ {  1, SEP, 2011, RCR, "@radial_correlate", MINOR, TYPE_NEW_PROG,
+   "compute voxelwise EPI correlations with local spherical averages",
+   NULL
+ } ,
+
+ { 31, AUG, 2011, RCR, "afni_proc.py", MICRO, TYPE_MODIFY,
+   "if censoring motion or outliers, add options to gen_ss_r command",
+   NULL
+ } ,
+
+ { 30, AUG, 2011, RCR, "Dimon", MICRO, TYPE_BUG_FIX,
+   "update volume delta to mean dz",
+   "From text in DICOM files, initial dz values may not be sufficiently\n"
+   "accurate, leaing to 'volume toasted' errors.\n"
+   "Thanks to B Benson for noting the problem."
+ } ,
+
+ { 19, AUG, 2011, RCR, "3dDeconvolve", MINOR, TYPE_MODIFY,
+   "added the ability to output 1D sresp datasets",
+   "Requested by S Baum."
+ } ,
+
+ { 17, AUG, 2011, RCR, "gen_ss_review_scripts.py", MICRO, TYPE_BUG_FIX,
+   "fixed some final anat dset assignments",
+   NULL
+ } ,
+
+ { 15, AUG, 2011, RCR, "afni-general", MICRO, TYPE_BUG_FIX,
+   "altered SUMA_ParseFname for parsing of relative pathnames",
+   "Thanks to Ryan of Princeton for noting the problem."
+ } ,
+
+ { 12, AUG, 2011, RCR, "gen_ss_review_scripts.py", MICRO, TYPE_MODIFY,
+   "gave volreg 3dAllineate command priority for final anat",
+   NULL
+ } ,
+
+ {  4, AUG, 2011, RCR, "afni-general", MICRO, TYPE_MODIFY,
+   "wrote loc_strcpy(/cat)_realloc for MCW_file_expand",
+   "This is to allow for long sub-brick selectors."
+ } ,
+
+ {  3, AUG, 2011, RCR, "align_epi_anat.py", MICRO, TYPE_NEW_OPT,
+   "added -save_orig_skullstrip, to avoid oblique transforms",
+   "This was added for afni_proc.py."
+ } ,
+
+ {  3, AUG, 2011, RCR, "afni_proc.py", MINOR, TYPE_BUG_FIX,
+   "changed aea.py -save_skullstrip to -save_orig_skullstrip",
+   "The -save_skullstrip dataset might have an oblique transformation\n"
+   "applied (which would throw off EPI if it is then sent to standard\n"
+   "space).  Apply the new option to grab a simple skull-stripped anat.\n"
+   "Thanks to A Ellenstein for noting it and Z Saad for help understanding."
+ } ,
+
+ {  2, AUG, 2011, RCR, "gen_ss_review_scripts.py", MICRO, TYPE_MODIFY,
+   "added control var out_prefix, a prefix for output files",
+   NULL
+ } ,
+
+ {  2, AUG, 2011, RCR, "uber_skel.py", MICRO, TYPE_MODIFY,
+   "main class inherits object - for older versions of python",
+   NULL
+ } ,
+
+ {  2, AUG, 2011, RCR, "uber_align_test.py", MICRO, TYPE_MODIFY,
+   "main class inherits object - for older versions of python",
+   NULL
+ } ,
+
+ { 29, JUL, 2011, RCR, "3dUniformize", MINOR, TYPE_BUG_FIX,
+   "fixed checks against lower_limit in option processing (since -1 init)",
+   "Thanks to A Waite for noting the problem and cause in the code."
+ } ,
+
+ { 29, JUL, 2011, RCR, "make_pq_script.py", MINOR, TYPE_MODIFY,
+   "changes to handle python 2.4, where shell output has extra blank lines",
+   NULL
+ } ,
+
+ { 29, JUL, 2011, RCR, "slow_surf_clustsim.py", MINOR, TYPE_ENHANCE,
+   "z.max files are now named by p-value",
+   "And suggest a quick.alpha.vals.py command."
+ } ,
+
  { 26, JUL, 2011, RCR, "afni_proc.py", MINOR, TYPE_ENHANCE,
    "if e2a, update current anat to skull-stripped anat from align block",
    "This would avoid a second skull-strip step in @auto_tlrc."

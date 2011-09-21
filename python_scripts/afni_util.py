@@ -171,19 +171,27 @@ def show_args_as_command(args, note='command:'):
      "\n----------------------------------------------------------------------"
      )
 
-def exec_tcsh_command(cmd):
+def exec_tcsh_command(cmd, lines=0, noblank=0):
     """execute cmd via: tcsh -c "cmd"
        return status, output
-
           if status == 0, output is stdout
           else            output is stderr+stdout
+
+       if lines: return a list of lines
+       if noblank (and lines): omit blank lines
     """
 
     cstr = 'tcsh -c "%s"' % cmd
     status, so, se = BASE.simple_shell_exec(cstr, capture=1)
 
-    if not status: return status, so
-    else:          return status, se+so
+    if not status: otext = so
+    else:          otext = se+so
+    if lines:
+       slines = otext.splitlines()
+       if noblank: slines = [line for line in slines if line != '']
+       return status, slines
+
+    return status, otext
 
 def get_unique_sublist(inlist):
     """return a copy of inlist, but where elements are unique"""
@@ -280,7 +288,7 @@ def get_default_polort(tr, reps):
         print "** cannot guess polort from tr = %f, reps = %d" % (tr,reps)
         return 2        # return some default
 
-    return run_time_to_polort(tr*reps)
+    return run_time_to_polort(tr*(reps-1))
 
 def run_time_to_polort(run_time):
     """direct computation: 1+floor(run_time/150)"""
@@ -342,15 +350,14 @@ def get_last_history_command(dname, substr):
       return one text line, or '' on failure
    """
    command = '3dNotes -ses %s' % dname
-   status, output = exec_tcsh_command(command)
+   status, olines = exec_tcsh_command(command, lines=1, noblank=1)
    if status: return ''
 
-   olines = output.splitlines()
    olen   = len(olines)
 
    # work backwards
    for ind in range(olen-1, -1, -1):
-      if olines[ind].find(substr): return olines[ind]
+      if olines[ind].find(substr) >= 0: return olines[ind]
 
    return ''
 
@@ -363,10 +370,8 @@ def get_3dinfo(dname, lines=0, verb=0):
    if verb == 1: vstr = ' -verb'
    elif verb > 1: vstr = ' -VERB'
    command = '3dinfo%s %s' % (vstr, dname)
-   status, output = exec_tcsh_command(command)
+   status, output = exec_tcsh_command(command, lines=lines, noblank=1)
    if status: return None
-
-   if lines: return output.splitlines()
 
    return output
 
@@ -1920,7 +1925,9 @@ def fractional_offsets(times, dur):
     return olist
 
 def stdev_ub(data):
-    """unbiased standard deviation (divide by len-1, not just len)"""
+    """unbiased standard deviation (divide by len-1, not just len)
+              stdev_ub = sqrt( (sumsq - N*mean^2)/(N-1) )
+    """
 
     length = len(data)
     if length <  2: return 0.0

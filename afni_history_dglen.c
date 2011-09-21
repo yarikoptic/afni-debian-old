@@ -49,6 +49,27 @@
 
 
 afni_history_struct dglen_history[] = {
+{ 06 , SEP, 2011 , DRG , "align_epi_anat.py" , 
+    MINOR , TYPE_BUG_FIX, 
+    "save_skullstrip option saved obliqued and skullstripped data",
+    "Fixed to save only skullstripped"
+} ,
+
+{ 02 , SEP, 2011 , DRG , "3dhistog" , 
+    MINOR , TYPE_BUG_FIX, 
+    "Handle binning and output of integer and float data differently",
+    "Distinguish between integer and float data. Added float and int\n"
+    "options to enforce specified behavior.\n"
+    "Done with Rick Reynolds."
+} ,
+
+{ 30 , AUG, 2011 , DRG , "Draw Dataset" , 
+    MINOR , TYPE_BUG_FIX, 
+    "Draw Dataset plugin incorrect label for current atlas",
+    "Fixed current atlas to be updated properly if atlas is\n"
+    "changed."
+} ,
+
 { 11 , JUL, 2011 , DRG , "whereami" , 
     MINOR , TYPE_NEW_ENV, 
     "AFNI_ATLAS_COLORS and default atlas in AFNI GUI",

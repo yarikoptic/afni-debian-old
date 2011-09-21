@@ -43,7 +43,59 @@
 
 afni_history_struct rwcox_history[] = {
 /*=====BELOW THIS LINE=====*/
-  { 21 , JUL , 2011 , RWC , "3dttest++" , MICRO , TYPE_MODIFY ,
+  { 26 , AUG , 2011 , RWC , "3dclust" , MICRO , TYPE_NEW_OPT ,
+   "add -savemask option" ,
+   NULL } ,
+
+ { 26 , AUG , 2011 , RWC , "afni Clusterize" , MICRO , TYPE_GENERAL ,
+   "Modify to print out 3dclust and whereami commands when used" ,
+   "Per the suggestion of Andy Connolly of Dartmouth College." } ,
+
+ { 19 , AUG , 2011 , RWC , "3dNwarpCalc" , MINOR , TYPE_MODIFY ,
+   "Fix &readpoly() and implement &read4x4()" ,
+   "Modify 3dNwarpApply to use same function as &apply() so that the 2\n"
+   "programs are in sync.\n"
+   "Release 3dNwarpCalc into the wild:\n"
+   "\n"
+   "Born free, and code is worth running, but only worth running, because\n"
+   "you're born freeware!" } ,
+
+ { 18 , AUG , 2011 , RWC , "3dNwarpCalc" , MICRO , TYPE_GENERAL ,
+   "Add '&apply' function" ,
+   "To apply a calculated 3D warp to a dataset, without having to use\n"
+   "3dNwarpApply" } ,
+
+ { 18 , AUG , 2011 , RWC , "3dttest++" , MICRO , TYPE_GENERAL ,
+   "Add some clarify text about covariates to the -help output" ,
+   "Also add an addition check to see if dataset name covariates are all the\n"
+   "same, and print out some info about the covariates." } ,
+
+ { 11 , AUG , 2011 , RWC , "3dNwarpCalc" , MICRO , TYPE_GENERAL ,
+   "Added sqrt of a nonlinear warp to the repertoire." ,
+   NULL } ,
+
+ { 9 , AUG , 2011 , RWC , "3dNwarpCalc" , MINOR , TYPE_NEW_PROG ,
+   "Implemented about 80% of it" ,
+   "Seems to work, but needs a fair amount of fine tuning and testing." } ,
+
+ { 9 , AUG , 2011 , RWC , "3dTstat" , MICRO , TYPE_NEW_OPT ,
+   "Add '-cvarinv' option for Vinai" ,
+   NULL } ,
+
+ { 2 , AUG , 2011 , RWC , "3dclust" , MINOR , TYPE_NEW_OPT ,
+   "Add '-inmask' option, to use internal mask" ,
+   "To be compatible with AFNI's Clusterize GUI, which was also modified to\n"
+   "output this option when appropriate." } ,
+
+ { 1 , AUG , 2011 , RWC , "afni" , MICRO , TYPE_MODIFY ,
+   "Clusterize minor changes" ,
+   "* Shift+3clust button = actually run the 3dclust command, in addition\n"
+   "printing it out\n"
+   "* Add a warning message if an internal 3dClustSim mask is present, since\n"
+   "3dclust results will vary from Clusterize\n"
+   "* Add Jumpto buttons to AFNI crosshair label popup menu" } ,
+
+ { 21 , JUL , 2011 , RWC , "3dttest++" , MICRO , TYPE_MODIFY ,
    "Add column selection to -covariates for this, also" ,
    NULL } ,
 
