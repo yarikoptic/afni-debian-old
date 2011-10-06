@@ -49,6 +49,28 @@
 
 afni_history_struct rickr_history[] = {
 
+ {  5, OCT, 2011, RCR, "uber_subject.py", MICRO, TYPE_BUG_FIX,
+   "do not re-create proc script on proc execution",
+   NULL
+ } ,
+
+ {  4, OCT, 2011, RCR, "afni_proc.py", MICRO, TYPE_NEW_OPT,
+   "added -anat_has_skull option",
+   NULL
+ } ,
+
+ {  4, OCT, 2011, RCR, "gen_ss_review_scripts.py", MINOR, TYPE_ENHANCE,
+   "changed basic script outputs",
+   "- added 'max censored displacement', 'final anat dset' and\n"
+   "        'final voxel resolution' to basic script\n"
+   "- removed 'num stim files found'"
+ } ,
+
+ {  4, OCT, 2011, RCR, "to3d", MICRO, TYPE_MODIFY,
+   "explicitly warn about illegal '/' characters in output filename",
+   NULL
+ } ,
+
  {  3, OCT, 2011, RCR, "afni_proc.py", MICRO, TYPE_MODIFY,
    "changed default polort time back to TR*NT, to match 3dDeconvolve",
    NULL
