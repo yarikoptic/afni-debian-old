@@ -313,17 +313,27 @@ MRI_shindss * GRINCOR_read_input( char *fname )
    atr = NI_get_attribute(nel,"datafile") ;
    if( atr == NULL ) GQUIT("datafile attribute missing") ;
    dfname = strdup(atr) ; nbytes_dfname = THD_filesize(dfname) ;
-   if( nbytes_dfname <= 0 )
-     GQUIT("datafile is missing") ;
-   else if( nbytes_dfname < nbytes_needed ){
-     char str[2048] ;
-     sprintf(str,"datafile has %s bytes but needs at least %s",
+   if( nbytes_dfname <= 0 && strstr(dfname,"/") != NULL ){
+     char *tnam = THD_trailname(atr,0) ;
+     nbytes_dfname = THD_filesize(tnam) ;
+     if( nbytes_dfname > 0 ){ free(dfname); dfname = strdup(tnam); }
+   }
+   if( nbytes_dfname <= 0 ){
+     char mess[THD_MAX_NAME+256] ;
+     sprintf(mess,"datafile is missing (%s)",dfname) ; GQUIT(mess) ;
+   } else if( nbytes_dfname < nbytes_needed ){
+     char mess[THD_MAX_NAME+1024] ;
+     sprintf(mess,"datafile %s has %s bytes but needs at least %s",
+              dfname , 
               commaized_integer_string(nbytes_dfname) ,
               commaized_integer_string(nbytes_needed) ) ;
-     GQUIT(str) ;
+     GQUIT(mess) ;
    }
    fdes = open( dfname , O_RDONLY ) ;
-   if( fdes < 0 ) GQUIT("can't open datafile") ;
+   if( fdes < 0 ){
+     char mess[THD_MAX_NAME+256] ;
+     sprintf(mess,"can't open datafile (%s)",dfname) ; GQUIT(mess) ;
+   }
 
    /* ivec[i] is the voxel spatial index of the i-th vector */
 
@@ -2780,6 +2790,20 @@ int main( int argc , char *argv[] )
          btim = ctim ;
        }
 
+     }
+
+     /*** test results to see if they are all zero! [18 Oct 2011] ***/
+
+     if( verb > 1 || nsend < NSEND_LIMIT ){
+       int nv = nelset->vec_num ;  /* # of columns */
+       int nr = nelset->vec_len ;  /* # of rows */
+       float *vv ;
+       for( kk=0 ; kk < nv ; kk++ ){
+         vv = (float *)nelset->vec[kk] ;
+         for( ii=0 ; ii < nr && vv[ii] == 0.0f ; ii++ ) ; /*nada*/
+         if( ii == nr )
+           WARNING_message("GIC: sub-brick #%d of output is all zero!",kk) ;
+       }
      }
 
 #ifndef DONT_USE_SHM
