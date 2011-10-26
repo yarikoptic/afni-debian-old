@@ -49,6 +49,18 @@
 
 afni_history_struct rickr_history[] = {
 
+ { 25, OCT, 2011, RCR, "timing_tool.py", MINOR, TYPE_ENHANCE,
+   "process married files with current operations",
+   "1. AfniMarriedTiming inherits from AfniData (instead of local copies)\n"
+   "2. add all AfniTiming methods to AfniMarriedTiming (as married timing)\n"
+   "3. rename AfniMarriedTiming back to AfniTiming (but now married)"
+ } ,
+
+ { 25, OCT, 2011, RCR, "gen_ss_review_scripts.py", MINOR, TYPE_ENHANCE,
+   "look for more file name variants, including with '_' separators",
+   "Added for J Weisberg."
+ } ,
+
  { 20, OCT, 2011, RCR, "afni_general", MINOR, TYPE_MODIFY,
    "changed most resampling programs to deoblique inputs upon read",
    "THD_open*_dataset() was followed by THD_make_cardinal().\n"
