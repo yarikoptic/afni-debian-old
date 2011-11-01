@@ -963,6 +963,7 @@ if( PRINT_TRACING ){
 
            XmNallowShellResize , False ,       /* let code resize shell */
 
+
            XmNinitialResourcesPersistent , False ,
       NULL ) ;
 
@@ -1087,10 +1088,6 @@ if( PRINT_TRACING ){
                xmPushButtonWidgetClass , newseq->wform ,
                wa , na ) ;
 
-      if( ii == NBUT_DONE )   /* added 3/25/95 */
-         MCW_set_widget_bg( newseq->wbut_bot[ii] ,
-                            MCW_hotcolor(newseq->wbut_bot[ii]) , 0 ) ;
-
       XtAddCallback( newseq->wbut_bot[ii] , XmNactivateCallback ,
                      ISQ_but_bot_def[ii].func_CB , newseq ) ;
 
@@ -1098,6 +1095,9 @@ if( PRINT_TRACING ){
       MCW_register_hint( newseq->wbut_bot[ii] , ISQ_but_bot_hint[ii] ) ;
    }
    SET_SAVE_LABEL(newseq) ;
+
+   MCW_set_widget_bg( newseq->wbut_bot[NBUT_DONE] ,
+                      MCW_hotcolor(newseq->wbut_bot[ii]) , 0 ) ;
 
    /* 27 Jun 2001: popup menu for Save: button */
 
@@ -1109,6 +1109,16 @@ if( PRINT_TRACING ){
                            (XtPointer) newseq , /* client data */
                            XtListTail           /* last in queue */
                           ) ;
+
+   /* 17 Jun 2011: Button3 actions for Disp button */
+
+   XtInsertEventHandler( newseq->wbut_bot[NBUT_DISP] ,
+                         ButtonPressMask ,    /* button presses */
+                         FALSE ,              /* nonmaskable events? */
+                         ISQ_butdisp_EV ,     /* handler */
+                         (XtPointer) newseq , /* client data */
+                         XtListTail           /* last in queue */
+                        ) ;
 
    /* 24 Apr 2001: initialize recording stuff */
 
@@ -1572,6 +1582,7 @@ if( PRINT_TRACING ){
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
    XtAddCallback( newseq->wbar_rng_but, XmNactivateCallback, ISQ_wbar_menu_CB, newseq ) ;
+   MCW_register_hint(newseq->wbar_rng_but,"Fix bot,top values for underlay") ;
 
    newseq->wbar_zer_but =
       XtVaCreateManagedWidget(
@@ -1581,12 +1592,14 @@ if( PRINT_TRACING ){
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
    XtAddCallback( newseq->wbar_zer_but, XmNactivateCallback, ISQ_wbar_menu_CB, newseq ) ;
+   MCW_register_hint(newseq->wbar_zer_but,"Color for zero value in underlay") ;
 
    { char *blab[1] = { "Automask?" } ;
      newseq->wbar_amask_bbox = new_MCW_bbox( newseq->wbar_menu ,  /* 14 Jun 2010 */
                                              1 , blab ,
                                              MCW_BB_check , MCW_BB_noframe ,
                                              ISQ_wbar_amask_CB , (XtPointer)newseq ) ;
+     MCW_reghint_children(newseq->wbar_amask_bbox->wrowcol,"Automatically zero out image exterior") ;
    }
 
 
@@ -1732,6 +1745,7 @@ STATUS("creation: widgets created") ;
                                              MCW_BB_check , MCW_BB_noframe ,
                                              ISQ_wbar_plots_CB , (XtPointer)newseq ) ;
      MCW_set_bbox( newseq->wbar_plots_bbox , 1 ) ;
+     MCW_reghint_children(newseq->wbar_plots_bbox->wrowcol,"Allow line drawing overlay stuff") ;
 
      newseq->wbar_graymap_pb =
         XtVaCreateManagedWidget(
@@ -1741,6 +1755,7 @@ STATUS("creation: widgets created") ;
               XmNinitialResourcesPersistent , False ,
            NULL ) ;
      XtAddCallback( newseq->wbar_graymap_pb, XmNactivateCallback, ISQ_wbar_menu_CB, newseq ) ;
+     MCW_register_hint(newseq->wbar_graymap_pb,"Graph intensity vs underlay image value") ;
 
      (void) XtVaCreateManagedWidget( "menu",
                                      xmSeparatorWidgetClass, newseq->wbar_menu,
@@ -1772,6 +1787,7 @@ STATUS("creation: widgets created") ;
                           MCW_av_substring_CB , /* text creation routine */
                           alabel                /* data for above */
                         ) ;
+     MCW_reghint_children(newseq->wbar_label_av->wrowcol,"Show coordinate label") ;
 
      iii = 1 ;
      eee = getenv("AFNI_IMAGE_LABEL_SIZE") ;
@@ -1792,6 +1808,7 @@ STATUS("creation: widgets created") ;
                           MCW_av_substring_CB , /* text creation routine */
                           slabel                /* data for above */
                         ) ;
+     MCW_reghint_children(newseq->wbar_labsz_av->wrowcol,"Set coordinate label size") ;
 
    } /* end of plots & labels stuff */
 
@@ -2428,6 +2445,34 @@ void ISQ_butcrop_choice_CB( Widget w , XtPointer client_data ,
 }
 
 /*--------------------------------------------------------------------
+  Button 3 action for Disp button  [17 Jun 2011]
+----------------------------------------------------------------------*/
+
+void ISQ_butdisp_EV( Widget w , XtPointer client_data ,
+                     XEvent *ev , Boolean *continue_to_dispatch )
+{
+   MCW_imseq *seq = (MCW_imseq *)client_data ;
+
+   if( !ISQ_REALZ(seq) ) return ;
+   ISQ_timer_stop(seq) ;
+
+   switch( ev->type ){
+     case ButtonPress:{
+       XButtonEvent *event = (XButtonEvent *)ev ;
+       if( event->button == Button3 && seq->status->send_CB != NULL ){
+         ISQ_cbs cbs ;
+         cbs.reason = isqCR_raiseupthedead ; SEND(seq,cbs) ;
+       } else if( event->button == Button2 ){
+         XBell(XtDisplay(w),100) ;
+         MCW_popup_message( w, " \n Don't! \n ", MCW_USER_KILL );
+       }
+     }
+     break ;
+   }
+   return ;
+}
+
+/*--------------------------------------------------------------------
   make Button 3 popup for Crop button
 ----------------------------------------------------------------------*/
 
@@ -2437,7 +2482,6 @@ void ISQ_butcrop_EV( Widget w , XtPointer client_data ,
    MCW_imseq *seq = (MCW_imseq *)client_data ;
 
    if( !ISQ_REALZ(seq) ) return ;
-
    ISQ_timer_stop(seq) ;
 
    switch( ev->type ){
@@ -12331,8 +12375,11 @@ ENTRY("ISQ_handle_keypress") ;
 
      case '3':
      case '#':{
-       int rr = (key == '#') ? RENDER_CHECK_UO : RENDER_CHECK_OU ;
-       if( seq->render_mode == rr ) rr = 0 ;
+       int rr = seq->render_mode ;
+
+            if( key == '3'             ) rr = 0 ;
+       else if( rr  == RENDER_CHECK_OU ) rr = RENDER_CHECK_UO ;
+       else                              rr = RENDER_CHECK_OU ;
        seq->render_mode = rr ;
        ISQ_redisplay( seq , -1 , isqDR_display ) ;
        ISQ_draw_winfo( seq ) ;

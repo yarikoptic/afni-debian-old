@@ -8,6 +8,10 @@
 
 #include "afni.h"
 #include "afni_plugout.h"
+#include "thd_atlas.h"
+extern char **Atlas_Names_List(ATLAS_LIST *atl);
+
+static THD_3dim_dataset *atlas_ovdset = NULL;
 
 /*-------------------------------------------------------------------
    This routine is also used by the macros
@@ -321,7 +325,6 @@ ENTRY("AFNI_thresh_top_CB") ;
 void AFNI_set_thr_pval( Three_D_View *im3d )
 {
    float thresh , pval , zval ;
-   int   dec ;
    char  buf[32] ;
 
 ENTRY("AFNI_set_thr_pval") ;
@@ -857,9 +860,10 @@ void AFNI_make_descendants_old( THD_sessionlist *ssl , int vbase )
 {
    int iss , jdd , kvv , num_made=0 ;
    THD_session *ss, *temp_ss ;
-   THD_3dim_dataset *orig_dset , *new_dset, *temp_dset, *temp_anat_dset ;
+   THD_3dim_dataset *orig_dset , *temp_dset, *temp_anat_dset ;
    THD_slist_find     find ;
-   THD_3dim_dataset *anat_parent_dset , **orig_row ;
+   THD_3dim_dataset *anat_parent_dset;
+/*                  **orig_row ;*/
    int orig_row_key, anat_parent_row_key;
 
 ENTRY("AFNI_make_descendants_old") ;
@@ -1705,116 +1709,164 @@ MRI_IMAGE * AFNI_ttatlas_overlay( Three_D_View *im3d ,
 {
    THD_3dim_dataset *dseTT ;
    TTRR_params *ttp ;
-   byte *b0 , *b1 , *brik, *val, *ovc , g_ov,a_ov,final_ov ;
-   short *ovar ;
-   MRI_IMAGE *ovim=NULL , *b0im , *b1im ;
+   byte *b0=NULL , *b1 , *brik,  *ovc , g_ov,a_ov,final_ov ;
+   short *s0=NULL, *ovar, *val, *fovar ;
+   float *f0=NULL;
+   MRI_IMAGE *ovim=NULL , *b0im, *fovim=NULL;
    int gwin , fwin , nreg , ii,jj , nov ;
+   float fimfac;
+   int at_sbi, fim_type, at_vox, at_nsb;
 
 ENTRY("AFNI_ttatlas_overlay") ;
 
    /* setup and sanity checks */
 
-   STATUS("checking if have Atlas dataset") ;
-
-   /* 01 Aug 2001: retrieve atlas based on z-axis size of underlay dataset */
-   dseTT = TT_retrieve_atlas_dset_nz( DSET_NZ(im3d->anat_now) ) ;
-                                 if( dseTT == NULL )      RETURN(NULL) ;
-
-   /* make sure Atlas and current dataset match in size */
-
-   STATUS("checking if Atlas and anat dataset match") ;
-
-   if( DSET_NVOX(dseTT) != DSET_NVOX(im3d->anat_now) )    RETURN(NULL) ;
-
    /* make sure we are actually drawing something */
 
    STATUS("checking if Atlas Colors is on") ;
-
    ttp = TTRR_get_params() ; if( ttp == NULL )            RETURN(NULL) ;
 
-   /* at this time, hemisphere processing doesn't work in this function */
+   STATUS("checking if Atlas dataset can be loaded") ;
 
-#if 0
-   switch( ttp->hemi ){
-      case TTRR_HEMI_LEFT:  hbot=HEMX+1 ; break ;
-      case TTRR_HEMI_RIGHT: hbot= 0     ; break ;
-      case TTRR_HEMI_BOTH:  hbot= 0     ; break ;
+   if((!atlas_ovdset) ||
+      ( DSET_NVOX(atlas_ovdset) != DSET_NVOX(im3d->anat_now))){
+       if(atlas_ovdset)
+          DSET_unload(atlas_ovdset);
+       dseTT = TT_retrieve_atlas_dset(Current_Atlas_Default_Name(),0);
+       if( dseTT == NULL ) RETURN(NULL) ;
+       DSET_load(dseTT) ;
+       if(atlas_ovdset)    /* reset the atlas overlay dataset */
+          DSET_unload(atlas_ovdset);
+       atlas_ovdset = r_new_resam_dset ( dseTT, im3d->anat_now,  0, 0, 0, NULL,
+                                       MRI_NN, NULL, 1, 0);
+/*       DSET_unload(dseTT);*/
+       if(!atlas_ovdset) RETURN(NULL);
    }
-#endif
 
+   if( DSET_NVOX(atlas_ovdset) != DSET_NVOX(im3d->anat_now) ){
+      WARNING_message(
+         "Voxels do not match between resampled atlas and the underlay dataset");
+      RETURN(NULL) ;
+   }
    /* get slices from TTatlas dataset */
-
    STATUS("loading Atlas bricks") ;
 
-   DSET_load(dseTT) ;
-   b0im = AFNI_slice_flip( n , 0 , RESAM_NN_TYPE , ax_1,ax_2,ax_3 , dseTT ) ;
-   if( b0im == NULL )                                     RETURN(NULL) ;
-
-   b1im = AFNI_slice_flip( n , 1 , RESAM_NN_TYPE , ax_1,ax_2,ax_3 , dseTT ) ;
-   if( b1im == NULL ){ mri_free(b0im) ;                   RETURN(NULL) ; }
+   /* extract slice from right direction from atlas */
+   b0im = AFNI_slice_flip( n , 0 , RESAM_NN_TYPE , ax_1,ax_2,ax_3 ,
+                           atlas_ovdset ) ;
+   if( b0im == NULL )
+      RETURN(NULL) ;
 
    /* make a new overlay image, or just operate on the old one */
+   STATUS("making new overlay for Atlas") ;
+   ovim = mri_new_conforming( b0im , MRI_short ) ;   /* new overlay */
+   ovar = MRI_SHORT_PTR(ovim) ;
+   memset( ovar , 0 , ovim->nvox * sizeof(short) ) ;
 
-   if( fov == NULL ){
-      STATUS("making new overlay for Atlas") ;
-      ovim = mri_new_conforming( b0im , MRI_short ) ;   /* new overlay */
-      ovar = MRI_SHORT_PTR(ovim) ;
-      memset( ovar , 0 , ovim->nvox * sizeof(short) ) ;
-   } else{
-      STATUS("re-using old overlay for Atlas") ;
-      ovim = fov ;                                      /* old overlay */
-      ovar = MRI_SHORT_PTR(ovim) ;
-      if( ovim->nvox != b0im->nvox ){                     /* shouldn't */
-         mri_free(b0im) ; mri_free(b1im) ; RETURN(NULL) ; /* happen!  */
-      }
-   }
-
-   b0 = MRI_BYTE_PTR(b0im) ; b1 = MRI_BYTE_PTR(b1im) ;
-
-   /* fwin => function 'wins' over Atlas */
-   /* gwin => gyral Atlas brick 'wins' over 'area' Atlas brick */
+   /* fwin => function 'wins' over Atlas - overlay image gets priority */
+   /* gwin => gyral Atlas brick 'wins' over 'area' Atlas brick - */
 
    fwin = (ttp->meth == TTRR_METH_FGA) || (ttp->meth == TTRR_METH_FAG) ;
    gwin = (ttp->meth == TTRR_METH_FGA) || (ttp->meth == TTRR_METH_GAF) ;
-
    nreg = ttp->num ;    /* number of 'on' regions     */
    brik = ttp->ttbrik ; /* which sub-brick in atlas    */
    val  = ttp->ttval ;  /* which code in that sub-brick */
    ovc  = ttp->ttovc ;  /* which overlay color index   */
 
    /* loop over image voxels, find overlays from Atlas */
-
    STATUS("doing Atlas overlay") ;
-
-   for( nov=ii=0 ; ii < ovim->nvox ; ii++ ){
-
-      if( ovar[ii] && fwin ) continue ; /* function wins */
-
-      /* check Atlas 'on' regions for hits */
-
-      g_ov = a_ov = 0 ;
-      for( jj=0 ; (g_ov==0 || a_ov==0) && jj<nreg ; jj++ ){
-              if( b0[ii] == val[jj] ) g_ov = ovc[jj] ;
-         else if( b1[ii] == val[jj] ) a_ov = ovc[jj] ;
+   at_nsb = DSET_NVALS(atlas_ovdset);
+   nov = 0;
+   for( at_sbi=0; at_sbi < at_nsb; at_sbi++) {
+      b0im = AFNI_slice_flip( n,at_sbi,RESAM_NN_TYPE,ax_1,ax_2,ax_3,
+                             atlas_ovdset);
+      if( b0im == NULL )
+         RETURN(NULL) ;
+      fim_type = b0im->kind ;
+      switch( fim_type ){
+         default:
+            RETURN(NULL) ;
+         case MRI_byte:
+            b0 = MRI_BYTE_PTR(b0im);
+         break ;
+         case MRI_short:
+            s0 = MRI_SHORT_PTR(b0im);
+         break ;
+         case MRI_float:
+            f0 = MRI_FLOAT_PTR(b0im);
+         break ;
       }
 
-      if( g_ov==0 && a_ov==0 ) continue ;  /* no hit */
+      for( ii=0 ; ii < ovim->nvox ; ii++ ){
+         /* if the overlay array is already set in the overlay */
+         /* earlier atlas voxel, keep it*/
+         if( (ovar[ii] && gwin ) ) continue ;
 
-      /* find the winner */
+         /* check Atlas 'on' regions for hits */
+         for( jj=0 ; jj<nreg ; jj++ ){
+            switch( fim_type ){
+               default:
+               case MRI_byte:
+                  at_vox = (int) b0[ii];
+               break ;
+               case MRI_short:
+                  at_vox = (int) s0[ii];
+               break ;
+               case MRI_float:
+                  at_vox = (int) (f0[ii]+.1); /* show in overlay if >=0.4 */
+               break ;
+            }
 
-      if( g_ov && (gwin || a_ov==0) ) final_ov = g_ov ;
-      else                            final_ov = a_ov ;
+            if( at_vox == val[jj] ) {
+               ovar[ii] = ovc[jj] ;
+               nov++ ;
+            }
+         }
 
-      ovar[ii] = final_ov ;  /* and the winner is ... */
-      nov++ ;
+      }
+      mri_free(b0im) ;
    }
 
-   mri_free(b0im) ; mri_free(b1im) ;  /* free at last */
+   if(PRINT_TRACING)
+      { char str[256]; sprintf(str,"Atlas overlaid %d pixels",nov); STATUS(str); }
 
-if(PRINT_TRACING)
-{ char str[256]; sprintf(str,"Atlas overlaid %d pixels",nov); STATUS(str); }
+   if(fov == NULL)   /* if there was no overlay, return what we have */
+      RETURN(ovim);
 
-   RETURN(ovim) ;
+   STATUS("re-using old overlay for Atlas") ;
+   fovim = fov ;                                      /* old overlay */
+   fovar = MRI_SHORT_PTR(ovim) ;
+   if( fovim->nvox != b0im->nvox ){                    /* shouldn't happen!  */
+         mri_free(ovim); RETURN(NULL) ;
+   }
+   nov = 0;
+   for( ii=0 ; ii < ovim->nvox ; ii++ ){
+      /* if the overlay array is already set in the overlay, keep it*/
+      if( (fovar[ii]!=0) && fwin ) continue;
+      if(ovar[ii]!=0) {
+         fovar[ii] = ovar[ii];
+         nov++;
+      }
+   }
+
+   mri_free(b0im);
+   mri_free(ovim);
+   RETURN(fovim);
+}
+
+/* use to force reload of atlas for new default */
+void
+reset_atlas_ovdset()
+{
+   DSET_unload(atlas_ovdset);
+   atlas_ovdset = NULL;
+}
+
+/* get the current resampled dataset used for overlay */
+THD_3dim_dataset *
+current_atlas_ovdset()
+{
+   return(atlas_ovdset);
 }
 
 /*---------------------------------------------------------------------*/
@@ -5599,6 +5651,49 @@ ENTRY("AFNI_bucket_label_CB") ;
 }
 
 /*---------------------------------------------------------------
+  Callback for the 'AFNI Tips' button [27 Jun 2011]
+-----------------------------------------------------------------*/
+
+#ifndef DONT_USE_HTMLWIN
+static int tips_open        = 0 ;
+static MCW_htmlwin *tips_hw = NULL ;
+void AFNI_tips_killfun( XtPointer junk ){
+  tips_open = 0 ; tips_hw = NULL ; return ;
+}
+#endif
+
+void AFNI_tips_CB( Widget w , XtPointer cd , XtPointer cbd )
+{
+#include "readme_afnigui.h"
+   Three_D_View *im3d = (Three_D_View *)cd ;
+   char *inf=NULL , *fpt=NULL ; int ii ;
+
+ENTRY("AFNI_tips_CB") ;
+
+#ifndef DONT_USE_HTMLWIN
+   if( tips_open && tips_hw != NULL ){
+     XMapRaised( XtDisplay(tips_hw->wshell) , XtWindow(tips_hw->wshell) ) ;
+     EXRETURN ;
+   } else if( !AFNI_noenv("AFNI_DONT_USE_HTMLWIN") ){
+     fpt = THD_find_regular_file("afnigui.html") ;
+     if( fpt != NULL && *fpt != '\0' ){
+       inf = (char *)malloc(sizeof(char)*(strlen(fpt)+16)) ;
+       strcpy(inf,"file:") ; strcat(inf,fpt) ; free(fpt) ;
+       tips_hw = new_MCW_htmlwin( im3d->vwid->imag->topper, inf,
+                                  AFNI_tips_killfun , NULL      ) ;
+       free(inf) ; tips_open = 1 ; EXRETURN ;
+     }
+   }
+#endif
+
+   for( ii=0 ; readme_afnigui[ii] != NULL ; ii++ ){
+     inf = THD_zzprintf( inf , "%s" , readme_afnigui[ii] ) ;
+   }
+   (void)new_MCW_textwin( im3d->vwid->imag->topper , inf , TEXT_READONLY ) ;
+   free(inf) ; EXRETURN ;
+}
+
+/*---------------------------------------------------------------
   Callback for all actions in the misc menu
 -----------------------------------------------------------------*/
 
@@ -6426,8 +6521,8 @@ ENTRY("AFNI_hidden_CB") ;
 static void AFNI_find_poem_files(void)  /* 15 Oct 2003 */
 {
    char *epath , *elocal , *eee ;
-   char edir[THD_MAX_NAME] , **ename ;
-   int epos , ll , ii , id , npoem , nx,ny , nep ;
+   char edir[THD_MAX_NAME] , fdir[THD_MAX_NAME] , *udir , **ename ;
+   int epos , ll , ii , id , npoem , nep ;
    char **fpoem ;
 
 ENTRY("AFNI_find_poem_files") ;
@@ -6478,9 +6573,13 @@ ENTRY("AFNI_find_poem_files") ;
 
       ii = strlen(edir) ;                          /* make sure name has   */
       if( edir[ii-1] != '/' ){                     /* a trailing '/' on it */
-          edir[ii]  = '/' ; edir[ii+1] = '\0' ;
+        edir[ii]  = '/' ; edir[ii+1] = '\0' ;
       }
-      strcpy(ename[0],edir) ;
+
+      strcpy(fdir,edir) ; strcat(fdir,"funstuff") ;  /* 07 Oct 2011 */
+      if( THD_is_directory(fdir) ){ strcat(fdir,"/"); udir = fdir; } else { udir = edir; }
+
+      strcpy(ename[0],udir) ;
       strcat(ename[0],"poem_*.txt") ;        /* add filename pattern */
       nep = 1 ;
 
@@ -6494,8 +6593,15 @@ ENTRY("AFNI_find_poem_files") ;
       else
         fname_poem = (char **)realloc(fname_poem,sizeof(char *)*(num_poem+npoem));
 
-      for( ii=0 ; ii < npoem ; ii++ )
+      for( ii=0 ; ii < npoem ; ii++ ){
         fname_poem[num_poem++] = strdup(fpoem[ii]) ;
+
+        if( udir == fdir ){          /* 07 Oct 2011 */
+          char qnam[THD_MAX_NAME] ;
+          strcpy(qnam,edir) ; strcat(qnam,THD_trailname(fpoem[ii],0)) ;
+          if( THD_is_file(qnam) ) remove(qnam) ;
+        }
+      }
 
       MCW_free_expand( npoem , fpoem ) ;
 

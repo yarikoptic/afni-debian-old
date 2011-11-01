@@ -887,6 +887,19 @@ void enter_EV( Widget w , XtPointer client_data ,
    #endif  
 }
 
+/* create a chooser list of text strings */
+/* label - title string to the left of the chooser dropdown
+   minval - minimum value of index (usually 0)
+   maxval - maximum value of index (usually the number of strings - 1
+   inival - initial value of index (to get default string shown)
+   decim - number of decimal places to shift a number in a string (I haven't used this yet)
+   delta_value - callback function when item is changed (use void function)
+   delta_data - ?
+   text_proc - function to use as the chooser list is filled
+               (usually MCW_av_substring_CB)
+   text_data - list of strings to fill chooser list (char **)
+               (probably should not freed (static may be good too) )
+*/
 MCW_arrowval * new_MCW_optmenu( Widget parent ,
                                 char *label ,
                                 int   minval , int maxval , int inival , 
@@ -1305,7 +1318,8 @@ void refit_MCW_optmenu( MCW_arrowval *av ,
    char *butlabel , *blab ;
    XmString xstr ;
    int maxbut ;   /* 23 Aug 2003 */
-
+   static int iwarn=0;
+   
 ENTRY("refit_MCW_optmenu") ;
 
    /** sanity check **/
@@ -1328,10 +1342,32 @@ ENTRY("refit_MCW_optmenu") ;
                    with maxbut from environment variable */
 
    maxbut = AFNI_numenv( "AFNI_MAX_OPTMENU" ) ;
-        if( maxbut <= 0 ) maxbut = 255 ;
+        if( maxbut <= 0 ) maxbut = 1024 ; /* up from 255 ZSS Aug. 4 2011 */
    else if( maxbut < 99 ) maxbut = 99 ;
-   if( maxval > minval+maxbut ) maxval = minval+maxbut ;  /* 23 Mar 2003 */
-
+   if( maxval > minval+maxbut ) {
+      if (!iwarn % 15) {   /* ZSS June 2011 */
+         INFO_message(
+   "\n"
+   "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n"
+   "The number of sub-bricks in one of your datasets exceeds \n"
+   "   the current maximum of %d. Some menus like Ulay/Olay/Thr \n"
+   "   will not allow you to select sub-bricks beyond #%d.\n"
+   "To access all sub-bricks from such menus, increase the value of \n"
+   "   environment variable 'AFNI_MAX_OPTMENU'. You can do so for this \n"
+   "   AFNI session via the 'Edit Environment' plugin. For a more lasting \n"
+   "   fix, add the line:\n"
+   "        AFNI_MAX_OPTMENU = XXX \n"
+   "   under the '***ENVIRONMENT' section of your .afnirc file with XXX \n"
+   "   being a suitably large number. \n"
+   "For details, search for 'AFNI_MAX_OPTMENU' in AFNI's README.environment.\n"
+   "\n"
+   "This message is shown intermittently.\n"
+   "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n"
+            , maxbut, maxbut); 
+      }
+      ++iwarn;
+      maxval = minval+maxbut ;  /* 23 Mar 2003 */
+   }
    /** reset some internal parameters **/
 
    av->text_CB   = (text_proc != NULL ) ? (text_proc)

@@ -124,14 +124,14 @@ COPY_EPI_REF:
       endif
       if ( ! -f $rdir/EpiRef+orig.HEAD) then
          echo "Creating $rdir/EpiRef"
-         3dTcat -prefix $rdir/EpiRef "$u_EpiRef"
+         3dTcat -prefix $rdir/EpiRef "$u_EpiRef" >& /dev/null
       else
          echo "Reusing existing $rdir/EpiRef"
       endif  
    else
       if ( ! -f $rdir/EpiRef+orig.HEAD) then
          echo "Setting $rdir/EpiRef to be 4th subbrick of $FirstEpi"
-         3dTcat -prefix $rdir/EpiRef $rdir/$FirstEpi'[3]'
+         3dTcat -prefix $rdir/EpiRef $rdir/$FirstEpi'[3]' >& /dev/null
       else
          echo "Reusing default $rdir/EpiRef"
       endif
@@ -1626,6 +1626,14 @@ echo "   [4] Saad, Z.S., et al., Estimation of FMRI Response Delays."
 echo "         Neuroimage, 2003. 18(2): p. 494-504."
 echo "   [5] Warnking et al. FMRI Retinotopic Mapping - Step by Step."
 echo "         Neuroimage 17, (2002)"
+echo ""
+echo "Acknowledgments:"
+echo "================"
+echo "   Peter J. Kohler, and Sergey V. Fogelson: for feedback and sample data"
+echo "   Michael Beauchamp: for a motivating script and webpage on retintopy"
+echo "   Ikuko Mukai, Masaki Fukunaga, and Li-Wei Kuo: for difficult data and"
+echo "                                    making the case for a -delay option"
+echo "   Jonathan Polimeni: for retinotopy trade secrets"
 echo ""
 echo "Kvetching:"
 echo "============"

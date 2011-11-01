@@ -20,6 +20,83 @@
 #define ZMAX  32222        /* increased for Ziad (who else is so crazy?) */
 #define SZMAX "%.32222s"   /* same as ZMAX */
 
+const char * storage_mode_str(int mode) {
+   switch(mode) {
+      default:
+         return("Undefined");
+      case STORAGE_BY_BRICK:
+         return("BRIK") ;
+      case STORAGE_BY_MINC:
+         return("MINC") ; 
+      case STORAGE_BY_VOLUMES:
+         return("Volume") ; 
+      case STORAGE_BY_ANALYZE:
+         return("ANALYZE") ; 
+      case STORAGE_BY_CTFMRI:
+         return("CTF MRI") ; 
+      case STORAGE_BY_CTFSAM:
+         return("CTF SAM") ; 
+      case STORAGE_BY_1D:
+         return("AFNI .1D") ; 
+      case STORAGE_BY_3D:
+         return("AFNI .3D") ; 
+      case STORAGE_BY_NIFTI:
+         return("NIFTI") ; 
+      case STORAGE_BY_MPEG:
+         return("MPEG") ; 
+      case STORAGE_BY_NIML:   
+         return("NIML") ;
+      case STORAGE_BY_NI_SURF_DSET:
+         return("NI_SURF_DSET") ;
+      case STORAGE_BY_GIFTI:
+         return("GIFTI") ;
+    }
+}
+
+/* Return the prefix of a dataset without file extensions 
+   Returned string must be freed */
+char *DSET_prefix_noext(THD_3dim_dataset *dset) 
+{ 
+   char *ppp, *eee, *ccc=NULL;
+   int ii;
+   
+   if (!dset) return(NULL);
+   
+   ppp = DSET_PREFIX(dset);
+   if (!ppp) ppp = "NO_PREFIX";
+   
+   ccc = (char *)malloc(sizeof(char)*(1+strlen(ppp)));
+   ccc[0]='\0';
+   eee = find_filename_extension( ppp );
+   if (!eee) {
+      strcpy(ccc, ppp);
+   } else {
+      ii = 0;
+      while (ppp < eee) {
+         ccc[ii] = *ppp; ppp++; ++ii;
+      }
+      ccc[ii]='\0';
+   }
+   return(ccc);
+}
+
+int dset_obliquity(THD_3dim_dataset *dset , float *anglep)
+{
+   int obliquity = -1;
+   float angle= 0.0f;
+      
+   if(ISVALID_MAT44(dset->daxes->ijk_to_dicom_real)) {
+      angle = THD_compute_oblique_angle(dset->daxes->ijk_to_dicom_real, 0);
+      if(angle>0.0) {
+         obliquity = 1;
+      } else {
+         obliquity = 0;
+      }
+   }
+   if (anglep) *anglep = angle;
+   return(obliquity);
+}
+
 char * THD_dataset_info( THD_3dim_dataset *dset , int verbose )
 {
    THD_dataxes      *daxes ;
@@ -85,53 +162,9 @@ ENTRY("THD_dataset_info") ;
    }
 
    /*-- 21 Jun 2002: print storage mode --*/
-
    if( dset->dblk->diskptr != NULL ){
-    switch( dset->dblk->diskptr->storage_mode ){
-      default:
-        outbuf = THD_zzprintf(outbuf,"Storage Mode:    Undefined\n") ; break ;
-
-      case STORAGE_BY_BRICK:
-        outbuf = THD_zzprintf(outbuf,"Storage Mode:    BRIK file\n") ; break ;
-
-      case STORAGE_BY_MINC:
-        outbuf = THD_zzprintf(outbuf,"Storage Mode:    MINC file\n") ; break ;
-
-      case STORAGE_BY_VOLUMES:
-        outbuf = THD_zzprintf(outbuf,"Storage Mode:    Volume file(s)\n") ; break ;
-
-      case STORAGE_BY_ANALYZE:
-        outbuf = THD_zzprintf(outbuf,"Storage Mode:    ANALYZE files\n") ; break ;
-
-      case STORAGE_BY_CTFMRI:
-        outbuf = THD_zzprintf(outbuf,"Storage Mode:    CTF MRI file\n") ; break ;
-
-      case STORAGE_BY_CTFSAM:
-        outbuf = THD_zzprintf(outbuf,"Storage Mode:    CTF SAM file\n") ; break ;
-
-      case STORAGE_BY_1D:
-        outbuf = THD_zzprintf(outbuf,"Storage Mode:    AFNI .1D file\n") ; break ;
-
-      case STORAGE_BY_3D:
-        outbuf = THD_zzprintf(outbuf,"Storage Mode:    AFNI .3D file\n") ; break ;
-
-      case STORAGE_BY_NIFTI:
-        outbuf = THD_zzprintf(outbuf,"Storage Mode:    NIFTI file\n") ; break ;
-
-      case STORAGE_BY_MPEG:
-        outbuf = THD_zzprintf(outbuf,"Storage Mode:    MPEG file\n") ; break ;
-
-      case STORAGE_BY_NIML:   /* 26 May 2006 [rickr] */
-        outbuf = THD_zzprintf(outbuf,"Storage Mode:    NIML file\n") ; break ;
-
-      case STORAGE_BY_NI_SURF_DSET:
-        outbuf = THD_zzprintf(outbuf,"Storage Mode:    NI_SURF_DSET file\n") ;
-       break ;
-
-      case STORAGE_BY_GIFTI:
-        outbuf = THD_zzprintf(outbuf,"Storage Mode:    GIFTI file\n") ;
-       break ;
-    }
+      outbuf = THD_zzprintf(outbuf,"Storage Mode:    %s\n",
+                        storage_mode_str(dset->dblk->diskptr->storage_mode));
    }
 
    tb = dset->dblk->total_bytes ;
@@ -185,20 +218,16 @@ ENTRY("THD_dataset_info") ;
    }
 
    /* are we oblique ? */
-   obliquity = -1;
-   if(ISVALID_MAT44(dset->daxes->ijk_to_dicom_real)) {
-      angle = THD_compute_oblique_angle(dset->daxes->ijk_to_dicom_real, 0);
+   if((obliquity = dset_obliquity(dset, &angle)) >= 0) {
       if(angle>0.0) {
          sprintf (soblq,
             "Data Axes Tilt:  Oblique (%.3f deg. from plumb)\n"
             "Data Axes Approximate Orientation:",
             angle);
-         obliquity = 1;
       } else {
          sprintf (soblq,
             "Data Axes Tilt:  Plumb\n"
             "Data Axes Orientation:");
-         obliquity = 0;
       }
       { char *gstr = EDIT_get_geometry_string(dset) ;
         if( gstr != NULL && *gstr != '\0' )

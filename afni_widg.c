@@ -6,6 +6,7 @@
 
 #include "afni.h"
 #include "afni_plugout.h"
+#include "thd_ttatlas_query.h"
 
 /*---------------------------------------------------------------*/
 /*------------ Stuff for logos and pixmap definitions -----------*/
@@ -1074,6 +1075,28 @@ STATUS("making imag->rowcol") ;
              XmNinitialResourcesPersistent , False ,
           NULL ) ;
     XtAddCallback( imag->crosshair_ijk_pb , XmNactivateCallback ,
+                   AFNI_crosshair_pop_CB , im3d ) ;
+
+    imag->crosshair_jtxyz_pb =      /* 01 Aug 2011 */
+       XtVaCreateManagedWidget(
+          "menu" , xmPushButtonWidgetClass , imag->crosshair_menu ,
+             LABEL_ARG("Jump to (xyz)") ,
+             XmNmarginHeight , 0 ,
+             XmNtraversalOn , True  ,
+             XmNinitialResourcesPersistent , False ,
+          NULL ) ;
+    XtAddCallback( imag->crosshair_jtxyz_pb , XmNactivateCallback ,
+                   AFNI_crosshair_pop_CB , im3d ) ;
+
+    imag->crosshair_jtijk_pb =      /* 01 Aug 2011 */
+       XtVaCreateManagedWidget(
+          "menu" , xmPushButtonWidgetClass , imag->crosshair_menu ,
+             LABEL_ARG("Jump to (ijk)") ,
+             XmNmarginHeight , 0 ,
+             XmNtraversalOn , True  ,
+             XmNinitialResourcesPersistent , False ,
+          NULL ) ;
+    XtAddCallback( imag->crosshair_jtijk_pb , XmNactivateCallback ,
                    AFNI_crosshair_pop_CB , im3d ) ;
 
    } /*- end of crosshair_label popup menu -*/
@@ -3510,6 +3533,7 @@ STATUS("making func->rowcol") ;
          NULL ) ;
    im3d->vedset.code = 0 ; im3d->vedset.ival = -1 ;
    im3d->vedskip = 0 ;  /* 20 Dec 2007 */
+   im3d->vednomask = 0 ; /* 01 Aug 2011 */
 
    func->clu_cluster_pb =
       XtVaCreateManagedWidget(
@@ -4908,6 +4932,7 @@ STATUS("making prog->rowcol") ;
 
    vwid->picture       = NULL ;  /* default ==> no picture */
    vwid->picture_index = 0 ;
+   vwid->tips_pb       = NULL ;  /* not always created */
 
 #ifdef WANT_LOGO_BITMAP
    if( im3d->type == AFNI_3DDATA_VIEW ){
@@ -4931,6 +4956,31 @@ STATUS("making prog->rowcol") ;
                  XmNinitialResourcesPersistent , False ,
              NULL ) ;
       MCW_register_help( vwid->picture , AFNI_abohelp ) ;
+
+      if( num_entry == 1 && !ALLOW_realtime ){
+        vwid->tips_pb =
+           XtVaCreateManagedWidget(
+              "dialog" , xmPushButtonWidgetClass , vwid->top_form ,
+                 LABEL_ARG("AFNI Tips") ,
+                 XmNleftAttachment   , XmATTACH_WIDGET ,
+                 XmNleftWidget       , vwid->picture ,
+                 XmNleftOffset       , TIPS_PLUS_SHIFT ,
+                 XmNbottomAttachment , XmATTACH_OPPOSITE_WIDGET ,
+                 XmNbottomWidget     , vwid->picture ,
+                 XmNbottomOffset     , 2 ,
+                 XmNshadowThickness  , 3 ,
+                 XmNtraversalOn      , True  ,
+                 XmNinitialResourcesPersistent , False ,
+              NULL ) ;
+        MCW_register_help( vwid->tips_pb , "Gives some help about\n"
+                                           "parts of the AFNI GUI\n"
+                                           "that are hard to find." ) ;
+        MCW_register_hint( vwid->tips_pb , "Tips about AFNI interface" ) ;
+        XtAddCallback( vwid->tips_pb , XmNactivateCallback ,
+                       AFNI_tips_CB , im3d ) ;
+        MCW_set_widget_bg( vwid->tips_pb , "#000044" , 0 ) ;
+        MCW_set_widget_fg( vwid->tips_pb , "#ffddaa" ) ;
+      }
    }
 #else
    MCW_register_help( imag->rowcol  , AFNI_abohelp ) ;
@@ -5806,6 +5856,9 @@ ENTRY("AFNI_initialize_controller") ;
    POPUP_cursorize( im3d->vwid->picture ) ;
    POPUP_cursorize( imag->crosshair_label ) ;
    POPUP_cursorize( im3d->vwid->func->thr_label ) ;
+
+   if( im3d->vwid->view->marks_enabled )
+     SHIFT_TIPS( im3d , TIPS_MINUS_SHIFT ) ;
 
    RESET_AFNI_QUIT(im3d) ;
    EXRETURN ;
@@ -6737,7 +6790,7 @@ int AFNI_set_func_range_nval(XtPointer *vp_im3d, float rval)
      im3d->cont_range_fval = im3d->vwid->func->range_av->fval;
      im3d->cont_pos_only = MCW_val_bbox( im3d->vwid->func->inten_bbox) ;
      im3d->cont_pbar_index = im3d->vwid->func->inten_pbar->bigmap_index;
-     
+
      im3d->first_integral = 0;
    }
 
@@ -6876,42 +6929,53 @@ int AFNI_set_dset_pbar(XtPointer *vp_im3d)
 */
 int AFNI_get_dset_val_label(THD_3dim_dataset *dset, double val, char *str)
 {
-/*   MCW_pbar *pbar = NULL;*/
    ATR_string *atr=NULL;
-/*   char *pbar_name=NULL;*/
-   char *str_lab=NULL, sval[128]={""};
-
+   char *str_lab1=NULL, *str_lab2=NULL, sval[128]={""};
+   ATLAS_LIST *atlas_alist=NULL;
+   ATLAS *atlas=NULL;
+   
    ENTRY("AFNI_get_dset_val_label") ;
 
    if (!str) RETURN(1);
 
    str[0]='\0';
- 
+
    if (!dset) RETURN(1);
 
-   if (!dset->Label_Dtable &&
-       (atr = THD_find_string_atr( dset->dblk ,
-                              "VALUE_LABEL_DTABLE" ))) {
-      dset->Label_Dtable = Dtable_from_nimlstring(atr->ch);
-   }
-
-   if (dset->Label_Dtable) {
+   
+  if ((dset->Label_Dtable = DSET_Label_Dtable(dset))) {
       /* Have hash, will travel */
       sprintf(sval,"%d", (int)val);
-      str_lab = findin_Dtable_a(sval,
+      str_lab1 = findin_Dtable_a(sval,
                                 dset->Label_Dtable);
       /* fprintf(stderr,"ZSS: Have label '%s' for value '%s'\n",
-                     str_lab ? str_lab:"NULL", sval); */
-      if (str_lab) snprintf(str,64, "%s",str_lab);
+                     str_lab1 ? str_lab1:"NULL", sval); */
+   }
+   
+   atlas_alist = get_G_atlas_list();
+   if (is_Dset_Atlasy(dset, atlas_alist)) {
+      atlas = get_Atlas_ByDsetID(DSET_IDCODE_STR(dset), atlas_alist);
+      /* Now get the name of the value */
+      str_lab2 = atlas_key_label(atlas, (int)val,NULL);
+      /* fprintf(stderr,"ZSS: Have atlas label '%s' for value %d\n",
+                     str_lab2 ? str_lab2:"NULL", (int)val);  */
    }
 
+   if (str_lab1 && str_lab2) {
+      snprintf(str,64, "%s|%s",str_lab1,str_lab2);
+   } else if (str_lab1) {
+      snprintf(str,64, "%s",str_lab1);
+   } else if (str_lab2) {
+      snprintf(str,64, "%s",str_lab2);
+   } 
+   
    RETURN(0);
 }
 
 /*
    Put the value associated with label in val
    Unlike AFNI_get_dset_val_label,
-   This function has not been tested. 
+   This function has not been tested.
 */
 int AFNI_get_dset_label_val(THD_3dim_dataset *dset, double *val, char *str)
 {
@@ -6923,9 +6987,9 @@ int AFNI_get_dset_label_val(THD_3dim_dataset *dset, double *val, char *str)
    ENTRY("AFNI_get_dset_label_val") ;
 
    if (!str) RETURN(1);
- 
+
    *val = 0;
-    
+
    if (!dset) RETURN(1);
 
    if (!dset->Label_Dtable &&
@@ -6933,7 +6997,7 @@ int AFNI_get_dset_label_val(THD_3dim_dataset *dset, double *val, char *str)
                               "VALUE_LABEL_DTABLE" ))) {
       dset->Label_Dtable = Dtable_from_nimlstring(atr->ch);
    }
- 
+
    if (dset->Label_Dtable) {
       /* Have hash, will travel */
       str_lab = findin_Dtable_b(str,
@@ -6978,6 +7042,10 @@ ENTRY("AFNI_sesslab_EV") ;
            view->marks_enabled = 1 ;
          }
          XWarpPointer( XtDisplay(w) , None , XtWindow(w) , 0,0,0,0,30,10 ) ;
+
+         SHIFT_TIPS( im3d ,
+                     (view->marks_enabled) ? TIPS_MINUS_SHIFT : TIPS_PLUS_SHIFT ) ;
+
        } else if( event->button == Button2 ){
          XUngrabPointer( event->display , CurrentTime ) ;
        }

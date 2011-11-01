@@ -43,7 +43,143 @@
 
 afni_history_struct rwcox_history[] = {
 /*=====BELOW THIS LINE=====*/
-  { 7 , JUN , 2011 , RWC , "3dAllineate" , MICRO , TYPE_GENERAL ,
+  { 17 , OCT , 2011 , RWC , "3dhistog" , MICRO , TYPE_MODIFY ,
+   "removed DOS ctrl-M's in file, they screwed things up for compiling" ,
+   NULL } ,
+
+ { 13 , OCT , 2011 , RWC , "3dttest++" , MINOR , TYPE_BUG_FIX ,
+   "Fixed error in computing with un-centered covariates" ,
+   "inv[Xt*X] matrix not computed correctly in mri_matrix_psinv_pair()\n"
+   "function." } ,
+
+ { 12 , OCT , 2011 , RWC , "NIML library" , MICRO , TYPE_GENERAL ,
+   "Extend printout of floats to higher precision" ,
+   NULL } ,
+
+ { 7 , OCT , 2011 , RWC , "afni" , MICRO , TYPE_GENERAL ,
+   "Move splashes, faces, and poems to funstuff/ subdirectory" ,
+   "funstuff/ is now a sub-directory of the binary install directory." } ,
+
+ { 7 , OCT , 2011 , RWC , "1dTsort" , MICRO , TYPE_GENERAL ,
+   "Add -col option, to sort on just one column." ,
+   NULL } ,
+
+ { 21 , SEP , 2011 , RWC , "3dTshift" , MICRO , TYPE_NEW_OPT ,
+   "Add -voxshift option" ,
+   NULL } ,
+
+ { 21 , SEP , 2011 , RWC , "3dClustSim" , MICRO , TYPE_NEW_OPT ,
+   "Add -2sided option" ,
+   NULL } ,
+
+ { 26 , AUG , 2011 , RWC , "3dclust" , MICRO , TYPE_NEW_OPT ,
+   "add -savemask option" ,
+   NULL } ,
+
+ { 26 , AUG , 2011 , RWC , "afni Clusterize" , MICRO , TYPE_GENERAL ,
+   "Modify to print out 3dclust and whereami commands when used" ,
+   "Per the suggestion of Andy Connolly of Dartmouth College." } ,
+
+ { 19 , AUG , 2011 , RWC , "3dNwarpCalc" , MINOR , TYPE_MODIFY ,
+   "Fix &readpoly() and implement &read4x4()" ,
+   "Modify 3dNwarpApply to use same function as &apply() so that the 2\n"
+   "programs are in sync.\n"
+   "Release 3dNwarpCalc into the wild:\n"
+   "\n"
+   "Born free, and code is worth running, but only worth running, because\n"
+   "you're born freeware!" } ,
+
+ { 18 , AUG , 2011 , RWC , "3dNwarpCalc" , MICRO , TYPE_GENERAL ,
+   "Add '&apply' function" ,
+   "To apply a calculated 3D warp to a dataset, without having to use\n"
+   "3dNwarpApply" } ,
+
+ { 18 , AUG , 2011 , RWC , "3dttest++" , MICRO , TYPE_GENERAL ,
+   "Add some clarify text about covariates to the -help output" ,
+   "Also add an addition check to see if dataset name covariates are all the\n"
+   "same, and print out some info about the covariates." } ,
+
+ { 11 , AUG , 2011 , RWC , "3dNwarpCalc" , MICRO , TYPE_GENERAL ,
+   "Added sqrt of a nonlinear warp to the repertoire." ,
+   NULL } ,
+
+ { 9 , AUG , 2011 , RWC , "3dNwarpCalc" , MINOR , TYPE_NEW_PROG ,
+   "Implemented about 80% of it" ,
+   "Seems to work, but needs a fair amount of fine tuning and testing." } ,
+
+ { 9 , AUG , 2011 , RWC , "3dTstat" , MICRO , TYPE_NEW_OPT ,
+   "Add '-cvarinv' option for Vinai" ,
+   NULL } ,
+
+ { 2 , AUG , 2011 , RWC , "3dclust" , MINOR , TYPE_NEW_OPT ,
+   "Add '-inmask' option, to use internal mask" ,
+   "To be compatible with AFNI's Clusterize GUI, which was also modified to\n"
+   "output this option when appropriate." } ,
+
+ { 1 , AUG , 2011 , RWC , "afni" , MICRO , TYPE_MODIFY ,
+   "Clusterize minor changes" ,
+   "* Shift+3clust button = actually run the 3dclust command, in addition\n"
+   "printing it out\n"
+   "* Add a warning message if an internal 3dClustSim mask is present, since\n"
+   "3dclust results will vary from Clusterize\n"
+   "* Add Jumpto buttons to AFNI crosshair label popup menu" } ,
+
+ { 21 , JUL , 2011 , RWC , "3dttest++" , MICRO , TYPE_MODIFY ,
+   "Add column selection to -covariates for this, also" ,
+   NULL } ,
+
+ { 20 , JUL , 2011 , RWC , "3dGroupInCorr" , MICRO , TYPE_MODIFY ,
+   "Allow sub-brick selectors on the -covariates table" ,
+   NULL } ,
+
+ { 15 , JUL , 2011 , RWC , "3dGroupInCorr" , MICRO , TYPE_NEW_OPT ,
+   "Add -center option for covariates (cf. Chen Gang)" ,
+   NULL } ,
+
+ { 13 , JUL , 2011 , RWC , "3dTcorrMap" , MINOR , TYPE_BUG_FIX ,
+   "Bug in computation of indx" ,
+   "The mask is turned into an index table of active voxel indx[].  However,\n"
+   "constant voxels were removed from the mask AFTER indx[] was created,\n"
+   "which is stupid.  This is fixed now, and Zhark will be chastised." } ,
+
+ { 8 , JUL , 2011 , RWC , "AFNI" , MICRO , TYPE_BUG_FIX ,
+   "Tips HTML window crashes on kampos (Solaris)" ,
+   "Debugging shows XmHTML crashed when rendering different-than-normal\n"
+   "fonts.  Solution = strip font-changing HTML tags out of file before\n"
+   "display -- only on systems marked as evil in this way." } ,
+
+ { 5 , JUL , 2011 , RWC , "1dplot" , MICRO , TYPE_NEW_OPT ,
+   "add -NOLINE to include clipping of points outside the box" ,
+   NULL } ,
+
+ { 1 , JUL , 2011 , RWC , "afni" , MINOR , TYPE_GENERAL ,
+   "Replace text-only AFNI Tips with HTML-based" ,
+   "Allows incorporation of images and better formatting.\n"
+   "Uses XmHTML widget set, whose source code is also added to AFNI." } ,
+
+ { 28 , JUN , 2011 , RWC , "3dDeconvolve" , MICRO , TYPE_NEW_ENV ,
+   "Ability to skip the 'centering' done in AM2 regression" ,
+   "By setting environment variable AFNI_3dDeconvolve_rawAM2 to YES, as in\n"
+   "the command\n"
+   " 3dDeconvolve -DAFNI_3dDeconvolve_rawAM2=YES ..." } ,
+
+ { 27 , JUN , 2011 , RWC , "afni" , MICRO , TYPE_MODIFY ,
+   "Add README.afnigui and AFNI Tips button" ,
+   NULL } ,
+
+ { 23 , JUN , 2011 , RWC , "afni InstaCorr" , MINOR , TYPE_MODIFY ,
+   "Ability to INIT-ialize InstaCorr from a plugout" ,
+   "Details are in README.driver, under the INSTACORR command section." } ,
+
+ { 17 , JUN , 2011 , RWC , "afni" , MICRO , TYPE_MODIFY ,
+   "Button3 (right) click image viewer 'Disp' to raise AFNI controller" ,
+   NULL } ,
+
+ { 15 , JUN , 2011 , RWC , "3dmaskave" , MICRO , TYPE_NEW_OPT ,
+   "Add -sum option; rearrange -help output a little." ,
+   NULL } ,
+
+ { 7 , JUN , 2011 , RWC , "3dAllineate" , MICRO , TYPE_GENERAL ,
    "modify number of points used for optimization" ,
    "Powell's NEWUOA algorithm requires specifying number of points kept at\n"
    "each stage for approximating the objective function.  Modification here\n"

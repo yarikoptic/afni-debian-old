@@ -183,7 +183,7 @@ g_history = """
     2.24 May 12 2010 : added -regress_censor_first_trs
     2.25 May 29 2010 :
         - fixed use of -volreg_regress_per_run and -regress_censor_motion pair
-          (problem noted by D Drake)
+          (thanks to D Drake for noting the problem)
     2.26 Jun 04 2010 :
         - if only one regressor, use 1dcat for "sum" ideal
         - added -outlier_count, default to "yes"
@@ -192,7 +192,7 @@ g_history = """
         - added -regress_censor_outliers and -regress_skip_first_outliers
         - specified 'auto block:' in block headers for those not chosen by user
     2.28 Jun 10 2010 : fixed copying EPI and anat as NIfTI
-          (problem noted by S Tambalo)
+          (thanks to S Tambalo for noting the problem)
     2.29 Jun 17 2010 : apply default polort in 3dToutcount
     2.30 Jun 17 2010 :
         - 3dToutcount detrending now defaults to Legendre polynomials and
@@ -223,11 +223,11 @@ g_history = """
     2.40 Nov 10 2010 : added new NOTE sections for ANAT/EPI ALIGNMENT to -help
     2.41 Nov 18 2010 :
         - fixed stim_files to stim_times conversion after multi_basis change
-        - problem noted by M Weber
+          (thanks to M Weber for noting the problem)
     2.42 Nov 22 2010 : improved line wrapping
     2.43 Dec 14 2010 :
         - fixed problem with timing file tests on 'empty' files with '*'
-        - problem noted by C Deveney and R Momenan
+          (thanks to C Deveney and R Momenan for noting the problem)
     2.44 Dec 16 2010 : small changes to file type warnings
     2.45 Jan 13 2011 : small changes to warnings for missing stimulus files
     2.46 Mar 07 2011 : make proc script executable
@@ -235,9 +235,9 @@ g_history = """
     2.48 Mar 15 2011 : use X.nocensor.1D (just to save 2 spaces)
     2.49 Apr 22 2011 :
         - if manual tlrc and -volreg_tlrc_adwarp, also transform extents mask
-          (noted by J Britton)
+          (thanks to J Britton for noting the problem)
         - if -regress_reml_exec, insert 3dClustSim table in stats_REML
-          (noted by R Momenan)
+          (thanks to R Momenan for noting the problem)
     2.50 Apr 29 2011 :
         - added -align_epi_strip_method for align_epi_anat.py skull strip
         - added help for -volreg_no_extent_mask
@@ -261,29 +261,66 @@ g_history = """
         - make regress TSNR dataset by default (added option -compute_tsnr)
     2.54 Jun 03 2011: volreg tsnr is not default
         - added -volreg_compute_tsnr (def no), -regress_compute_tsnr (def yes)
+        - so -compute_tsnr has been removed
+    2.55 Jun 30 2011: rename aligned anat output (from align_epi_anat.py)
+        - OLD_al_keep, if output anat is useful (want anat -> EPI  alignment)
+        - OLD_al_junk, if output anat is not    (want EPI  -> anat alignment)
+    2.56 Jul 06, 2011:
+        - create anat_final dset, to be clear it is aligned with the stats
+        - suggest uber_subject.py in -ask_me dialog
+    2.57 Jul 13, 2011:
+        - run gen_ss_review_scripts.py: generate single subject review scripts
+        - and execute any resulting 'basic' review script
+    2.58 Jul 15, 2011: save output from ss_review in out.ss_review.txt
+    2.59 Jul 20, 2011:
+        - fixed aea.py -epi_base in case of:
+          'align' and '-volreg_align_to last' and run lengths vary
+          (thanks to S Brislin and S White for noting the problem)
+    2.60 Jul 26, 2011:
+        - if e2a, update current anat to skull-stripped anat from align block
+          (this would avoid a second skull-strip step in @auto_tlrc)
+        - added details to comments in align block
+        - replaced help for -compute_tsnr with -regress and -volreg versions
+          (thanks to B Benson for asking about obsolete -compute_tsnr)
+    2.61 Aug 03, 2011:
+        - changed aea.py -save_skullstrip to -save_orig_skullstrip
+        - previously the stripped anat would be warped to match any obliquity
+          of the EPI, which would throw off the alignment
+        - thanks to A Ellenstein for noting the problem and to Z Saad for
+          helping to figure it out
+    2.62 Aug 31, 2011:
+        - if censoring motion or outliers, add options to gen_ss_r command
+        - added help for -regress_make_cbucket
+    2.63 Oct  4, 2011: added -anat_has_skull option, to avoid stripping
+    3.00 Oct 14, 2011: now processes surface data
+        - added 'surf' processing block, and corresponding '-surf_*' options:
+           -surf_anat, -surf_spec, -surf_anat_aligned, -surf_anat_has_skull,
+           -surf_A, -surf_B, -surf_blur_fwhm
+        - compute errts and TSNR by default (had required option or blur est)
+    3.01 Oct 17, 2011: added help for surface analysis and -surf options
 """
 
-g_version = "version 2.54, June 3, 2011"
+g_version = "version 3.01, October 17, 2011"
 
 # version of AFNI required for script execution
-g_requires_afni = "4 Nov 2010"
+g_requires_afni = "3 Aug 2011"
 
 # ----------------------------------------------------------------------
 # dictionary of block types and modification functions
 
 BlockLabels  = ['tcat', 'despike', 'ricor', 'tshift', 'align', 'volreg',
-                'blur', 'mask', 'scale', 'regress', 'tlrc', 'empty']
+                'surf', 'blur', 'mask', 'scale', 'regress', 'tlrc', 'empty']
 BlockModFunc  = {'tcat'   : db_mod_tcat,     'despike': db_mod_despike,
                  'ricor'  : db_mod_ricor,    'tshift' : db_mod_tshift,
-                 'align'  : db_mod_align,
-                 'volreg' : db_mod_volreg,   'blur'   : db_mod_blur,
+                 'align'  : db_mod_align,    'volreg' : db_mod_volreg,
+                 'surf'   : db_mod_surf,     'blur'   : db_mod_blur,
                  'mask'   : db_mod_mask,     'scale'  : db_mod_scale,
                  'regress': db_mod_regress,  'tlrc'   : db_mod_tlrc,
                  'empty'  : db_mod_empty}
 BlockCmdFunc  = {'tcat'   : db_cmd_tcat,     'despike': db_cmd_despike,
                  'ricor'  : db_cmd_ricor,    'tshift' : db_cmd_tshift,
-                 'align'  : db_cmd_align,
-                 'volreg' : db_cmd_volreg,   'blur'   : db_cmd_blur,
+                 'align'  : db_cmd_align,    'volreg' : db_cmd_volreg,
+                 'surf'   : db_cmd_surf,     'blur'   : db_cmd_blur,
                  'mask'   : db_cmd_mask,     'scale'  : db_cmd_scale,
                  'regress': db_cmd_regress,  'tlrc'   : db_cmd_tlrc,
                  'empty'  : db_cmd_empty}
@@ -291,8 +328,11 @@ AllOptionStyles = ['cmd', 'file', 'gui', 'sdir']
 
 # default block labels, and other labels (along with the label they follow)
 DefLabels   = ['tcat', 'tshift', 'volreg', 'blur', 'mask', 'scale', 'regress']
-OtherDefLabels = {'despike':'tcat', 'align':'tcat', 'ricor':'despike'}
+OtherDefLabels = {'despike':'tcat', 'align':'tcat', 'ricor':'despike',
+                  'surf':'volreg'}
 OtherLabels    = ['empty']
+DefSurfLabs    = ['tcat','tshift','align','volreg','surf','blur',
+                  'scale','regress']
 
 # --------------------------------------------------------------------------
 # data processing stream class
@@ -328,6 +368,9 @@ class SubjProcSream:
         self.mot_demean = ''            # from demeaned motion file
         self.mot_deriv  = ''            # motion derivatives
 
+        self.mot_cen_lim= 0             # motion censor limit, if applied
+        self.out_cen_lim= 0             # outlier censor limit, if applied
+
         self.opt_src    = 'cmd'         # option source
         self.subj_id    = 'SUBJ'        # hopefully user will replace this
         self.subj_label = '$subj'       # replace this for execution
@@ -337,18 +380,23 @@ class SubjProcSream:
         self.overwrite  = 0             # overwrite script file?
         self.fp         = None          # file object
         self.anat       = None          # anatomoy to copy (afni_name class)
+        self.anat_has_skull = 1         # does the input anat have a skull
+                                        # also updated in db_cmd_align
+        self.anat_final = None          # anat assumed aligned with stats
         self.tlrcanat   = None          # expected name of tlrc dataset
         self.tlrc_base  = None          # afni_name dataset used in -tlrc_base
-        self.tlrc_ss    = 1             # whether to assume skull strip in tlrc
+        self.tlrc_ss    = 1             # whether to do skull strip in tlrc
         self.warp_epi   = 0             # xform bitmap: tlrc, adwarp, a2e, e2a
         self.a2e_mat    = None          # anat2epi transform matrix file
         self.align_ebase= None          # external EPI for align_epi_anat.py
         self.align_epre = 'ext_align_epi' # copied align epi base prefix
         self.rm_rm      = 1             # remove rm.* files (user option)
         self.have_rm    = 0             # have rm.* files (such files exist)
-        self.gen_review = '@epi_review.$subj' # filename for gen_epi_review.py
-        self.test_stims = 1             # test stim_files for appropriateness
-        self.test_dsets = 1             # test datasets for existence
+        self.epi_review = '@epi_review.$subj' # filename for gen_epi_review.py
+        self.made_ssr_scr = 0           # did we make subj review scripts
+        self.ssr_basic    = '@ss_review_basic' # basic review script
+        self.test_stims   = 1           # test stim_files for appropriateness
+        self.test_dsets   = 1           # test datasets for existence
 
         self.ricor_reg    = None        # ricor reg to apply in regress block
         self.ricor_nreg   = 0           # number of regs in ricor_reg
@@ -382,11 +430,35 @@ class SubjProcSream:
         self.view       = '+orig'       # (starting and 'current' views)
         self.xmat       = 'X.xmat.1D'   # X-matrix file (might go uncensored)
 
+        # options for surface based script
+        self.surf_spec  = []            # left and/or right spec files
+        self.surf_anat  = None          # anat corresponding to surfaces
+        self.surf_anat_aligned = 'no'   # yes/no
+        self.surf_anat_has_skull='yes'  # yes/no
+
+        self.surf_A     = 'smoothwm'
+        self.surf_B     = 'pial'
+        self.surf_blur_fwhm = 8.0       # target FWHM
+
+        # computed surf variables
+        self.surf_sv       = None       # either surf_anat or aligned version
+        self.surf_sv_dir   = ''         # directory (for remote sv)
+        self.surf_svd_var  = ''         # surf_vol directory variable
+        self.surf_spec_dir = ''         # directory containing spec files
+        self.surf_spd_var  = ''         # spec directory variable
+        self.surf_spec_var = ''         # variable to use for spec file
+                                        # (because of lh, rh)
+        self.surf_spec_var_iter = ''    # iteration variable (e.g. hemi)
+        self.surf_svi_ref  = ''         # iter var reference (e.g. ${hemi})
+        self.surf_hemilist = ''         # e.g. ['lh', 'rh']
+
+        # updated throughout processing...
         self.bindex     = 0             # current block index
         self.pblabel    = ''            # previous block label
+        self.surf_names = 0             # make surface I/O dset names
 
         return
-        
+
     def show(self, mesg):
         print '%sSubjProcSream: %s' % (mesg, self.label)
         if self.verb > 3:
@@ -443,6 +515,9 @@ class SubjProcSream:
         self.valid_opts.add_opt('-subj_id', -1, [],
                         helpstr='subject ID, used in most filenames')
 
+        self.valid_opts.add_opt('-anat_has_skull', 1, [],
+                        acplist=['yes','no'],
+                        helpstr='does the anat have a skull (to be stripped)')
         self.valid_opts.add_opt('-ask_me', 0, [],       # QnA session
                         helpstr='have afni_proc.py as the user for options')
         self.valid_opts.add_opt('-bash', 0, [],
@@ -714,6 +789,24 @@ class SubjProcSream:
         self.valid_opts.add_opt('-regress_RONI', -1, [],
                         helpstr="1-based list of regressors of no interest")
 
+        # surface options
+        self.valid_opts.add_opt('-surf_anat', 1, [],
+                        helpstr="specify SurfVol dataset")
+        self.valid_opts.add_opt('-surf_spec', -1, [],
+                        helpstr="list lh and/or rh surface spec file(s)")
+        self.valid_opts.add_opt('-surf_anat_aligned', 1, [],
+                        acplist=['yes','no'],
+                        helpstr="is surface anat aligned to current session")
+        self.valid_opts.add_opt('-surf_anat_has_skull', 1, [],
+                        acplist=['yes','no'],
+                        helpstr="does surface anat still have skull")
+        self.valid_opts.add_opt('-surf_A', 1, [],
+                        helpstr="list surf_A surface (e.g. smoothwm)")
+        self.valid_opts.add_opt('-surf_B', 1, [],
+                        helpstr="list surf_B surface (e.g. pial)")
+        self.valid_opts.add_opt('-surf_blur_fwhm', 1, [],
+                        helpstr="specify target FWHM for surface noise blur")
+
         # 3dClustSim options
         self.valid_opts.add_opt('-regress_CS_NN', 1, [],
                         acplist=['1','2','3','12','13','23','123'],
@@ -785,16 +878,23 @@ class SubjProcSream:
         if opt and opt.parlist[0] == 'no': self.exit_on_error = 0
         else:                              self.exit_on_error = 1
 
+        opt = opt_list.find_opt('-anat_has_skull')      # 4 Oct, 2011
+        if opt != None:
+            if opt.parlist[0] == 'no': self.anat_has_skull = 0
+            else:                      self.anat_has_skull = 1
+
         opt = opt_list.find_opt('-copy_anat')
         if opt != None:
             self.anat = afni_name(opt.parlist[0])
+            self.anat_final = self.anat
+            # rcr - set only if no view in anat?  (though still would not know)
             self.tlrcanat = self.anat.new(new_view='+tlrc')
 
         opt = opt_list.find_opt('-gen_epi_review')  # name epi review script
-        if opt != None: self.gen_review = opt.parlist[0]
+        if opt != None: self.epi_review = opt.parlist[0]
 
         opt = opt_list.find_opt('-no_epi_review') # no epi review script
-        if opt != None: self.gen_review = None
+        if opt != None: self.epi_review = None
 
         opt = opt_list.find_opt('-keep_rm_files')
         if opt != None: self.rm_rm = 0
@@ -854,13 +954,20 @@ class SubjProcSream:
                 self.origview = self.view
                 if self.verb > 0: print '-- applying view as %s' % self.view
 
+        # next, check for -surf_anat, which defines whether to do volume
+        # or surface analysis
+        opt = self.user_opts.find_opt('-surf_anat')
+        if opt != None:
+           self.surf_anat = afni_name(opt.parlist[0])
+
         # init block either from DefLabels or -blocks
         opt = self.user_opts.find_opt('-blocks')
         if opt:  # then create blocklist from user opts (but prepend tcat)
             if opt.parlist[0] != 'tcat':
                 blocks = ['tcat'] + opt.parlist
             else: blocks = opt.parlist
-        else: blocks = DefLabels  # init to defaults
+        elif self.surf_anat: blocks = DefSurfLabs  # surface defaults
+        else:                blocks = DefLabels    # volume defaults
 
         # check for -do_block options
         opt = self.user_opts.find_opt('-do_block')
@@ -1085,12 +1192,12 @@ class SubjProcSream:
                 if self.verb>3: block.show('+d post command creation: ')
                 if self.verb>4: print '+d %s cmd: \n%s'%(block.label, cmd_str)
 
-        if self.gen_review:
+        if self.epi_review:
             cmd_str = db_cmd_gen_review(self)
             if cmd_str:
                 self.fp.write(add_line_wrappers(cmd_str))
                 if self.verb > 1:
-                    print "+d generated EPI review script %s" % self.gen_review
+                    print "+d generated EPI review script %s" % self.epi_review
             else:
                 errs += 1
                 if self.verb > 1:
@@ -1184,10 +1291,15 @@ class SubjProcSream:
 
         if not opt:
             if self.verb > 2: print '-- no -volreg_base_ind opt for vr_base'
-            return proc.runs-1, proc.reps-1  # defaults
+            if len(self.reps_all) == self.runs:
+               return self.runs-1, self.reps_all[-1]-1  # defaults
+            return self.runs-1, self.reps-1  # defaults
 
         # if parlist values are -1, set to last TR
         if opt.parlist[0] < 0 or opt.parlist[1] < 0:
+            # if going after last volume, maybe run lengths vary
+            if len(self.reps_all) == self.runs:
+               return self.runs-1, self.reps_all[-1]-1  # defaults
             return self.runs-1, self.reps-1
 
         return opt.parlist[0], opt.parlist[1]
@@ -1204,6 +1316,12 @@ class SubjProcSream:
     def find_block(self, label):
         for block in self.blocks:
             if block.label == label: return block
+        return None
+
+    def find_block_opt(self, label, opt_name):
+        """return any found comompt instance in block.opts"""
+        for block in self.blocks:
+            if block.label == label: return block.opts.find_opt(opt_name)
         return None
 
     def find_block_index(self, label):
@@ -1467,13 +1585,14 @@ class SubjProcSream:
 
     # and last steps
     def finalize_script(self):
-        str = '# %s\n\n' % block_header('auto block: cleanup')
+        str = '# %s\n\n' % block_header('auto block: finalize')
         self.fp.write(str)
 
         if self.rm_rm and self.have_rm:
             self.fp.write('# remove temporary rm.* files\n'
                           '\\rm -f rm.*\n\n')
 
+        # move or remove pre-processing files
         if self.user_opts.find_opt('-move_preproc_files'):
             cmd_str = \
               "# move preprocessing files to 'preproc.data' directory\n"   \
@@ -1485,6 +1604,14 @@ class SubjProcSream:
               "# remove preprocessing files to save disk space\n"   \
               "\\rm dfile.r??.1D pb??.$subj.r??.* rm.*\n\n"
             self.fp.write(add_line_wrappers(cmd_str))
+
+        # at the end, if the basic review script is here, run it
+        if self.epi_review:
+           ss = '# if the basic subject review script is here, run it\n' \
+                '# (want this to be the last text output)\n'             \
+                'if ( -e %s ) ./%s |& tee out.ss_review.$subj.txt\n\n'   \
+                % (self.ssr_basic, self.ssr_basic)
+           self.fp.write(ss)
 
         self.fp.write('# return to parent directory\n'
                       'cd ..\n\n')
@@ -1511,80 +1638,127 @@ class SubjProcSream:
 
     # given a block, run, return a prefix of the form: pNN.SUBJ.rMM.BLABEL
     #    NN = block index, SUBJ = subj label, MM = run, BLABEL = block label
-    def prefix_form(self, block, run, view=0):
+    # if surf_names: pbNN.SUBJ.rMM.BLABEL.HEMI.niml.dset
+    # (pass as 0/1, -1 for default)
+    def prefix_form(self, block, run, view=0, surf_names=-1):
         if view: vstr = self.view
         else:    vstr = ''
+        # if surface, change view to hemisphere and dataset suffix
+        if surf_names == -1: surf_names = self.surf_names
+        if surf_names:
+           vstr = '.niml.dset'
+           hstr = '%s%s' % (self.sep_char, self.surf_svi_ref)
+        else: hstr = ''
         if self.sep_char == '.': # default
-           return 'pb%02d.%s.r%02d.%s%s' %    \
-                (self.bindex, self.subj_label, run, block.label, vstr)
+           return 'pb%02d.%s%s.r%02d.%s%s' %    \
+                  (self.bindex, self.subj_label, hstr, run, block.label, vstr)
         else:
            s = self.sep_char
-           return 'pb%02d%s%s%sr%02d%s%s%s' %    \
-                (self.bindex, s, self.subj_label, s, run, s, block.label, vstr)
+           return 'pb%02d%s%s%s%sr%02d%s%s%s' %    \
+                  (self.bindex, s, self.subj_label, hstr, s, run, s,
+                   block.label, vstr)
 
     # same, but leave run as a variable
-    def prefix_form_run(self, block, view=0):
+    def prefix_form_run(self, block, view=0, surf_names=-1):
         if view: vstr = self.view
         else:    vstr = ''
+        # if surface, change view to hemisphere and dataset suffix
+        if surf_names == -1: surf_names = self.surf_names
+        if surf_names:
+           vstr = '.niml.dset'
+           hstr = '%s%s' % (self.sep_char, self.surf_svi_ref)
+        else: hstr = ''
         if self.sep_char == '.': # default
-           return 'pb%02d.%s.r$run.%s%s' %    \
-               (self.bindex, self.subj_label, block.label, vstr)
+           return 'pb%02d.%s%s.r$run.%s%s' %    \
+               (self.bindex, self.subj_label, hstr, block.label, vstr)
         else:
            s = self.sep_char
-           return 'pb%02d%s%s%sr${run}%s%s%s' %    \
-               (self.bindex, s, self.subj_label, s, s, block.label, vstr)
+           return 'pb%02d%s%s%s%sr${run}%s%s%s' %    \
+               (self.bindex, s, self.subj_label, hstr, s, s, block.label, vstr)
 
     # same as prefix_form, but use previous block values (index and label)
     # (so we don't need the block)
-    def prev_prefix_form(self, run, view=0):
+    # if self.surf_names: pbNN.SUBJ.rMM.BLABEL.HEMI.niml.dset
+    def prev_prefix_form(self, run, view=0, surf_names=-1):
         if view: vstr = self.view
         else:    vstr = ''
+        # if surface, change view to hemisphere and dataset suffix
+        if surf_names == -1: surf_names = self.surf_names
+        if surf_names:
+           vstr = '.niml.dset'
+           hstr = '%s%s' % (self.sep_char, self.surf_svi_ref)
+        else: hstr = ''
         if self.sep_char == '.': # default
-           return 'pb%02d.%s.r%02d.%s%s' %    \
-                (self.bindex-1, self.subj_label, run, self.pblabel, vstr)
+           return 'pb%02d.%s%s.r%02d.%s%s' %    \
+                  (self.bindex-1, self.subj_label,hstr,run, self.pblabel, vstr)
         else:
            s = self.sep_char
-           return 'pb%02d%s%s%sr%02d%s%s%s' %    \
-                (self.bindex-1, s, self.subj_label,s,run,s, self.pblabel, vstr)
+           return 'pb%02d%s%s%s%sr%02d%s%s%s' %    \
+                  (self.bindex-1, s, self.subj_label, hstr, s, run, s,
+                  self.pblabel, vstr)
 
     # same, but leave run as a variable
-    def prev_prefix_form_run(self, view=0):
+    def prev_prefix_form_run(self, view=0, surf_names=-1):
         if view: vstr = self.view
         else:    vstr = ''
+        # if surface, change view to hemisphere and dataset suffix
+        if surf_names == -1: surf_names = self.surf_names
+        if surf_names:
+           vstr = '.niml.dset'
+           hstr = '%s%s' % (self.sep_char, self.surf_svi_ref)
+        else: hstr = ''
         if self.sep_char == '.': # default
-           return 'pb%02d.%s.r$run.%s%s' %    \
-                (self.bindex-1, self.subj_label, self.pblabel, vstr)
+           return 'pb%02d.%s%s.r$run.%s%s' %    \
+                  (self.bindex-1, self.subj_label, hstr, self.pblabel, vstr)
         else:
            s = self.sep_char
-           return 'pb%02d%s%s%sr${run}%s%s%s' %    \
-                (self.bindex-1, s, self.subj_label, s, s, self.pblabel, vstr)
+           return 'pb%02d%s%s%s%sr${run}%s%s%s' %    \
+                  (self.bindex-1, s, self.subj_label, hstr, s, s,
+                  self.pblabel, vstr)
 
     # same, but leave run wild
-    def prev_dset_form_wild(self, view=0):
-        if view: vstr = self.view
-        else:    vstr = ''
+    def prev_dset_form_wild(self, view=0, surf_names=-1):
+        # if surface, change view to hemisphere and dataset suffix
+        if surf_names == -1: surf_names = self.surf_names
+        if surf_names:
+           vstr = '.niml.dset'
+           hstr = '%s%s' % (self.sep_char, self.surf_svi_ref)
+        else:      # view option is not really handled...
+           vstr = '%s.HEAD' % self.view
+           hstr = ''
         if self.sep_char == '.': # default
-           return 'pb%02d.%s.r??.%s%s.HEAD' %    \
-                (self.bindex-1, self.subj_label, self.pblabel, self.view)
+           return 'pb%02d.%s%s.r??.%s%s' %    \
+                (self.bindex-1, self.subj_label, hstr, self.pblabel, vstr)
         else:
            s = self.sep_char
-           return 'pb%02d%s%s%sr??%s%s%s.HEAD' %    \
-                (self.bindex-1, s, self.subj_label,s,s,self.pblabel, self.view)
+           return 'pb%02d%s%s%s%sr??%s%s%s' %    \
+                (self.bindex-1, s, self.subj_label,hstr, s, s,
+                self.pblabel, vstr)
 
     # like prefix, but list the whole dset form, in wildcard format
-    def dset_form_wild(self, blabel, view=None):
+    def dset_form_wild(self, blabel, view=None, surf_names=-1):
         bind = self.find_block_index(blabel)
         if bind == None:
             print "** DFW: failed to find block for label '%s'" % blabel
             return ''
-        if not view: view = self.view
+        # if surface, change view to hemisphere and dataset suffix
+        if surf_names == -1: surf_names = self.surf_names
+        if surf_names:
+           vstr = '.niml.dset'
+           hstr = '%s%s' % (self.sep_char, self.surf_svi_ref)
+        elif view:
+           vstr = '%s.HEAD' % view
+           hstr = ''
+        else:
+           vstr = '%s.HEAD' % self.view
+           hstr = ''
         if self.sep_char == '.': # default
-           return 'pb%02d.%s.r??.%s%s.HEAD' %      \
-               (bind, self.subj_label, blabel, view)
+           return 'pb%02d.%s%s.r??.%s%s' %      \
+               (bind, self.subj_label, hstr, blabel, vstr)
         else:
            s = self.sep_char
-           return 'pb%02d%s%s%sr??%s%s%s.HEAD' %      \
-               (bind, s, self.subj_label, s, s, blabel, view)
+           return 'pb%02d%s%s%s%sr??%s%s%s' %      \
+               (bind, s, self.subj_label, hstr, s, s, blabel, vstr)
 
 class ProcessBlock:
     def __init__(self, label, proc):

@@ -23,11 +23,11 @@ void mri_matrix_print( FILE *fp , MRI_IMAGE *ima , char *label )
    ipr = (ii == ima->nvox ) ;
 
    if( fp == NULL ) fp = stdout ;
-   if( label != NULL ) fprintf(fp,"Matrix %s\n",label) ;
+   if( label != NULL ) fprintf(fp,"Matrix [%dX%d] %s\n",nr,nc,label) ;
    for( ii=0 ; ii < nr ; ii++ ){
      for( jj=0 ; jj < nc ; jj++ ){
        if( ipr ) fprintf(fp," %3d"    , (int)A(ii,jj) ) ;
-       else      fprintf(fp," %10.4g" ,      A(ii,jj) ) ;
+       else      fprintf(fp," %11.5g" ,      A(ii,jj) ) ;
      }
      fprintf(fp,"\n") ;
    }
@@ -583,12 +583,13 @@ MRI_IMARR * mri_matrix_psinv_pair( MRI_IMAGE *imc , float alpha )
 ENTRY("mri_matrix_psinv_pair") ;
 
    if( imc == NULL || imc->kind != MRI_float ) RETURN(NULL);
-   m = imc->nx ;  /* number of rows in input */
-   n = imc->ny ;  /* number of columns */
-
-   /* deal with a single vector (of length m) */
+   m = imc->nx ;                        /* number of rows in input */
+   n = imc->ny ;                        /* number of columns */
+   if( m < 1 || n < 1 ) RETURN(NULL) ;  /* bad users should be shot! */
 
    rmat = MRI_FLOAT_PTR(imc) ;
+
+   /* deal with a single vector (of length m) */
 
    if( n == 1 ){
      for( sum=0.0,ii=0 ; ii < m ; ii++ ) sum += rmat[ii]*rmat[ii] ;
@@ -602,7 +603,7 @@ ENTRY("mri_matrix_psinv_pair") ;
      INIT_IMARR(imar); ADDTO_IMARR(imar,imp); ADDTO_IMARR(imar,imq); RETURN(imar);
    }
 
-   /* OK, have a real matrix to handle here */
+   /* OK, have a real matrix to handle here (at least 2 columns) */
 
    amat = (double *)calloc( sizeof(double),m*n ) ;  /* input matrix */
    xfac = (double *)calloc( sizeof(double),n   ) ;  /* column norms of [a] */
@@ -712,6 +713,8 @@ STATUS("psinv from SVD") ;
 STATUS("inv[XtX] from SVD") ;
    imq  = mri_new( n , n , MRI_float ) ;
    qmat = MRI_FLOAT_PTR(imq) ;
+
+   for( kk=0 ; kk < n ; kk++ ) sval[kk] *= sval[kk] ;  /* 1/s^2 */
 
    for( ii=0 ; ii < n ; ii++ ){
      for( jj=0 ; jj <= ii ; jj++ ){
@@ -1087,6 +1090,20 @@ static void matrix_name_assign( char *nam , MRI_IMAGE *ima )
 
 /*----------------------------------------------------------------------------*/
 
+static int char_check( char ccc )
+{
+   return ( ccc == '&' || ccc == '@' || ccc == '%' ) ;
+}
+
+static int command_check( char *str , char *cmd )
+{
+   if( str == NULL || cmd == NULL || *str == '\0' || *cmd == '\0' ) return 0 ;
+   if( char_check(str[0]) == 0 ) return 0 ;
+   return (strncasecmp(str+1,cmd,strlen(cmd)) == 0) ;
+}
+
+/*----------------------------------------------------------------------------*/
+
 #undef  ERREX
 #define ERREX(sss)                                                           \
   do{ ERROR_message("mri_matrix_evalrpn('%s') at '%s': %s" , expr,cmd,sss ); \
@@ -1094,28 +1111,28 @@ static void matrix_name_assign( char *nam , MRI_IMAGE *ima )
   } while(0)
 
 #undef  DECODE_VALUE
-#define DECODE_VALUE(ccc,vvv)                                    \
-  do{ float val=-666.0f ;                                        \
-      if( isdigit(*(ccc)) ){                                     \
-        sscanf((ccc),"%f",&val) ;                                \
-      } else if( *(ccc) == '&' && toupper(*((ccc)+1)) == 'R' ){  \
-        if( nstk > 0 ) val = IMARR_SUBIM(imstk,nstk-1)->nx ;     \
-        else ERROR_message("mri_matrix_evalrpn: bad (&R)") ;     \
-      } else if( *(ccc) == '&' && toupper(*((ccc)+1)) == 'C' ){  \
-        if( nstk > 0 ) val = IMARR_SUBIM(imstk,nstk-1)->ny ;     \
-        else ERROR_message("mri_matrix_evalrpn: bad (&C)") ;     \
-      } else if( *(ccc) == '=' && isalpha(*((ccc)+1)) ){         \
-        char *xx=strdup((ccc)+1) , *pp=strchr(xx,')') ;          \
-        int qq = matrix_name_lookup(xx) ; /* swap these lines */ \
-        if( pp != NULL ) *pp = '\0' ;  /* 18 Apr 2006 [rickr] */ \
-        if( qq >= 0 ){                                           \
-          MRI_IMAGE *iq = IMARR_SUBIM(matar,qq) ;                \
-          float *qar = MRI_FLOAT_PTR(iq) ;                       \
-          val = qar[0] ;                                         \
-        }                                                        \
-        else ERROR_message("mri_matrix_evalrpn: bad (=%s)",xx);  \
-      }                                                          \
-      (vvv) = val ;                                              \
+#define DECODE_VALUE(ccc,vvv)                                         \
+  do{ float val=-666.0f ;                                             \
+      if( isdigit(*(ccc)) ){                                          \
+        sscanf((ccc),"%f",&val) ;                                     \
+      } else if( char_check(*(ccc)) && toupper(*((ccc)+1)) == 'R' ){  \
+        if( nstk > 0 ) val = IMARR_SUBIM(imstk,nstk-1)->nx ;          \
+        else ERROR_message("mri_matrix_evalrpn: bad (&R)") ;          \
+      } else if( char_check(*(ccc)) && toupper(*((ccc)+1)) == 'C' ){  \
+        if( nstk > 0 ) val = IMARR_SUBIM(imstk,nstk-1)->ny ;          \
+        else ERROR_message("mri_matrix_evalrpn: bad (&C)") ;          \
+      } else if( *(ccc) == '=' && isalpha(*((ccc)+1)) ){              \
+        char *xx=strdup((ccc)+1) , *pp=strchr(xx,')') ;               \
+        int qq = matrix_name_lookup(xx) ; /* swap these lines */      \
+        if( pp != NULL ) *pp = '\0' ;  /* 18 Apr 2006 [rickr] */      \
+        if( qq >= 0 ){                                                \
+          MRI_IMAGE *iq = IMARR_SUBIM(matar,qq) ;                     \
+          float *qar = MRI_FLOAT_PTR(iq) ;                            \
+          val = qar[0] ;                                              \
+        }                                                             \
+        else ERROR_message("mri_matrix_evalrpn: bad (=%s)",xx);       \
+      }                                                               \
+      (vvv) = val ;                                                   \
   } while(0)
 
 /*----------------------------------------------------------------------------*/
@@ -1184,13 +1201,13 @@ ENTRY("mri_matrix_evalrpn") ;
 
       /** clear all named matrices; stack is unchanged **/
 
-      else if( strncasecmp(cmd,"&clear",6) == 0 ){
+      else if( command_check(cmd,"clear") ){
         DESTROY_IMARR(matar) ;
       }
 
       /** transpose matrix on top of stack, replacing it **/
 
-      else if( strcmp(cmd,"'") == 0 || strncasecmp(cmd,"&trans",6) == 0 ){
+      else if( strcmp(cmd,"'") == 0 || command_check(cmd,"trans") || command_check(cmd,"'") ){
         if( nstk < 1 ) ERREX("no matrix") ;
         ima = IMARR_SUBIM(imstk,nstk-1) ;
         imc = mri_matrix_transpose(ima) ;
@@ -1201,28 +1218,28 @@ ENTRY("mri_matrix_evalrpn") ;
       /** &read(filename)=NAME --> read from ASCII file; optional NAME-ing;
           new matrix is pushed onto top of stack                           **/
 
-      else if( strncasecmp(cmd,"&read(",6) == 0 ){
+      else if( command_check(cmd,"read(") ){
         char *buf = strdup(cmd+6) , *bp ; int heq ;
         for( bp=buf ; *bp != '\0' && *bp != ')' ; bp++ ) ; /*nada*/
         heq = (*bp == ')' && *(bp+1) == '=' && isalpha(*(bp+2)) ) ;
         *bp = '\0' ;
         imc = mri_read_1D(buf) ;
         if( imc == NULL ){
-          free(buf); sprintf(mess,"can't read file '%s'",buf); ERREX(mess);
+          sprintf(mess,"can't read file '%s'",buf); free(buf); ERREX(mess);
         }
         ADDTO_IMARR(imstk,imc) ;
         if( heq ) matrix_name_assign( bp+2 , imc ) ;
         free(buf) ;
       }
 
-      else if( strncasecmp(cmd,"&read4x4Xform(",14) == 0 ){
+      else if( command_check(cmd,"read4x4Xform(") ){
         char *buf = strdup(cmd+14) , *bp ; int heq ;
         for( bp=buf ; *bp != '\0' && *bp != ')' ; bp++ ) ; /*nada*/
         heq = (*bp == ')' && *(bp+1) == '=' && isalpha(*(bp+2)) ) ;
         *bp = '\0' ;
         imc = mri_read_4x4AffXfrm_1D(buf) ;
         if( imc == NULL ){
-          free(buf); sprintf(mess,"can't read file '%s'",buf); ERREX(mess);
+          sprintf(mess,"can't read file '%s'",buf); free(buf); ERREX(mess);
         }
         ADDTO_IMARR(imstk,imc) ;
         if( heq ) matrix_name_assign( bp+2 , imc ) ;
@@ -1232,7 +1249,7 @@ ENTRY("mri_matrix_evalrpn") ;
       /** &write(filename) --> write top of stack to ASCII file;
           top of stack is unchanged; 'filename'=='-' is stdout  **/
 
-      else if( strncasecmp(cmd,"&write(",6) == 0 ){
+      else if( command_check(cmd,"write(") ){
         char *buf = strdup(cmd+7) , *bp ;
         if( nstk < 1 ){ free(buf); ERREX("no matrix"); }
         for( bp=buf ; *bp != '\0' && *bp != ')' ; bp++ ) ; /*nada*/
@@ -1244,7 +1261,7 @@ ENTRY("mri_matrix_evalrpn") ;
 
       /** &ident(N) --> create an NxN identity matrix **/
 
-      else if( strncasecmp(cmd,"&ident(",7) == 0 ){
+      else if( command_check(cmd,"ident(") ){
         int nn ; char *cv=cmd+7 ;
         DECODE_VALUE(cv,nn) ;
         if( nn <= 0 ) ERREX("illegal dimension") ;
@@ -1255,7 +1272,7 @@ ENTRY("mri_matrix_evalrpn") ;
 
       /** pseudo-inverse **/
 
-      else if( strncasecmp(cmd,"&Psinv",6) == 0 ){
+      else if( command_check(cmd,"Psinv") ){
         if( nstk < 1 ) ERREX("no matrix") ;
         ima = IMARR_SUBIM(imstk,nstk-1) ;
         imc = mri_matrix_psinv( ima , NULL , 0.0f ) ;
@@ -1266,7 +1283,7 @@ ENTRY("mri_matrix_evalrpn") ;
 
       /** matrix square root **/
 
-      else if( strncasecmp(cmd,"&Sqrt",5) == 0 ){
+      else if( command_check(cmd,"Sqrt") ){
         if( nstk < 1 ) ERREX("no matrix") ;
         ima = IMARR_SUBIM(imstk,nstk-1) ;
         imc = mri_matrix_sqrt( ima ) ;
@@ -1277,7 +1294,7 @@ ENTRY("mri_matrix_evalrpn") ;
 
       /** orthogonal projection onto column space **/
 
-      else if( strncasecmp(cmd,"&Pproj",6) == 0 ){
+      else if( command_check(cmd,"Pproj") ){
         if( nstk < 1 ) ERREX("no matrix") ;
         ima = IMARR_SUBIM(imstk,nstk-1) ;
         imc = mri_matrix_ortproj( ima , 0 ) ;
@@ -1288,7 +1305,7 @@ ENTRY("mri_matrix_evalrpn") ;
 
       /** orthogonal projection onto complement of column space **/
 
-      else if( strncasecmp(cmd,"&Qproj",6) == 0 ){
+      else if( command_check(cmd,"Qproj") ){
         if( nstk < 1 ) ERREX("no matrix") ;
         ima = IMARR_SUBIM(imstk,nstk-1) ;
         imc = mri_matrix_ortproj( ima , 1 ) ;
@@ -1299,7 +1316,7 @@ ENTRY("mri_matrix_evalrpn") ;
 
       /** matrix multiply **/
 
-      else if( strcmp(cmd,"*") == 0 ){
+      else if( strcmp(cmd,"*") == 0 || command_check(cmd,"mult") ){
         if( nstk < 2 ) ERREX("no matrices") ;
         ima = IMARR_SUBIM(imstk,nstk-2) ;
         imb = IMARR_SUBIM(imstk,nstk-1) ;
@@ -1311,7 +1328,7 @@ ENTRY("mri_matrix_evalrpn") ;
 
       /** matrix add **/
 
-      else if( strcmp(cmd,"+") == 0 ){
+      else if( strcmp(cmd,"+") == 0 || command_check(cmd,"add") ){
         if( nstk < 2 ) ERREX("no matrices") ;
         ima = IMARR_SUBIM(imstk,nstk-2) ;
         imb = IMARR_SUBIM(imstk,nstk-1) ;
@@ -1323,7 +1340,7 @@ ENTRY("mri_matrix_evalrpn") ;
 
       /** matrix subtract **/
 
-      else if( strcmp(cmd,"-") == 0 ){
+      else if( strcmp(cmd,"-") == 0 || command_check(cmd,"sub") ){
         if( nstk < 2 ) ERREX("no matrices") ;
         ima = IMARR_SUBIM(imstk,nstk-2) ;
         imb = IMARR_SUBIM(imstk,nstk-1) ;
@@ -1347,7 +1364,7 @@ ENTRY("mri_matrix_evalrpn") ;
 
       /** matrix duplicate on top of stack **/
 
-      else if( strncasecmp(cmd,"&dup",4) == 0 ){
+      else if( command_check(cmd,"dup") ){
         if( nstk < 1 ) ERREX("no matrix") ;
         imc = mri_to_float( IMARR_SUBIM(imstk,nstk-1) ) ;
         ADDTO_IMARR(imstk,imc) ;
@@ -1355,14 +1372,14 @@ ENTRY("mri_matrix_evalrpn") ;
 
       /** pop top of stack to oblivion **/
 
-      else if( strncasecmp(cmd,"&pop",4) == 0 ){
+      else if( command_check(cmd,"pop") ){
         if( nstk < 1 ) ERREX("no matrix") ;
         TRUNCATE_IMARR(imstk,nstk-1) ;
       }
 
       /** swap top 2 matrices on stack **/
 
-      else if( strncasecmp(cmd,"&swap",5) == 0 ){
+      else if( command_check(cmd,"swap") ){
         if( nstk < 2 ) ERREX("no matrices") ;
         ima = IMARR_SUBIM(imstk,nstk-2) ;
         imb = IMARR_SUBIM(imstk,nstk-1) ;
@@ -1428,6 +1445,7 @@ char * mri_matrix_evalrpn_help(void)
     " * Operations mostly contain characters such as '&' and '*' that\n"
     "   are special to Unix shells, so you'll probably need to put\n"
     "   the arguments to this program in 'single quotes'.\n"
+    " * You can use '%%' or '@' in place of the '&' character, if you wish.\n"
     "\n"
     " STACK OPERATIONS\n"
     " -----------------\n"
@@ -1477,13 +1495,13 @@ char * mri_matrix_evalrpn_help(void)
     "                 the orthogonal complement of its column space\n"
     "                 Input=A; Output=I-Pproj(A)\n"
     " *          == replace top 2 matrices with their product;\n"
-    "                   stack = [ ... C A B ] (where B = top) goes to\n"
-    "                   stack = [ ... C AB ]\n"
+    "  OR               stack = [ ... C A B ] (where B = top) goes to\n"
+    " &mult             stack = [ ... C AB ]\n"
     "                 if either of the top matrices is a 1x1 scalar,\n"
     "                 then the result is the scalar multiplication of\n"
     "                 the other matrix; otherwise, matrices must conform\n"
-    " +          == replace top 2 matrices with sum A+B\n"
-    " -          == replace top 2 matrices with difference A-B\n"
+    " + OR &add  == replace top 2 matrices with sum A+B\n"
+    " - OR &sub  == replace top 2 matrices with difference A-B\n"
     " &dup       == push duplicate of top matrix onto stack\n"
     " &pop       == discard top matrix\n"
     " &swap      == swap top two matrices (A <-> B)\n"

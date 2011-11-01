@@ -308,6 +308,7 @@ char *Atlas_Code_to_Atlas_Description(AFNI_ATLAS_CODES icod);
 char *Atlas_Code_to_Atlas_Name (AFNI_ATLAS_CODES cod);
 int init_global_atlas_list (void);
 ATLAS *get_Atlas_Named(char *atname, ATLAS_LIST *atlas_list);
+ATLAS *get_Atlas_ByDsetID(char *dsetid, ATLAS_LIST *atlas_list);
 ATLAS_LIST *Atlas_Names_to_List(char **atnames, int natlases);
 char **free_names_list(char **nl, int N_nl);
 int find_in_names_list(char **nl, int N_nl, char *name);
@@ -325,6 +326,11 @@ int is_small_TT(ATLAS *atlas);
 int is_big_TT(ATLAS *atlas);
 char * TT_whereami_default_spc_name (void);
 int is_Dset_Space_Named(THD_3dim_dataset *dset, char *name);
+char *gen_space_str(char *space_str);
+int equivalent_space(char *inspace_str);
+char *get_out_space(void);
+void set_out_space(char *space_str);
+
 char **atlas_reference_string_list(char *atname, int *N_refs);
 char *atlas_version_string(char *atname);
 ATLAS_POINT_LIST *atlas_point_list(char *atname);
@@ -337,7 +343,11 @@ ATLAS_LIST* get_G_atlas_list(void);
 ATLAS_TEMPLATE_LIST *get_G_templates_list(void);
 NI_stream find_atlas_niml_file(void);
 NI_stream open_atlas_niml(char * nimlname);
-          
+ATLAS_LIST *env_atlas_list(void);
+char **env_space_list(int *);
+char *Current_Atlas_Default_Name(void);
+char **Atlas_Names_List(ATLAS_LIST *atl);
+
 /* Transforms for going from one space to another */
 #if 0
 static char MNI_N27_to_AFNI_TLRC_HEAD[256] = {"TT_N27+tlrc"}; /*!<  TT_N27+tlrc was obtained by transforming N27 from MNI 

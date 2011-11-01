@@ -2820,9 +2820,9 @@ extern int THD_need_brick_factor( THD_3dim_dataset * ) ;
 #define DSET_THRESH_INDEX DSET_THRESH_VALUE
 
 /*! Return a pointer to the prefix of dataset ds */
-
 #define DSET_PREFIX(ds) (((ds)->dblk!=NULL && (ds)->dblk->diskptr!=NULL) \
                        ? ((ds)->dblk->diskptr->prefix) : "\0" )
+extern char *DSET_prefix_noext(THD_3dim_dataset *dset);
 
 extern char * THD_newprefix(THD_3dim_dataset * dset, char * suffix); /* 16 Feb 2001 */
 extern char * THD_deplus_prefix( char *prefix ) ;                    /* 22 Nov 2002 */
@@ -3804,10 +3804,11 @@ extern int THD_check_for_duplicates( int, char **, int ) ; /* 31 May 2007 */
 
 extern time_t THD_file_mtime( char * ) ; /* 05 Dec 2001 */
 
-extern THD_string_array * THD_get_all_executables( char * ) ;    /* 26 Jun 2001 */
-extern THD_string_array * THD_getpathprogs( THD_string_array * );
+extern THD_string_array * THD_get_all_files( char *, char ) ; /* 08 Jun 2011 */
+extern THD_string_array * THD_getpathprogs( THD_string_array *, char );
 extern int THD_is_executable( char * pathname ) ;
 extern char * THD_find_executable( char * ) ;
+extern char * THD_find_regular_file( char * ) ;
 
 extern int THD_is_dataset( char * , char * , int ) ; /* 17 Mar 2000 */
 extern char * THD_dataset_headname( char * , char * , int ) ;
@@ -3842,7 +3843,9 @@ extern void THD_insert_atr( THD_datablock *blk , ATR_any *atr ) ;
 extern void THD_store_dataset_keywords ( THD_3dim_dataset * , char * ) ;
 extern void THD_append_dataset_keywords( THD_3dim_dataset * , char * ) ;
 extern char * THD_dataset_info( THD_3dim_dataset * , int ) ;
+extern const char * storage_mode_str(int);
 extern char * THD_zzprintf( char * sss , char * fmt , ... ) ;
+extern int dset_obliquity(THD_3dim_dataset *dset , float *anglep);
 
 extern void THD_set_float_atr( THD_datablock * , char * , int , float * ) ;
 extern void THD_set_int_atr  ( THD_datablock * , char * , int , int   * ) ;
@@ -4049,6 +4052,7 @@ extern THD_3dim_dataset * THD_copy_one_sub  ( THD_3dim_dataset * , int ) ;
    "where to find this examination.\n"
 
 extern void THD_delete_3dim_dataset( THD_3dim_dataset * , Boolean ) ;
+extern void *DSET_Label_Dtable(THD_3dim_dataset *dset);
 extern THD_3dim_dataset * THD_3dim_from_block( THD_datablock * ) ;
 extern void THD_allow_empty_dataset( int ) ; /* 23 Mar 2001 */
 extern THD_3dim_dataset_array *
@@ -5012,6 +5016,13 @@ extern float THD_quadrant_corr( int,float *,float *) ;
 extern float THD_pearson_corr ( int,float *,float *) ;
 extern float THD_ktaub_corr   ( int,float *,float *) ;  /* 29 Apr 2010 */
 extern float THD_eta_squared  ( int,float *,float *) ;  /* 25 Jun 2010 */
+extern double THD_eta_squared_masked(int,float *,float *,byte *);/* 16 Jun'11 */
+
+extern void THD_addto_incomplete_pearson( int n, float *x, float *y, float *w ) ;
+extern void THD_setup_incomplete_pearson( int n, float *x, float *y, float *w ) ;
+extern float THD_compute_incomplete_pearson(void) ;
+
+extern float THD_tictactoe_corr( int,float *,float *) ;  /* 19 Jul 2011 */
 
 extern float THD_pearson_corr_wt(int,float *,float *,float *); /* 13 Sep 2006 */
 
@@ -5082,6 +5093,9 @@ extern int  get_2Dhist_hbin  ( void ) ;
 extern void clear_2Dhist     ( void ) ;
 extern void build_2Dhist( int n , float xbot,float xtop,float *x ,
                           float ybot,float ytop,float *y , float *w ) ;
+extern void addto_2Dhist( int n , float xbot,float xtop,float *x ,
+                          float ybot,float ytop,float *y , float *w ) ;
+extern void normalize_2Dhist(void) ;
 
 extern void set_2Dhist_xybin( int nb, float *xb, float *yb ) ; /* 07 May 2007 */
 extern int get_2Dhist_xybin( float **xb , float **yb ) ;

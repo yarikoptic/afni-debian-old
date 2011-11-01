@@ -515,6 +515,11 @@ void basis_write_sresp( int argc , char *argv[] ,
                         basis_expansion *be , float dt ,
                         float *mse ,
                         int pbot, matrix cvar, char *output_filename ) ;
+void basis_write_sresp_1D( int argc , char *argv[] ,
+                        struct DC_options *option_data ,
+                        basis_expansion *be , float dt ,
+                        float *mse ,
+                        int pbot, matrix cvar, char *output_filename ) ;
 
 /** global variables for stimulus basis expansions **/
 
@@ -1310,6 +1315,12 @@ void display_help_menu()
     "      as provide a direct measure of the proportionality of the        \n"
     "      activation to changes in the input amplitude factors.  'AM1'     \n"
     "      will do neither of these things.                                 \n"
+    "  *** Normally, 3dDeconvolve removes the mean of the auxiliary         \n"
+    "      parameter(s) from the modulated regressor(s).  However, if you   \n"
+    "      set environment variable AFNI_3dDeconvolve_rawAM2 to YES, then   \n"
+    "      the mean will NOT be removed from the auxiliary parameter(s).    \n"
+    "      This ability is provided for users who want to center their      \n"
+    "      parameters using their own method.                               \n"
     "                                                                       \n"
     "** NOTE [04 Dec 2008] **                                               \n"
     " -stim_times_AM1 and -stim_times_AM2 now take files with more          \n"
@@ -4087,10 +4098,16 @@ STATUS("checking for bad param values") ;
           badlev++ ;
         }
         if( nzb > 0 && vmod > 0 ){
-          for( vv=0 ; vv < vmod ; vv++ ){
-            zbar[vv] /= nzb ; /* average */
-            INFO_message("'%s %d' average amplitude#%d=%g",
-                         be->option, is+1,vv+1,zbar[vv]    ) ;
+          if( AFNI_yesenv("AFNI_3dDeconvolve_rawAM2") ){
+            for( vv=0 ; vv < vmod ; vv ++ ) zbar[vv] = 0.0f ;
+            INFO_message("'%s %d': not centering amplitude parameters",
+                         be->option , is+1 ) ;
+          } else {
+            for( vv=0 ; vv < vmod ; vv++ ){
+              zbar[vv] /= nzb ; /* average */
+              INFO_message("'%s %d' average amplitude#%d=%g",
+                           be->option, is+1,vv+1,zbar[vv]    ) ;
+            }
           }
         }
 
@@ -7968,11 +7985,19 @@ void output_results
   for (is = 0;  is < num_stimts;  is++)
     {
       if( basis_stim[is] != NULL ){                     /* until later */
-        if( option_data->sresp_filename[is] != NULL )
-          basis_write_sresp( argc , argv , option_data ,
-                             basis_stim[is] , basis_dtout ,
-                             mse_vol , ib , XtXinv ,
-                             option_data->sresp_filename[is] ) ;
+        if( option_data->sresp_filename[is] != NULL ) {
+          if( option_data->input_filename )
+             basis_write_sresp( argc , argv , option_data ,
+                                basis_stim[is] , basis_dtout ,
+                                mse_vol , ib , XtXinv ,
+                                option_data->sresp_filename[is] ) ;
+          /* 19 Aug 2011 [rickr] */
+          else if( option_data->input1D_filename )
+             basis_write_sresp_1D( argc , argv , option_data ,
+                                basis_stim[is] , basis_dtout ,
+                                mse_vol , ib , XtXinv ,
+                                option_data->sresp_filename[is] ) ;
+        }
           ib += basis_stim[is]->nparm ;
         continue ;
       }
@@ -8689,24 +8714,7 @@ void ONED_matrix_save( matrix X , char *fname , void *xd , int Ngl, int *gl,
 /*-----------------------------------------------------------------*/
 /*! Turn a NIML element into a string.
 -------------------------------------------------------------------*/
-
-char * niml_element_to_string( NI_element *nel )
-{
-   NI_stream ns ;
-   char *stout ;
-   int ii,jj ;
-
-   if( nel == NULL ) return NULL ;
-
-   ns = NI_stream_open( "str:" , "w" ) ;
-   (void) NI_write_element( ns , nel , NI_TEXT_MODE ) ;
-   stout = strdup( NI_stream_getbuf(ns) ) ;
-   NI_stream_close( ns ) ;
-   jj = strlen(stout) ;
-   for( ii=jj-1 ; ii > 0 && isspace(stout[ii]) ; ii-- ) ; /* trailing blanks */
-   stout[ii+1] = '\0' ;
-   return stout ;
-}
+/* SEE NI_write_element_tostring() */
 #endif
 
 /*-----------------------------------------------------------------*/
@@ -11371,9 +11379,9 @@ void basis_write_sresp( int argc , char *argv[] ,
 
    /* evaluate basis vectors for output on dt time grid */
 
-   bb = (float ** ) malloc( sizeof(float *) * nf ) ;
+   bb = (float **) malloc( sizeof(float *) * nf ) ;
    for( pp=0 ; pp < nf ; pp++ ){
-     bb[pp] = (float * ) malloc( sizeof(float  ) * ts_length ) ;
+     bb[pp] = (float *) malloc( sizeof(float) * ts_length ) ;
      for( ib=0 ; ib < ts_length ; ib++ )
        bb[pp][ib] = basis_funceval( be->bfunc[pp] , tt[ib] ) ;
    }
@@ -11430,6 +11438,87 @@ void basis_write_sresp( int argc , char *argv[] ,
     INFO_message("Wrote sresp 3D+time dataset into %s\n",DSET_BRIKNAME(out_dset)) ;
 
    DSET_delete( out_dset ) ;
+   return ;
+}
+
+/*----------------------------------------------------------------------*/
+/* similarly, make 1D version of write_sresp        19 Aug 2011 [rickr] */
+void basis_write_sresp_1D( int argc , char *argv[] ,
+                        struct DC_options *option_data ,
+                        basis_expansion *be , float dt ,
+                        float *mse ,
+                        int pbot, matrix cvar, char *output_filename )
+{
+   int nvox, ii, nf, allz, ts_length ;
+   register int pp,qq, ib ;
+   register float sum ;
+   float *vv , *tt , **hout , factor , **bb ;
+   short *bar ;
+   char label[512] ;
+   const float EPSILON = 1.0e-10 ;
+
+   nvox = 1 ; /* from basis_write_sresp(), but use 1 voxel */
+
+   if( option_data->force_TR > 0.0 ) dt = 1.0f ;
+   if( dt <= 0.0f ) dt = 1.0f ;
+
+   ts_length = 1 + (int)myceil( (be->ttop - be->tbot)/dt ) ;
+
+   /* create output bricks */
+
+   hout = (float **) malloc( sizeof(float *) * ts_length ) ;
+   for( ib=0 ; ib < ts_length ; ib++ )
+     hout[ib] = (float *)calloc(sizeof(float),nvox) ;
+
+   nf = be->nfunc ;
+   tt = (float *) malloc( sizeof(float) * ts_length ) ;
+
+   for( ib=0 ; ib < ts_length ; ib++ )     /* output time grid */
+     tt[ib] = be->tbot + ib*dt ;
+
+   /* evaluate basis vectors for output on dt time grid */
+
+   bb = (float **) malloc( sizeof(float *) * nf ) ;
+   for( pp=0 ; pp < nf ; pp++ ){
+     bb[pp] = (float *) malloc( sizeof(float) * ts_length ) ;
+     for( ib=0 ; ib < ts_length ; ib++ )
+       bb[pp][ib] = basis_funceval( be->bfunc[pp] , tt[ib] ) ;
+   }
+   free((void *)tt) ;
+
+   /* evaluate unscaled variance on dt time grid */
+
+   vv = (float *) malloc( sizeof(float) * ts_length ) ;
+   for( ib=0 ; ib < ts_length ; ib++ ){
+     sum = 0.0f ;
+     for( pp=0 ; pp < nf ; pp++ ){
+       for( qq=0 ; qq < nf ; qq++ )
+         sum += cvar.elts[pbot+pp][pbot+qq] * bb[pp][ib] * bb[qq][ib] ;
+     }
+     vv[ib] = (sum >= 0.0f) ? sum : 0.0f ;
+   }
+   for( pp=0 ; pp < nf ; pp++ ) free((void *)bb[pp]) ;
+   free((void *)bb) ;
+
+   /* loop over voxels, scale by mse to get variance */
+
+   for( ii=0 ; ii < nvox ; ii++ ){
+     for( ib=0 ; ib < ts_length ; ib++ )
+       hout[ib][ii] = sqrt( vv[ib] * mse[ii] ) ;
+   }
+   free((void *)vv) ;
+
+   /* write output */
+   write_one_ts( output_filename , ts_length , hout ) ;
+
+   /* and free results */
+   for( ib=0 ; ib < ts_length ; ib++ )
+       free((void *)hout[ib]) ;
+   free((void *)hout) ;
+
+   if( verb )
+    INFO_message("Wrote sresp 1D dataset into %s\n",output_filename) ;
+
    return ;
 }
 

@@ -484,7 +484,8 @@ ENTRY("AFNI_icor_setref_xyz") ;
        jv.xyz[2] < im3d->iset->dset->daxes->zzmin ||
        jv.xyz[2] > im3d->iset->dset->daxes->zzmax   ){
 
-     WARNING_message("InstaCorr set point outside dataset box") ;
+     WARNING_message("InstaCorr set point (%.1f,%.1f,%.1f) outside dataset box",
+                     xx,yy,zz ) ;
      RETURN(-1) ;
    }
 
@@ -987,8 +988,8 @@ INFO_message("AFNI received %d vectors, length=%d",nel->vec_num,nvec) ;
      AFNI_set_fim_index(im3d,0) ;
      AFNI_set_thr_index(im3d,1) ;
 #if 1
-     sprintf(cmd,"SET_FUNC_RANGE %c 0.3"   ,cpt[1]) ; AFNI_driver(cmd) ;
-     sprintf(cmd,"SET_THRESHNEW %c 0.01 *p",cpt[1]) ; AFNI_driver(cmd) ;
+     sprintf(cmd,"SET_FUNC_RANGE %c 0.6" , cpt[1]) ; AFNI_driver(cmd) ;
+     sprintf(cmd,"SET_THRESHNEW %c  0.0" , cpt[1]) ; AFNI_driver(cmd) ;
 #endif
    }
 

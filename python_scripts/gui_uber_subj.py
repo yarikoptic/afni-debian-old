@@ -26,8 +26,8 @@ g_styles = ["windows", "motif", "cde", "plastique", "cleanlooks"]
 g_style_index = 0
 g_style_index_def = 4
 
-g_spacing = 1
-g_glayout_spacing = 1
+g_spacing = 3
+g_glayout_spacing = 2
 g_grid_spacing = 6
 
 g_LineEdittype = None                   # set this type later
@@ -101,7 +101,7 @@ class SingleSubjectWindow(QtGui.QMainWindow):
                       set_sdir=set_sdir, verb=verb)
 
       # ap_status : 0 = must create ap command, 1 = have ap, need proc script,
-      #             2 = have proc script, ready to execute
+      #             2 = have proc script, ready to execute, 3 = executing/ed
       # (meaning user must have first generated (and viewed) the command)
       self.gvars.ap_status = 0
 
@@ -164,6 +164,7 @@ class SingleSubjectWindow(QtGui.QMainWindow):
       # the layout for the 'input datasets' QGroupBox is vertical
       self.gvars.m2_vlayout = QtGui.QVBoxLayout(gbox)
       gbox.setLayout(self.gvars.m2_vlayout)
+      self.gvars.m2_vlayout.addSpacing(2)
 
       self.gvars.m2_gbox_inputs = gbox
 
@@ -272,6 +273,10 @@ class SingleSubjectWindow(QtGui.QMainWindow):
                             "base '%s' not in %s\n\n" \
                             % (text, ', '.join(USUBJ.g_vreg_base_list)), obj)
           
+      elif obj == self.gvars.Line_blur_size:
+         self.update_textLine_check(obj, obj.text(), 'blur_size',
+                                    'FWHM blur size', QLIB.valid_as_float)
+
       elif obj == self.gvars.Line_motion_limit:
          self.update_textLine_check(obj, obj.text(), 'motion_limit',
                                     'motion censor limit', QLIB.valid_as_float)
@@ -389,6 +394,7 @@ class SingleSubjectWindow(QtGui.QMainWindow):
 
       # --------------------------------------------------
       # and finish group box
+      layout.setMargin(g_spacing)
       layout.setSpacing(g_spacing)
       glayout.addWidget(frame)
       glayout.setSpacing(g_glayout_spacing)
@@ -457,6 +463,7 @@ class SingleSubjectWindow(QtGui.QMainWindow):
 
       # --------------------------------------------------
       # and finish group box
+      layout.setMargin(g_spacing)
       layout.setSpacing(g_spacing)
       glayout.addWidget(frame)
       glayout.setSpacing(g_glayout_spacing)
@@ -549,6 +556,7 @@ class SingleSubjectWindow(QtGui.QMainWindow):
 
       # --------------------------------------------------
       # and finish group box
+      layout.setMargin(g_spacing)
       layout.setSpacing(g_spacing)
       glayout.addWidget(frame)
       glayout.setSpacing(g_glayout_spacing)
@@ -557,7 +565,8 @@ class SingleSubjectWindow(QtGui.QMainWindow):
 
    def group_box_expected(self):
       """create a group box with a VBox layout:
-         for controlling sujbect vars: tcat_nfirst, volreg_base, motion_limit
+         for controlling sujbect vars: tcat_nfirst, volreg_base, blur_size
+                                       motion_limit
       """
 
       gbox = self.get_styled_group_box("expected options")
@@ -572,6 +581,7 @@ class SingleSubjectWindow(QtGui.QMainWindow):
       self.connect(gbox, QtCore.SIGNAL('clicked()'), self.gbox_clicked)
 
       layout = QtGui.QGridLayout(frame)         # now a child of frame
+      posn = 0
 
       # --------------------------------------------------
       # tcat_nfirst
@@ -582,8 +592,9 @@ class SingleSubjectWindow(QtGui.QMainWindow):
       self.connect(self.gvars.Line_tcat_nfirst,
                    QtCore.SIGNAL('editingFinished()'), self.CB_line_text)
 
-      layout.addWidget(label, 0, 0)
-      layout.addWidget(self.gvars.Line_tcat_nfirst, 0, 2)
+      layout.addWidget(label, posn, 0)
+      layout.addWidget(self.gvars.Line_tcat_nfirst, posn, 2)
+      posn += 1
 
       # --------------------------------------------------
       # volreg_base
@@ -598,9 +609,22 @@ class SingleSubjectWindow(QtGui.QMainWindow):
       self.connect(self.gvars.Line_volreg_base,
                    QtCore.SIGNAL('editingFinished()'), self.CB_line_text)
 
-      layout.addWidget(label, 1, 0)
-      layout.addWidget(pbut, 1, 1)
-      layout.addWidget(self.gvars.Line_volreg_base, 1, 2)
+      layout.addWidget(label, posn, 0)
+      layout.addWidget(pbut, posn, 1)
+      layout.addWidget(self.gvars.Line_volreg_base, posn, 2)
+      posn += 1
+
+      # --------------------------------------------------
+      # blur size
+      label = QtGui.QLabel("blur size (FWHM in mm)")
+      label.setStatusTip("Full Width at Half Max of gaussian blur to apply")
+      self.gvars.Line_blur_size = QtGui.QLineEdit()
+      self.gvars.Line_blur_size.setText(self.svars.blur_size)
+      self.connect(self.gvars.Line_blur_size,
+                   QtCore.SIGNAL('editingFinished()'), self.CB_line_text)
+      layout.addWidget(label, posn, 0)
+      layout.addWidget(self.gvars.Line_blur_size, posn, 2)
+      posn += 1
 
       # --------------------------------------------------
       # motion_limit
@@ -610,10 +634,12 @@ class SingleSubjectWindow(QtGui.QMainWindow):
       self.gvars.Line_motion_limit.setText(self.svars.motion_limit)
       self.connect(self.gvars.Line_motion_limit,
                    QtCore.SIGNAL('editingFinished()'), self.CB_line_text)
-      layout.addWidget(label, 2, 0)
-      layout.addWidget(self.gvars.Line_motion_limit, 2, 2)
+      layout.addWidget(label, posn, 0)
+      layout.addWidget(self.gvars.Line_motion_limit, posn, 2)
+      posn += 1
 
       frame.setLayout(layout)
+      layout.setMargin(g_spacing)
       layout.setSpacing(g_spacing)
       glayout.addWidget(frame)
       glayout.setSpacing(g_glayout_spacing)
@@ -656,7 +682,7 @@ class SingleSubjectWindow(QtGui.QMainWindow):
 
       # create the anat file browsing dialog
       gbox.FileD = self.make_file_dialog("load anatomical dataset", "",
-                     "*.HEAD;;*.nii;;*")
+                     "*.HEAD;;*.nii;;*.nii.gz;;*")
                      #".HEAD files (*.HEAD);;.nii files (*.nii);;all files (*)")
 
       # add a line for the anat name, init to anat
@@ -673,6 +699,7 @@ class SingleSubjectWindow(QtGui.QMainWindow):
       self.connect(gbox.checkBox, QtCore.SIGNAL('clicked()'), self.CB_checkbox)
       layout.addWidget(gbox.checkBox)
 
+      layout.setMargin(g_spacing)
       layout.setSpacing(g_spacing)
       frame.setLayout(layout)
       glayout.addWidget(frame)
@@ -768,6 +795,7 @@ class SingleSubjectWindow(QtGui.QMainWindow):
       layout.setColumnStretch(0, 1)
       layout.setColumnStretch(1, 20)
 
+      layout.setMargin(g_spacing)
       layout.setSpacing(g_grid_spacing)
       bwidget.setLayout(layout)
       mainlayout.addWidget(bwidget)
@@ -782,6 +810,7 @@ class SingleSubjectWindow(QtGui.QMainWindow):
       mainlayout.addWidget(gbox.checkBox_wildcard)
 
       # --------------------------------------------------
+      mainlayout.setMargin(g_spacing)
       mainlayout.setSpacing(g_spacing)
       frame.setLayout(mainlayout)
       return gbox
@@ -835,6 +864,7 @@ class SingleSubjectWindow(QtGui.QMainWindow):
       bwidget = QtGui.QWidget()
       layout = QtGui.QHBoxLayout()
       layout.addWidget(self.gvars.Table_stim)
+      layout.setMargin(g_spacing)
       layout.setSpacing(g_spacing)
       bwidget.setLayout(layout)
       mainlayout.addWidget(bwidget)
@@ -865,6 +895,7 @@ class SingleSubjectWindow(QtGui.QMainWindow):
       layout.setColumnStretch(0, 1)
       layout.setColumnStretch(1, 20)
 
+      layout.setMargin(g_spacing)
       layout.setSpacing(g_grid_spacing)
       bwidget.setLayout(layout)
       mainlayout.addWidget(bwidget)
@@ -893,6 +924,7 @@ class SingleSubjectWindow(QtGui.QMainWindow):
                    QtCore.SIGNAL('editingFinished()'), self.CB_line_text)
       layout.addWidget(self.gvars.Line_apply_basis)
 
+      layout.setMargin(g_spacing)
       layout.setSpacing(g_spacing)
       bwidget.setLayout(layout)
       mainlayout.addWidget(bwidget)
@@ -907,6 +939,7 @@ class SingleSubjectWindow(QtGui.QMainWindow):
       mainlayout.addWidget(gbox.checkBox_wildcard)
 
       # --------------------------------------------------
+      mainlayout.setMargin(g_spacing)
       mainlayout.setSpacing(g_spacing)
       frame.setLayout(mainlayout)
 
@@ -1002,10 +1035,12 @@ class SingleSubjectWindow(QtGui.QMainWindow):
       layout.setColumnStretch(0, 1)
       layout.setColumnStretch(1, 20)
 
+      layout.setMargin(0)
       bwidget.setLayout(layout)
       mainlayout.addWidget(bwidget)
 
       # --------------------------------------------------
+      mainlayout.setMargin(g_spacing)
       mainlayout.setSpacing(g_spacing)
       frame.setLayout(mainlayout)
 
@@ -1127,7 +1162,7 @@ class SingleSubjectWindow(QtGui.QMainWindow):
          return
 
       # parse the EPI list into directory, short names, glob string
-      epi_dir, short_names, globstr = USUBJ.flist_to_table_pieces(epi)
+      epi_dir, short_names, globstr = UTIL.flist_to_table_pieces(epi)
 
       # ------------------------------------------------------------
       # note wildcard form and try to create index list
@@ -1244,7 +1279,7 @@ class SingleSubjectWindow(QtGui.QMainWindow):
          return
 
       # parse the stim list into directory, short names, glob string
-      stim_dir, short_names, globstr = USUBJ.flist_to_table_pieces(stim)
+      stim_dir, short_names, globstr = UTIL.flist_to_table_pieces(stim)
 
       # ------------------------------------------------------------
 
@@ -1438,7 +1473,7 @@ class SingleSubjectWindow(QtGui.QMainWindow):
       elif text == 'browse anat':
          fname = QtGui.QFileDialog.getOpenFileName(self,
                    "load anatomical dataset", self.pick_base_dir('anat'),
-                   "datasets (*.HEAD *.nii);;all files (*)")
+                   "datasets (*.HEAD *.nii *.nii.gz);;all files (*)")
          self.update_textLine_check(self.gvars.Line_anat,
                 fname, 'anat', 'anatomical dset', QLIB.valid_as_filepath)
 
@@ -1453,7 +1488,7 @@ class SingleSubjectWindow(QtGui.QMainWindow):
       elif text == 'browse EPI':
          fnames = QtGui.QFileDialog.getOpenFileNames(self,
                         "load EPI datasets", self.pick_base_dir('epi'),
-                        "datasets (*.HEAD *.nii);;all files (*)")
+                        "datasets (*.HEAD *.nii *.nii.gz);;all files (*)")
          if len(fnames) > 0:
             self.set_svar('epi', [str(name) for name in fnames])
             self.epi_list_to_table()
@@ -2112,7 +2147,7 @@ class SingleSubjectWindow(QtGui.QMainWindow):
       self.update_AP_result_window(text=mesg,
                                    title="output text from afni_proc.py")
 
-      self.status = 2
+      self.gvars.ap_status = 2
 
       return 0
 
@@ -2130,6 +2165,7 @@ class SingleSubjectWindow(QtGui.QMainWindow):
          return
 
       if self.gvars.ap_status == 1:
+         print '===== ++++ ===== re-running ap_command....'
          # execute afni_proc.py command, return on failure
          if self.exec_ap_command(): return
 
@@ -2375,6 +2411,9 @@ class SingleSubjectWindow(QtGui.QMainWindow):
       elif svar == 'volreg_base':  
                                    obj = self.gvars.Line_volreg_base
                                    obj.setText(self.svars.volreg_base)
+      elif svar == 'blur_size':
+                                   obj = self.gvars.Line_blur_size
+                                   obj.setText(self.svars.blur_size)
       elif svar == 'motion_limit':
                                    obj = self.gvars.Line_motion_limit
                                    obj.setText(self.svars.motion_limit)

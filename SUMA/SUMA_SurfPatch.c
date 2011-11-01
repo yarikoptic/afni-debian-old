@@ -107,6 +107,52 @@ void usage_SUMA_getPatch ()
 "                       SUMA's parameters are optimized to work with objects\n"
 "                       on the order of a brain, not on the order of 1 mm.\n"
 "                       Gain is applied just before writing out patches.\n"
+"     -flip_orientation: Change orientation of triangles before writing\n"
+"                        surfaces.\n"
+"     -verb VERB: Set verbosity level, 1 is the default.\n"
+"\n"
+"   Example 1: Given an ROI, a white matter and a gray matter surface\n"
+"              calculate the volume of cortex enclosed by the roi on\n"
+"              both surfaces.\n"
+"              Assume you have the spec file and surfaces already. You can\n"
+"              get the same files from the SUMA directory in the AFNI \n"
+"              workshop SUMA's archive which you can get with: \n"
+"         curl -O http://afni.nimh.nih.gov/pub/dist/edu/data/SUMA_demo.tgz\n"
+"\n"
+"              Draw an ROI on the surface and save it as: lh.manualroi.1D.roi\n"
+"\n"
+"         To calculate the volume and create a enclosing surface:\n"
+"             SurfPatch   -spec DemoSubj_lh.spec \\\n"
+"                         -sv DemoSubj_SurfVol+orig  \\\n"
+"                         -surf_A lh.smoothwm  \\\n"
+"                         -surf_B lh.pial   \\\n"
+"                         -prefix lh.patch \\\n"
+"                         -input lh.manualroi.1D.roi 0 -1  \\\n"
+"                         -out_type fs   \\\n"
+"                         -vol  \\\n"
+"                         -adjust_contour \\\n"
+"                         -stiched_surface lh.stiched   \\\n"
+"                         -flip_orientation \n"
+"\n"
+"   Example 2: If you want to voxelize the region between the two surfaces\n"
+"              you can run the following on the output.\n"
+"                 3dSurfMask -i lh.stiched.ply \\\n"
+"                            -prefix lh.closed -fill_method SLOW \\\n"
+"                            -grid_parent DemoSubj_SurfVol+orig.HEAD \n"
+"              3dSurfMask will output a dataset called lh.closed.d+orig which\n"
+"              contains the signed closest distance from each voxel to the \n"
+"              surface. Negative distances are outside the surface.\n"
+"\n"
+"              To examine the results:\n"
+"                 suma -npb 71 -i lh.stiched.ply -sv DemoSubj_SurfVol+orig. &\n"
+"                 afni -npb 71 -niml -yesplugouts & \n"
+"                 DriveSuma -npb 71 -com viewer_cont -key 't' \n"
+"                 plugout_drive  -npb 71  \\\n"
+"                                -com 'SET_OVERLAY lh.closed.d' \\\n"
+"                                -com 'SET_FUNC_RANGE A.3' \\\n"
+"                                -com 'SET_PBAR_NUMBER A.10' \\\n"
+"                                -com 'SET_DICOM_XYZ A. 10 70 22 '\\\n"
+"                                -quit\n"
 "\n"
 "%s"
                "\n",s); SUMA_free(s); s = NULL;
@@ -135,6 +181,8 @@ typedef struct {
    int adjust_contour;
    float coordgain;
    SUMA_Boolean Do_p2s;
+   int verb;
+   int flip;
 } SUMA_GETPATCH_OPTIONS;
 
 /*!
@@ -179,6 +227,8 @@ SUMA_GETPATCH_OPTIONS *SUMA_GetPatch_ParseInput (char *argv[], int argc)
    Opt->FixBowTie = -1;
    Opt->adjust_contour = -1;
    Opt->oType = SUMA_FT_NOT_SPECIFIED;
+   Opt->verb = 1;
+   Opt->flip = 0;
    for (i=0; i<SURFPATCH_MAX_SURF; ++i) { Opt->surf_names[i] = NULL; }
 	brk = NOPE;
    
@@ -198,6 +248,16 @@ SUMA_GETPATCH_OPTIONS *SUMA_GetPatch_ParseInput (char *argv[], int argc)
 				exit (1);
 			}
 			Opt->spec_file = argv[kar];
+			brk = YUP;
+		}
+      
+      if (!brk && (strcmp(argv[kar], "-sv") == 0)) {
+         kar ++;
+			if (kar >= argc)  {
+		  		fprintf (SUMA_STDERR, "need argument after -sv \n");
+				exit (1);
+			}
+			Opt->sv_name = argv[kar];
 			brk = YUP;
 		}
       
@@ -241,6 +301,11 @@ SUMA_GETPATCH_OPTIONS *SUMA_GetPatch_ParseInput (char *argv[], int argc)
 			brk = YUP;
 		}
 
+      if (!brk && (strcmp(argv[kar], "-flip_orientation") == 0)) {
+			Opt->flip = 1;
+			brk = YUP;
+		}
+
       if (!brk && (strcmp(argv[kar], "-vol_only") == 0)) {
 			Opt->DoVol = 1;
          Opt->VolOnly = 1;
@@ -279,6 +344,21 @@ SUMA_GETPATCH_OPTIONS *SUMA_GetPatch_ParseInput (char *argv[], int argc)
 				exit (1);
 			}
 			Opt->out_prefix = SUMA_copy_string(argv[kar]);
+			brk = YUP;
+		}
+
+      if (!brk && (strcmp(argv[kar], "-verb") == 0)) {
+         kar ++;
+			if (kar >= argc)  {
+		  		fprintf (SUMA_STDERR, "need argument after -verb \n");
+				exit (1);
+			}
+			Opt->verb = atoi(argv[kar]);
+         if (Opt->verb < 0 || Opt->verb > 10) {
+            SUMA_S_Errv("Something fishy with -verb value of %s\n"
+                        "Need integer from 0 to 2\n", argv[kar]);
+            exit(1);
+         }
 			brk = YUP;
 		}
 
@@ -551,10 +631,16 @@ int main (int argc,char *argv[])
       Vol = SUMA_Pattie_Volume(SO1, SO2, NodePatch, N_NodePatch, 
                                SOp, Opt->minhits, 
                                Opt->FixBowTie, Opt->adjust_contour, 
-                               adj_N, 1);
+                               adj_N, Opt->verb);
       fprintf (SUMA_STDOUT,"Volume = %f\n", fabs(Vol));
       if (Opt->out_volprefix) {
          if (Opt->oType != SUMA_FT_NOT_SPECIFIED) SOp->FileType = Opt->oType;
+         if (Opt->flip) {
+            if (Opt->verb > 1) 
+               SUMA_S_Note("Flipping stitched surf's triangles\n");
+            SUMA_FlipSOTriangles (SOp);
+         }
+
          if (!(SUMA_Save_Surface_Object_Wrap ( Opt->out_volprefix, NULL,
                                                SOp, SUMA_PLY, SUMA_ASCII, 
                                                NULL))) {
@@ -641,8 +727,8 @@ int main (int argc,char *argv[])
             SO->N_FaceSet = SOnew->N_FaceSet;
             SO->N_Node = SOnew->N_Node;
             SO->NodeList = SOnew->NodeList;
-         } 
-
+         }
+          
          if (SO->N_FaceSet <= 0) {
             SUMA_S_Warn("The patch is empty.\n"
                         " Non existing surface not written to disk.\n");
@@ -653,6 +739,12 @@ int main (int argc,char *argv[])
                for (cnt=0; cnt < SO->NodeDim*SO->N_Node; ++cnt) 
                   SO->NodeList[cnt] *= Opt->coordgain;
             }
+            if (Opt->flip) {
+               if (Opt->verb > 1) SUMA_S_Note("Flipping triangles\n");
+               SUMA_FlipTriangles (SO->FaceSetList, SO->N_FaceSet);
+               SUMA_RECOMPUTE_NORMALS(SO);
+            }
+
             if (!SUMA_Save_Surface_Object (SO_name, SO, SO->FileType, 
                                            SUMA_ASCII, NULL)) {
                   fprintf (SUMA_STDERR,

@@ -49,6 +49,400 @@
 
 afni_history_struct rickr_history[] = {
 
+ { 28, OCT, 2011, RCR, "timing_tool.py", MINOR, TYPE_BUG_FIX,
+   "allow use of -show_isi_stats w/o stim duration",
+   NULL
+ } ,
+
+ { 25, OCT, 2011, RCR, "timing_tool.py", MINOR, TYPE_ENHANCE,
+   "process married files with current operations",
+   "1. AfniMarriedTiming inherits from AfniData (instead of local copies)\n"
+   "2. add all AfniTiming methods to AfniMarriedTiming (as married timing)\n"
+   "3. rename AfniMarriedTiming back to AfniTiming (but now married)"
+ } ,
+
+ { 25, OCT, 2011, RCR, "gen_ss_review_scripts.py", MINOR, TYPE_ENHANCE,
+   "look for more file name variants, including with '_' separators",
+   "Added for J Weisberg."
+ } ,
+
+ { 20, OCT, 2011, RCR, "afni_general", MINOR, TYPE_MODIFY,
+   "changed most resampling programs to deoblique inputs upon read",
+   "THD_open*_dataset() was followed by THD_make_cardinal().\n"
+   "modified: 3dresample, 3dfractionize, 3drotate, adwarp, 3dLRflip\n"
+   "          3dZeropad, 3dZcat, 3dAutobox\n"
+   "not (yet) modified: 3dWarp(Drive), 3dAllineate"
+ } ,
+
+ { 19, OCT, 2011, RCR, "@2dwarper.Allin", MICRO, TYPE_NEW_OPT,
+   "added a -mask option",
+   "Added for A Messinger."
+ } ,
+
+ { 19, OCT, 2011, RCR, "GIFTI", MINOR, TYPE_ENHANCE,
+   "can read/write ascii COMPLEX64, COMPLEX128, RGB24",
+   "Requested by H Breman, J Mulders and N Schmansky."
+ } ,
+
+ { 18, OCT, 2011, RCR, "uber_subject.py", MINOR, TYPE_NEW_OPT,
+   "added blur size control; removed requirement of stim timing files",
+   NULL
+ } ,
+
+ { 18, OCT, 2011, RCR, "@radial_correlate", MICRO, TYPE_ENHANCE,
+   "require enough volumes per dataset, store file name correspondence",
+   NULL
+ } ,
+
+ { 17, OCT, 2011, RCR, "afni_proc.py", MICRO, TYPE_ENHANCE,
+   "added -help for new -surf_* options, along with example #8",
+   NULL
+ } ,
+
+ { 17, OCT, 2011, RCR, "@update.afni.binaries", MICRO, TYPE_MODIFY,
+   "abin now has subdir (funstuff), so change 'mv' to 'rsync'",
+   NULL
+ } ,
+
+ { 14, OCT, 2011, RCR, "afni_proc.py", MAJOR, TYPE_NEW_OPT,
+   "now processes surface data",
+   "- added 'surf' processing block, and corresponding '-surf_*' options:\n"
+   "   -surf_anat, -surf_spec, -surf_anat_aligned, -surf_anat_has_skull,\n"
+   "   -surf_A, -surf_B, -surf_blur_fwhm\n"
+   "- compute errts and TSNR by default (had required option or blur est)"
+ } ,
+
+ { 14, OCT, 2011, RCR, "uber_subject.py", MICRO, TYPE_ENHANCE,
+   "small -help_install update",
+   NULL
+ } ,
+
+ { 14, OCT, 2011, RCR, "gen_ss_review_scripts.py", MINOR, TYPE_ENHANCE,
+   "allow modest handling of surface results",
+   NULL
+ } ,
+
+ {  6, OCT, 2011, RCR, "3dMean", MICRO, TYPE_BUG_FIX,
+   "linux_xorg7_64 had optimizer error (and crashed), so altered loop method",
+   "Thanks to P Kim for noting the problem."
+ } ,
+
+ {  5, OCT, 2011, RCR, "uber_subject.py", MICRO, TYPE_BUG_FIX,
+   "do not re-create proc script on proc execution",
+   NULL
+ } ,
+
+ {  4, OCT, 2011, RCR, "afni_proc.py", MICRO, TYPE_NEW_OPT,
+   "added -anat_has_skull option",
+   NULL
+ } ,
+
+ {  4, OCT, 2011, RCR, "gen_ss_review_scripts.py", MINOR, TYPE_ENHANCE,
+   "changed basic script outputs",
+   "- added 'max censored displacement', 'final anat dset' and\n"
+   "        'final voxel resolution' to basic script\n"
+   "- removed 'num stim files found'"
+ } ,
+
+ {  4, OCT, 2011, RCR, "to3d", MICRO, TYPE_MODIFY,
+   "explicitly warn about illegal '/' characters in output filename",
+   NULL
+ } ,
+
+ {  3, OCT, 2011, RCR, "afni_proc.py", MICRO, TYPE_MODIFY,
+   "changed default polort time back to TR*NT, to match 3dDeconvolve",
+   NULL
+ } ,
+
+ {  3, OCT, 2011, RCR, "1d_tool.py", MINOR, TYPE_NEW_OPT,
+   "added -censor_infile (e.g. to remove TRs from motion params)",
+   "Added for N Adleman."
+ } ,
+
+ {  3, OCT, 2011, RCR, "afni-general", MICRO, TYPE_ENHANCE,
+   "update ADN_ONE_STEP to ten million, allowing that many output sub-bricks",
+   "This affects programs like 3dbucket, when the output has many volumes.\n"
+   "Done for HJ Jo, J Gonzalez-Castillo, M Robinson."
+ } ,
+
+ { 22, SEP, 2011, RCR, "uber_ttest.py", MAJOR, TYPE_NEW_PROG,
+   "a graphical program for running either 3dttest++ or 3dMEMA",
+   "Still under destruction."
+ } ,
+
+ { 22, SEP, 2011, RCR, "afni_util.py", MINOR, TYPE_ENHANCE,
+   "various updates",
+   "- updated quotize_list\n"
+   "- added nuke_final_whitespace, flist_to_table_pieces, get_ids_from_dsets"
+ } ,
+
+ { 22, SEP, 2011, RCR, "gen_ss_review_scripts.py", MINOR, TYPE_MODIFY,
+   "added check_for_file and for_dset, updated find_x_mat, enorm, view_stats",
+   NULL
+ } ,
+
+ { 22, SEP, 2011, RCR, "uber_align_test.py", MICRO, TYPE_MODIFY,
+   "moved get_def_tool_path to library",
+   NULL
+ } ,
+
+ { 22, SEP, 2011, RCR, "uber_subject.py", MINOR, TYPE_MODIFY,
+   "altered spacing and made other minor changes",
+   NULL
+ } ,
+
+ {  7, SEP, 2011, RCR, "Makefile.INCLUDE", MICRO, TYPE_MODIFY,
+   "added @radial_correlate to the install scripts (forgot earlier)",
+   NULL
+ } ,
+
+ {  6, SEP, 2011, RCR, "Dimon", MICRO, TYPE_NEW_OPT,
+   "added -fast option, short for: -sleep_init 50 -sleep_vol 50",
+   NULL
+ } ,
+
+ {  1, SEP, 2011, RCR, "afni_util.py", MICRO, TYPE_BUG_FIX,
+   "get_default_polort: run time should be TR * (NT-1)",
+   "This was changed back to TR*NT, to match 3dDeconvolve (3 Oct, 2011)."
+ } ,
+
+ {  1, SEP, 2011, RCR, "@radial_correlate", MINOR, TYPE_NEW_PROG,
+   "compute voxelwise EPI correlations with local spherical averages",
+   NULL
+ } ,
+
+ { 31, AUG, 2011, RCR, "afni_proc.py", MICRO, TYPE_MODIFY,
+   "if censoring motion or outliers, add options to gen_ss_r command",
+   NULL
+ } ,
+
+ { 30, AUG, 2011, RCR, "Dimon", MICRO, TYPE_BUG_FIX,
+   "update volume delta to mean dz",
+   "From text in DICOM files, initial dz values may not be sufficiently\n"
+   "accurate, leaing to 'volume toasted' errors.\n"
+   "Thanks to B Benson for noting the problem."
+ } ,
+
+ { 19, AUG, 2011, RCR, "3dDeconvolve", MINOR, TYPE_MODIFY,
+   "added the ability to output 1D sresp datasets",
+   "Requested by S Baum."
+ } ,
+
+ { 17, AUG, 2011, RCR, "gen_ss_review_scripts.py", MICRO, TYPE_BUG_FIX,
+   "fixed some final anat dset assignments",
+   NULL
+ } ,
+
+ { 15, AUG, 2011, RCR, "afni-general", MICRO, TYPE_BUG_FIX,
+   "altered SUMA_ParseFname for parsing of relative pathnames",
+   "Thanks to Ryan of Princeton for noting the problem."
+ } ,
+
+ { 12, AUG, 2011, RCR, "gen_ss_review_scripts.py", MICRO, TYPE_MODIFY,
+   "gave volreg 3dAllineate command priority for final anat",
+   NULL
+ } ,
+
+ {  4, AUG, 2011, RCR, "afni-general", MICRO, TYPE_MODIFY,
+   "wrote loc_strcpy(/cat)_realloc for MCW_file_expand",
+   "This is to allow for long sub-brick selectors."
+ } ,
+
+ {  3, AUG, 2011, RCR, "align_epi_anat.py", MICRO, TYPE_NEW_OPT,
+   "added -save_orig_skullstrip, to avoid oblique transforms",
+   "This was added for afni_proc.py."
+ } ,
+
+ {  3, AUG, 2011, RCR, "afni_proc.py", MINOR, TYPE_BUG_FIX,
+   "changed aea.py -save_skullstrip to -save_orig_skullstrip",
+   "The -save_skullstrip dataset might have an oblique transformation\n"
+   "applied (which would throw off EPI if it is then sent to standard\n"
+   "space).  Apply the new option to grab a simple skull-stripped anat.\n"
+   "Thanks to A Ellenstein for noting it and Z Saad for help understanding."
+ } ,
+
+ {  2, AUG, 2011, RCR, "gen_ss_review_scripts.py", MICRO, TYPE_MODIFY,
+   "added control var out_prefix, a prefix for output files",
+   NULL
+ } ,
+
+ {  2, AUG, 2011, RCR, "uber_skel.py", MICRO, TYPE_MODIFY,
+   "main class inherits object - for older versions of python",
+   NULL
+ } ,
+
+ {  2, AUG, 2011, RCR, "uber_align_test.py", MICRO, TYPE_MODIFY,
+   "main class inherits object - for older versions of python",
+   NULL
+ } ,
+
+ { 29, JUL, 2011, RCR, "3dUniformize", MINOR, TYPE_BUG_FIX,
+   "fixed checks against lower_limit in option processing (since -1 init)",
+   "Thanks to A Waite for noting the problem and cause in the code."
+ } ,
+
+ { 29, JUL, 2011, RCR, "make_pq_script.py", MINOR, TYPE_MODIFY,
+   "changes to handle python 2.4, where shell output has extra blank lines",
+   NULL
+ } ,
+
+ { 29, JUL, 2011, RCR, "slow_surf_clustsim.py", MINOR, TYPE_ENHANCE,
+   "z.max files are now named by p-value",
+   "And suggest a quick.alpha.vals.py command."
+ } ,
+
+ { 26, JUL, 2011, RCR, "afni_proc.py", MINOR, TYPE_ENHANCE,
+   "if e2a, update current anat to skull-stripped anat from align block",
+   "This would avoid a second skull-strip step in @auto_tlrc."
+ } ,
+
+ { 25, JUL, 2011, RCR, "slow_surf_clustsim.py", MINOR, TYPE_ENHANCE,
+   "added keepblocks var, to limit kept intermediate datasets",
+   NULL
+ } ,
+
+ { 22, JUL, 2011, RCR, "slow_surf_clustsim.py", MINOR, TYPE_BUG_FIX,
+   "after blur, rescale noise to be normally distributed",
+   NULL
+ } ,
+
+ { 21, JUL, 2011, RCR, "gen_ss_review_scripts.py", MINOR, TYPE_MODIFY,
+   "changed TR counts to come via awk instead of grep",
+   NULL
+ } ,
+
+ { 21, JUL, 2011, RCR, "edt_blur.c", MICRO, TYPE_BUG_FIX,
+   "fixed nz/sigmay typo, found by Patryk (on message board)",
+   NULL
+ } ,
+
+ { 20, JUL, 2011, RCR, "afni_proc.py", MICRO, TYPE_BUG_FIX,
+   "fixed aea.py -epi_base when: aea.py, -volreg_a2 last, variable run lens",
+   "thanks to S Brislin and S White for noting the problem"
+ } ,
+
+ { 20, JUL, 2011, RCR, "make_pq_script.py", MINOR, TYPE_NEW_PROG,
+   "program will generate a script to produce a p-value/q-value curve pair",
+   NULL
+ } ,
+
+ { 15, JUL, 2011, RCR, "@update.afni.binaries", MICRO, TYPE_ENHANCE,
+   "applied -d as -defaults",
+   NULL
+ } ,
+
+ { 15, JUL, 2011, RCR, "afni_proc.py", MICRO, TYPE_ENHANCE,
+   "save output from ss_review in out.ss_review.$subj.txt",
+   NULL
+ } ,
+
+ { 14, JUL, 2011, RCR, "gen_ss_review_scripts.py", MINOR, TYPE_ENHANCE,
+   "added 'max motion displacement' to basic script",
+   NULL
+ } ,
+
+ { 14, JUL, 2011, RCR, "1d_tool.py", MINOR, TYPE_NEW_OPT,
+   "added -show_max_displace, for maximum motion displacement",
+   NULL
+ } ,
+
+ { 14, JUL, 2011, RCR, "slow_surf_clustsim.py", MICRO, TYPE_ENHANCE,
+   "show date per iter block and add ./ to 3dcalc prefix",
+   NULL
+ } ,
+
+ { 13, JUL, 2011, RCR, "afni_proc.py", MINOR, TYPE_ENHANCE,
+   "run gen_ss_review_scripts.py and any resulting 'basic' review script",
+   NULL
+ } ,
+
+ { 13, JUL, 2011, RCR, "gen_group_command.py", MICRO, TYPE_NEW_OPT,
+   "added -exit0 and babbled about possible artifact tests",
+   NULL
+ } ,
+
+ { 11, JUL, 2011, RCR, "gen_group_command.py", MINOR, TYPE_BUG_FIX,
+   "fixed case of partial path match to dsets",
+   "Problem found by J Jarcho."
+ } ,
+
+ { 11, JUL, 2011, RCR, "gen_ss_review_scripts.py", MAJOR, TYPE_NEW_PROG,
+   "for generating single subject review scripts",
+   "To be run by the afni_proc.py proc script or directly by users."
+ } ,
+
+ { 8, JUL, 2011, RCR, "slow_surf_clustsim.py", MINOR, TYPE_MODIFY,
+   "added -on_surface, which might not end up being so useful",
+   NULL
+ } ,
+
+ { 6, JUL, 2011, RCR, "uber_align_test.py", MICRO, TYPE_MODIFY,
+   "test use of SUBJ.set_var_with_defs",
+   NULL
+ } ,
+
+ { 6, JUL, 2011, RCR, "afni_proc.py", MICRO, TYPE_GENERAL,
+   "create anat_final dset, as one that is aligned with the stats",
+   "Also, suggest use of uber_subject.py in the -ask_me dialog."
+ } ,
+
+ { 5, JUL, 2011, RCR, "afni-general", MINOR, TYPE_ENHANCE,
+   "minor enhancements to 5 python files (prep for gen_ss_review_scripts.py)",
+   NULL
+ } ,
+
+ { 30, JUN, 2011, RCR, "afni_proc.c", MICRO, TYPE_MODIFY,
+   "renamed aligned anat output (from align_epi_anat.py)",
+   "This should make it clear whether or not the output anat should be used"
+ } ,
+
+ { 27, JUN, 2011, RCR, "gen_group_command.py", MINOR, TYPE_NEW_OPT,
+   "added -dset_index0_list/-dset_index1_list options, etc.",
+   "- ttest++ and MEMA commands now apply directories to datasets\n"
+   "- changed Subject.atrs to be VarsObject instance, not dictionary\n"
+ } ,
+
+ { 27, JUN, 2011, RCR, "afni_util.py", MICRO, TYPE_MODIFY,
+   "changed decode_1D_ints to take imax param",
+   "Affects 1d_tool.py, xmat_tool.py and any utilities using lib_afni1D.py.\n"
+   "Also added restrict_by_index_lists()."
+ } ,
+
+ { 27, JUN, 2011, RCR, "thd_table.c", MICRO, TYPE_MODIFY,
+   "output warning hint on single column covariate file",
+   NULL
+ } ,
+
+ { 24, JUN, 2011, RCR, "slow_surf_clustsim.py", MAJOR, TYPE_NEW_PROG,
+   "a temporary program until we do this in C",
+   NULL
+ } ,
+
+ { 20, JUN, 2011, RCR, "afni_util.py", MINOR, TYPE_NEW_OPT,
+   "added eta2 function (alongside '3ddot -doeta2')",
+   NULL
+ } ,
+
+ { 17, JUN, 2011, RCR, "SUMA_MiscFunc.c", MICRO, TYPE_BUG_FIX,
+   "set 0-length BmP array to matching length 3",
+   NULL
+ } ,
+
+ { 16, JUN, 2011, RCR, "3ddot", MINOR, TYPE_NEW_OPT,
+   "added -doeta2 via new THD_eta_squared_masked",
+   "Added for Shinchan."
+ } ,
+
+ { 16, JUN, 2011, RCR, "3dAutoTcorrelate", MICRO, TYPE_BUG_FIX,
+   "allowed very small datasets",
+   NULL
+ } ,
+
+ { 15, JUN, 2011, RCR, "gen_group_command.py", MINOR, TYPE_ENHANCE,
+   "if constant dset names, extract SIDs from dir names",
+   "Done for R Momenan."
+ } ,
+
  { 8, JUN, 2011, RCR, "make_random_timing.py", MICRO, TYPE_BUG_FIX,
    "fixed print and added min_rest to durations in test of -tr_locked",
    NULL

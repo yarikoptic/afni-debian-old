@@ -19,7 +19,7 @@ DOCS     = ../doc/ps/*.ps ../doc/README/README*                    \
            AFNI.changes.dglen
 MINDOCS  = rickr/AFNI.changes.rickr AFNI.changes.dglen
 
-IMOBJS  = display.o imseq.o bbox.o xim.o xutil.o LiteClue.o
+IMOBJS  = display.o imseq.o bbox.o xim.o xutil.o LiteClue.o thd_xwebber.o
 
 AFOBJS  = afni.o afni_func.o afni_widg.o afni_warp.o afni_fimmer.o \
             afni_slice_short.o afni_slice_float.o afni_filer.o     \
@@ -32,7 +32,7 @@ AFOBJS  = afni.o afni_func.o afni_widg.o afni_warp.o afni_fimmer.o \
             afni_ttren.o afni_pplug_1dfunc.o afni_driver.o         \
             afni_niml.o afni_sumafunc.o afni_slice_rgbyte.o        \
             afni_version.o afni_lock.o afni_vol2surf.o             \
-            afni_pplug_instacorr.o afni_pplug_instacalc.o 
+            afni_pplug_instacorr.o afni_pplug_instacalc.o
 
 SOMEAFOBJS = parser_int.o afni_warp.o afni_slice_byte.o afni_slice_short.o \
              afni_slice_float.o afni_slice_complex.o afni_slice_rgbyte.o   \
@@ -40,7 +40,8 @@ SOMEAFOBJS = parser_int.o afni_warp.o afni_slice_byte.o afni_slice_short.o \
 
 T3OBJS  = to3d.o
 
-MISC    = AFNI.Xdefaults AFNI.afnirc AFNI.sumarc 3d*.lib gmovie*
+MISC    = AFNI_atlas_spaces.niml AFNI.Xdefaults AFNI.afnirc AFNI.sumarc \
+          3d*.lib gmovie*
 
 ## The following programs are "extras" not really part of the
 ## AFNI package, but included because they are useful.  Some of
@@ -88,7 +89,7 @@ PROGRAMS = afni to3d from3d abut 3dclust nsize 3dinfo 3dproject 3dmerge count   
            3dLocalPV 3dBandpass 3dSetupGroupInCorr 3dGroupInCorr 3dTcorr1D      \
            3dClustSim 3dRetinoPhase 3dMaskToASCII 3dttest++ 3dDTtoDWI           \
            niccc rbox qdelaunay 3dkmeans 3dXYZcat 3dPolyfit 3dNwarpApply        \
-           1dCorrelate                                                          \
+           1dCorrelate 3dCountSpikes 3dNwarpCalc                                \
            $(EXTRAS)
 
 PROGRAMS_NOPLUG = afni to3d from3d abut 3dclust nsize 3dinfo 3dproject 3dmerge      \
@@ -120,7 +121,7 @@ PROGRAMS_NOPLUG = afni to3d from3d abut 3dclust nsize 3dinfo 3dproject 3dmerge  
                   afni_history 3dUpsample 1dUpsample 3dmatmult 3dABoverlap          \
                   3dmaskSVD 3dRank 3dLocalPV 3dTcorr1D 3dClustSim 3dRetinoPhase     \
                   3dMaskToASCII 3dttest++ 3dDTtoDWI niccc 3dXYZcat 3dPolyfit        \
-                  3dNwarpApply 1dCorrelate                                          \
+                  3dNwarpApply 1dCorrelate 3dCountSpikes 3dNwarpCalc                \
                   $(EXTRAS)
 
 # For CYGWIN (look for "exe" to find various places below)
@@ -173,8 +174,8 @@ SCRIPTS = @4Daverage @CommandGlobb @GetAfniOrient @DTI_studio_reposition        
           @FS_roi_label @demo_prompt @ScriptCheck @NoPound @Reorder               \
           3dMEMA @DiceMetric @R_funclist @TimeDiff @FullPath @RetinoProc          \
           @ANATICOR @MakeLabelTable @ElectroGrid ExamineXmat 1dRplot              \
-          @2dwarper.Allin @help.AFNI @1dDiffMag @FSlabel2dset                    \
-          @Install_InstaCorr_Demo
+          @2dwarper.Allin @Shift_Volume  @help.AFNI @1dDiffMag @FSlabel2dset      \
+          @Install_InstaCorr_Demo @Quiet_Talkers @radial_correlate 
 
 PY_DIR = python_scripts
 PY_SCRIPTS = afni_base.py @DoPerRoi.py
@@ -204,7 +205,7 @@ all:$(LIBDL) libmri.a libmrix.a libcoxplot.a libvolpack.a programs
 
 ### Make afni binaries
 
-afobj:$(AFOBJS) libf2c.a libcoxplot.a libvolpack.a libmrix.a
+afobj:$(AFOBJS) libf2c.a libcoxplot.a libvolpack.a libmrix.a libjpeg.a libXmHTML.a
 
 afobjs: afobj
 
@@ -239,11 +240,16 @@ libraries:libmri.a libmrix.a libcoxplot.a libvolpack.a libf2c.a
 quotize:quotize.o
 	$(CC) -o quotize quotize.o $(LFLAGS) $(LLIBS)
 
-license.h:quotize
-	./quotize license < ../doc/README/README.copyright > license.h
+license.h:../doc/README/README.copyright
+	quotize license < ../doc/README/README.copyright > license.h
 
-readme_env.h:quotize ../doc/README/README.environment
-	./quotize readme_env < ../doc/README/README.environment > readme_env.h
+readmes:readme_env.h readme_afnigui.h
+
+readme_env.h:../doc/README/README.environment
+	quotize readme_env < ../doc/README/README.environment > readme_env.h
+
+readme_afnigui.h:../doc/README/README.afnigui
+	quotize readme_afnigui < ../doc/README/README.afnigui > readme_afnigui.h
 
 Ifile:Ifile.o
 	$(CC) -o Ifile Ifile.o $(LFLAGS) $(LLIBS)
@@ -562,6 +568,10 @@ dsetdup:dsetdup.o
 3dToutcount:3dToutcount.o
 	$(RM) $@
 	$(CC) -o 3dToutcount 3dToutcount.o $(LFLAGS) $(LLIBS)
+	
+3dCountSpikes:3dCountSpikes.o
+	$(RM) $@
+	$(CC) -o 3dCountSpikes 3dCountSpikes.o $(LFLAGS) $(LLIBS)
 
 3dTsmooth:3dTsmooth.o
 	$(RM) $@
@@ -725,15 +735,19 @@ d3dmerge:3dmerge.c
 	$(CC) -o 3dedge3 3dedge3.o -I3DEdge/src            \
               $(LFLAGS) -l3DEdge $(LLIBS)
 
-### From Stephen Laconte
-3dsvm:svm/svm_common.c svm/svm_learn.c svm/3dsvm_common.c svm/svm_hideo.c svm/3dsvm.c
+### From Stephen LaConte
+3dsvm:
 	( cd svm/   ;  \
-	  $(CC) -o 3dsvm 3dsvm_common.c svm_common.c svm_hideo.c 3dsvm.c -I.. $(ISFLAGS) -L.. $(LFLAGS) $(LLIBS) ;  \
-	  $(CP) 3dsvm ..  ;  \
-	  cd .. ;)
+	  mkdir svml ; cd svml ; cp ../patch/orig/* . ; \
+          patch -p1 < ../patch/orig.patch ; mv * ../. ; cd .. ; rmdir svml ; \
+          $(CC) -o 3dsvm 3dsvm_common.c svm_common.c svm_learn.c svm_hideo.c 3dsvm.c \
+                -I.. $(ISFLAGS) -L.. $(LFLAGS) $(LLIBS) ;  \
+	  $(MV) 3dsvm ../. ; \
+          cd .. ;)
+
 whereami:whereami.c
 	$(RM) $@
-	$(CC) -o whereami whereami.c parser.o parser_int.o $(INFLAGS) $(LFLAGS) $(LLIBS) 
+	$(CC) -o whereami whereami.c parser.o parser_int.o $(INFLAGS) $(LFLAGS) $(LLIBS)
 
 3dSegment:3dSegment.c
 	$(RM) $@
@@ -1133,6 +1147,10 @@ AlphaSim:AlphaSim.o
 	$(RM) $@
 	$(CCOMP) -o 3dNwarpApply 3dNwarpApply.o $(LFLAGS) $(LLIBS)
 
+3dNwarpCalc:3dNwarpCalc.o
+	$(RM) $@
+	$(CCOMP) -o 3dNwarpCalc 3dNwarpCalc.o $(LFLAGS) $(LLIBS)
+
 3dRBFdset:3dRBFdset.o mri_rbfinterp.o
 	$(RM) $@
 	$(CCOMP) -o 3dRBFdset 3dRBFdset.o $(LFLAGS) $(LLIBS)
@@ -1153,9 +1171,13 @@ mri_rbfinterp.o:mri_rbfinterp.c
 	$(RM) $@
 	$(CCOMP) -c 3dAllineate.c $(INFLAGS)
 
-3dNwarpApply.o:3dNwarpApply.c
+3dNwarpApply.o:3dNwarpApply.c mri_nwarp.c
 	$(RM) $@
 	$(CCOMP) -c 3dNwarpApply.c $(INFLAGS)
+
+3dNwarpCalc.o:3dNwarpCalc.c mri_nwarp.c
+	$(RM) $@
+	$(CCOMP) -c 3dNwarpCalc.c $(INFLAGS)
 
 3dTcorrMap.o:3dTcorrMap.c
 	$(RM) $@
@@ -1250,9 +1272,9 @@ afni_version.o:afni_version.c
 	$(RM) $@
 	$(CC) -c afni_version.c $(INFLAGS) $(SHOWOFF)
 
-afni:$(AFOBJS) libcoxplot.a libmri.a libmrix.a libvolpack.a volpack.h coxplot.h niml.h
+afni:$(AFOBJS) libcoxplot.a libmri.a libmrix.a libvolpack.a libjpeg.a libXmHTML.a volpack.h coxplot.h niml.h
 	$(RM) $@
-	$(CC) -o afni $(AFOBJS) $(PLFLAGS) -lmrix -lcoxplot -lmri -lvolpack $(LLIBS) -lm -lc
+	$(CC) -o afni $(AFOBJS) $(PLFLAGS) -lmrix -lcoxplot -lmri -lvolpack libXmHTML.a libjpeg.a $(LLIBS) -lm -lc
 
 afni+:$(AFOBJS) libcoxplot.a libmri.a libmrix.a coxplot.h niml.h
 	$(RM) $@
@@ -1542,6 +1564,7 @@ afni_src.tgz:
 	$(CP) -pr gifsicledir qhulldir f2cdir mpeg_encodedir                     ./afni_src
 	$(CP) -pr 3DEdge netcdf-3.5.0 jpeg-6b niml Makefile_* nifti dlcompat     ./afni_src
 	$(CP) -pr SUMA svm matlab rickr faces poems gifti ni_test_? README.*     ./afni_src
+	$(CP) -pr XmHTML html                                                    ./afni_src
 	chmod -R ugo+rw                                                          ./afni_src
 	$(TAR) cf - afni_src | $(GZIP) -9v > afni_src.tgz
 	$(RM) -r ./afni_src
@@ -1573,9 +1596,11 @@ install: $(INSTALLDIR) $(INSTALL_PREREQ)
 	$(MV) $(PROGRAMS) $(INSTALLDIR)
 	$(CP) $(SCRIPTS)  $(INSTALLDIR)
 	$(CP) $(PY_DIR)/*.py  $(R_DIR)/*.R $(INSTALLDIR)
+	$(CP) html/??*.* $(INSTALLDIR)
 	if [ -f README.environment ]; then $(CP) README.*    $(INSTALLDIR); fi;
 	if [ -f AFNI.afnirc        ]; then $(CP) AFNI.afnirc $(INSTALLDIR); fi;
 	if [ -f AFNI.sumarc        ]; then $(CP) AFNI.sumarc $(INSTALLDIR); fi;
+	if [ -f AFNI_atlas_spaces.niml ]; then $(CP) AFNI_atlas_spaces.niml $(INSTALLDIR); fi;
 
 install_noplug: $(INSTALLDIR)
 	$(MV) $(PROGRAMS_NOPLUG) $(INSTALLDIR)
@@ -1837,7 +1862,8 @@ MRI_OBJS = mri_cfft.o mri_complex_arith.o mri_fft_complex.o mri_free.o    \
            mri_pcvector.o mri_fdrize.o mri_floatvec.o mri_sort.o               \
            mri_warpfield.o mri_dicom_stuff.o mri_check.o mri_allzero.o         \
            mri_subset.o mri_to_fvect.o mri_genalign_util.o rcmat.o dmat44.o    \
-           mri_rbfinterp.o mri_genARMA11.o mri_catvol.o mri_polyfit.o
+           mri_rbfinterp.o mri_genARMA11.o mri_catvol.o mri_polyfit.o          \
+           mri_nwarp.o
 
 THD_OBJS = thd_atr.o thd_dsetto1D.o thd_initalldir.o thd_reconpar.o \
            thd_auxdata.o thd_editdaxes.o thd_initdblk.o thd_sarr.o  \
@@ -2035,7 +2061,8 @@ laconte_plugins: plug_3dsvm.$(SO)
 
 install_plugins: $(INSTALLDIR)
 	$(MV) *.$(PLUGIN_SUFFIX) $(INSTALLDIR)
-	$(CP) faces/face_*.jpg faces/splash_*.jpg poems/poem_*.txt $(INSTALLDIR)
+	mkdir -p $(INSTALLDIR)/funstuff
+	$(CP) faces/face_*.jpg faces/splash_*.jpg poems/poem_*.txt $(INSTALLDIR)/funstuff
 	echo Plugins put in directory $(INSTALLDIR):
 	echo Do not forget to setenv AFNI_PLUGINPATH appropriately
 
@@ -2076,14 +2103,18 @@ plug_retroicor.$(SO):plug_retroicor.c retroicor.o
 plug_render.$(SO):plug_null.o
 	$(LD) $(PLUGIN_LFLAGS) -o plug_render.$(SO) plug_null.o
 
-### From Stephen Laconte
-plug_3dsvm.$(SO):svm/plug_3dsvm.c svm/svm_common.c svm/svm_learn.c svm/3dsvm_common.c svm/svm_hideo.c
-	(  cd svm;   \
-	   $(RM) $@ ;  \
-		$(PLUGIN_CC) -c plug_3dsvm.c 3dsvm_common.c svm_common.c svm_hideo.c $(ISFLAGS)  -I.. ;  \
-		$(LD) $(PLUGIN_LFLAGS) -o plug_3dsvm.$(SO) plug_3dsvm.o 3dsvm_common.o svm_common.o svm_hideo.o -L. -L.. ; \
-	   cp plug_3dsvm.$(SO) ..  ;  \
-	   cd .. ;  )
+### From Stephen LaConte
+plug_3dsvm.$(SO):
+	( cd svm;   \
+          $(RM) ../$@ ; \
+	  mkdir svml ; cd svml ; cp ../patch/orig/* . ; \
+          patch -p1 < ../patch/orig.patch ; mv * ../. ; cd .. ; rmdir svml ; \
+          $(PLUGIN_CC) -c plug_3dsvm.c 3dsvm_common.c svm_common.c  svm_learn.c \
+            svm_hideo.c $(ISFLAGS)  -I.. ; \
+	  $(LD) $(PLUGIN_LFLAGS) -o plug_3dsvm.$(SO) plug_3dsvm.o 3dsvm_common.o \
+            svm_common.o svm_learn.o svm_hideo.o -L. -L.. ; \
+	  $(MV) plug_3dsvm.so ../. ; \
+	  cd .. ;  )
 
 # Stuff for plugins on CYGWIN:
 # Each plugin must be listed here and have 2 corresponding lines in fixed_plugins.h
@@ -2362,13 +2393,22 @@ mpegtoppm:
 #######
 # 11 Sep 2002 - for fun
 
-djpeg: cjpeg
+djpeg:cjpeg
+
+libjpeg.a:cjpeg
 
 cjpeg:
-	( cd jpeg-6b ; $(RM) Makefile jconfig.h ;         \
-          chmod ugo+x ./configure ; ./configure ;    \
-          $(MAKE) ; $(MV) cjpeg djpeg .. ;           \
-          $(MAKE) clean ; $(RM) Makefile jconfig.h )
+	( cd jpeg-6b ; $(RM) Makefile jconfig.h ;                    \
+          chmod ugo+x ./configure ; ./configure 'CC=$(CCMIN)' ; \
+          $(MAKE) ; $(MV) cjpeg djpeg libjpeg.a .. ;            \
+          $(MAKE) clean ; $(RM) Makefile )
+
+libXmHTML.a:
+	( cd XmHTML ; make lib 'CC=$(CC)' 'II=$(IFLAGS)' ; \
+		$(MV) lib/libXmHTML.a .. ; make clean   )
+
+thd_xwebber.o:thd_xwebber.c
+	$(CC) -c thd_xwebber.c -I./XmHTML/include $(INFLAGS)
 
 #######
 # FFTW - not used
@@ -2425,7 +2465,7 @@ ccalc:parser.o parser_int.o ccalc.o
 	$(RM) $@
 	$(CC) -o 1deval 1deval.o parser.o parser_int.o $(LFLAGS) $(LLIBS)
 
-1dmatcalc:parser.o parser_int.o 1dmatcalc.o
+1dmatcalc:parser.o parser_int.o 1dmatcalc.o mri_matrix.o
 	$(RM) $@
 	$(CC) -o 1dmatcalc 1dmatcalc.o parser.o parser_int.o $(LFLAGS) $(LLIBS)
 

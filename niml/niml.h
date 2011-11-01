@@ -637,6 +637,8 @@ extern int set_user_np(int v);
 extern int get_user_np(void);
 extern char *get_port_numbered(int port);
 extern char *get_np_help();
+extern int set_user_pif(char *s);
+extern char * get_user_pif(void);
 extern int set_user_np_block(int v);
 extern int get_max_port_block(void);
 extern int get_num_ports(void);
@@ -699,6 +701,7 @@ extern void   NI_skip_procins( int ) ;                         /* 03 Jun 2005 */
 extern int NI_write_element_tofile( char *, void *, int ) ;    /* 07 Mar 2007 */
 extern void * NI_read_element_fromfile( char * ) ;             /* 12 Mar 2007 */
 extern void * NI_read_element_fromstring( char *nstr );     /* 26 Feb 2010 ZSS*/
+extern char * NI_write_element_tostring( NI_element *nel ); /* Oct 2011 ZSS */
 
 #define NI_SWAP_MASK  (1<<0)
 #define NI_LTEND_MASK (1<<1)

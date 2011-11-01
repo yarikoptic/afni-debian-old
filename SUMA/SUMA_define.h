@@ -315,8 +315,9 @@ typedef enum { SW_View,
                                                       with SW_N_View */
 typedef enum { SW_Help, 
                SW_HelpUsage,  SW_HelpMessageLog, SW_HelpSep1, 
-               SW_HelpSUMAGlobal, SW_HelpViewerStruct, SW_HelpSurfaceStruct, SW_HelpSep2, 
-               SW_HelpIONotify, SW_HelpMemTrace,  
+               SW_HelpSUMAGlobal, SW_HelpViewerStruct, SW_HelpSurfaceStruct, 
+               SW_HelpSep2, SW_HelpIONotify, SW_HelpEchoKeyPress, 
+               SW_HelpMemTrace,  
                SW_N_Help } SUMA_WIDGET_INDEX_HELP; /*!< Indices to widgets under Help menu.
                                                          Make sure you begin with SW_View and end
                                                          with SW_N_View */                                                   
@@ -2681,6 +2682,8 @@ typedef struct {
                      (allows the use of confusing or kludge options) */
    SUMA_Boolean InOut_Notify; /*!< prints to STDERR a notice when a function 
                                  is entered or exited */ 
+   SUMA_Boolean Echo_KeyPress; /*!< prints to STDERR a notice when a function 
+                                 is entered or exited */ 
    int InOut_Level; /*!< level of nested function calls */
    int PointerSize; /*!< size of void * */
    int N_OpenSV; /*!< Number of open (visible) surface viewers.
@@ -2854,6 +2857,7 @@ typedef struct {
    int full_list;
    THD_3dim_dataset *mset;
    int exists;
+   int coorder_xyz;
 }  SUMA_FORM_AFNI_DSET_STRUCT;
  
 extern SUMA_SurfaceViewer *SUMAg_cSV; /*!< Global pointer to current Surface Viewer structure*/

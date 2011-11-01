@@ -70,7 +70,7 @@ typedef struct {
       int disable_done ;      /* 21 Aug 2008 [rickr] */
 
       int yes_niml ;          /* 28 Feb 2002 */
-               
+
                /* port_niml no longer in use. ZSS June 2011 */
                /* int port_niml ;         10 Dec 2002 */
 
@@ -368,7 +368,8 @@ typedef struct {
       Widget crosshair_frame , crosshair_rowcol , crosshair_label ;
 
       Widget crosshair_menu, crosshair_dicom_pb, crosshair_spm_pb ; /* 12 Mar 2004 */
-      Widget crosshair_ijk_pb ;   /* 04 Oct 2010 */
+      Widget crosshair_ijk_pb ;                                     /* 04 Oct 2010 */
+      Widget crosshair_jtxyz_pb , crosshair_jtijk_pb ;              /* 01 Aug 2011 */
 
       Widget        xhair_rowcol ;
       MCW_arrowval *crosshair_av ;
@@ -424,6 +425,8 @@ typedef struct {
   Widget top_menu , histrange_pb ;
   MCW_bbox *histsqrt_bbox ;
 
+  MCW_bbox *usemask_bbox ;  /* zero-th row of controls [01 Aug 2011] */
+
   MCW_arrowval *cmode_av ;  /* first row of controls */
   Widget clust3d_pb, savetable_pb, index_lab, prefix_tf, done_pb ;
   Widget savemask_pb ;      /* 01 May 2008 */
@@ -434,6 +437,7 @@ typedef struct {
 
   Widget dset_lab ;         /* label after second row */
 
+  Widget clusters_lab ;     /* label at top of clusters table */
   int nrow, nall, is_open ;
   Widget *clu_rc ;          /* rows of widgets */
   Widget *clu_lab ;
@@ -881,6 +885,7 @@ typedef struct {
 
       Widget picture ;
       int    picture_index ;
+      Widget tips_pb ;                    /* 27 Jun 2011 */
 
       Widget file_dialog , file_sbox ;
       XtCallbackProc file_cb ;
@@ -899,6 +904,17 @@ typedef struct {
 
       int butx , buty ;        /* 17 May 2005 */
 } AFNI_widget_set ;
+
+#define TIPS_PLUS_SHIFT   2
+#define TIPS_MINUS_SHIFT -60
+#define TIPS_TOTAL_SHIFT -90
+
+#define SHIFT_TIPS(iq,xx)                                                 \
+ do{ if( (iq)->vwid->tips_pb != NULL ){                                   \
+       XtVaSetValues( (iq)->vwid->tips_pb, XmNleftOffset, (xx), NULL ) ;  \
+       XMapRaised( XtDisplay( (iq)->vwid->tips_pb) ,                      \
+                    XtWindow( (iq)->vwid->tips_pb)  ) ;                   \
+     } } while(0)
 
 /** picture controls **/
 
@@ -1058,6 +1074,7 @@ typedef struct Three_D_View {
       VEDIT_settings vedset ;                   /* 05 Sep 2006 */
       char *vedlabel ;                          /* 27 Mar 2007 */
       int   vedskip ;
+      int   vednomask ;                         /* 01 Aug 2011 */
 
       ICOR_setup   *iset ;                       /* 05 May 2009 */
       ICALC_setup  *icalc_setup ;                /* 18 Sep 2009 */
@@ -1092,6 +1109,7 @@ typedef struct Three_D_View {
      (iq)->vwid->func->clu_tabNN1 = NULL ;                                 \
       (iq)->vwid->func->clu_tabNN2 = NULL ;                                \
        (iq)->vwid->func->clu_tabNN3 = NULL ;                               \
+     (iq)->vednomask = 0 ;                                                 \
      if( (iq)->vedset.code ) redis++ ;                                     \
      (iq)->vedset.flags = (iq)->vedset.code = 0; AFNI_set_thr_pval((iq));  \
      if( (iq)->vinfo->func_visible && redis ) AFNI_redisplay_func((iq)) ;  \
@@ -1484,6 +1502,7 @@ extern void AFNI_quit_CB           ( Widget wcall , XtPointer cd , XtPointer cbs
 extern void AFNI_quit_timeout_CB   ( XtPointer , XtIntervalId * ) ;
 extern void AFNI_startup_timeout_CB( XtPointer , XtIntervalId * ) ;
 extern void AFNI_vcheck_flasher    ( Three_D_View * ) ;
+extern void AFNI_tips_CB           ( Widget , XtPointer , XtPointer ) ;
 
 extern void AFNI_startup_layout_CB  ( XtPointer, XtIntervalId * ) ;    /* 23 Sep 2000 */
 extern void AFNI_save_layout_CB     ( Widget, XtPointer, XtPointer ) ;
@@ -1585,6 +1604,7 @@ extern void AFNI_see_func_CB          ( Widget , XtPointer , XtPointer ) ;
 extern void AFNI_marks_edits_CB       ( Widget , XtPointer , XtPointer ) ;
 extern void AFNI_marks_transform_CB   ( Widget , XtPointer , XtPointer ) ;
 extern void AFNI_imag_pop_CB          ( Widget , XtPointer , XtPointer ) ;
+extern void AFNI_crosshair_pop_CB     ( Widget , XtPointer , XtPointer ) ; /* 01 Aug 2011 */
 extern void AFNI_define_CB            ( Widget , XtPointer , XtPointer ) ;
 extern void AFNI_underlay_CB          ( Widget , XtPointer , XtPointer ) ;
 extern void AFNI_choose_dataset_CB    ( Widget , XtPointer , XtPointer ) ;
@@ -1955,6 +1975,8 @@ extern void AFNI_process_timeindex  ( Three_D_View * ) ; /* 29 Jan 2003 */
 extern void AFNI_do_bkgd_lab( Three_D_View * ) ;         /* 08 Mar 2002 */
 
 extern MRI_IMAGE * AFNI_ttatlas_overlay(Three_D_View *, int,int,int,int, MRI_IMAGE *) ;
+extern void reset_atlas_ovdset(void);
+extern THD_3dim_dataset *current_atlas_ovdset(void);
 
 extern void AFNI_3d_linefill( int  ,int * ,int * ,int * ,
                               int *,int **,int **,int ** ) ;
@@ -1981,7 +2003,7 @@ extern void TTRR_popup( Three_D_View * ) ;  /* 12 Jul 2001 */
 typedef struct {
    int num , meth , hemi ;
    byte *ttbrik ;
-   byte *ttval  ;
+   short *ttval  ;
    byte *ttovc  ;
 } TTRR_params ;
 

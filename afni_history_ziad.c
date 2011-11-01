@@ -65,14 +65,120 @@
 
 afni_history_struct ziad_history[] = {
 /*=====BELOW THIS LINE=====*/
+ { 14, OCT , 2011 , ZSS , "afni-general" , MINOR , TYPE_GENERAL,
+   "Improvements of atlas handling in whereami and afni",
+   "1- In addition to loading atlas specs from environment variable\n"
+   "AFNI_SUPP_ATLAS, AFNI will automatically search for a file\n"
+   "named  SessionAtlases.niml which is created with @MakeLabelTable.\n"
+   "2- AFNI will check if a viewed dataset is an atlas and will\n"
+   "automatically add it to the atlas list. It will also show the label at \n"
+   "the cross-hair location.\n"
+   "New functions of interest:\n"
+   "  get_Atlas_ByDsetID, is_Dset_Atlasy, \n"
+   "  label_table_to_atlas_point_list, is_identity_xform_chain\n"
+  } ,
+
+ { 13, OCT , 2011 , ZSS , "whereami" , MINOR , TYPE_BUG_FIX,
+   "-omask failed if atlas was stored in float type.",
+   NULL
+  } ,
+
+ { 13, OCT , 2011 , ZSS , "3drefit" , MINOR , TYPE_BUG_FIX,
+   "Added support for -atrstring operation on NIFTI datasets ",
+   "This required making changes to THD_init_diskptr_names functions\n"
+   "and a few more of its colleagues."
+  } ,
+
+ { 11, OCT , 2011 , ZSS , "@auto_tlrc" , MINOR , TYPE_NEW_OPT,
+   "Added support for NIFTI datasets",
+   NULL
+  } ,
+
+ { 11, OCT , 2011 , ZSS , "3dinfo" , MINOR , TYPE_NEW_OPT,
+   "Added new options for extracting field values in scripts",
+   NULL
+  } ,
+
+ { 4, OCT , 2011 , ZSS , "CreateIcosahedron" , MICRO , TYPE_NEW_OPT,
+   "Added -min_nodes option",
+   NULL
+  } ,
+
+ { 4, OCT , 2011 , ZSS , "GroupAna" , MINOR , TYPE_NEW_OPT,
+   "Added support for writing NIML files as output",
+   "This also required writing a few new matlab functions such as\n"
+   " BrikInfo_2_niml_writesimple."
+ } ,
+
+ { 1, AUG , 2011 , ZSS , "Draw Dataset" , MINOR , TYPE_MODIFY,
+   "Changed the gap selection to arrows to allow for much larger gaps",
+   NULL
+  } ,
+
+ { 1, AUG , 2011 , ZSS , "whereami" , MINOR , TYPE_BUG_FIX,
+   "Whereami's symbolic notation failed with float valued atlases",
+   "This is now fixed. Code also checks for scale factors.\n"
+   "There was another bug waiting to happen with:\n"
+   "!is_Atlas_Named(atlas, \"CA_N27_PM\"), which is now:\n"
+   "!is_probabilistic_atlas(atlas)\n"
+  } ,
+
+ { 22, JUL , 2011 , ZSS , "afni" , MICRO , TYPE_NEW_ENV,
+   "Added AFNI_TIME_LOCK to turn on AFNI's Time Lock by default",
+   NULL
+  } ,
+
+ { 20, JUL , 2011 , ZSS , "1dcat" , MICRO , TYPE_NEW_OPT,
+   "added -sel option to 1dcat",
+   "with -sel one can apply the same selection of columns and rows\n"
+   "to all files on the command line, allowing the use of wildcards\n"
+   "when specifying input 1D files.\n"
+  } ,
+
+ { 24, JUN , 2011 , ZSS , "afni-general" , MICRO , TYPE_NEW_OPT,
+   "added global option -pif which is used to flag certain commands.",
+   "-pif PROCESS_ID_FLAG is used to flag a particular AFNI command\n"
+   "so that you can identify from the shell that command's process id\n"
+   "by grepping for PROCESS_ID_FLAG on the output of 'ps -a'.\n"
+  } ,
+
+ { 20, JUN , 2011 , ZSS , "@ROI_Corr_Mat" , MICRO , TYPE_BUG_FIX,
+   "added support for +tlrc input, more debugging messages, -echo option.",
+   NULL
+  } ,
+
+ { 20, JUN , 2011 , ZSS , "3drename" , MICRO , TYPE_NEW_OPT,
+   "added support for -overwrite",
+   NULL
+  } ,
+
+ { 16, JUN , 2011 , ZSS , "3dSurfMask" , MAJOR , TYPE_NEW_OPT,
+   "Major improvements for mask creation and voxel distance computations",
+   "Option -fill_method SLOW produces more accurate masks for voxels\n"
+   "inside the closed surface. In addition, the program outputs a dataset\n"
+   "with the shortest distance of each voxel to the surface.\n"
+   "See examples under 3dSurfMask -help."
+  } ,
+ 
+ { 16, JUN , 2011 , ZSS , "SurfPatch" , MINOR , TYPE_NEW_OPT,
+   "-flip_orientation allows for reversing triangle orientation.",
+   "See new examples under SurfPatch -help"
+ } ,
+
+ { 16, JUN , 2011 , ZSS , "SurfPatch" , MINOR , TYPE_BUG_FIX,
+   "No longer complains about not finding seed in cases where it should.",
+   NULL
+  } ,
+
  { 8, JUN , 2011 , ZSS , "@FSlabel2dset" , MINOR , TYPE_NEW_PROG,
    "Script to change FreeSurfer ascii label file to SUMA dset",
    NULL
   } ,
 
- { 8, JUN , 2011 , ZSS , "afni-general" , MINOR , TYPE_NEW_OPT,
+ { 8, JUN , 2011 , ZSS , "afni-general" , MAJOR , TYPE_NEW_OPT,
    "Added -npb and modified title bar to reflect bloc of ports",
-   "See afni's help for -npb option."
+   "You can have multiple instances of programs talking to each other.\n"
+   "See afni's help for details on the -npb option."
   } ,
 
  { 7, JUN , 2011 , ZSS , "afni" , MINOR , TYPE_NEW_OPT,
