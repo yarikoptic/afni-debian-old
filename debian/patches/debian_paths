@@ -5,7 +5,7 @@ Author: Michael Hanke <michael.hanke@gmail.com>
 Last-Update: 2010-09-29
 --- a/afni_func.c
 +++ b/afni_func.c
-@@ -6437,6 +6437,8 @@
+@@ -6532,6 +6532,8 @@
     /*----- get path to search -----*/
  
                         epath = getenv("AFNI_PLUGINPATH") ;
@@ -27,7 +27,7 @@ Last-Update: 2010-09-29
     if( epath == NULL ) epath = getenv("HOME") ;
 --- a/thd_ttatlas_query.c
 +++ b/thd_ttatlas_query.c
-@@ -553,6 +553,8 @@
+@@ -556,6 +556,8 @@
     if( !first ) return adnam ;
     first = 0 ;
                         epath = getenv("AFNI_PLUGINPATH") ;
@@ -36,7 +36,7 @@ Last-Update: 2010-09-29
     if( epath == NULL ) epath = getenv("AFNI_PLUGIN_PATH") ;
     if( epath == NULL ) epath = getenv("PATH") ;
     if( epath == NULL ) return NULL ;  /* this is bad */
-@@ -635,6 +637,8 @@
+@@ -638,6 +640,8 @@
        /*----- get path to search -----*/
  
                            epath = getenv("AFNI_PLUGINPATH") ;
@@ -47,7 +47,7 @@ Last-Update: 2010-09-29
        if( epath == NULL ) RETURN(dset) ;
 --- a/afni.c
 +++ b/afni.c
-@@ -4614,12 +4614,31 @@
+@@ -4689,12 +4689,31 @@
        /*-- 20 Dec 2001: Try to read a "global" session --*/
        /*-- 11 May 2002: Move read global session up here --*/
  

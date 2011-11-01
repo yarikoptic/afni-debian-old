@@ -1215,7 +1215,7 @@ Last-Update: 2010-09-21
 +  ARCHIVE DESTINATION ${AFNI_INSTALL_LIB_DIR} COMPONENT Development)
 --- a/rickr/Dimon.c
 +++ b/rickr/Dimon.c
-@@ -119,6 +119,7 @@
+@@ -124,6 +124,7 @@
  #define IFM_PROG_NAME   "Dimon"
  
  #include "Imon.h"
@@ -1223,7 +1223,7 @@ Last-Update: 2010-09-21
  #include "mrilib.h"
  #include "realtime.h"
  
-@@ -129,7 +130,7 @@
+@@ -134,7 +135,7 @@
  #include "l_mcw_glob.h"
  #include "thd_iochan.h"
  #include "mri_image.h"

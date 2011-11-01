@@ -11,7 +11,7 @@ Author: Judd Storrs <storrsjm@email.uc.edu>, Michael Hanke <michael.hanke@gmail.
 Last-Update: 2009-10-21
 --- a/@auto_tlrc
 +++ b/@auto_tlrc
-@@ -304,6 +304,12 @@
+@@ -319,6 +319,12 @@
           set ss_opt = "$ss_opt -no_avoid_eyes";      
           set donext = 0      
        endif
@@ -24,7 +24,7 @@ Last-Update: 2009-10-21
        if ($donext == 1) then
           echo "Error: Option or parameter '$argv[$cnt]' not understood"
           goto END
-@@ -1222,6 +1228,9 @@
+@@ -1334,6 +1340,9 @@
  echo "      -no_avoid_eyes : An option that gets passed to 3dSkullStrip."
  echo "                       Use it when parts of the frontal lobes get clipped"
  echo "                       See 3dSkullStrip -help for more details."
@@ -47,7 +47,7 @@ Last-Update: 2009-10-21
  
  DOCS     = ../doc/ps/*.ps ../doc/README/README*                    \
             rickr/AFNI.changes.rickr rhammett/AFNI.changes.rhammett \
-@@ -77,7 +77,7 @@
+@@ -78,7 +78,7 @@
             3dDeconvolve_f 3dAnhist 3dAFNIto3D 3dUniformize 3dWarp nicat         \
             3dSpatNorm fftest serial_helper 3dDTeig 3dDWItoDT 3dWarpDrive        \
             nifti_tool 3dAllineate nifti1_test whereami plugout_drive            \
@@ -56,7 +56,7 @@ Last-Update: 2009-10-21
             DTIStudioFibertoSegments Dimon 3dLocalstat 3danisosmooth 3dmaxima    \
             3dTwotoComplex 3dInvFMRI 3dmatcalc 3dAcost 3dLocalBistat 3dFWHMx     \
             3dBlurToFWHM 1dSEM 3dDFT 3dSynthesize 1dMarry 3dEmpty 3dsvm          \
-@@ -619,9 +619,10 @@
+@@ -629,9 +629,10 @@
  	$(RM) $@
  	$(CC) -o 3dvolreg 3dvolreg.o $(LFLAGS) $(LLIBS)
  
@@ -70,7 +70,7 @@ Last-Update: 2009-10-21
  
  from3d:from3d.o
  	$(RM) $@
-@@ -720,10 +721,11 @@
+@@ -730,10 +731,11 @@
  	$(RM) $@
  	$(CC) -o 3dttest++ 3dttest++.o $(LFLAGS) $(LLIBS)
  
@@ -84,18 +84,18 @@ Last-Update: 2009-10-21
 +#	$(CC) -o 3dedge3 3dedge3.o -I3DEdge/src            \
 +#             $(LFLAGS) -l3DEdge $(LLIBS)
  
- ### From Stephen Laconte
- 3dsvm:svm/svm_common.c svm/svm_learn.c svm/3dsvm_common.c svm/svm_hideo.c svm/3dsvm.c
-@@ -1540,7 +1542,7 @@
+ ### From Stephen LaConte
+ 3dsvm:
+@@ -1562,7 +1564,7 @@
  	$(CP) -pr coxplot volpack moveup moveAFNI* eispack avovk                 ./afni_src
  	$(CP) -pr $(SCRIPTS) $(PY_DIR) $(R_DIR)                                  ./afni_src
  	$(CP) -pr gifsicledir qhulldir f2cdir mpeg_encodedir                     ./afni_src
 -	$(CP) -pr 3DEdge netcdf-3.5.0 jpeg-6b niml Makefile_* nifti dlcompat     ./afni_src
 +	$(CP) -pr        netcdf-3.5.0 jpeg-6b niml Makefile_* nifti dlcompat     ./afni_src
  	$(CP) -pr SUMA svm matlab rickr faces poems gifti ni_test_? README.*     ./afni_src
+ 	$(CP) -pr XmHTML html                                                    ./afni_src
  	chmod -R ugo+rw                                                          ./afni_src
- 	$(TAR) cf - afni_src | $(GZIP) -9v > afni_src.tgz
-@@ -2291,8 +2293,9 @@
+@@ -2322,8 +2324,9 @@
  #######
  # 3DEdge library files - make them and move them up here
  
@@ -206,7 +206,7 @@ Last-Update: 2009-10-21
  
  static int InteractiveQuit;
  
-@@ -3980,6 +3982,7 @@
+@@ -4198,6 +4200,7 @@
     \param poutsetp (THD_3dim_dataset **)If not null, it will point to a dataset that contains
                                          the edges.
  */
@@ -214,14 +214,14 @@ Last-Update: 2009-10-21
  SUMA_Boolean SUMA_3dedge3(THD_3dim_dataset *inset, float *emask, THD_3dim_dataset **poutsetp)
  {
     static char FuncName[]={"SUMA_3dedge3"};
-@@ -4200,3 +4203,4 @@
+@@ -4418,3 +4421,4 @@
        
     SUMA_RETURN(YUP);
  }
 +#endif /* Disabled for Debian package -- license problem with 3DEdge */
 --- a/SUMA/SUMA_BrainWrap.h
 +++ b/SUMA/SUMA_BrainWrap.h
-@@ -35,7 +35,9 @@
+@@ -39,7 +39,9 @@
  int SUMA_DidUserQuit(void);
  EDIT_options *SUMA_BlankAfniEditOptions(void);
  void *SUMA_Push_Nodes_To_Hull(SUMA_SurfaceObject *SO, SUMA_GENERIC_PROG_OPTIONS_STRUCT *Opt, SUMA_COMM_STRUCT *cs, int N_itermax);
