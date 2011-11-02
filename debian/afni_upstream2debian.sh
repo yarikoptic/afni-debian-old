@@ -118,6 +118,9 @@ rm -f ${spath}/f2c.h
 # gifsicle
 rm -rf ${spath}/gifsicle*
 
+# XmHTML
+rm -rf ${spath}/XmHTML
+
 echo "Remove problematic code"
 # non-commercial license (README also says non-distribution)
 rm -rf ${spath}/3DEdge
