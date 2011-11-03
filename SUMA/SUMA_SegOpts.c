@@ -246,7 +246,6 @@ SEG_OPTS *SegOpt_Struct()
    Opt->DO_f = FALSE;
    Opt->DO_c = FALSE;
    Opt->DO_x = FALSE;
-   
    Opt->group_classes = NULL;
    Opt->group_keys = NULL;
    
@@ -284,6 +283,8 @@ SEG_OPTS *SegOpt_Struct()
    Opt->pstCgALLname = NULL;
    Opt->Bsetname = NULL;
    Opt->Split = NULL;
+   
+   Opt->blur_meth = SEG_BIM;
    RETURN(Opt);
 }
 
@@ -722,6 +723,21 @@ SEG_OPTS *Seg_ParseInput (SEG_OPTS *Opt, char *argv[], int argc)
          brk = 1;
 		}
       
+      if (!brk && (strcmp(argv[kar], "-blur_meth") == 0)) {
+         kar ++;
+			if (kar >= argc)  {
+		  		fprintf (stderr, "need argument after -blur_meth \n");
+				exit (1);
+			}
+			if (!strcmp(argv[kar],"BIM")) Opt->blur_meth = SEG_BIM;
+         else if (!strncmp(argv[kar],"LS",2)) Opt->blur_meth = SEG_LSB;
+         else {
+            SUMA_S_Errv("-blur_meth %s not valid\n", argv[kar]);
+            exit(1);
+         }
+         brk = 1;
+		}
+            
       if (!brk && (strcmp(argv[kar], "-prefix") == 0)) {
          kar ++;
 			if (kar >= argc)  {
@@ -1035,6 +1051,7 @@ byte *MaskSetup(SEG_OPTS *Opt, THD_3dim_dataset *aset,
       if( Opt->debug ) 
          INFO_message("%d voxels in the entire dataset (no mask)\n",
                      DSET_NVOX(aset)) ;
+      *mcount = DSET_NVOX(aset);
    } else {
       if( DSET_NVOX(mset) != DSET_NVOX(aset) )
         ERROR_exit("Input and mask datasets are not same dimensions!\n");
@@ -1100,7 +1117,11 @@ void *Seg_NI_read_file(char *fname) {
 int SUMA_ShortizeDset(THD_3dim_dataset **dsetp, float thisfac) {
    static char FuncName[]={"SUMA_ShortizeDset"};
    char sprefix[THD_MAX_PREFIX+10];
-   int i;
+   int i, j;
+   byte *bb=NULL;
+   short *sb=NULL;
+   float bbf=0.0;
+   
    THD_3dim_dataset *cpset=NULL, *dset=*dsetp;
    
    SUMA_ENTRY;
@@ -1109,11 +1130,30 @@ int SUMA_ShortizeDset(THD_3dim_dataset **dsetp, float thisfac) {
       SUMA_S_Err("NULL *dsetp at input!");
       SUMA_RETURN(0);
    }
+   
    sprintf(sprefix, "%s.s", dset->dblk->diskptr->prefix);
    NEW_SHORTY(dset, DSET_NVALS(dset), "ss.cp", cpset);      
    for (i=0; i<DSET_NVALS(dset); ++i) {
-      EDIT_substscale_brick(cpset, i, DSET_BRICK_TYPE(dset,i), 
+      if (DSET_BRICK_TYPE(dset,i) == MRI_byte) {
+         bb = (byte *)DSET_ARRAY(dset,i);
+         sb = (short *)DSET_ARRAY(cpset,i);
+         if (thisfac <= 0.0) {
+            for (j=0; j<DSET_NVOX(dset); ++j) {
+               sb[j] = (short)bb[j];
+            }
+            thisfac = DSET_BRICK_FACTOR(dset,i);
+         } else {
+            bbf = DSET_BRICK_FACTOR(dset,i); if (bbf == 0.0f) bbf = 1.0;
+            bbf = bbf/thisfac;
+            for (j=0; j<DSET_NVOX(dset); ++j) {
+               sb[j] = SHORTIZE((((float)bb[j])*bbf));
+            }
+         }
+         EDIT_BRICK_FACTOR( cpset,i,thisfac ) ;
+      } else {
+         EDIT_substscale_brick(cpset, i, DSET_BRICK_TYPE(dset,i), 
                             DSET_ARRAY(dset,i), MRI_short, thisfac);
+      }
    }
    DSET_delete(dset); dset = NULL; 
    *dsetp=cpset;

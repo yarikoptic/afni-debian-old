@@ -131,7 +131,8 @@ void display_help_menu()
     "                     baseline model  (pnum = 0, 1, etc.)               \n"
     "                     (default: pnum = 1). Use -1 for no baseline model.\n"
     "[-fim_thr p]       p = fim internal mask threshold value (0 <= p <= 1) \n"
-    "                     (default: p = 0.0999)                             \n"
+    "                     to get rid of low intensity voxels.               \n"
+    "                     (default: p = 0.0999), set p = 0.0 for no masking.\n"
     "[-cdisp cval]      Write (to screen) results for those voxels          \n"
     "                     whose correlation stat. > cval  (0 <= cval <= 1)  \n"
     "                     (default: disabled)                               \n"
@@ -154,7 +155,7 @@ void display_help_menu()
     "                   the string 'param' may be any one of the following: \n"
     "                                                                       \n"
     "%12s       L.S. fit coefficient for Best Ideal                \n"
-    "%12s       Index number for Best Ideal                        \n"
+    "%12s       Index number for Best Ideal (count starts at 1)    \n"
     "%12s       P-P amplitude of signal response / Baseline        \n"
     "%12s       Average of baseline model response                 \n"
     "%12s       Best Ideal product-moment correlation coefficient  \n"
@@ -1152,7 +1153,7 @@ void calculate_results
 {
   float * ts_array = NULL;    /* array of measured data for one voxel */
   float mask_val[1];          /* value of mask at current voxel */
-  float fthr;                 /* internal mask threshold level */
+  float fthr=0.0;             /* internal mask threshold level */
 
   int q;                      /* number of parameters in the baseline model */
   int p;                      /* number of parameters in the baseline model 
@@ -1240,7 +1241,7 @@ void calculate_results
                   "exceeds the hard coded limit of %d\n"
                   "Contact authors if you need the limit extended.\n",
                   MAX_FILES);
-   exit(0);     
+   exit(1);     
   }
 
   /*----- Allocate memory -----*/
@@ -1367,7 +1368,8 @@ void attach_sub_brick
   int nsam, 
   int nfit, 
   int nort,                 /* degrees of freedom */
-  short ** bar              /* bar[ib] points to data for sub-brick #ib */  
+  short ** bar,             /* bar[ib] points to data for sub-brick #ib */
+  int do_scale  
 )
 
 {
@@ -1378,15 +1380,20 @@ void attach_sub_brick
   /*----- allocate memory for output sub-brick -----*/
   bar[ibrick]  = (short *) malloc (sizeof(short) * nxyz);
   MTEST (bar[ibrick]);
-  factor = EDIT_coerce_autoscale_new (nxyz, MRI_float, volume,
-				      MRI_short, bar[ibrick]);
-  
-  if (factor < EPSILON)  factor = 0.0;
-  else factor = 1.0 / factor;
+  if (do_scale) { 
+     factor = EDIT_coerce_autoscale_new (nxyz, MRI_float, volume,
+				         MRI_short, bar[ibrick]);
 
-  EDIT_misfit_report( DSET_FILECODE(new_dset) , ibrick ,
-                      nxyz , factor , bar[ibrick] , volume ) ;
+     if (factor < EPSILON)  factor = 0.0;
+     else factor = 1.0 / factor;
 
+     EDIT_misfit_report( DSET_FILECODE(new_dset) , ibrick ,
+                         nxyz , factor , bar[ibrick] , volume ) ;
+   } else { /* ZSS Nov 2011 */
+      EDIT_coerce_type(nxyz, MRI_float, volume,
+				         MRI_short, bar[ibrick]);
+      factor = 0.0;
+   }
   /*----- edit the sub-brick -----*/
   EDIT_BRICK_LABEL (new_dset, ibrick, brick_label);
   EDIT_BRICK_FACTOR (new_dset, ibrick, factor);
@@ -1557,7 +1564,8 @@ void write_bucket_data
 
       volume = fim_params_vol[ip];		  
       attach_sub_brick (new_dset, ibrick, volume, nxyz, 
-			brick_type, brick_label, nsam, nfit, nort, bar);  
+			brick_type, brick_label, nsam, nfit, nort, bar,
+         ip == FIM_BestIndex ? 0 : 1);  
 
       ibrick++;
     }
