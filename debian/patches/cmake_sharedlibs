@@ -746,11 +746,11 @@ Last-Update: 2010-09-21
 +
 +# script being programs on their own
 +SET(SCRIPTS
-+  3dICA.R 3dICC.R 3dLME.R ExamineXmat.R smooth.R)
++  1dRplot.R 3dICA.R 3dICC.R 3dICC_REML.R 3dLME.R ExamineXmat.R smooth.R)
 +
 +# everything else that is not meant to be a standalone script
 +SET(MODULES
-+  1dGC.R 1dSEMr.R 3dGC.R 3dMEMA.R AFNIio.R 1dSVAR.R)
++  1dGC.R 1dSEMr.R 1dSVAR.R 3dGC.R 3dKS.R 3dMEMA.R 3dSignatures.R AFNIio.R AFNIplot.R Level2.R Signatures.R)
 +
 +INSTALL(FILES ${MODULES}
 +  DESTINATION ${AFNI_INSTALL_SCRIPT_DIR} COMPONENT Runtime
@@ -1172,22 +1172,26 @@ Last-Update: 2010-09-21
 +  DESTINATION ${AFNI_INSTALL_POEMS_DIR} COMPONENT Runtime)
 --- /dev/null
 +++ b/python_scripts/CMakeLists.txt
-@@ -0,0 +1,21 @@
+@@ -0,0 +1,25 @@
 +PROJECT(PYTHON_SCRIPTS)
 +
 +# script being programs on their own
 +SET(SCRIPTS
 +  1d_tool.py afni_proc.py align_epi_anat.py @DoPerRoi.py eg_main_chrono.py
-+  gen_epi_review.py gui_xmat.py lpc_align.py make_random_timing.py
-+  make_stim_times.py neuro_deconvolve.py python_module_test.py
-+  realtime_receiver.py timing_tool.py xmat_tool.py)
++  gen_epi_review.py gen_group_command.py gen_ss_review_scripts.py gui_xmat.py
++  lpc_align.py make_pq_script.py make_random_timing.py make_stim_times.py
++  neuro_deconvolve.py python_module_test.py realtime_receiver.py
++  slow_surf_clustsim.py timing_tool.py uber_align_test.py uber_proc.py
++  uber_skel.py uber_subject.py uber_ttest.py xmat_tool.py)
 +
 +# everything else that is not meant to be a standalone script
 +SET(MODULES
-+  afni_base.py afni_util.py afni_xmat.py ask_me.py db_mod.py lib_afni1D.py
-+  lib_matplot.py lib_realtime.py lib_RR_plot.py
-+  lib_textdata.py lib_timing.py lib_wx.py
-+  module_test_lib.py option_list.py ui_xmat.py)
++  afni_base.py afni_util.py afni_xmat.py ask_me.py db_mod.py
++  gui_uber_align_test.py gui_uber_skel.py gui_uber_subj.py gui_uber_ttest.py
++  lib_afni1D.py lib_matplot.py lib_qt_gui.py lib_realtime.py lib_RR_plot.py
++  lib_subjects.py lib_surf_clustsim.py lib_textdata.py lib_timing.py
++  lib_uber_align.py lib_uber_skel.py lib_uber_subject.py lib_uber_ttest.py
++  lib_wx.py module_test_lib.py option_list.py ui_xmat.py)
 +
 +INSTALL(FILES ${MODULES}
 +  DESTINATION ${AFNI_INSTALL_SCRIPT_DIR} COMPONENT Runtime
