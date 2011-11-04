@@ -52,7 +52,7 @@ Last-Update: 2010-09-21
 +# Install destinations
 +#
 +# Use different logical targets, but by default put all of them into
-+# on directory -- like the old makefiles were doing it
++# one directory -- like the old makefiles were doing it
 +SET(AFNI_INSTALL_BIN_DIR "bin" CACHE PATH
 +    "Directory to install compiled programs into")
 +SET(AFNI_INSTALL_LIB_DIR "bin" CACHE PATH
@@ -660,7 +660,7 @@ Last-Update: 2010-09-21
 +  ARCHIVE DESTINATION ${AFNI_INSTALL_LIB_DIR} COMPONENT Development)
 +
 +
-+# consider all headers as dveelopment headers
++# consider all headers as development headers
 +# TODO determine which of them are really necessary
 +FILE(GLOB DEV_HDRS "*.h")
 +INSTALL(FILES ${DEV_HDRS}
