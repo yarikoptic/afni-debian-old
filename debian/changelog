@@ -1,3 +1,24 @@
+afni (0.20111028~dfsg.1-1) UNRELEASED; urgency=low
+
+  * New upstream code; updated CMake. Adds 3dCountSpikes, 3dNwarpCalc,
+    @Quiet_Talkers and @radial_correlate
+  * Upstream: New R scripts: 1dRplot.R and 3dICC_REML.R
+  * Upstream: New Python scripts: gen_group_command.py,
+    gen_ss_review_scripts.py, make_pq_script.py, slow_surf_clustsim.py,
+    uber_align_test.py, uber_proc.py, uber_skel.py, uber_subject.py
+    and uber_ttest.py
+  * Upstream: Major improvements to 3dSurfMask for mask creation and
+    voxel distance computations.  See examples under 3dSurfMask -help.
+  * Upstream: You can have multiple instances of programs talk to eachother.
+  * Upstream: Generic Atlas Support and new atlases.  Cytoarchitectonic
+    atlases from Zilles, Eickhoff updated to 1.8.  Three new probabilistic
+    atlases from the Desai group.
+  * Upstream: New AFNI tips system has better formatting and includes images.
+  * Upstream: afni_proc.py now processes surface data.
+  * Fixed missing qhull dependency for 3dSkullStrip
+
+ -- Alex Waite <Alexqw85@gmail.com>  Fri, 04 Nov 2011 12:38:14 -0500
+
 afni (0.20110610~dfsg.1-1) UNRELEASED; urgency=low
 
   [ Alex Waite ]
