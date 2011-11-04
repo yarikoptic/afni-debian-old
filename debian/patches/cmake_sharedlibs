@@ -20,7 +20,7 @@ Author: Michael Hanke <michael.hanke@gmail.com>, Bernd Feige <bernd.feige@unikli
 Last-Update: 2010-09-21
 --- /dev/null
 +++ b/CMakeLists.txt
-@@ -0,0 +1,217 @@
+@@ -0,0 +1,231 @@
 +PROJECT(AFNI)
 +
 +cmake_minimum_required(VERSION 2.6)
@@ -63,9 +63,11 @@ Last-Update: 2010-09-21
 +    "Directory to install plugins into")
 +SET(AFNI_INSTALL_SCRIPT_DIR "bin" CACHE PATH
 +    "Directory to install interpreted scripts into")
-+SET(AFNI_INSTALL_PICS_DIR "bin" CACHE PATH
++SET(AFNI_INSTALL_PICS_DIR "funstuff" CACHE PATH
 +    "Directory to install images into")
-+SET(AFNI_INSTALL_POEMS_DIR "bin" CACHE PATH
++SET(AFNI_INSTALL_POEMS_DIR "funstuff" CACHE PATH
++    "Directory to install poems into")
++SET(AFNI_INSTALL_HTML_DIR "html" CACHE PATH
 +    "Directory to install poems into")
 +SET(AFNI_SHOWOFF "${CMAKE_SYSTEM}" CACHE STRING
 +    "Identify this build of AFNI (no blanks)")
@@ -117,6 +119,16 @@ Last-Update: 2010-09-21
 +# netcdf
 +#
 +FIND_LIBRARY(NETCDF_LIBRARY netcdf)
++
++#
++# xmhtml
++#
++FIND_LIBRARY(XMHTML_LIBRARY XmHTML)
++
++#
++# jpeg
++#
++FIND_LIBRARY(JPEG_LIBRARY jpeg)
 +
 +#
 +# 3dedge3
@@ -183,7 +195,8 @@ Last-Update: 2010-09-21
 +SET(SEGTOOLS_LIBS ${AFNI_LIBS} segtools ${GSL_LIBRARIES})
 +SET(AFNI_LIBS
 +   mri mrix coxplot
-+   ${VOLPACK_LIBRARY} ${NETCDF_LIBRARY} ${MOTIF_LIBRARIES} ${F2C_LIBRARY} m)
++   ${VOLPACK_LIBRARY} ${NETCDF_LIBRARY} ${MOTIF_LIBRARIES}
++   ${F2C_LIBRARY} ${XMHTML_LIBRARY} ${JPEG_LIBRARY} m)
 +SET(WARP_LIBS afni_warp ${AFNI_LIBS})
 +SET(RICKR_LIBS rickr ${WARP_LIBS} ${AFNI_LIBS})
 +
@@ -230,6 +243,7 @@ Last-Update: 2010-09-21
 +  INCLUDE(CMakeLists_apps.txt)
 +  INCLUDE(CMakeLists_plugins.txt)
 +
++  ADD_SUBDIRECTORY(html)
 +  ADD_SUBDIRECTORY(python_scripts)
 +  ADD_SUBDIRECTORY(R_scripts)
 +  ADD_SUBDIRECTORY(SUMA)
@@ -240,13 +254,13 @@ Last-Update: 2010-09-21
 +ENDIF(NOT AFNI_BUILD_CORELIBS_ONLY)
 --- /dev/null
 +++ b/CMakeLists_apps.txt
-@@ -0,0 +1,213 @@
+@@ -0,0 +1,214 @@
 +##
 +## This file is to be included in the toplevel CMakeLists.txt
 +##
 +
 +# 3rd-party stuff
-+# TODO there seesm to be stuff missing
++# TODO there seems to be stuff missing
 +SET(EXTRAS whirlgif myget Xphace rmz aiv)
 +
 +# Programs using only AFNI_LIBS
@@ -1279,3 +1293,13 @@ Last-Update: 2010-09-21
     RETURN(gim);
  }
   
+--- /dev/null
++++ b/html/CMakeLists.txt
+@@ -0,0 +1,7 @@
++PROJECT(HTML)
++
++FILE(GLOB ALLHTML afnigui*.html)
++FILE(GLOB ALLJPEG afnigui*.jpg)
++
++INSTALL(FILES ${ALLHTML} ${ALLJPEG}
++  DESTINATION ${AFNI_INSTALL_HTML_DIR} COMPONENT Runtime)
