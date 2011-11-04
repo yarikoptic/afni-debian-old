@@ -294,8 +294,8 @@ Last-Update: 2010-09-21
 +  3dFFT 1dgenARMA11 3dPeriodogram 1dAstrip 3dLocalPV 3dBandpass
 +  3dSetupGroupInCorr 3dGroupInCorr 3dSatCheck 3dTcorr1D 3dSimARMA11
 +  3dClustSim 3dRetinoPhase 3dMaskToASCII 3dttest++ 3dDTtoDWI niccc
-+  3dRankizer 3dXYZcat 3dPolyfit 3dNwarpApply 1dCorrelate
-+  ${EXTRAS})
++  3dRankizer 3dXYZcat 3dPolyfit 3dNwarpApply 1dCorrelate 3dCountSpikes
++  3dNwarpCalc ${EXTRAS})
 +
 +SET(SCRIPTS
 +  @4Daverage @CommandGlobb @GetAfniOrient @DTI_studio_reposition
@@ -315,7 +315,8 @@ Last-Update: 2010-09-21
 +  @FS_roi_label @demo_prompt @ScriptCheck @NoPound @Reorder 3dMEMA
 +  @DiceMetric @R_funclist @TimeDiff @FullPath @RetinoProc @ANATICOR
 +  @MakeLabelTable @ElectroGrid ExamineXmat 1dRplot @2dwarper.Allin
-+  @help.AFNI @1dDiffMag @FSlabel2dset @Install_InstaCorr_Demo)
++  @help.AFNI @1dDiffMag @FSlabel2dset @Install_InstaCorr_Demo
++  @Quiet_Talkers @radial_correlate)
 +
 +
 +##
@@ -506,7 +507,7 @@ Last-Update: 2010-09-21
 +  mri_dicom_stuff.c mri_check.c mri_allzero.c mri_subset.c mri_to_fvect.c
 +  mri_genalign_util.c rcmat.c dmat44.c mri_rbfinterp.c matrix.c
 +  gifti_choice.c zfun.c cs_pv.c cs_sort_iv.c cs_sort_d misc_math.c
-+  mri_genARMA11.c mri_catvol.c mri_polyfit.c)
++  mri_genARMA11.c mri_catvol.c mri_polyfit.c mri_nwarp.c)
 +
 +SET(THD_SRC
 +  thd_atr.c thd_dsetto1D.c thd_initalldir.c thd_reconpar.c thd_auxdata.c
@@ -631,7 +632,7 @@ Last-Update: 2010-09-21
 +# libmrix
 +#
 +SET(IMSRC
-+  display.c imseq.c bbox.c xim.c xutil.c LiteClue.c)
++  display.c imseq.c bbox.c xim.c xutil.c LiteClue.c thd_xwebber.c)
 +ADD_LIBRARY(mrix ${IMSRC})
 +TARGET_LINK_LIBRARIES(mrix ${X11_LIBRARIES} ${MOTIF_LIBRARIES} mri coxplot)
 +
