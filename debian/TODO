@@ -1,6 +1,3 @@
-* The python-scripts CMakeLists.txt is ignoring a number of additions to this
- module.
-
 Duplicate files
 ===============
   eispack.h eispack/eispack.h
