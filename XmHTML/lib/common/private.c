@@ -1,15 +1,15 @@
 #ifndef production
-static char rcsId[]="$Header: /share/cvs/AFNI/src/XmHTML/lib/common/private.c,v 1.1 2011/06/30 16:10:38 rwcox Exp $";
+static char rcsId[]="$Header: /share/cvs/AFNI/src/XmHTML/lib/common/private.c,v 1.2 2011/11/10 14:37:55 ziad Exp $";
 #endif
 /*****
 * private.c : Private XmHTML functions that don't depend on X Intrinsics
 *             or Motif.
 *
-* This file Version	$Revision: 1.1 $
+* This file Version	$Revision: 1.2 $
 *
 * Creation date:		Tue Apr 14 16:13:32 GMT+0100 1998
-* Last modification: 	$Date: 2011/06/30 16:10:38 $
-* By:					$Author: rwcox $
+* Last modification: 	$Date: 2011/11/10 14:37:55 $
+* By:					$Author: ziad $
 * Current State:		$State: Exp $
 *
 * Author:				newt
@@ -37,6 +37,9 @@ static char rcsId[]="$Header: /share/cvs/AFNI/src/XmHTML/lib/common/private.c,v 
 /*****
 * ChangeLog 
 * $Log: private.c,v $
+* Revision 1.2  2011/11/10 14:37:55  ziad
+* Cput
+*
 * Revision 1.1  2011/06/30 16:10:38  rwcox
 * Cadd
 *
@@ -219,7 +222,7 @@ _XmHTMLRefresh(XmHTMLWidget html, int x, int y, int width, int height)
 		TableRow *row = NULL;
 		TableCell *cell = NULL;
 		int i, j;
-		XmHTMLObjectTable *ts;
+		XmHTMLObjectTable *ts=NULL;
 
 		table = start->table;
 		if(table->childs)
