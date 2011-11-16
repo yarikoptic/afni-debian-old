@@ -65,6 +65,52 @@
 
 afni_history_struct ziad_history[] = {
 /*=====BELOW THIS LINE=====*/
+ { 15, NOV , 2011 , ZSS , "afni_general" , MINOR , TYPE_BUG_FIX,
+   "Fixed bug introduced by cleaning up header_name and brick_name",
+   NULL
+ },
+ 
+ { 15, NOV , 2011 , ZSS , "afni_general" , MINOR , TYPE_BUG_FIX,
+   "More changes regarding obliquity warnings.",
+   "   AFNI:\n"
+   "   Popups only appear when user is viewing dsets of different obliquity.\n"
+   "     See dset_obliquity_angle_diff()\n"
+   "      and THD_report_obliquity()\n"
+   "   \n"
+   "   The warnings only appear ONCE per pair of misfits, per afni process. \n"
+   "      See AFNI_check_obliquity() for implementation details.\n"
+   "   \n"
+   "   Oblique notices no longer appear on the command line each time you \n"
+   "   read a session or switch dsets. To tell you that you are viewing an \n"
+   "   oblique dset and that the coords are not quite what they should be,\n"
+   "   I added a '*' next to the 'order:' descriptor in the top left corner. \n"
+   "\n"
+   "Command Line programs:\n"
+   "   In most programs that should not care about obliquity, I add\n"
+   "   early under main():   \n"
+   "      set_obliquity_report(0); /* silence obliquity */ \n"
+   "   \n"
+   "  Also, 3dcalc, 3dTcat, 3dbucket, and function THD_open_tcat() \n"
+   "   Only complain when obliquity between dset pair differs. \n"
+   "   The check is done right after checking for grid matching with\n"
+   "   EQUIV_DATAXES\n"
+   "   \n"
+  } ,
+
+
+ { 10, NOV , 2011 , ZSS , "afni" , MINOR , TYPE_BUG_FIX,
+   "Turned off obliquity popup warning when Ulay and Olay angles are similar",
+   "AFNI issues warning when obliquity differs for a pair of viewed sets.\n"
+   "It does not repeat warnings for a certain pair. It only output one set\n"
+   "of warnings per dataset when 'switch ulay' is set, although I'd love to\n"
+   "get rid of that habit as soon as possible.\n"   
+  } ,
+
+ { 10, NOV , 2011 , ZSS , "3dinfo" , MICRO , TYPE_BUG_FIX,
+   "Many new options for selective information.",
+   NULL   
+  } ,
+
  { 2, NOV , 2011 , ZSS , "3dfim+" , MICRO , TYPE_BUG_FIX,
    "Turned off scaling for Best Index in output dset",
    NULL   

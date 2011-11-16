@@ -3041,6 +3041,10 @@ extern int    THD_deconflict_prefix( THD_3dim_dataset * ) ;          /* 23 Mar 2
 
 #define DSET_TR                  DSET_TIMESTEP
 
+#define DSET_TR_SEC(ds) ( \
+            (DSET_TIMEUNITS(ds) == UNITS_SEC_TYPE) ? DSET_TR(ds) : \
+           ((DSET_TIMEUNITS(ds) == UNITS_MSEC_TYPE) ? DSET_TR(ds)*0.001 : 0.0 ) )
+           
 /*! Return the time origin for dataset ds.
 
     Is always 0 in current version of AFNI.
@@ -3858,10 +3862,16 @@ extern void THD_insert_atr( THD_datablock *blk , ATR_any *atr ) ;
 extern void THD_store_dataset_keywords ( THD_3dim_dataset * , char * ) ;
 extern void THD_append_dataset_keywords( THD_3dim_dataset * , char * ) ;
 extern char * THD_dataset_info( THD_3dim_dataset * , int ) ;
+extern void THD_show_dataset_names( THD_3dim_dataset *dset, 
+                                    char *head, FILE *out);
 extern const char * storage_mode_str(int);
 extern char * THD_zzprintf( char * sss , char * fmt , ... ) ;
 extern int dset_obliquity(THD_3dim_dataset *dset , float *anglep);
-
+double dset_obliquity_angle_diff(THD_3dim_dataset *dset1, 
+                                 THD_3dim_dataset *dset2, 
+                                 double tol);
+double daxes_obliquity_angle_diff(THD_dataxes *ax1, THD_dataxes *ax2, 
+                                  double tol);
 extern void THD_set_float_atr( THD_datablock * , char * , int , float * ) ;
 extern void THD_set_int_atr  ( THD_datablock * , char * , int , int   * ) ;
 extern void THD_set_char_atr ( THD_datablock * , char * , int , char  * ) ;
@@ -4180,6 +4190,7 @@ extern int THD_dataset_tshift( THD_3dim_dataset * , int ) ; /* 15 Feb 2001 */
 #define MISMATCH_DELTA   (1<<1)  /* within 0.001 voxel */
 #define MISMATCH_ORIENT  (1<<2)
 #define MISMATCH_DIMEN   (1<<3)
+#define MISMATCH_OBLIQ   (1<<4)
 
 /*----------------------------------------------------------------*/
 /*--------  FD_brick type: for rapid extraction of slices --------*/
@@ -4644,6 +4655,7 @@ extern void THD_dicom_real_xform (THD_3dim_dataset * dset ,
 extern float THD_compute_oblique_angle(mat44 ijk_to_dicom44, int verbose);
 
 extern void THD_report_obliquity(THD_3dim_dataset *dset);
+extern void set_obliquity_report(int v);
 
 extern void THD_set_oblique_report(int n1, int n2);
 
