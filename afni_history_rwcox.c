@@ -43,7 +43,17 @@
 
 afni_history_struct rwcox_history[] = {
 /*=====BELOW THIS LINE=====*/
-  { 15 , NOV , 2011 , RWC , "dicom_hinfo" , MINOR , TYPE_NEW_PROG ,
+  { 16 , NOV , 2011 , RWC , "3dDeconvolve" , MICRO , TYPE_BUG_FIX ,
+   "Condition numbers were checked with SQUARES of singular values!" ,
+   "Fixed by changing function matrix_singvals().  Also make clear in 1dsvd\n"
+   "help that -vnorm option is needed to compare singular values with\n"
+   "3dDeconvolve." } ,
+
+ { 16 , NOV , 2011 , RWC , "dicom_hinfo" , MICRO , TYPE_GENERAL ,
+   "Minor edits, mostly to the help." ,
+   NULL } ,
+
+ { 15 , NOV , 2011 , RWC , "dicom_hinfo" , MINOR , TYPE_NEW_PROG ,
    "For printing out info from lots of DICOM files" ,
    "For each file input, prints 1 line with the values of only the desired\n"
    "tags.  The goal is to be helpful in figuring out which files go\n"
