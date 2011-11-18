@@ -49,6 +49,21 @@
 
 afni_history_struct rickr_history[] = {
 
+ { 17, NOV, 2011, RCR, "@ROI_Corr_Mat", MICRO, TYPE_BUG_FIX,
+   "fix complaint about unknown options for non-macs",
+   NULL
+ } ,
+
+ { 17, NOV, 2011, RCR, "afni", MINOR, TYPE_BUG_FIX,
+   "if dset+orig is anat/func and dset+tlrc is func/anat, 'BAD dataset', man",
+   "Altered logic in thd_initsess.c (done with dglen)."
+ } ,
+
+ { 17, NOV, 2011, RCR, "3drefit", MICRO, TYPE_BUG_FIX,
+   "changing 'type' should have an effect even if not a bucket",
+   "Done with dglen."
+ } ,
+
  {  9, NOV, 2011, RCR, "afni_proc.py", MINOR, TYPE_MODIFY,
    "-surf_blur_fwhm is no longer valid, please use -blur_size",
    NULL
