@@ -3390,6 +3390,52 @@ ATLAS_SEARCH *Free_Atlas_Search(ATLAS_SEARCH *as)
    RETURN(NULL);
 }
 
+/***
+   Functions for approximate string matching 
+   
+   Still need to add scoring method used in Find_Atlas_Regions() 
+***/
+
+APPROX_STR_DIFF_WEIGHTS *init_str_diff_weights(APPROX_STR_DIFF_WEIGHTS *Dwi) {
+   APPROX_STR_DIMS i=0;
+   if (!Dwi) 
+      Dwi = (APPROX_STR_DIFF_WEIGHTS*)malloc(sizeof(APPROX_STR_DIFF_WEIGHTS));
+   memset (Dwi, 0, sizeof(APPROX_STR_DIFF_WEIGHTS));
+   for (i=0; i<N_APPROX_STR_DIMS; ++i) {
+      switch (i) {
+         case LEV:
+            Dwi->w[i] = 10.0;
+            break;
+         case PMD:
+            Dwi->w[i] = 10.0;
+            break;
+         case FCD:
+            Dwi->w[i] = 5.0;
+            break;
+         case FLD:
+            Dwi->w[i] = 1.0;
+            break;
+         case MWI:
+            Dwi->w[i] = 1.0;
+            break;
+         default:
+            Dwi->w[i] = 0.1;
+            break;
+      }
+   }
+   return(Dwi);
+}
+
+APPROX_STR_DIFF *init_str_diff(APPROX_STR_DIFF *Dw) {
+   int i;
+   if (!Dw) 
+      Dw = (APPROX_STR_DIFF*)malloc(sizeof(APPROX_STR_DIFF));
+   for (i=0; i<N_APPROX_STR_DIMS; ++i) {
+      Dw->d[i] = 100000;
+   }
+   return(Dw);
+}
+
 /*! 
    An approximate string matching technique based on the Levenshtein distance.
    Based on Pseudocode from: http://en.wikipedia.org/wiki/Levenshtein_distance
@@ -3397,20 +3443,63 @@ ATLAS_SEARCH *Free_Atlas_Search(ATLAS_SEARCH *as)
    ci =1 for case insensitive searches.
    
    Not terribly efficient, but easy to read
+   
+   s2 is considered to be the string you're searching for.
 */
-int LevenshteinStringDistance(char *s1, char *s2, byte ci) 
+APPROX_STR_DIFF LevenshteinStringDistance(char *s1, char *s2, byte ci) 
 {
-   int ns1=0, ns2=0, D=0, i, j, m, loff=0;
+   int ns1=0, ns2=0, i, j, m, loff=0, ks1, ks2, imatch, ks1t;
    byte eqs=0;
    int **d=NULL;
+   char *spart=NULL;
+   APPROX_STR_DIFF D;
    
    ENTRY("LevenshteinStringDistance");
    
-   if (!s1 && !s2) RETURN(0);
-   if (!s1 || !s2) RETURN(-1);
+   init_str_diff(&D);
+   
+   if (!s1 && !s2) RETURN(D);
+   if (!s1 || !s2) RETURN(D);
    
    ns1 = strlen(s1);
    ns2 = strlen(s2);
+   
+   spart=NULL;
+   if (ns2 < ns1) {
+      /* strcasestr won't work on Solaris, too bad */
+      if (ci) spart = strcasestr(s1, s2);
+      else spart = strstr(s1, s2);
+      
+      if (spart) {
+         D.d[PMD] = (int)(spart-ns2); if (D.d[PMD] > 9) D.d[PMD]=9;
+      } 
+   }
+   
+   
+   /* counting number of similar characters with direction*/
+   ks1=0;
+   ks2=0;
+   imatch=0;
+   while (ks2<ns2) {
+      if (ci) {
+         /* search forward for s2[ks2] in s1 */
+         ks1t = ks1; 
+         while (ks1t < ns1) {
+            if ((s1[ks1t] == s2[ks2]) ||
+                (ci && TO_LOWER(s1[ks1t]) == TO_LOWER(s2[ks2]))) {
+               ++imatch; ks1t++; ks1 = ks1t; 
+               /* fprintf(stderr,"Got %c in %s at %d\n", s2[ks2], s1, ks1t);*/
+               break;
+            }else{
+               ks1t++;
+            }
+         }
+      }
+      ++ks2;
+   }
+   D.d[FCD] = (int)((ns2-imatch)/(float)ns2*10.0); if (D.d[FCD] > 9) D.d[FCD]=9;
+
+   
    d = (int **)calloc(ns1+1, sizeof(int*));
    for (i=0; i<=ns1; ++i) {
       d[i] = (int *)calloc(ns2+1, sizeof(int));
@@ -3431,18 +3520,162 @@ int LevenshteinStringDistance(char *s1, char *s2, byte ci)
          }
       }
    }
-   
-   D = d[ns1][ns2];
-   for (i=0; i<=ns2; ++i) {
+   D.d[LEV] = d[ns1][ns2];
+   for (i=0; i<=ns1; ++i) {
       free(d[i]);
    }
-   free(d);
+   free(d); d = NULL;
    
-   /* modulate D by string length difference */
-   loff = ns2-ns1; if (loff < 0) loff = -loff; if (loff > 9) loff = 9;
-   D = 10*D + loff;
+   /* modulate D by string length difference, preference is given to ns2 */
+   D.d[FLD] = (int)(ns2-ns1); 
+   if (D.d[FLD] < 0) D.d[FLD] = -D.d[FLD]; if (D.d[FLD] > 9) D.d[FLD] = 9;
    
    RETURN(D);
+}
+
+float magnitude_str_diff(APPROX_STR_DIFF *D, APPROX_STR_DIFF_WEIGHTS *Dwi) 
+{
+   float d=0.0;
+   int i=0;
+   for (i=0; i<N_APPROX_STR_DIMS; ++i) {
+      d += D->d[i]*Dwi->w[i];
+   }
+   return(d);
+} 
+
+APPROX_STR_DIFF *copy_str_diff(APPROX_STR_DIFF *Din, APPROX_STR_DIFF *Dout)
+{
+   int i=0;
+   if (!Din) return(NULL);
+   if (!Dout) Dout = init_str_diff(NULL);
+   for (i=0; i<N_APPROX_STR_DIMS; ++i) {
+      Dout->d[i] = Din->d[i];
+   }
+   return(Dout);
+}
+
+char *approx_string_diff_info(APPROX_STR_DIFF *D, APPROX_STR_DIFF_WEIGHTS *Dwi) 
+{
+   static char res[10][256];
+   static int icall=-1;
+   char sbuf[32];
+   int i;
+   
+   if (!Dwi) Dwi = init_str_diff_weights(Dwi);
+   
+   ++icall; if (icall > 9) icall=0;
+   
+   sprintf(res[icall],"(");
+   for (i=0; i<N_APPROX_STR_DIMS; ++i) {
+      sprintf(sbuf,"%dx%f ",D->d[i], Dwi->w[i]); 
+      strcat(res[icall], sbuf);
+   }
+   strcat(res[icall],")");
+   return(res[icall]);
+}
+
+float set_smallest_str_diff(APPROX_STR_DIFF *D0, 
+                              APPROX_STR_DIFF D1, APPROX_STR_DIFF D2, 
+                              APPROX_STR_DIFF_WEIGHTS Dw, int *iminp)
+{
+   int i, imin=0;
+   float d1, d2, d;
+   
+   if (!D0) return(-1.0);
+   
+   d1 = magnitude_str_diff(&D1, &Dw);
+   d2 = magnitude_str_diff(&D2, &Dw);
+   if (d1 < d2) {
+      d = d1; imin = 1;
+      D0 = copy_str_diff(&D1, D0);
+   } else {
+      d = d2; imin = 2;
+      D0 = copy_str_diff(&D2, D0);
+   }
+   if (iminp) *iminp=imin;
+   return(d);
+}
+
+APPROX_STR_DIFF str_in_line_distance(char *line, char *str, byte ci, 
+                                     APPROX_STR_DIFF_WEIGHTS *Dwi)         
+{
+   int iword = 0;
+   char *sword=NULL, *brk=NULL, lsep[] = " \t";
+   APPROX_STR_DIFF_WEIGHTS *Dw = Dwi;
+   APPROX_STR_DIFF Dtmp, Dmin ;
+   float dtmp;
+   
+   if (!Dw) Dw = init_str_diff_weights(Dw);
+   init_str_diff(&Dmin);
+   init_str_diff(&Dtmp);
+   for ( sword=strtok_r(line,lsep, &brk); 
+         sword; sword = strtok_r(NULL, lsep, &brk)) {
+      deblank_name(sword);
+      if (sword[0] != '\0') {
+         Dtmp = LevenshteinStringDistance(sword, str, ci);
+         Dtmp.d[MWI]=iword;
+         dtmp = set_smallest_str_diff(&Dmin, Dtmp, Dmin, *Dw, NULL);
+         /* fprintf(stderr,"ZSS: compare %s to %s %f (%f %f) %d %d\n", 
+                  sword, str, dtmp, 
+            magnitude_str_diff(&Dtmp, Dw), magnitude_str_diff(&Dmin,Dw),
+            Dmin.d[MWI], iword); */
+         ++iword;
+      } 
+   }
+   
+   if (Dw != Dwi) free(Dw); Dw=NULL;
+   
+   return(Dmin);
+}
+               
+
+int *sort_str_diffs (APPROX_STR_DIFF **Di, int N_words, 
+                     APPROX_STR_DIFF_WEIGHTS *Dwi, 
+                     float **sorted_score, int direct,
+                     byte sort_D) 
+{
+   int *isi = NULL, i=0;
+   float *d=NULL;
+   APPROX_STR_DIFF *D = *Di, *Ds=NULL;
+   APPROX_STR_DIFF_WEIGHTS *Dw = Dwi;
+   
+   ENTRY("sort_str_diffs");
+
+   if (sorted_score && *sorted_score) {
+      ERROR_message("If sorted_score then *sorted_score should be NULL\n");
+      RETURN(isi);
+   }
+   
+   if (!Dw) Dw = init_str_diff_weights(Dw);
+
+   /* combine all distance dimentions, no fancy options yet*/
+   d = (float *)calloc(N_words, sizeof(float));
+   for (i=0; i<N_words; ++i) {
+      d[i] = magnitude_str_diff(D+i, Dw);
+   }
+   
+   /* sort the result */
+   if (direct == -1) for (i=0; i<N_words; ++i) d[i] *= -1; 
+   isi = z_iqsort(d, N_words);
+   if (direct == -1) for (i=0; i<N_words; ++i) d[i] *= -1; 
+   
+   if (!sorted_score) {
+      free(d); d=NULL;
+   } else {
+      *sorted_score=d;
+   }
+   
+   if (sort_D) {
+      Ds = (APPROX_STR_DIFF *)calloc(N_words, sizeof(APPROX_STR_DIFF));
+      for (i=0; i<N_words;++i) {
+         copy_str_diff(D+isi[i], Ds+i);
+      }
+      free(*Di); *Di=Ds; Ds = NULL;
+   }
+     
+   if (Dw != Dwi) free(Dw); Dw=NULL;
+
+   RETURN(isi);
 }
 
 /* 
@@ -3450,11 +3683,18 @@ int LevenshteinStringDistance(char *s1, char *s2, byte ci)
    Best match first.
 */
 char **approx_str_sort(char **words, int N_words, char *str, byte ci, 
-                       int **sorted_score)
+                       float **sorted_score, byte wsplit, 
+                       APPROX_STR_DIFF_WEIGHTS *Dwi,
+                       APPROX_STR_DIFF **Dout)
 {
-   char **ws=NULL;
-   int *is=NULL, *isi=NULL, i;
+   char **ws=NULL, *sword=NULL, *brk=NULL;
+   char lsep[] = " \t", *line=NULL;
+   APPROX_STR_DIFF *is=NULL, ii;
+   APPROX_STR_DIFF_WEIGHTS *Dw = Dwi;
    int direct = -1; /* -1 best match first, 1 best match last */
+   int i, iword=0, imin=0;
+   int *isi=NULL;
+   float dtmp; 
    
    ENTRY("approx_str_sort");
    
@@ -3463,46 +3703,226 @@ char **approx_str_sort(char **words, int N_words, char *str, byte ci,
       ERROR_message("If sorted_score then *sorted_score should be NULL\n");
       RETURN(ws);
    }
-   
+   if (Dout && *Dout) {
+      ERROR_message("If Dout then *Dout should be NULL\n");
+      RETURN(ws);
+   }
+   if (!Dw) Dw = init_str_diff_weights(Dw);
    ws = (char **)calloc(N_words, sizeof(char *));
-   is = (int *)calloc(N_words, sizeof(int));
+   is = (APPROX_STR_DIFF *)calloc(N_words, sizeof(APPROX_STR_DIFF));
    
    for (i=0; i<N_words; ++i) {
-      is[i] = direct * LevenshteinStringDistance(words[i], str, ci);
+      if (!wsplit) {
+         is[i] = LevenshteinStringDistance(words[i], str, ci);
+      } else { /* split line into words */
+         line = strdup(deblank_name(words[i]));
+         init_str_diff(is+i); 
+         if (!strlen(words[i]) || !strlen(deblank_name(line))) {
+            /* empty line, leave at max */ 
+         } else {
+            is[i] = str_in_line_distance(line, str, ci, Dw);
+         }
+         if (line) free(line); 
+      }
    }
    
    /* sort scores */
-   isi = z_idqsort(is, N_words);
+   isi = sort_str_diffs (&is, N_words, Dwi, sorted_score, direct, 1); 
    
    /* create sorted output, best match last */
    for (i=0; i<N_words; ++i) {
       ws[i] = strdup(words[isi[i]]);
-      is[i] = direct * is[i];
    }
    
    /* clean up and return */
-   free(isi); 
-   if (!sorted_score) {
-      free(is);
+   free(isi); isi = NULL; 
+   if (Dw != Dwi) free(Dw); Dw=NULL;
+   if (Dout) {
+      *Dout = is;
    } else {
-      *sorted_score = is;
-   }
+      free(is); 
+   } 
+   is = NULL;
    
    RETURN(ws);
 }
 
-int best_approx_str_match(char **words, int N_words, char *str, byte ci)
+char **approx_str_sort_text(char *text, int *N_ws, char *str, 
+                            byte ci, float **sorted_score,
+                            APPROX_STR_DIFF_WEIGHTS *Dwi,
+                            APPROX_STR_DIFF **Dout)
 {
-   int d=-1, i, dm=-1;
+   char **ws=NULL;
+   int *is=NULL, *isi=NULL, i;
+   int direct = -1, N_lines=0, N_alloc=0; 
+   char *brk=NULL, lsep[] = "\n\r", *line=NULL;
+   APPROX_STR_DIFF_WEIGHTS *Dw = Dwi;
+   
+   ENTRY("approx_str_sort_text");
+   
+   *N_ws=0;
+   
+   if (!text || !str) RETURN(ws);
+   if (sorted_score && *sorted_score) {
+      ERROR_message("If sorted_score then *sorted_score should be NULL\n");
+      RETURN(ws);
+   }
+   if (Dout && *Dout) {
+      ERROR_message("If Dout then *Dout should be NULL\n");
+      RETURN(ws);
+   }
+   if (!Dw) Dw = init_str_diff_weights(Dw);
+   /* turn text into multi lines */
+   N_lines = 0;
+   for (line=strtok_r(text,lsep, &brk); line; line = strtok_r(NULL, lsep, &brk))
+   {
+      ++N_lines;
+      if (N_lines > N_alloc) {
+         N_alloc += 50;
+         ws = (char **)realloc(ws, N_alloc*sizeof(char *));
+      }
+      ws[N_lines-1] = strdup(line);
+      deblank_name(ws[N_lines-1]);
+      /* fprintf(stderr,"ZSS: %d -->%s<--\n", N_lines, ws[N_lines-1]); */
+   }
+      
+   *N_ws=N_lines;
+   
+   /* fprintf(stderr,"ZSS: %d lines\n", N_lines); */
+   
+   if (str && N_lines) { /* sort */
+      ws = approx_str_sort(ws, *N_ws, str, ci, sorted_score, 1, Dw, Dout);
+   }
+   
+   /* fprintf(stderr,"ZSS: %d lines post sort\n", *N_ws);    */
+   
+   if (Dw != Dwi) free(Dw); Dw=NULL;
+   
+   RETURN(ws);
+} 
+
+char **approx_str_sort_tfile(char *fname, int *N_ws, char *str, 
+                            byte ci, float **sorted_score,
+                            APPROX_STR_DIFF_WEIGHTS *Dwi,
+                            APPROX_STR_DIFF **Dout)
+{
+   char **ws=NULL, *text=NULL;
+   APPROX_STR_DIFF_WEIGHTS *Dw = Dwi;
+   
+   ENTRY("approx_str_sort_tfile");
+
+   if (!fname || !str) RETURN(ws);
+   if (sorted_score && *sorted_score) {
+      ERROR_message("If sorted_score then *sorted_score should be NULL\n");
+      RETURN(ws);
+   }
+   if (Dout && *Dout) {
+      ERROR_message("If Dout then *Dout should be NULL\n");
+      RETURN(ws);
+   }
+   /* suck text and send it to approx_str_sort_text */
+   if (!(text = AFNI_suck_file(fname))) {
+      ERROR_message("File %s could not be read\n", fname);
+      RETURN(ws);
+   }
+   
+   if (!Dw) Dw = init_str_diff_weights(Dw);
+   ws = approx_str_sort_text(text, N_ws, str, ci, sorted_score, Dw, Dout);
+   free(text); text=NULL;
+   if (Dw != Dwi) free(Dw); Dw=NULL;
+   
+   RETURN(ws);
+}
+
+char **approx_str_sort_phelp(char *prog, int *N_ws, char *str, 
+                            byte ci, float **sorted_score,
+                            APPROX_STR_DIFF_WEIGHTS *Dwi,
+                            APPROX_STR_DIFF **Dout)
+{
+   char **ws=NULL;
+   APPROX_STR_DIFF_WEIGHTS *Dw = Dwi;
+   char cmd[512], uid[64], tout[128];
+   
+   ENTRY("approx_str_sort_phelp");
+   
+   if (!prog || !str) RETURN(ws);
+   if (sorted_score && *sorted_score) {
+      ERROR_message("If sorted_score then *sorted_score should be NULL\n");
+      RETURN(ws);
+   }      
+   
+   UNIQ_idcode_fill(uid);
+   sprintf(tout,"/tmp/__apsearch.%s.txt", uid);
+   snprintf(cmd,500*sizeof(char),"%s -help >& %s", prog, tout);
+   if (system(cmd)) {
+      if (0) {/* many programs finish help and set status afterwards. Naughty. */
+         ERROR_message("Failed to get help for %s\nCommand: %s\n", prog, cmd);
+         return 0;
+      }
+   }
+   ws = approx_str_sort_tfile(tout, N_ws, str, ci, sorted_score, Dw, Dout);
+                                 
+   snprintf(cmd,500*sizeof(char),"\\rm -f %s", tout);
+   system(cmd);
+   
+   RETURN(ws);
+}
+
+void suggest_best_prog_option(char *prog, char *str)
+{
+   char **ws=NULL;
+   int N_ws=0, i, isug;
+   float *ws_score=NULL;
+   APPROX_STR_DIFF *D=NULL;
+
+   if (getenv("AFNI_NO_OPTION_HINT")) return;
+
+   if (str[0] != '-') {
+      if (0) { /* leave it alone ... */
+         fprintf(stderr,"'%s' might have be a parameter that is missing\n"
+                        "a proper option flag preceding it.\n"
+                        "Also make sure all preceding options have\n"
+                        "the proper number of parameters.\n", str);
+         return;
+      } 
+   }
+   ws = approx_str_sort_phelp(prog, &N_ws, str, 
+                   1, &ws_score,
+                   NULL, NULL);
+   isug = 0;
+   for (i=0; i<N_ws; ++i) {
+      if (isug<3 && ws[i][0]=='-') {
+         if (!isug) 
+            fprintf(stderr,
+      "   Here's hoping these excerpts from '%s -help' enlighten:\n",
+               prog);
+         fprintf(stderr,"        '%s'\n", ws[i]);
+         ++isug;
+      }
+      free(ws[i]); ws[i]=NULL;
+   } free(ws); ws = NULL;
+   return;
+}
+
+float best_approx_str_match(char **words, int N_words, char *str, 
+                          byte ci, APPROX_STR_DIFF_WEIGHTS *Dwi)
+{
+   int i;
+   float dm=388923774899384.0;
+   APPROX_STR_DIFF D, Dm;
+   APPROX_STR_DIFF_WEIGHTS *Dw = Dwi;
    
    ENTRY("best_approx_str_match");
    
    if (!words || !N_words || !str) RETURN(dm);
-   
+   if (!Dw) Dw = init_str_diff_weights(Dw);
+   init_str_diff(&D); init_str_diff(&Dm);   
    for (i=0; i<N_words; ++i) {
-      d = LevenshteinStringDistance(words[i], str, ci);
-      if (dm < 0 || d < dm) dm = d;
+      D = LevenshteinStringDistance(words[i], str, ci);
+      dm = set_smallest_str_diff(&Dm, D, Dm, *Dw, NULL);
    }
+   if (Dw != Dwi) free(Dw); Dw=NULL;
+
    RETURN(dm);
 }
 
@@ -3512,42 +3932,74 @@ int best_approx_str_match(char **words, int N_words, char *str, byte ci)
 void test_approx_str_match(void)
 {
    char *lot[] = { "Bafni", "avni", "afjni", "aifn", "AfNi", NULL };
-   char *key={"afni"};
+   char key[64]={"afni"};
    char **slot=NULL;
-   int i=0, n_lot=0, *slot_score=NULL;
-
+   int i=0, n_lot=0;
+   float *slot_score=NULL;
+   char text[]={"The quick brown fox\n"
+                " Jumped over the lazy dog\n"
+                "\n"
+                "did he?\n"
+                "He did he did\n"
+                "\n"
+                " I tell you   \n"
+                "\n "};
+   char str[]={"Fox"}; 
+   APPROX_STR_DIFF_WEIGHTS *Dw = NULL;
+   APPROX_STR_DIFF D, *Dv=NULL;
+   
    while (lot[n_lot]) ++n_lot;
+   
+   if (!Dw) Dw = init_str_diff_weights(Dw);
    
    i=0;
    while (lot[i]) {
-      fprintf(stdout,"Score %02d: %s v.s. %s\n",
-            LevenshteinStringDistance(lot[i],key,0), lot[i],key);
+      D = LevenshteinStringDistance(lot[i],key,0);
+      fprintf(stdout,"Score %03f: %s v.s. %s\n",
+            magnitude_str_diff(&D, Dw),
+            lot[i],key);
       ++i;
    }
    
    i=0;
    while (lot[i]) {
-      fprintf(stdout,"CI Score %02d: %s v.s. %s\n",
-            LevenshteinStringDistance(lot[i],key,1), lot[i],key);
+      D = LevenshteinStringDistance(lot[i],key,1);
+      fprintf(stdout,"CI Score %03f: %s v.s. %s\n",
+            magnitude_str_diff(&D, Dw),
+            lot[i],key);
       ++i;
    }
    
    fprintf(stdout,"Score   Strings (sorted)\n");
-   slot = approx_str_sort(lot, n_lot, key, 0, &slot_score);
+   slot = approx_str_sort(lot, n_lot, key, 0, &slot_score, 0, NULL, NULL);
    for (i=0; i<n_lot; ++i) {
-      fprintf(stdout,"%02d- %s\n", slot_score[i], slot[i]);
+      fprintf(stdout,"%02f- %s\n", slot_score[i], slot[i]);
       free(slot[i]);
    } free(slot);  free(slot_score); slot_score=NULL;
    
    fprintf(stdout,"Score   Strings (CI sorted)\n");
-   slot = approx_str_sort(lot, n_lot, key, 1, &slot_score);
+   slot = approx_str_sort(lot, n_lot, key, 1, &slot_score, 0, NULL, NULL);
    for (i=0; i<n_lot; ++i) {
-      fprintf(stdout,"%02d- %s\n", slot_score[i], slot[i]);
+      fprintf(stdout,"%02f- %s\n", slot_score[i], slot[i]);
       free(slot[i]);
    } free(slot);  free(slot_score); slot_score=NULL;
    
+   /* Sort multi-line text string */
+   sprintf(key,"dib");
+   slot = approx_str_sort_text(text, &n_lot, key, 1, &slot_score, NULL, &Dv);
+   for (i=0; i<n_lot; ++i) {
+      fprintf(stdout,"%02f- %s\n", slot_score[i], slot[i]);
+      free(slot[i]);
+   } 
+   free(slot);  free(slot_score); slot_score=NULL;
+   free(Dv); Dv = NULL;
    
 }
+
+/***
+   END Functions for approximate string matching 
+***/
+
 /*!
    Return a byte mask for a particular atlas region
 */
@@ -6813,10 +7265,10 @@ char **atlas_chooser_formatted_labels(char *atname) {
    return(at_labels);
 }
 
-void deblank_name (char *name) {
+char * deblank_name (char *name) {
    int nch = 0, bb=0, ibb=0, BB=0;
    
-   if (!name) return;
+   if (!name) return(name);
    
    nch = strlen(name);
    /* deblank it, leave spaces in middle */
@@ -6833,7 +7285,7 @@ void deblank_name (char *name) {
    }
    name[ibb-bb] = '\0';
 
-   return;
+   return(name);
 }
 
 /* return the list of atlases set by the environment variable,
