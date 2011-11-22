@@ -49,6 +49,16 @@
 
 afni_history_struct rickr_history[] = {
 
+ { 21, NOV, 2011, RCR, "uber_subject.py", MICRO, TYPE_ENHANCE,
+   "small update to help text",
+   NULL
+ } ,
+
+ { 21, NOV, 2011, RCR, "gen_ss_review_scripts.py", MICRO, TYPE_BUG_FIX,
+   "fixed -ynames in plot of motion/outliers",
+   NULL
+ } ,
+
  { 17, NOV, 2011, RCR, "@ROI_Corr_Mat", MICRO, TYPE_BUG_FIX,
    "fix complaint about unknown options for non-macs",
    NULL
