@@ -65,8 +65,23 @@
 
 afni_history_struct ziad_history[] = {
 /*=====BELOW THIS LINE=====*/
+ { 25, NOV , 2011 , ZSS , "Dimon" , MICRO , TYPE_NEW_OPT,
+   "Added -gert_quit_on_err",
+   "Passes -quit_on_err option to to3d."
+ },
+ 
+ { 25, NOV , 2011 , ZSS , "to3d" , MICRO , TYPE_NEW_OPT,
+   "Added -quit_on_err",
+   "Keeps to3d from going in interactive mode in case of error."
+ },
+ 
+ { 22, NOV , 2011 , ZSS , "afni" , MICRO , TYPE_NEW_OPT,
+   "Added -h_find as a global option",
+   "afni -help now outputs information about 'Global options'"
+ },
+ 
  { 21, NOV , 2011 , ZSS , "afni" , MICRO , TYPE_NEW_OPT,
-   "Added -print_options as a global option",
+   "Added -all_opts as a global option",
    "The option is the equivalent of running apsearch -all_opts \n"
    "for a certain program."
  },
