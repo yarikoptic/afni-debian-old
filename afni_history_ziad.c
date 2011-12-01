@@ -65,6 +65,23 @@
 
 afni_history_struct ziad_history[] = {
 /*=====BELOW THIS LINE=====*/
+ { 29, NOV , 2011 , ZSS , "@clean_help_dir" , MICRO , TYPE_NEW_PROG,
+   "Removes redundant help files from the afni help directory.",
+   NULL,
+ },
+ 
+ { 29, NOV , 2011 , ZSS , "@DeblankFileNames" , MICRO , TYPE_NEW_PROG,
+   "Replaces spaces in filenames with_something_less_annoying.",
+   NULL,
+ },
+ 
+ { 28, NOV , 2011 , ZSS , "afni-general" , MICRO , TYPE_BUG_FIX,
+   "Fixed function THD_deplus_prefix to improve prefix cleanup",
+   "Previous version cleaned +orig but not +orig.HEAD or +orig. for example.\n"
+   "Current one removes +orig +orig. +orig.HEAD +orig.BRIK +orig.BRIK.gz and\n"
+   "corresponding +acpc and +tlrc brethren.\n"
+ },
+ 
  { 25, NOV , 2011 , ZSS , "Dimon" , MICRO , TYPE_NEW_OPT,
    "Added -gert_quit_on_err",
    "Passes -quit_on_err option to to3d."
