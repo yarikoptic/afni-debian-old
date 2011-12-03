@@ -164,7 +164,7 @@ void SUMA_usage (SUMA_GENERIC_ARGV_PARSE *ps)
 "\n"
 "   For help on interacting with SUMA, press 'ctrl+h' with the mouse \n"
 "   pointer inside SUMA's window.\n"     
-"   For more help: http://afni.nimh.nih.gov/ssc/ziad/SUMA/SUMA_doc.htm\n"
+"   For more help: http://afni.nimh.nih.gov/pub/dist/edu/latest/suma/suma.pdf\n"
 "\n"     
 "   If you can't get help here, please get help somewhere.\n", 
             sio, sb, get_np_help());
@@ -382,17 +382,11 @@ int main (int argc,char *argv[])
    SUMA_STANDALONE_INIT;
    SUMA_mainENTRY;
    
+   
 	SUMAg_CF->isGraphical = YUP;
    
    ps = SUMA_Parse_IO_Args(argc, argv, "-i;-t;");
-   #if 0
-   if (argc < 2)
-       {
-          SUMA_usage (ps);
-          exit (1);
-       }
-   #endif
-		
+
    /* initialize Volume Parent and AfniHostName to nothing */
    for (ispec=0; ispec < SUMA_MAX_N_GROUPS; ++ispec) {
       specfilename[ispec] = NULL;
@@ -412,12 +406,17 @@ int main (int argc,char *argv[])
    if (ps->i_N_surfnames || ps->t_N_surfnames) {
       SUMA_LH("-i and/or -t surfaces on command line!");
       Specp[ispec] = SUMA_IO_args_2_spec (ps, &nspec); 
-      if (Specp[ispec]) ++ispec;
-      if (nspec != 1) {
-         SUMA_S_Errv("-spec is being parsed separately here, "
-                     "expecting one spec only from SUMA_IO_args_2_spec, \n"
-                     "got %d\n", nspec);
-         exit (1);
+      if (Specp[ispec]) {
+         ++ispec;
+         if (nspec != 1) {
+            SUMA_S_Errv("-spec is being parsed separately here, "
+                        "expecting one spec only from SUMA_IO_args_2_spec, \n"
+                        "got %d\n", nspec);
+            exit (1);
+         }
+      } else {
+         SUMA_S_Err("Failed to load -i/-t surfaces");
+         exit(1);
       }
       
    }
