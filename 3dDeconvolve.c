@@ -806,7 +806,8 @@ void display_help_menu()
    "forms the null hypothesis.  The Full_Fstat result is the F-statistic    \n"
    "of the full model (all regressors) vs. the baseline model.  Thus, it    \n"
    "it common to include irregular time series, such as estimated motion    \n"
-   "parameters, in the baseline model via the -stim_file/-stim_base options.\n"
+   "parameters, in the baseline model via the -stim_file/-stim_base options,\n"
+   "or by using the -ortvec option (to include multiple regressors at once).\n"
    "Thus, the 'baseline model' is really the 'null hypothesis model'.       \n"
    "------------------------------------------------------------------------\n"
    "It is VERY important to realize that statistics (F, t, R^2) computed in \n"
@@ -822,11 +823,23 @@ void display_help_menu()
    "with a statistician, or with the AFNI message board guru entities       \n"
    "(when they can be lured down from the peak of Mt Taniquetil).           \n"
    "------------------------------------------------------------------------\n"
-   "At its core, 3dDeconvolve solves a linear regression problem z = X b    \n"
-   "for the parameter vector b, given the data vector z in each voxel, and  \n"
-   "given the SAME matrix X in each voxel.  If you want to solve a problem  \n"
-   "where some of the matrix columns in X (the regressors) are different in \n"
-   "different voxels (are spatially variable), then use program 3dTfitter,  \n"
+   "Regression Programs in the AFNI Package:                                \n"
+   "* At its core, 3dDeconvolve solves a linear regression problem z = X b  \n"
+   "  for the parameter vector b, given the data vector z in each voxel, and\n"
+   "  given the SAME matrix X in each voxel.  The solution is calculated in \n"
+   "  the Ordinary Least Squares (OLSQ) sense.                              \n"
+   "* Program 3dREMLfit does something similar, but allows for ARMA(1,1)    \n"
+   "  serial correlation in the data, so the solution method is called      \n"
+   "  Generalized Least Squares (GLSQ).                                     \n"
+   "* If you want to solve a problem where some of the matrix columns in X  \n"
+   "  (the regressors) are different in different voxels (spatially variable),\n"
+   "  then use program 3dTfitter, which uses OLSQ.                          \n"
+   "* 3dTfitter can also use L1 and LASSO regression, instead of OLSQ; if you\n"
+   "  want to use such 'robust' fitting methods, this program is your friend.\n"
+   "  It can also impose sign constraints (positivity or negativity) on the \n"
+   "  parameters b, and can (as mentioned above) do deconvolution.          \n"
+   "* 3dBandpass can do a sequence of 'time series cleanup' operations,     \n"
+   "  including regressing out (via OLSQ) a set of nuisance vectors.        \n"
    "------------------------------------------------------------------------\n"
   ) ;
   printf("\n"
@@ -1037,8 +1050,15 @@ void display_help_menu()
     "               *N.B.: The q-th column of 'fff' will get a label        \n"
     "                      like 'lll[q]' in the 3dDeconvolve results.       \n"
     "               *N.B.: This option is known as the 'Inati Option'.      \n"
-    "               *N.B.: Unlike the original 'Inati', it is allowed to    \n"
-    "                      have more than one '-ortvec' option.             \n"
+    "               *N.B.: Unlike the original 'Inati' (who is unique), it  \n"
+    "                      is allowed to have more than one '-ortvec' option.\n"
+    "\n"
+    "**N.B.: You must have -num_stimts > 0  AND/OR                          \n"
+    "        You must use  -ortvec          AND/OR                          \n"
+    "        You must have -polort >= 0                                     \n"
+    "        Otherwise, there is no regression model!                       \n"
+    "        An example using -polort only:                                 \n"
+    " 3dDeconvolve -x1D_stop -polort A -nodata 300 2 -x1D stdout: | 1dplot -one -stdin\n"
     "\n"
     "**N.B.: The following 3 options are for the 'old' style of explicit    \n"
     "        deconvolution.  For most purposes, their usage is no longer    \n"
@@ -2787,7 +2807,8 @@ void get_options
       }
 
       /*-----   -ortvec filename label   -----*/
-      if( strcasecmp(argv[nopt],"-ortvec") == 0 ){
+      if( strcasecmp(argv[nopt],"-ortvec") == 0 ||
+          strcasecmp(argv[nopt],"-inati" ) == 0   ){
         MRI_IMAGE *oim ;
         if( ++nopt >= argc-1 ) DC_error ("need 2 arguments after -ortvec") ;
         oim = mri_read_1D( argv[nopt] ) ;
@@ -3284,10 +3305,14 @@ void get_options
 
   if( option_data->polort == -1 ) demean_base = 0 ;  /* 12 Aug 2004 */
 
-  /**** Add -ortvec (ortar) stuff to stimulus file list [02 Dec 2011] ****/
+  /**** check if we have any data ****/
 
-  if( option_data->num_stimts == 0 && ortar == NULL )
-    DC_error("'-num_stimts' is 0 AND no '-ortvec' ==> don't you want to DO anything?") ;
+  if( option_data->num_stimts == 0 && ortar == NULL && option_data->polort == -1 ){
+    ERROR_message("'-num_stimts' is 0  AND  no '-ortvec'  AND  '-polort' is -1") ;
+    DC_error(     "==> don't you want to DO anything? :-(") ;
+  }
+
+  /**** Add -ortvec (ortar) stuff to stimulus file list [02 Dec 2011] ****/
 
   if( ortar != NULL ){
     int nort=0 , nsold=option_data->num_stimts , nsnew , rr,nn ;
@@ -3617,8 +3642,10 @@ ENTRY("read_input_data") ;
 
   if (option_data->nodata)  /*----- No input data -----*/
     {
+#if 0
       if (num_stimts <= 0)
         DC_error ("Must have num_stimts > 0 for -nodata option");
+#endif
 
       if( option_data->num_slice_base > 0 )
         ERROR_exit("'-nodata' and '-slice_base' are incompatible!") ;

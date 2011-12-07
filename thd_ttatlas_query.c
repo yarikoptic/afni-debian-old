@@ -3484,12 +3484,12 @@ APPROX_STR_DIFF LevenshteinStringDistance(char *s1, char *s2, byte ci)
       if (ns > 3 ||
           /* allow it if it looks like we're looking for options */
           (ns > 1 && s1[0] == '-' && s2[0] == '-')) {
-         /* strcasestr won't work on Solaris, too bad */
          if (ci) spart = strcasestr(sl, ss);
          else spart = strstr(sl, ss);
 
          if (spart) {
-            D.d[PMD] = (int)(long)(spart-sl); if (D.d[PMD] > 9) D.d[PMD]=9;
+            D.d[PMD] = (int)((float)(spart-sl)/strlen(sl)*10.0); 
+               if (D.d[PMD] > 5) D.d[PMD]=5;
             if (D.d[PMD] < 0) fprintf(stderr,"Holy Toledo Batman: %s\n"
                                              "                    %s\n",
                                              s1, s2);
@@ -3814,6 +3814,38 @@ char **approx_str_sort(char **words, int N_words, char *str, byte ci,
    RETURN(ws);
 }
 
+typedef struct {
+   char *txt_src; /* Such as file name */
+   char *orig_txt; /* Original text */
+   int N_lines; /* Total number of lines in orig_txt */
+   char **lines; /*  Lines in orig_txt, eventually in a sorted order 
+                     Have N_lines strings */
+   int *line_index; /* lines[i] is line line_index[i] in orig_txt */
+   APPROX_STR_DIFF *D; /* Distance of best matching word in lines.
+                             One value for each line in 'lines' */
+   APPROX_STR_DIFF_WEIGHTS *Dw; /* Weights vector for distance computation */
+   char *word; /* The actual word being sought */
+} AFNI_TEXT_SORT;
+
+AFNI_TEXT_SORT *free_text_sort(AFNI_TEXT_SORT *ats) 
+{
+   int i;
+   if (!ats) return(NULL);
+   if (ats->word) free(ats->word);
+   if (ats->Dw) free(ats->Dw);
+   if (ats->D) free(ats->D);
+   if (ats->line_index) free(ats->line_index);
+   if (ats->lines) {
+      for (i=0; i<ats->N_lines; ++i) {
+         if (ats->lines[i]) free(ats->lines[i]);
+      }
+      free(ats->lines);
+   }
+   if (ats->orig_txt) free(ats->orig_txt);
+   if (ats->txt_src) free(ats->txt_src);
+   return(NULL);
+}
+
 char **approx_str_sort_text(char *text, int *N_ws, char *str, 
                             byte ci, float **sorted_score,
                             APPROX_STR_DIFF_WEIGHTS *Dwi,
@@ -4037,6 +4069,82 @@ void suggest_best_prog_option(char *prog, char *str)
       }
       free(ws[i]); ws[i]=NULL;
    } free(ws); ws = NULL;
+   return;
+}
+
+char *get_updated_help_file(int force_recreate, byte verb, char *progname) 
+{
+      static char hout[128]={""};
+      char scomm[256], *etr=NULL, *hdir=NULL, *etm=NULL;
+      
+      hdir = THD_helpdir();
+      if (hdir[0] == '\0') {
+         ERROR_message("Have no help directory\n");
+         RETURN(hout);
+      }
+      etr = THD_trailname( progname , 0 ) ; 
+      if (!etr || strlen(etr) < 2) {
+         WARNING_message("Fishy executable named %s\n",progname);
+         return(hout);
+      }
+      etm = THD_filetime(progname);
+      if (etm[0] == '\0') {
+         etm = "NoTimeStamp";
+      }
+      
+      snprintf(hout, 120*sizeof(char),
+               "%s/%s.%s.help", hdir, etr, etm);
+      if (!force_recreate && THD_is_file(hout)) {
+         if (verb) fprintf(stderr,"Reusing %s \n", hout); 
+      } else {
+         if (verb) fprintf(stderr,"Creating %s \n", hout); 
+         /* The echo below is there to make programs that
+            don't like -help and expect stdin to shut up and quit
+            As a result, it is hard to get the status of -help
+            command and use it wisely here without risking 
+            trouble */
+         if (THD_is_file( hout)) {
+            snprintf(scomm, 250*sizeof(char),
+               "chmod u+w %s", hout);
+            system(scomm); 
+         }
+         snprintf(scomm, 250*sizeof(char),
+               "echo '' | %s -help >& %s &", etr, hout);
+         system(scomm); 
+         snprintf(scomm, 250*sizeof(char),
+               "chmod a-w %s", hout);
+         system(scomm); 
+      }
+      return(hout);
+}
+
+
+void view_prog_help(char *prog)
+{
+   char *viewer=NULL, *hname=NULL;
+   char *progname=NULL;
+   char cmd[256]={""};
+   
+   if (!prog) return;
+   if (!(progname = THD_find_executable(prog))) {
+      ERROR_message("Could not find executable %s.\n",
+                     prog);
+      return;
+   }
+   if (!(viewer = GetAfniTextEditor())) {
+      ERROR_message("No GUI editor defined, and guessing game failed.\n"
+              "Set AFNI_GUI_EDITOR in your .afnirc for this option to work.\n"); 
+      return;
+   }
+   
+   hname = get_updated_help_file(0, 0, progname);
+   if (hname[0]=='\0') { /* failed, no help file ... */
+      ERROR_message("No help file for %s\n", progname);
+      return;
+   }
+   /* open help file in editor*/
+   snprintf(cmd,250*sizeof(char),"%s %s &", viewer, hname);
+   system(cmd);
    return;
 }
 
@@ -5613,7 +5721,29 @@ ATLAS *get_Atlas_Named(char *atname, ATLAS_LIST *atlas_list)
          RETURN(&(atlas_list->atlas[i]));
       }
    }
+      
    RETURN(NULL);
+}
+
+char *suggest_Atlas_Named(char *atname, ATLAS_LIST *atlas_list)
+{
+   int i = 0;
+   char **ws=NULL;
+   static char sugg[128]={""};
+   
+   if (!atname || !atlas_list) return(NULL);
+   
+   ws = (char **)calloc(atlas_list->natlases, sizeof(char *));
+   for (i=0; i<atlas_list->natlases;++i) {
+      ws[i] = strdup(atlas_list->atlas[i].atlas_name);
+   }
+   ws = approx_str_sort(ws, atlas_list->natlases, atname, 
+                        1, NULL, 1, NULL, NULL);
+   snprintf(sugg,124*sizeof(char),"%s", ws[0]);
+   for (i=0; i<atlas_list->natlases;++i) free(ws[i]);
+   free(ws);
+   
+   return(sugg);
 }
 
 ATLAS *get_Atlas_ByDsetID(char *dsetid, ATLAS_LIST *atlas_list)
