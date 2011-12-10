@@ -1572,7 +1572,17 @@ if( PRINT_TRACING ){
    SAVEUNDERIZE(XtParent(newseq->wbar_menu)) ;  /* 27 Feb 2001 */
 
    VISIBILIZE_WHEN_MAPPED(newseq->wbar_menu) ;
+#if 0
    if( !AFNI_yesenv("AFNI_DISABLE_TEAROFF") ) TEAROFFIZE(newseq->wbar_menu) ;
+#else
+   (void) XtVaCreateManagedWidget(
+            "dialog" , xmPushButtonWidgetClass , newseq->wbar_menu ,
+               LABEL_ARG("--- Cancel ---") ,
+               XmNrecomputeSize , False ,
+               XmNtraversalOn , False ,
+               XmNinitialResourcesPersistent , False ,
+            NULL ) ;
+#endif
 
    newseq->wbar_rng_but =
       XtVaCreateManagedWidget(
@@ -2941,8 +2951,9 @@ ENTRY("ISQ_make_image") ;
 MEM_plotdata * ISQ_plot_label( MCW_imseq *seq , char *lab )
 {
    MEM_plotdata *mp ; int ww ; float asp , dd ;
-   static int sz[5] = { 20 , 28 , 40 , 56 , 80 } ;  /* sz[j] = 20 * pow(2,0.5*j) */
-   char *eee ; float rr=1.0,gg=1.0,bb=0.8 , sb=0.003 ;
+   static int   sz[5] = { 20    , 28    , 40    , 56    , 80     } ;
+   static float th[5] = { 0.001f, 0.002f, 0.003f, 0.004f, 0.005f } ;
+   char *eee ; float rr=1.0,gg=1.0,bb=0.7 , sb=0.003 ;
 
 ENTRY("ISQ_plot_label") ;
 
@@ -2958,13 +2969,13 @@ ENTRY("ISQ_plot_label") ;
    dd = 0.0007*ww ;  /* offset from edge */
 
    create_memplot_surely( "Ilabelplot" , asp ) ;
-   set_thick_memplot(0.0) ;
+
+   set_thick_memplot(th[seq->wbar_labsz_av->ival]) ; /* 09 Dec 2011 */
 
    /* get the color to plot with */
 
    eee = getenv("AFNI_IMAGE_LABEL_COLOR") ;
-   if( eee != NULL )
-      DC_parse_color( seq->dc , eee , &rr,&gg,&bb ) ;
+   if( eee != NULL ) DC_parse_color( seq->dc , eee , &rr,&gg,&bb ) ;
    set_color_memplot(rr,gg,bb) ;
 
    /* get the setback */
@@ -5381,6 +5392,7 @@ ENTRY("ISQ_drawing_EV") ;
          /* Button1 release: turn off zoom-pan mode, if it was on */
 
          if( event->button == Button1 && w == seq->wimage ){
+           int xrel=event->x , yrel=event->y ;
 
            if( seq->zoom_button1 && !AFNI_yesenv("AFNI_KEEP_PANNING") ){
              seq->zoom_button1 = 0 ;
@@ -5399,17 +5411,19 @@ ENTRY("ISQ_drawing_EV") ;
              } else if( seq->status->send_CB != NULL ){  /* 04 Nov 2003 */
                 int imx,imy,nim;
                 seq->wimage_width = -1 ;
-                ISQ_mapxy( seq , seq->last_bx,seq->last_by , &imx,&imy,&nim ) ;
-                cbs.reason = isqCR_buttonpress ;
-                cbs.event  = ev ;
-                cbs.xim    = imx ;       /* delayed send of Button1 */
-                cbs.yim    = imy ;       /* event to AFNI now       */
-                cbs.nim    = nim ;
+                if( abs(seq->last_bx-xrel)+abs(seq->last_by-yrel) < 8 ){
+                  ISQ_mapxy( seq , seq->last_bx,seq->last_by , &imx,&imy,&nim ) ;
+                  cbs.reason = isqCR_buttonpress ;
+                  cbs.event  = ev ;
+                  cbs.xim    = imx ;       /* delayed send of Button1 */
+                  cbs.yim    = imy ;       /* event to AFNI now       */
+                  cbs.nim    = nim ;
 #if 0
-                seq->status->send_CB( seq , seq->getaux , &cbs ) ;
+                  seq->status->send_CB( seq , seq->getaux , &cbs ) ;
 #else
-                SEND(seq,cbs) ;
+                  SEND(seq,cbs) ;
 #endif
+               }
              }
            }
          }
@@ -5471,7 +5485,7 @@ ENTRY("ISQ_drawing_EV") ;
                 else if( ydif > 0 ) seq->rgb_offset -= 0.014;
                 ISQ_redisplay( seq , -1 , isqDR_reimage ) ;
                 seq->cmap_changed = 1 ;
-                seq->last_bx=event->x ; seq->last_by=event->y;
+                seq->last_bx = event->x ; seq->last_by = event->y;
 
               } else {                          /* the old way: change the gray map */
 
@@ -9928,7 +9942,7 @@ ENTRY("ISQ_rowgraph_draw") ;
 #endif
 
 #undef  THIK
-#define THIK 0.003
+#define THIK 0.004
 
       set_color_memplot( 0.8 , 0.0 , 0.2 ) ;
       set_thick_memplot( THIK ) ;
@@ -10320,7 +10334,7 @@ ENTRY("plot_image_surface") ;
                       (integer *)(&ii) ) ;
 
 #undef  THIK
-#define THIK 0.003
+#define THIK 0.004
 
       dx = 0.016 * x[nx-1] ; dy = 0.016 * y[ny-1] ; dx = MAX(dx,dy) ;
       xi = x[ix]+dx ; yi = y[ny-1-jy]+dx ; zi = z[ix+(ny-1-jy)*nx] ;

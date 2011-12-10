@@ -10,7 +10,7 @@
  */
 
 /*----------------------------------------------------------------------
-  $Id: plug_crender.c,v 1.59 2011/11/10 14:37:54 ziad Exp $
+  $Id: plug_crender.c,v 1.60 2011/12/09 17:31:06 rwcox Exp $
   ----------------------------------------------------------------------
 */
 
@@ -5510,7 +5510,9 @@ ENTRY( "RCREND_func_widgets" );
 
    SAVEUNDERIZE(XtParent(wfunc_pbar_menu)) ; /* 27 Feb 2001 */
    VISIBILIZE_WHEN_MAPPED(wfunc_pbar_menu) ;
+#if 0
    if( !AFNI_yesenv("AFNI_DISABLE_TEAROFF") ) TEAROFFIZE(wfunc_pbar_menu) ;
+#endif
 
    XtInsertEventHandler( wfunc_color_label ,     /* handle events in label */
 
@@ -7458,7 +7460,9 @@ ENTRY( "RCREND_script_menu" );
          XmCreatePulldownMenu( mbar , "menu" , NULL,0 ) ;
 
    VISIBILIZE_WHEN_MAPPED(script_menu) ;
+#if 0
    TEAROFFIZE(script_menu) ;
+#endif
 
    script_cbut =
          XtVaCreateManagedWidget(

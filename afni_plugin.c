@@ -3502,7 +3502,9 @@ ENTRY("AFNI_plugin_button") ;
    menu = XmCreatePulldownMenu( mbar , "menu" , NULL,0 ) ;
 
    VISIBILIZE_WHEN_MAPPED(menu) ;
+#if 0
    if( !AFNI_yesenv("AFNI_DISABLE_TEAROFF") ) TEAROFFIZE(menu) ;
+#endif
 
    xstr = XmStringCreateLtoR( "Plugins" , XmFONTLIST_DEFAULT_TAG ) ;
    cbut = XtVaCreateManagedWidget(
@@ -5161,7 +5163,7 @@ ENTRY("PLUTO_scatterplot") ;
 
    /* x-axis label? */
 
-   set_color_memplot( 0.0 , 0.0 , 0.0 ) ; set_thick_memplot( 0.002f ) ;
+   set_color_memplot( 0.0 , 0.0 , 0.0 ) ; set_thick_memplot( 0.004f ) ;
    if( STGOOD(xlab) )
       plotpak_pwritf( 0.5*(xobot+xotop) , yobot-0.06 , xlab , 16 , 0 , 0 ) ;
 
