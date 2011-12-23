@@ -43,7 +43,22 @@
 
 afni_history_struct rwcox_history[] = {
 /*=====BELOW THIS LINE=====*/
-  { 21 , DEC , 2011 , RWC , "afni_fgets" , MICRO , TYPE_MODIFY ,
+  { 22 , DEC , 2011 , RWC , "afni realtime plugin" , MICRO , TYPE_NEW_ENV ,
+   "AFNI_REALTIME_External_Dataset environment variable" ,
+   "Lets the realtime user (let's call her/him 'CC') specify an external\n"
+   "dataset to be used as the registation base.  CC doesn't have to use a\n"
+   "dataset that is in the cwd, unlike the plugin's GUI selector.  Nor does\n"
+   "the setting of this environment variable affect the plugin's GUI." } ,
+
+ { 22 , DEC , 2011 , RWC , "mycat" , MICRO , TYPE_NEW_PROG ,
+   "Minor program to be sort of like 'cat' but un-Microsofts files." ,
+   NULL } ,
+
+ { 22 , DEC , 2011 , RWC , "afni_fgets" , MICRO , TYPE_MODIFY ,
+   "Modified to use system fgets if file pointer is a ttty" ,
+   NULL } ,
+
+ { 21 , DEC , 2011 , RWC , "afni_fgets" , MICRO , TYPE_MODIFY ,
    "Modify to use system fgets for stdin" ,
    NULL } ,
 

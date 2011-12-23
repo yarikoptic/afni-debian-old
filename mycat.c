@@ -1,21 +1,13 @@
 #include <stdio.h>
 #include <unistd.h>
+#include <string.h>
+#include <stdlib.h>
 
 #undef  LF
 #undef  CR
 
 #define LF '\n'    /* Unix line ender      = ctrl-J = ASCII 0x0A */
 #define CR '\r'    /* Microsoft line ender = ctrl-M = ASCII 0x0D */
-
-/*----------------------------------------------------------------------------*/
-/* Allow user to skip the afni_fgets() function, probably for speedup.
-   afni_fgets() is about 4-5 times slower than fgets(), at least on my Mac.
-   Doesn't usually matter, since interpreting the text takes longer than
-   reading it in most case.  (Also, cf machdep.h)
-*//*--------------------------------------------------------------------------*/
-
-static int use_fgets = 0 ;
-void afni_fgets_setskip( int s ){ use_fgets = s ; }
 
 /*----------------------------------------------------------------------------*/
 /*! Like system fgets(), but allows LF, CR, CR+LF, and LF+CR as end of line
@@ -32,7 +24,7 @@ char * afni_fgets( char *buf , int nbuf , FILE *fp )
 
    /* use system fgets() if ordered to, or if reading from a terminal */
 
-   if( use_fgets || isatty(fileno(fp)) ) return fgets(buf,nbuf,fp) ;
+   if( isatty(fileno(fp)) ) return fgets(buf,nbuf,fp) ;
 
    /* read characters one at a time and process them */
 
@@ -60,27 +52,46 @@ char * afni_fgets( char *buf , int nbuf , FILE *fp )
    return buf ;
 }
 
-/*========================= main program to test speed of afni_fgets() =======*/
-#if 0
-#include "mrilib.h"
+/*----------------------------------------------------------------------------*/
 
-/* test speed of afni_fgets() */
+#undef  NBUF
+#define NBUF 131072
+static char buf[NBUF] ;
 
 int main( int argc , char *argv[] )
 {
-   char buf[99999] , *bb ; FILE *fp ; int iarg=1 ;
+   char *bb ; FILE *fp ; int iarg=1 ;
 
-   machdep() ;  /* will set fgets usage from environment */
+   if( argc == 1 || strcmp(argv[1],"-help") == 0 ){
+     printf("\n"
+            "mycat fileA ...\n"
+            "\n"
+            "Copies text files to stdout, like the system 'cat', but with changes:\n"
+            "* To copy stdin, you must use '-' for a filename\n"
+            "* Microsoft end-of-line characters are changed to Unix format\n"
+            "* Because of the above, mycat should only be used with text files!\n"
+            "\n"
+     ) ;
+     exit(0) ;
+   }
 
-   while( iarg < argc ){  /* read all files */
+   while( iarg < argc ){
 
-     fp = fopen(argv[iarg++],"r") ; if( fp == NULL ) continue ;
+     if( strcmp(argv[iarg],"-") == 0 ){
+       fp = stdin ; iarg++ ;
+     } else {
+       fp = fopen(argv[iarg++],"r") ; if( fp == NULL ) continue ;
+     }
 
-     do{ bb = afni_fgets( buf , 99999 , fp ) ; } while( bb != NULL ) ;
+     while(1){
+       bb = afni_fgets( buf , NBUF , fp ) ; 
+       if( bb == NULL ) break ;
+       fwrite(buf,1,strlen(buf),stdout) ;
+     }
 
-     fclose(fp) ;
+     if( fp != stdin ) fclose(fp) ;
+
    }
 
    exit(0) ;
 }
-#endif

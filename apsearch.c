@@ -245,7 +245,7 @@ char *text_from_stdin(int *nread)
    
    i = 0; N_alloc=0; nchar=0, nnew=0;
    do{  
-      cpt = fgets(lbuf,N_lbuf,stdin) ;
+      cpt = afni_fgets(lbuf,N_lbuf,stdin) ;
       lbuf[N_lbuf] = '\0';
       ex = feof(stdin);
       if( cpt==NULL && !ex){ 
@@ -325,7 +325,7 @@ int main(int argc, char **argv)
          return(0);
       }
 
-      if (strcmp(argv[iarg],"-afni_gui_editor") == 0) { 
+      if (strcmp(argv[iarg],"-afni_text_editor") == 0) { 
          fprintf(stdout,"%s\n", GetAfniTextEditor());
          return(0);
       }
