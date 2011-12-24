@@ -3397,7 +3397,7 @@ STATUS("drawing crosshairs") ;
 
    if( type == isqCR_getlabel ){
       Three_D_View *im3d = (Three_D_View *) br->parent ;
-      char *lab , str[512] , *dd ;
+      char *lab , str[2048] , *dd , *eee=NULL;
       char labstrf[256]={""}, labstra[256]={""};
       THD_ivec3 iv,ivp,ivm ;
       THD_fvec3 fv,fvp,fvm ;

@@ -1562,6 +1562,16 @@ This variable, a floating point value between 0 and 0.1, determines how
 far from the edge an image coordinate label will be drawn.  The units are
 fractions of the image width/height.
 
+---------------------------------
+Variable: AFNI_IMAGE_LABEL_STRING (editable)
+---------------------------------
+This value of this variable is a string that is appended to the automatically
+generated image slice viewer overlay label -- the viewing of this label is
+controlled from the right-click popup menu attached to the intensity bar to
+the right of the image itself.  This variable applies to any slice image
+viewer window into which the user has not specifically set a string for
+this purpose from the GUI menu item 'Label Append String'.
+
 ------------------------------
 Variable: AFNI_CROSSHAIR_LINES (editable)
 ------------------------------
@@ -3330,6 +3340,14 @@ negatives (e.g., as discussed by Storey, Benjamini, and others)
 will NOT be carried out.  As of 26 Mar 2009, this adjustment of
 q-values is the default in AFNI programs.  If you want the old
 behavior, set this variable to YES.
+
+----------------------------
+Variable: AFNI_SKIP_SATCHECK
+----------------------------
+If you want 3dDeconvolve to check the input dataset time series for
+initial saturation transients (a somewhat time consuming process),
+set this variable to NO.  You can also use program 3dSatCheck for
+this purpose.  Or just look at your data (please!).
 
 #####################################################
 ##### ATLAS AND WHEREAMI ENVIRONMENT VARIABLES  #####
