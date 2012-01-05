@@ -232,8 +232,11 @@ typedef enum { LEV=0, /* Levenshtein distance */
                IWD, /* Intra Words Distance */ 
                N_APPROX_STR_DIMS /* leave the last */ } APPROX_STR_DIMS;
 
+#define SRCFILE_MAX 32
+
 typedef struct {
-   int d[N_APPROX_STR_DIMS]; 
+   int d[N_APPROX_STR_DIMS];
+   char srcfile[SRCFILE_MAX+1]; 
 } APPROX_STR_DIFF;
 
 typedef struct {
@@ -277,7 +280,13 @@ char **approx_str_sort_text(char *text, int *N_ws, char *str,
 char **approx_str_sort_tfile(char *fname, int *N_ws, char *str, 
                             byte ci, float **sorted_score,
                             APPROX_STR_DIFF_WEIGHTS *Dwi,
-                            APPROX_STR_DIFF **Dout);
+                            APPROX_STR_DIFF **Dout, int verb);
+THD_string_array *approx_str_sort_Ntfile(
+                      char **fnames, int N_names, char *str, 
+                      byte ci, float **sorted_score,
+                      APPROX_STR_DIFF_WEIGHTS *Dwi,
+                      APPROX_STR_DIFF **Doutp, int verb);
+#define APSEARCH_TMP_PREF "__apsearch"
 char **approx_str_sort_phelp(char *prog, int *N_ws, char *str, 
                             byte ci, float **sorted_score,
                             APPROX_STR_DIFF_WEIGHTS *Dwi,
@@ -386,12 +395,13 @@ ATLAS_POINT_LIST *atlas_point_list(char *atname);
 ATLAS_POINT_LIST *atlas_point_list_old_way(char *atname);
 int genx_load_atlas_dset(ATLAS *atlas);
 int purge_atlas(char *atname);
+THD_string_array *get_working_atlas_name_list(void);
+THD_string_array *recreate_working_atlas_name_list(void);
 ATLAS_SPACE_LIST *get_G_space_list(void);
 ATLAS_XFORM_LIST *get_G_xform_list(void);
 ATLAS_LIST* get_G_atlas_list(void);
 ATLAS_TEMPLATE_LIST *get_G_templates_list(void);
-NI_stream find_atlas_niml_file(void);
-NI_stream open_atlas_niml(char * nimlname);
+char *find_atlas_niml_file(char * nimlname, int nini);
 ATLAS_LIST *env_atlas_list(void);
 char **env_space_list(int *);
 char *Current_Atlas_Default_Name(void);

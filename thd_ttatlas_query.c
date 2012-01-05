@@ -27,16 +27,45 @@ static ATLAS_SPACE_LIST *global_atlas_spaces=NULL;
 static ATLAS_XFORM_LIST *global_atlas_xfl=NULL;
 static ATLAS_LIST *global_atlas_alist=NULL;
 static ATLAS_TEMPLATE_LIST *global_atlas_templates=NULL;
+
+static THD_string_array *working_atlas_name_list = NULL; /* Names of a set of 
+   atlases we'll show in AFNI. There are defaults if users don't override them */
+static THD_string_array *session_atlas_name_list=NULL; /* a set of atlases found
+           in SessionAtlases.niml, it will get added to working_atlas_name_list */
+
 char *old_space_list[] = {"TLRC","MNI","MNI_ANAT"};
 
-/* if adding or subtracting from this list, be sure to change the min_atlas_n
-   just below also*/
-char *min_atlas_list[] = {"TT_Daemon", "CA_ML_18_MNIA", "CA_MPM_18_MNIA",
-   "CA_PM_18_MNIA", "CA_LR_18_MNIA", "CA_GW_18_MNIA", "CA_N27_LR",
-   "DD_Desai_MPM", "DKD_Desai_MPM" };
+THD_string_array *recreate_working_atlas_name_list(void) {
+   if (working_atlas_name_list) DESTROY_SARR(working_atlas_name_list);
+   return(get_working_atlas_name_list());
+}
 
-char min_atlas_n = 9;
+THD_string_array *get_working_atlas_name_list(void) {
+   char *min_atlas_list[] = {"TT_Daemon", "CA_ML_18_MNIA", "CA_MPM_18_MNIA",
+      "CA_PM_18_MNIA", "CA_LR_18_MNIA", "CA_GW_18_MNIA", "CA_N27_LR",
+      "DD_Desai_MPM", "DKD_Desai_MPM", NULL};
+   int i;
+   
+   if (!working_atlas_name_list || working_atlas_name_list->num==0) {
+      INIT_SARR(working_atlas_name_list);
+   } else {
+      return(working_atlas_name_list);
+   }
+   if (session_atlas_name_list) {
+      for (i=0; i<session_atlas_name_list->num; ++i) {
+         ADDUTO_SARR(working_atlas_name_list,
+                     session_atlas_name_list->ar[i]);
+      }
+   }
+   i=0;
+   while (min_atlas_list[i]) {
+      ADDUTO_SARR(working_atlas_name_list, min_atlas_list[i]);
+      ++i;
+   }
 
+   return(working_atlas_name_list);     
+}
+  
 ATLAS_SPACE_LIST *get_G_space_list(void) { 
    static int icall = 0;
    if (!icall && !global_atlas_spaces) {
@@ -618,8 +647,10 @@ THD_3dim_dataset * get_atlas(char *epath, char *aname)
             DSET_load (dset);	                /* load dataset */
          }
       }
-      if( !dset ){                     /* got it!!! */
-         ERROR_message("Failed to read dset %s\n", epath);
+      if( !dset ){                     /* don't got it!!! */
+         if (wami_verb()) 
+            ERROR_message("Failed to read dset from %s (aname=%s)\n", 
+                          epath, aname?aname:"NULL");
       }
       RETURN(dset);   /* return NULL or dset for specified path input */
    } else { /* no path given */
@@ -1833,24 +1864,16 @@ static int whereami_version = 2;    /* 1 --> Uses mid vintage whereami_9yards
                                              function.
                                        2 --> Uses whereami_3rdbase
                                     */
-NI_stream find_atlas_niml_file()
-{
-   NI_stream space_niml = NULL;
-
-   space_niml = open_atlas_niml("AFNI_atlas_spaces.niml");
-   return(space_niml);
-}
 
 void set_TT_whereami_version(int atlas_version, int wami_version) {
    if (atlas_version > 0 && wami_version > 0) {
       atlas_list_version = atlas_version;
       whereami_version = wami_version;
    } else {
-      NI_stream ns;
-      if ((ns = find_atlas_niml_file())) {
+      char *ff = find_atlas_niml_file("AFNI_atlas_spaces.niml",0);
+      if (ff[0] != '\0') {
          atlas_list_version = 2;
          whereami_version = 2;
-         NI_stream_close( ns );
       }
    }
 }
@@ -1958,31 +1981,34 @@ int init_global_atlas_list () {
    else RETURN(0);
 }
 
-/* open a NIML file somewhere and return the NIML stream for it
+/* find a NIML file somewhere 
   search first by original path in name, then the AFNI_PLUGINPATH, then path*/
-NI_stream
-open_atlas_niml(char * nimlname)
+char *find_atlas_niml_file(char * nimlname, int niname)
 {
-   char filestr[261];
+   static char filestr[5][1024];
+   static int icall = -1;
    char *fstr, *epath;
 
-   NI_stream space_niml;
+   ENTRY("find_atlas_niml_file");
+   
+   ++icall; if (icall > 4) icall = 0;
+   filestr[icall][0]='\0';
 
-   ENTRY("open_atlas_niml");
-
-   sprintf(filestr, "file:%s", nimlname);
-
-   /* try reading a NIML file wherever it says, i.e. path is complete
-      or current directory */
+   
    if(wami_verb() > 1) 
-      INFO_message("trying to open %s in current directory\n",nimlname);   
-
-   space_niml = NI_stream_open(filestr,"r");
-   if(space_niml)
-      RETURN(space_niml);
-
-
+      INFO_message("trying to open %s \n",nimlname);   
+   if (THD_is_file(nimlname)) goto GOTIT;
+   
+   if(wami_verb() > 1) 
+      INFO_message("%s not found, trying different paths, if no path is set.\n"
+                     ,nimlname);   
+   
+   if (THD_filehaspath(nimlname)) { /* not found and have path, get out */
+      RETURN(filestr[icall]);
+   }
+     
    /* okay that didn't work, try the AFNI plugin directory */
+   filestr[icall][0]='\0';
                        epath = getenv("AFNI_PLUGINPATH") ;
    if( epath == NULL ) epath = getenv("AFNI_PLUGIN_PATH") ;
    if( epath != NULL ) {
@@ -1990,17 +2016,18 @@ open_atlas_niml(char * nimlname)
          INFO_message("trying to open %s in AFNI_PLUGINPATH directory %s\n",
               nimlname, epath);   
       if(epath[strlen(epath)-1]!='/')
-         sprintf(filestr, "file:%s/%s", epath,nimlname);
+         snprintf(filestr[icall], 1000*sizeof(char),
+                  "%s/%s", epath, nimlname);
       else
-         sprintf(filestr, "file:%s%s", epath,nimlname);
-      space_niml = NI_stream_open(filestr,"r");
-      if(space_niml)
-         RETURN(space_niml);
+         snprintf(filestr[icall], 1000*sizeof(char),
+                  "%s%s", epath, nimlname);
+      if (THD_is_file(nimlname)) goto GOTIT;
    }
 
    /* still can't find it. Maybe it's in one of the path directories */ 
+   filestr[icall][0]='\0';
    epath = getenv("PATH") ;
-   if( epath == NULL ) RETURN(NULL) ;  /* this is bad-who doesn't have a path?*/
+   if( epath == NULL ) RETURN(filestr[icall]) ;  /* bad-who has no path?*/
    if(wami_verb() > 1) 
       INFO_message("trying to open %s in path as a regular file\n  %s\n",nimlname, epath);   
 
@@ -2008,30 +2035,40 @@ open_atlas_niml(char * nimlname)
    if(fstr) {
       if(wami_verb() > 1)
          INFO_message("found %s in %s", nimlname, fstr);
-      sprintf(filestr, "file:%s", fstr);
-      space_niml = NI_stream_open(filestr,"r");
-      if(space_niml)
-         RETURN(space_niml);
+      snprintf(filestr[icall], 1000*sizeof(char), "%s", fstr);
+      if (THD_is_file(nimlname)) goto GOTIT;
       if(wami_verb() > 1) 
-         INFO_message("failed to open %s from path as %s\n",nimlname, filestr);   
+         INFO_message("failed to open %s from path as %s\n",nimlname, filestr);  
    }
-   RETURN(NULL);
+   
+   RETURN(filestr[icall]);
+   
+   GOTIT:
+   if (niname) {
+      snprintf(filestr[icall], 1000*sizeof(char),
+               "file:%s", nimlname);
+   } else {
+      snprintf(filestr[icall], 1000*sizeof(char),
+               "%s", nimlname);
+   }
+
+   RETURN(filestr[icall]);
 }
 
 
 /* read various NIML files for atlas information*/
 int init_global_atlas_from_niml_files()
 {
-   NI_stream space_niml;
+   char *space_niml_file;
    int valid_space_niml;
    char *ept = NULL;
    
    if(wami_verb() > 1) 
       INFO_message("opening AFNI_atlas_spaces.niml");   
 
-   space_niml = open_atlas_niml("AFNI_atlas_spaces.niml");
+   space_niml_file = find_atlas_niml_file("AFNI_atlas_spaces.niml", 0);
 
-   if(space_niml==NULL){
+   if(space_niml_file[0]=='\0'){
       if (wami_verb()) 
          WARNING_message("Could not open global AFNI_atlas_spaces.niml\n");
       return(0);
@@ -2044,39 +2081,63 @@ int init_global_atlas_from_niml_files()
       return(0);
    }
    
-   
    /* read atlas info from global atlas file */
-   valid_space_niml = read_space_niml(space_niml, global_atlas_xfl,
-          global_atlas_alist, global_atlas_spaces, global_atlas_templates);
+   valid_space_niml = read_space_niml_file(space_niml_file, global_atlas_xfl,
+          global_atlas_alist, global_atlas_spaces, global_atlas_templates, NULL);
+   
    ept = my_getenv("AFNI_SUPP_ATLAS");
    if( ept ) {
       if(wami_verb() > 1) 
-         INFO_message("opening AFNI_supp_atlas_space.niml");   
-      space_niml = open_atlas_niml(ept);
-      if(space_niml==NULL){
+         INFO_message("opening supplemental atlases in %s", ept);   
+      space_niml_file = find_atlas_niml_file(ept, 0);
+      if(space_niml_file[0]=='\0'){
             WARNING_message("Could not open supplemental atlas niml file %s\n",
                            ept);
       } else {
          /* read atlas info from supplemental atlas file */
          /*  adding to existing structures */
-         valid_space_niml = read_space_niml(space_niml, global_atlas_xfl,
-                global_atlas_alist, global_atlas_spaces, global_atlas_templates);
+         valid_space_niml = read_space_niml_file(
+                space_niml_file, global_atlas_xfl,
+                global_atlas_alist, global_atlas_spaces, global_atlas_templates,
+                NULL);
       }
    }
    
+   ept = THD_custom_atlas_file(NULL);
+   if (ept[0] != '\0') {
+      if (!session_atlas_name_list) INIT_SARR(session_atlas_name_list);
+      if(wami_verb() > 1) 
+         INFO_message("opening CustomAtlases.niml for custom group atlases"); 
+      space_niml_file = find_atlas_niml_file(ept, 0);
+      if(space_niml_file[0]=='\0'){
+         WARNING_message(
+            "Bad local atlas niml file %s\n", ept);
+      } else {
+         /* read atlas info from local atlas file */
+         /*  adding to existing structures */
+         valid_space_niml = 
+            read_space_niml_file(space_niml_file, global_atlas_xfl,
+                global_atlas_alist, global_atlas_spaces, global_atlas_templates,
+                session_atlas_name_list);
+      }
+   }
+      
    /* read default session atlas */
    if (THD_is_file("SessionAtlases.niml")) {
+      if (!session_atlas_name_list) INIT_SARR(session_atlas_name_list);
       if(wami_verb() > 1) 
-         INFO_message("opening SessionAtlases.niml"); 
-      space_niml = open_atlas_niml("SessionAtlases.niml");
-      if(space_niml==NULL){
+         INFO_message("opening SessionAtlases.niml for session atlases"); 
+      space_niml_file = find_atlas_niml_file("SessionAtlases.niml",0);
+      if(space_niml_file[0]=='\0'){
          WARNING_message(
             "Bad local atlas niml file SessionAtlases.niml\n");
       } else {
          /* read atlas info from local atlas file */
          /*  adding to existing structures */
-         valid_space_niml = read_space_niml(space_niml, global_atlas_xfl,
-                global_atlas_alist, global_atlas_spaces, global_atlas_templates);
+         valid_space_niml = read_space_niml_file(
+                space_niml_file, global_atlas_xfl,
+                global_atlas_alist, global_atlas_spaces, global_atlas_templates,
+                session_atlas_name_list);
       }
    }
      
@@ -2085,15 +2146,17 @@ int init_global_atlas_from_niml_files()
    if( ept ) {
       if(wami_verb() > 1) 
          INFO_message("opening AFNI_local_atlas_space.niml");   
-      space_niml = open_atlas_niml(ept);
-      if(space_niml==NULL){
+      space_niml_file = find_atlas_niml_file(ept,0);
+      if(space_niml_file[0]=='\0'){
          ERROR_message("Could not open supplemental atlas niml file %s\n",
                         ept);
       } else {
          /* read atlas info from local atlas file */
          /*  adding to existing structures */
-         valid_space_niml = read_space_niml(space_niml, global_atlas_xfl,
-                global_atlas_alist, global_atlas_spaces, global_atlas_templates);
+         valid_space_niml = read_space_niml_file(
+                space_niml_file, global_atlas_xfl,
+                global_atlas_alist, global_atlas_spaces, global_atlas_templates, 
+                NULL);
       }
    }
   
@@ -3476,6 +3539,7 @@ APPROX_STR_DIFF *init_str_diff(APPROX_STR_DIFF *Dw) {
    for (i=0; i<N_APPROX_STR_DIMS; ++i) {
       Dw->d[i] = 100000;
    }
+   Dw->srcfile[0]='\0';
    return(Dw);
 }
 
@@ -3626,13 +3690,20 @@ APPROX_STR_DIFF *copy_str_diff(APPROX_STR_DIFF *Din, APPROX_STR_DIFF *Dout)
    for (i=0; i<N_APPROX_STR_DIMS; ++i) {
       Dout->d[i] = Din->d[i];
    }
+   strncpy(Dout->srcfile, Din->srcfile, SRCFILE_MAX*sizeof(char));
    return(Dout);
 }
 
 int approx_str_diff_swap(APPROX_STR_DIFF *Din, APPROX_STR_DIFF *Dout)
 {
    int i=0, dd;
+   char srcfile[256];
+   
    if (!Din || !Dout) return(0);
+   
+   strncpy(srcfile, Dout->srcfile, SRCFILE_MAX*sizeof(char));
+   strncpy(Dout->srcfile, Din->srcfile, SRCFILE_MAX*sizeof(char));
+   strncpy(Din->srcfile, srcfile, SRCFILE_MAX*sizeof(char));
    for (i=0; i<N_APPROX_STR_DIMS; ++i) {
       dd = Dout->d[i];
       Dout->d[i] = Din->d[i];
@@ -3663,9 +3734,10 @@ char *name_approx_string_diff_dim(APPROX_STR_DIMS i) {
    }
    return("Very bad situation");     
 }
+
 char *approx_string_diff_info(APPROX_STR_DIFF *D, APPROX_STR_DIFF_WEIGHTS *Dwi) 
 {
-   static char res[10][256];
+   static char res[10][512];
    static int icall=-1;
    char sbuf[32];
    int i;
@@ -3674,7 +3746,7 @@ char *approx_string_diff_info(APPROX_STR_DIFF *D, APPROX_STR_DIFF_WEIGHTS *Dwi)
    
    ++icall; if (icall > 9) icall=0;
    
-   sprintf(res[icall],"(");
+   snprintf(res[icall],SRCFILE_MAX*sizeof(char),"(%s ", D->srcfile);
    for (i=0; i<N_APPROX_STR_DIMS; ++i) {
       sprintf(sbuf,"%s %dx%.2f ", 
                name_approx_string_diff_dim(i), D->d[i], Dwi->w[i]); 
@@ -3752,7 +3824,7 @@ int *sort_str_diffs (APPROX_STR_DIFF **Di, int N_words,
    ENTRY("sort_str_diffs");
 
    if (sorted_score && *sorted_score) {
-      ERROR_message("If sorted_score then *sorted_score should be NULL\n");
+      ERROR_message("If sorted_score then *sorted_score should be NULL!\n");
       RETURN(isi);
    }
    
@@ -3943,13 +4015,82 @@ char **approx_str_sort_text(char *text, int *N_ws, char *str,
    RETURN(ws);
 } 
 
+THD_string_array *approx_str_sort_Ntfile(
+                  char **fnames, int N_names, char *str, 
+                            byte ci, float **sorted_score,
+                            APPROX_STR_DIFF_WEIGHTS *Dwi,
+                            APPROX_STR_DIFF **Doutp, int verb)
+{
+   char **ws=NULL, *text=NULL, *fname=NULL;
+   APPROX_STR_DIFF_WEIGHTS *Dw = Dwi;
+   THD_string_array *sar=NULL, *sars=NULL;
+   APPROX_STR_DIFF *Dout=NULL;
+   int N_ws=-1, inm=0, ii=0, *isi=NULL;
+   int direct = -1; /* -1 best match first, 1 best match last */
+   
+   ENTRY("approx_str_sort_Ntfile");
+
+   if (!fnames || !str) RETURN(sar);
+   if (sorted_score && *sorted_score) {
+      ERROR_message("If sorted_score then *sorted_score should be NULL.\n");
+      RETURN(sar);
+   }
+   if (Doutp && *Doutp) {
+      ERROR_message("If Doutp then *Doutp should be NULL\n");
+      RETURN(sar);
+   }
+   
+   if (!Dw) Dw = init_str_diff_weights(Dw);
+
+   for (inm=0; inm < N_names; ++inm) {
+      fname = fnames[inm];
+      if (!(ws = approx_str_sort_tfile(fname, &N_ws, str, ci, 
+                                NULL, Dw, &Dout, verb))) {
+         if (verb) WARNING_message("Failed to process %s\n", fname);
+         continue;
+      }
+      if (!sar) INIT_SARR( sar ) ;
+      for (ii=0; ii<N_ws; ++ii) {
+         ADDTO_SARR(sar, ws[ii]); free(ws[ii]); ws[ii]=NULL;
+      }
+      if (Doutp) {
+         *Doutp = (APPROX_STR_DIFF *)realloc((*Doutp), 
+                        sar->num* sizeof(APPROX_STR_DIFF));
+         memcpy(((*Doutp)+sar->num-N_ws), Dout, N_ws*sizeof(APPROX_STR_DIFF));
+      }
+      free(Dout); Dout = NULL; 
+      free(ws); free(text); text=NULL;
+   }
+   if (Dw != Dwi) free(Dw); Dw=NULL;
+   
+   /* Now that we have all files read, sort the final result 
+      This is weak here, sort_str_diffs should also take into
+      account the frequency with which good matches are found
+      in a particular file.
+      Someday perhaps...*/
+   isi = sort_str_diffs (Doutp, sar->num, Dwi, sorted_score, direct, 1); 
+
+   /* create sorted output, best match last */
+   INIT_SARR(sars);
+   for (ii=0; ii<sar->num; ++ii) {
+      ADDTO_SARR(sars,sar->ar[isi[ii]]);
+   }
+   DESTROY_SARR(sar); sar = sars; sars=NULL;
+   free(isi); isi=NULL;
+   
+   RETURN(sar);
+}
+
+
 char **approx_str_sort_tfile(char *fname, int *N_ws, char *str, 
                             byte ci, float **sorted_score,
                             APPROX_STR_DIFF_WEIGHTS *Dwi,
-                            APPROX_STR_DIFF **Dout)
+                            APPROX_STR_DIFF **Dout, int verb)
 {
    char **ws=NULL, *text=NULL;
    APPROX_STR_DIFF_WEIGHTS *Dw = Dwi;
+   APPROX_STR_DIFF *ddout = NULL;
+   int ii=0;
    
    ENTRY("approx_str_sort_tfile");
 
@@ -3964,12 +4105,19 @@ char **approx_str_sort_tfile(char *fname, int *N_ws, char *str,
    }
    /* suck text and send it to approx_str_sort_text */
    if (!(text = AFNI_suck_file(fname))) {
-      ERROR_message("File %s could not be read\n", fname);
+      if (verb) ERROR_message("File %s could not be read\n", fname);
       RETURN(ws);
    }
    
    if (!Dw) Dw = init_str_diff_weights(Dw);
    ws = approx_str_sort_text(text, N_ws, str, ci, sorted_score, Dw, Dout);
+   if (Dout && *Dout) {   
+      ddout = *Dout;
+      for (ii=0; ii<*N_ws; ++ii) {
+         snprintf(ddout[ii].srcfile,SRCFILE_MAX*sizeof(char),
+                            "%s", THD_trailname(fname,0));
+      }
+   }
    free(text); text=NULL;
    if (Dw != Dwi) free(Dw); Dw=NULL;
    
@@ -4064,7 +4212,7 @@ char **approx_str_sort_phelp(char *prog, int *N_ws, char *str,
    }      
    
    UNIQ_idcode_fill(uid);
-   sprintf(tout,"/tmp/__apsearch.%s.txt", uid);
+   sprintf(tout,"/tmp/%s.%s.txt", APSEARCH_TMP_PREF, uid); 
    snprintf(cmd,500*sizeof(char),"%s -help >& %s", prog, tout);
    if (system(cmd)) {
       if (0) {/* many programs finish help and set status afterwards. Naughty. */
@@ -4072,7 +4220,7 @@ char **approx_str_sort_phelp(char *prog, int *N_ws, char *str,
          return 0;
       }
    }
-   ws = approx_str_sort_tfile(tout, N_ws, str, ci, sorted_score, Dw, Dout);
+   ws = approx_str_sort_tfile(tout, N_ws, str, ci, sorted_score, Dw, Dout, 1);
                                  
    snprintf(cmd,500*sizeof(char),"\\rm -f %s", tout);
    system(cmd);
@@ -5978,20 +6126,15 @@ int is_Dset_Atlasy(THD_3dim_dataset *dset, ATLAS_LIST *atlas_alist)
    NI_set_attribute(nel, "description","Je vous aime");
    NI_set_attribute(nel, "comment","Added on the fly");
    
-   /* now stick this to the list, ugly business to get a stream
-   for read_space_niml .. but element is small */
-   if (!(ns = NI_stream_open( "str:" , "r" ))) {
-      ERROR_message("Failed to open stream");
-      goto CLEAN;
-   }
-   str = NI_write_element_tostring(nel);
-   NI_stream_setbuf( ns , str ) ;        /* start just after prolog */
-   if (!read_space_niml(ns, NULL, 
-                        atlas_alist, NULL, NULL)) {
+   if (!session_atlas_name_list) INIT_SARR(session_atlas_name_list);
+   if (!add_atlas_nel(nel, NULL, 
+                      atlas_alist, NULL, NULL, session_atlas_name_list, NULL)) {
       ERROR_message("Failed to add to atlaslist");
-      NI_stream_close(ns); NI_free_element(nel); NI_free(str); str=NULL;
       goto CLEAN;
    }
+   /* and reset the working list */
+   recreate_working_atlas_name_list();
+   
    /* Now get the atlas loaded (duplication here) */
    if (!Atlas_With_Trimming(NI_get_attribute(nel,"atlas_name"),1,atlas_alist)) {
       ERROR_message("Unexpected failure to setup atlas");
@@ -6331,7 +6474,8 @@ int set_adh_old_way(ATLAS_DSET_HOLDER *adh, char *aname)
       /* DO NOT CALL atlas_point_list or you will cause recursion
          with Atlas_With_Trimming */
    if (!(apl = atlas_point_list_old_way(aname))) {
-      ERROR_message("Malheur de malheur >%s< nous sommes foutus!", aname);
+      ERROR_message(
+         "Malheur de malheur >%s< is an atlas with no atlas points!", aname);
       RETURN(1);      
    }   
    adh->apl2 = NULL;
@@ -7784,11 +7928,12 @@ ATLAS_LIST * env_atlas_list()
    ATLAS_LIST *atlas_rlist = NULL;
    char atlas_name_str[256], ch;
    int ai, strind, nch, bb=0, ibb=0;
-
+   THD_string_array *sar=NULL;
 
    envlist= my_getenv("AFNI_ATLAS_LIST");
    if(envlist==NULL) {
-      atlas_rlist = Atlas_Names_to_List(min_atlas_list, min_atlas_n);
+      sar = get_working_atlas_name_list();
+      atlas_rlist = Atlas_Names_to_List(sar->ar, sar->num);
       return(atlas_rlist);
    }
    nch = strlen(envlist);
