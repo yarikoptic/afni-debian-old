@@ -396,6 +396,8 @@ static float *Xcol_mean ;
 static int    voxel_num ;
 static float *voxel_base = NULL ;
 
+static int dofsub=0 ;
+
 float baseline_mean( vector coef ) ;    /* compute mean of baseline stuff */
 
 static int xrestore = 0 ;                           /* globals for -xrestore */
@@ -1063,6 +1065,8 @@ void display_help_menu(int detail)
     "               *N.B.: This option is known as the 'Inati Option'.      \n"
     "               *N.B.: Unlike the original 'Inati' (who is unique), it  \n"
     "                      is allowed to have more than one '-ortvec' option.\n"
+    "               *N.B.: Program 1dBport is one place to generate a file  \n"
+    "                      for use with '-ortvec'.                          \n"
     "\n"
     "**N.B.: You must have -num_stimts > 0  AND/OR                          \n"
     "        You must use  -ortvec          AND/OR                          \n"
@@ -2332,6 +2336,15 @@ void get_options
         continue;
       }
 
+      /*-----   -dofsub ddd   -----*/
+
+      if( strcmp(argv[nopt],"-dofsub") == 0 ){
+        nopt++ ;
+        if (nopt >= argc)  DC_error ("need argument after -dofsub ");
+        dofsub = (int)strtod(argv[nopt++],NULL) ;
+        if( dofsub < 0 ) WARNING_message("-dofsub value is negative!") ;
+        continue ;
+      }
 
       /*-----   -polort num  -----*/
       if (strcmp(argv[nopt], "-polort") == 0)
@@ -10753,7 +10766,7 @@ ENTRY("basis_parser") ;
      bb = 0 ;
      if( !zzz ){
        be->bfunc[bb].f = basis_tent ;
-       be->bfunc[bb].a = bot-0.001*dx ;
+       be->bfunc[bb].a = bot-0.00111f*dx ;
        be->bfunc[bb].b = bot ;
        be->bfunc[bb].c = bot+dx ;
        bb++ ;
@@ -10768,7 +10781,7 @@ ENTRY("basis_parser") ;
        be->bfunc[bb].f = basis_tent ;
        be->bfunc[bb].a = bot + (nord-2)*dx ;
        be->bfunc[bb].b = top ;
-       be->bfunc[bb].c = top + 0.001*dx ;
+       be->bfunc[bb].c = top + 0.00111f*dx ;
     }
 
    /*--- CSPLIN(bot,top,order) ---*/  /*-- add CSPLINzero 23 Jul 2010 --*/
