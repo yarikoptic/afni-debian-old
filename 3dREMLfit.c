@@ -804,10 +804,17 @@ int main( int argc , char *argv[] )
       " -Rvar  ppp  = dataset for REML variance parameters\n"
       " -Rbeta ppp  = dataset for beta weights from the REML estimation\n"
       "                 [similar to the -cbucket output from 3dDeconvolve]\n"
+      "               * This dataset will contain all the beta weights, for\n"
+      "                   baseline and stimulus regressors alike, unless the\n"
+      "                   '-nobout' option is given -- in that case, this\n"
+      "                   dataset will only get the betas for the stimulus\n"
+      "                   regressors.\n"
       " -Rbuck ppp  = dataset for beta + statistics from the REML estimation;\n"
       "                 also contains the results of any GLT analysis requested\n"
       "                 in the 3dDeconvolve setup.\n"
       "                 [similar to the -bucket output from 3dDeconvolve]\n"
+      "               * This dataset does NOT get the betas (or statistics) of\n"
+      "                   those regressors marked as 'baseline' in the matrix file.\n"
       "               * If the matrix file from 3dDeconvolve does not contain\n"
       "                   'Stim attributes' (which will happen if all inputs\n"
       "                   to 3dDeconvolve were labeled as '-stim_base'), then\n"
@@ -1509,8 +1516,10 @@ int main( int argc , char *argv[] )
       /**==========   -polort P [undocumented] ===========**/
 
      if( strcasecmp(argv[iarg],"-polort") == 0 ){
+       char *qpt ;
        if( ++iarg >= argc ) ERROR_exit("Need argument after '%s'",argv[iarg-1]) ;
-       polort = (int)strtod(argv[iarg],NULL) ;
+       polort = (int)strtod(argv[iarg],&qpt) ;
+       if( *qpt != '\0' ) WARNING_message("Illegal non-numeric value after -polort") ;
        iarg++ ; continue ;
      }
 

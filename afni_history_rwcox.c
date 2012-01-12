@@ -43,7 +43,17 @@
 
 afni_history_struct rwcox_history[] = {
 /*=====BELOW THIS LINE=====*/
-  { 10 , JAN , 2012 , RWC , "1dBport" , MINOR , TYPE_NEW_PROG ,
+  { 11 , JAN , 2012 , RWC , "3dhistog" , MICRO , TYPE_BUG_FIX ,
+   "Fix bugs" ,
+   "(a) fbin storing the counts was not always allocated the right length\n"
+   "(b) changed it from int to int64_t to allow for really large datasets\n"
+   "(c) there is no 3rd item" } ,
+
+ { 11 , JAN , 2012 , RWC , "many programs" , MICRO , TYPE_GENERAL ,
+   "Print WARNING message if '-polort A' is used where not allowed" ,
+   "This is the Inati's fault." } ,
+
+ { 10 , JAN , 2012 , RWC , "1dBport" , MINOR , TYPE_NEW_PROG ,
    "Generates sin/cos waveforms for bandpass-via-regression" ,
    NULL } ,
 
