@@ -1,6 +1,8 @@
 #!/usr/bin/python
 import os, sys, glob, operator, string, afni_base
 
+valid_afni_views = ['+orig', '+acpc', '+tlrc']
+
 class afni_name:
    def __init__(self, name=""):
       self.initname = name
@@ -93,7 +95,10 @@ class afni_name:
       return "%s%s" % (self.p(), self.prefix)
    def pv(self):
       """return prefix, view formatted name"""
-      return "%s%s" % (self.prefix, self.view)
+      if self.type == 'BRIK':
+         return "%s%s" % (self.prefix, self.view)
+      else:
+         return self.pve()
    def pve(self):
       """return prefix, view, extension formatted name"""
       return "%s%s%s" % (self.prefix, self.view, self.extension)
@@ -241,6 +246,26 @@ class afni_name:
       an.extension = self.extension
       an.type = self.type
       return an
+
+   def initial_view(self):
+      """return any initial view (e.g. +tlrc) from self.initial"""
+      pdict = parse_afni_name(self.initname)
+      view = pdict['view']
+      if view in ['+orig', '+acpc', '+tlrc']: return view
+      return ''
+               
+   def to_afni(self, new_view=''):  
+      """modify to be BRIK type, with possible new_view (default is +orig)"""
+
+      # be sure there is some view
+      if new_view in valid_afni_views:        self.view = new_view
+      elif self.view not in valid_afni_views: self.view = '+orig'
+
+      if self.type == 'BRIK': return
+
+      self.type = 'BRIK'
+      self.extension = ''  # clear 
+      return
                
 class comopt:
    def __init__(self, name, npar, defpar, acplist=[], helpstr=""):
@@ -323,9 +348,9 @@ class shell_com:
    def trim(self):
       #try to remove absolute path
       if self.dir[-1] != '/':
-         tcom = string.replace(self.com, "%s/" % (self.dir), '')
+         tcom = string.replace(self.com, "%s/" % (self.dir), './')
       else:
-         tcom = string.replace(self.com, self.dir, '')
+         tcom = string.replace(self.com, self.dir, './')
       return tcom
    def echo(self): 
       if (len(self.trimcom) < len(self.com)):

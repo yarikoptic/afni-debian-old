@@ -694,6 +694,8 @@ SUMA_DO_Types SUMA_Guess_DO_Type(char *s)
       SUMA_RETURN(dotp);
    }
    
+   if (strstr(s,"<nido_head")) SUMA_RETURN(NIDO_type);
+   
    fid = fopen(s,"r");
    
    if (!fid) {
@@ -1008,9 +1010,20 @@ SUMA_NIDO *SUMA_ReadNIDO (char *fname, char *parent_so_id)
    SUMA_ENTRY;
    
    if (!fname) SUMA_RETURN(NULL);
-   if (SUMA_GuessFormatFromExtension(fname, NULL)==SUMA_NIML) {
+   
+   if ((atr = strstr(fname,"<nido_head"))) {
+      /* The fname is the nido */
+      niname = SUMA_copy_string("str:");
+      ns = NI_stream_open(niname, "r");
+      NI_stream_setbuf( ns , atr ) ;
+   } else if (SUMA_GuessFormatFromExtension(fname, NULL)==SUMA_NIML) {
       niname = SUMA_append_string("file:", fname);
       ns = NI_stream_open(niname, "r");
+   } else {
+      SUMA_S_Err("Only .niml.do format accepted");
+      SUMA_RETURN(NULL);
+   }
+   {
       while ((nini = NI_read_element(ns, 1))) {
          if (SUMA_iswordin(nini->name,"nido_head")) {/* fill special fields */
             if (nido) {
@@ -1027,7 +1040,9 @@ SUMA_NIDO *SUMA_ReadNIDO (char *fname, char *parent_so_id)
                               "the NIDO can bond");
                   SUMA_RETURN(NULL);
                }
-               nido = SUMA_Alloc_NIDO(NULL, fname, parent_so_id);
+               nido = SUMA_Alloc_NIDO(
+                        NI_get_attribute(nini,"idcode_str"), 
+                        fname, parent_so_id);
                NI_set_attribute(nido->ngr, "bond", atr);
             }
             if ((atr = NI_get_attribute(nini,"coord_type"))) {
@@ -1088,10 +1103,7 @@ SUMA_NIDO *SUMA_ReadNIDO (char *fname, char *parent_so_id)
       NI_stream_close( ns ) ; ns = NULL;
       SUMA_free(niname); niname=NULL;
       if (LocalHead) SUMA_ShowNel(nido->ngr); 
-   } else  {
-      SUMA_S_Err("Only .niml.do format accepted");
-      SUMA_RETURN(NULL);
-   }
+   } 
    SUMA_RETURN(nido);
 }
 
@@ -3714,7 +3726,7 @@ SUMA_Boolean SUMA_PrepForNIDOnelPlacement (  SUMA_SurfaceViewer *sv,
 {
    static char FuncName[]={"SUMA_PrepForNIDOnelPlacement"};
    int id = 0, id3=0, k=0;
-   char *atr=NULL;
+   char *atr=NULL, *atr_ha=NULL, *atr_va=NULL;
    SUMA_SurfaceObject *SO = NULL;
    float Ex=0.0, hln=0.0;
    GLdouble pfront[3] = {0.0, 0.0, 0.0}, pback[3]= {0.0, 0.0, 0.0};
@@ -3760,7 +3772,56 @@ SUMA_Boolean SUMA_PrepForNIDOnelPlacement (  SUMA_SurfaceViewer *sv,
                      SO->Label, id,
                      txloc[0], txloc[1], txloc[2]);
    } else {
-      NI_GET_FLOATv(nel,"coord",txloc,3, LocalHead);
+      if ((atr =  NI_get_attribute(nel,"p"))) {
+         int natr = strlen(atr), i=0;
+         if (natr > 1 && !SUMA_IS_DIGIT(atr[0])) {
+            for (i=0; i<natr; ++i) {
+               switch(SUMA_TO_LOWER_C((atr[i]))) {
+                  case 't':
+                     txloc[1]=1.0;
+                     atr_va = "top";
+                     break;
+                  case 'b':
+                     txloc[1]=0.0;
+                     atr_va = "bot";
+                     break;
+                  case 'm':
+                  case 'c':
+                     if (i==0) {
+                        txloc[1]=0.5;
+                        atr_va = "center";
+                     } else if (i==1) {
+                        txloc[0]=0.5;
+                        atr_ha = "center";
+                     } else if (i==2) {
+                        txloc[2]=0.5;
+                     }
+                     break;
+                  case 'l':
+                     txloc[0]=0.0;
+                     atr_ha = "left";
+                     break;
+                  case 'r': 
+                     if (i<2) {
+                        txloc[0]=1.0;/* right */
+                        atr_ha = "right";
+                     } else  txloc[2]=1.0; /* rear */
+                     break;
+                  case 'f': /* front */
+                     txloc[2]=0.0;
+                     break;
+               }
+            }
+         } else {
+            NI_GET_FLOATv(nel,"coord",txloc,3, LocalHead);
+            atr_va = NI_get_attribute(nel,"v_align");
+            atr_ha = NI_get_attribute(nel,"h_align");
+         }
+      } else {
+         NI_GET_FLOATv(nel,"coord",txloc,3, LocalHead);
+         atr_va = NI_get_attribute(nel,"v_align");
+         atr_ha = NI_get_attribute(nel,"h_align");
+      }
       if (texcoord && NI_get_attribute(nel, "frame_coords")) {
          N_texcoord = 4;
          NI_GET_FLOATv( nel, "frame_coords", 
@@ -3776,7 +3837,7 @@ SUMA_Boolean SUMA_PrepForNIDOnelPlacement (  SUMA_SurfaceViewer *sv,
          SUMA_LHv("sz=[%d, %d, %d]\n", sz[0], sz[1], sz[2]);
          glGetIntegerv(GL_VIEWPORT, viewport);
          
-         if ((atr = NI_get_attribute(nel,"h_align"))) {
+         if ((atr = atr_ha)) {
             if (atr[0] == 'c' || atr[0] == 'C') { /* center */
                txloc[0] = txloc[0] - ((float)sz[0]/2.0 / (float)viewport[2]);
             } else if (atr[0] == 'r' || atr[0] == 'R') { /* right */
@@ -3784,7 +3845,7 @@ SUMA_Boolean SUMA_PrepForNIDOnelPlacement (  SUMA_SurfaceViewer *sv,
             }
          }
          if (nel->name[0] == 'T') { /* special treatment for text */
-            if ((atr = NI_get_attribute(nel,"v_align"))) {
+            if ((atr = atr_va)) {
                hln = sz[1]/sz[2]; /* height of one line, recalculated!*/
                Ex = (1-sz[2])*hln;  /* shift for text of more than one line */
                if (atr[0] == 'c' || atr[0] == 'C') { /* center */
@@ -3800,7 +3861,7 @@ SUMA_Boolean SUMA_PrepForNIDOnelPlacement (  SUMA_SurfaceViewer *sv,
                }
             }
          } else {
-            if ((atr = NI_get_attribute(nel,"v_align"))) {
+            if ((atr = atr_va)) {
                if (atr[0] == 'c' || atr[0] == 'C') { /* center */
                   txloc[1] = txloc[1] - ((float)sz[1]/2.0 / (float)viewport[3]);
                } else if (atr[0] == 't' || atr[0] == 'T') { /* top */
@@ -4125,6 +4186,7 @@ SUMA_Boolean SUMA_DrawNIDO (SUMA_NIDO *SDO, SUMA_SurfaceViewer *sv)
    SUMA_DO_CoordType coord_type = SUMA_WORLD;
    SUMA_DO_CoordUnits default_coord_units = SUMA_WORLD_UNIT;
    char *atr=NULL;
+   static int iwarn=0;
    SUMA_Boolean LocalHead = NOPE;
    
    SUMA_ENTRY;
@@ -4249,8 +4311,10 @@ SUMA_Boolean SUMA_DrawNIDO (SUMA_NIDO *SDO, SUMA_SurfaceViewer *sv)
             }
             break;
          default:
-            SUMA_SL_Err(
-               "Don't know what to make of this group element, ignoring.");
+            SUMA_S_Errv(
+               "Don't know what to make of this group element %d, ignoring.",
+               SDO->ngr->part_typ[ip]);
+            if (LocalHead || !iwarn) {SUMA_ShowNel(SDO->ngr); ++iwarn;}
             break;
       }
       if (nel) { /* something to display */
@@ -6343,7 +6407,8 @@ SUMA_Boolean SUMA_Paint_SO_ROIplanes ( SUMA_SurfaceObject *SO,
             for (ii=0; ii < N_Nodes; ++ii) {
                inode = Nodes[ii];
                if (inode >= SO->N_Node) {
-                  SUMA_S_Errv("Have node %d, SO->N_Node = %d\n",
+                  SUMA_S_Errv("Have node %d, SO->N_Node = %d\n"
+                     "Make sure ROI loaded belongs to this surface.\n",
                               inode , SO->N_Node) ;
                               SUMA_RETURN(NOPE);
                }

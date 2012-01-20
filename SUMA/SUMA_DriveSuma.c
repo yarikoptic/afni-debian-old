@@ -164,6 +164,36 @@ void usage_DriveSuma (SUMA_GENERIC_ARGV_PARSE *ps)
 "                            For detailed information on DO_FILE's format,\n"
 "                            see the section under suma's  help (ctrl+h)\n"
 "                            where the function of Ctrl+Alt+s is detailed.\n"
+"        -fixed_do NIML_DO_STRING: Load a fixed coordinate type NIML DO that \n"
+"                     is defined by the string NIML_DO_STRING.\n"
+"                     This is more convenient than specifying\n"
+"                     a simple DO in a file. For example:\n"
+"                  DriveSuma -com viewer_cont \\\n"
+"                              -fixed_do \"<T text='Hi' coord='0.5 0.2 0'/>\"\n"
+"               or the simpler:\n"
+"                  DriveSuma -com viewer_cont \\\n"
+"                              -fixed_do \"<T text='Up here' p=tlf/>\"\n"
+"                  DriveSuma -com viewer_cont \\\n"
+"                              -fixed_do \"<T text='Down there' p=bcf/>\"\n"
+"\n"
+"                     Repeated calls to -fixed_do would replace the previous\n"
+"                     object with the new one. You could specify multiple DOs\n"
+"                     by adding a qualifier string to the option -fixed_do.\n"
+"                     For example:\n"
+"                  DriveSuma -com viewer_cont \\\n"
+"                          -fixed_do1 \"<T text='Tango' coord='0.5 0.2 0'/>\"\n"
+"                  DriveSuma -com viewer_cont \\\n"
+"                          -fixed_do2 \"<T text='ognaT' coord='0.2 0.2 0'/>\"\n"
+"                  DriveSuma -com viewer_cont \\\n"
+"                          -fixed_do1 \"<T text='-X-' coord='0.5 0.2 0'/>\"\n"
+"\n"
+"               For more information about DOs, see suma -help_nido and \n"
+"               demo script @DO.examples.\n"
+"\n"
+"        -Fixed_do NIML_DO_STRING: Same as -fixed_do, but spits out some \n"
+"                     debugging info.\n"
+"        -mobile_do NIML_DO_STRING: Mobile version of -fixed_do\n"
+"        -Mobile_do NIML_DO_STRING: Mobile version of -Fixed_do\n"
 "        -key KEY_STRING: Act as if the key press KEY_STRING\n"
 "                         was applied in the viewer.\n"
 "                         ~ Not all key presses from interactive\n"
@@ -1126,6 +1156,64 @@ int SUMA_DriveSuma_ParseCommon(NI_group *ngr, int argtc, char ** argt)
          argt[kar][0] = '\0';
          brk = YUP;
       }
+
+
+      if (!brk && ( (strncmp(argt[kar], "-fixed_do",9) == 0) ||
+                    (strncmp(argt[kar], "-Fixed_do",9) == 0) ||
+                    (strncmp(argt[kar], "-mobile_do",10) == 0) ||
+                    (strncmp(argt[kar], "-Mobile_do",10) == 0) ) )
+      {
+         char *sbuf=NULL, *qar=NULL;
+         NI_element *nel=NULL;
+         int showit=0;
+         if (argt[kar][1] == 'F' || argt[kar][1] == 'M') showit=1;
+         if (kar+1 >= argtc)
+         {
+            fprintf (SUMA_STDERR, 
+                     "need a string after -fixed_do (or -mobile_do)\n");
+            SUMA_RETURN(0);
+         }
+         qar = UNIQ_hashcode(argt[kar]);
+         if (strstr(argt[kar],"ixed_do")) {
+            sbuf = SUMA_copy_string("<nido_head coord_type = 'fixed'\n"
+                                 "default_color = '1.0 1.0 1.0'\n"
+                                 "default_font = 'he18'\n"
+                                 "idcode_str = ");
+         } else {
+            sbuf = SUMA_copy_string("<nido_head coord_type = 'mobile'\n"
+                                 "default_SO_label = 'CURRENT'\n"
+                                 "bond = 'surface'\n"
+                                 "idcode_str = ");
+         }
+         sbuf = SUMA_append_replace_string(sbuf,qar,"",1);
+         argt[kar][0] = '\0';
+         free(qar); qar=NULL;
+         sbuf = SUMA_append_replace_string(sbuf,"/>\n","\n",1);
+         ++kar;
+         if (!(qar = args_in_niml_quotes(argt, &kar, argtc, 1))) {
+            SUMA_S_Errv("Could not find niml element starting at %s\n",
+                        argt[kar]);
+         } else {
+            /* check that the new element is OK, that function reads 
+               just one element*/
+            if (!(nel=NI_read_element_fromstring(qar))) {
+               SUMA_S_Errv("Could not parse -fixed_do %s\n"
+                  "Try experimenting with niccc -s to get the syntax right.\n",
+                        argt[kar]);
+               exit(1);
+            }
+            if (showit) SUMA_ShowNel(nel);
+            if (nel) NI_free_element(nel); nel=NULL;   
+            sbuf = SUMA_append_replace_string(sbuf, qar,"",1);
+            SUMA_free(qar); qar=NULL;
+         }
+         
+         NI_set_attribute(ngr, "DO_FileName", sbuf);
+         SUMA_free(sbuf); sbuf=NULL;
+         argt[kar][0] = '\0';
+         brk = YUP;
+      }
+      
       if (!brk && ( (strcmp(argt[kar], "-anim_dup") == 0) ) )
       {
          if (kar+1 >= argtc)
@@ -1357,7 +1445,7 @@ int SUMA_DriveSuma_ParseCommon(NI_group *ngr, int argtc, char ** argt)
                   "Error %s:\n"
                   "Option %s not understood. Try -help for usage\n",
                FuncName, argt[kar]);
-			SUMA_RETURN(0);
+         SUMA_RETURN(0);
 		} else {	
 			brk = NOPE;
 			kar ++;
@@ -1433,11 +1521,14 @@ SUMA_GENERIC_PROG_OPTIONS_STRUCT *SUMA_DriveSuma_ParseInput(
             exit (1);
          }
          
-         Opt->com = (char **)SUMA_realloc(Opt->com, sizeof(char *)*(Opt->N_com+1));
+         Opt->com = (char **)SUMA_realloc(Opt->com, 
+                                 sizeof(char *)*(Opt->N_com+1));
          Opt->com[Opt->N_com] = NULL;
          ++kar;
          do { 
-            Opt->com[Opt->N_com] = SUMA_append_replace_string (Opt->com[Opt->N_com], argv[kar], " ", 1);
+            Opt->com[Opt->N_com] = 
+               SUMA_append_replace_string (Opt->com[Opt->N_com], 
+                                           argv[kar], " ", 1);
             ++kar;
             brk = NOPE;
             if ( kar >= argc ) brk = YUP;
@@ -1451,7 +1542,9 @@ SUMA_GENERIC_PROG_OPTIONS_STRUCT *SUMA_DriveSuma_ParseInput(
       
       
       if (!brk && !ps->arg_checked[kar]) {
-			fprintf (SUMA_STDERR,"Error %s:\nOption %s not understood. Try -help for usage\n", FuncName, argv[kar]);
+			SUMA_S_Errv("Option %s not valid, or requires preceding -com option\n"
+                     "Try -help for usage\n", argv[kar]);
+         suggest_best_prog_option(argv[0], argv[kar]);
 			exit (1);
 		} else {	
 			brk = NOPE;
