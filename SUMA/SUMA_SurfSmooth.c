@@ -1067,7 +1067,7 @@ SUMA_SURFSMOOTH_OPTIONS *SUMA_SurfSmooth_ParseInput (
          exit(1);  
       }
    }
-    
+   
    if (outname) {
       if (SUMA_filexists(outname) && !Opt->overwrite) {
          fprintf (SUMA_STDERR,
@@ -1301,7 +1301,6 @@ int main (int argc,char *argv[])
    static char FuncName[]={"SurfSmooth"}; 
 	int kar, icol, nvec, ncol=0, i, ii, N_inmask = -1;
    float *data_old = NULL, *far = NULL;
-   float **DistFirstNeighb;
    void *SO_name = NULL;
    SUMA_SurfaceObject *SO = NULL, *SOnew = NULL;
    MRI_IMAGE *im = NULL;
