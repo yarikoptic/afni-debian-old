@@ -177,6 +177,7 @@ void apsearch_usage(int detail)
    "  -afni_text_editor: Print the name of the GUI editor. Priority goes to \n"
    "                     env. variable AFNI_GUI_EDITOR, otherwise afni\n"
    "                     will try to find something suitable.\n"
+   "  -view_text_file FILE: Open FILE with editor of -afni_text_editor\n"
    "  -view_readme SOMETHING: Find a readme.SOMETHINGISH and open it\n" 
    "  -apsearch_log_file: Print the name of the logfile that is used to save\n"
    "                      some results of apsearch's functions. This option\n"
@@ -187,6 +188,7 @@ void apsearch_usage(int detail)
    "                        This is like the option -h_view in C programs.\n"
    "  -web_prog_help PROG: Open the help file for PROG in a web brower.\n"
    "                        This is like the option -h_web in C programs.\n"
+   "  -web_class_docs: Open the webpage with latest class pdfs.\n"
    "\n"
    "  NOTE: The maximum number of results depends on the combination of\n"
    "        -max_hits, -min_different_hits, and -unique_hits_only. \n"
@@ -446,6 +448,12 @@ int main(int argc, char **argv)
          continue; 
       }
       
+      if (strcmp(argv[iarg],"-web_class_docs") == 0) { 
+         web_class_docs(NULL);
+         return(0);
+         continue; 
+      }
+      
       if (strcmp(argv[iarg],"-view_readme") == 0) { 
          char *rout=NULL, **ws=NULL;
          int N_ws, i;
@@ -472,6 +480,24 @@ int main(int argc, char **argv)
                free(ws);
             }
          }  
+         return(0);
+      }
+      
+      if (strcmp(argv[iarg],"-view_text_file") == 0) { 
+         char *rout=NULL, **ws=NULL;
+         int N_ws, i;
+         ++iarg;
+         if (iarg >= argc) {
+            fprintf( stderr,
+                     "** Error: Need a filename after -view_text_file\n"); 
+                     return(1);
+         }
+         if (!THD_is_file(argv[iarg])) {
+            fprintf( stderr,
+                     "** Error: File %s not found.\n", argv[iarg]); 
+                     return(1);
+         }
+         view_text_file(argv[iarg]); 
          return(0);
       }
       

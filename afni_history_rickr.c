@@ -49,6 +49,12 @@
 
 afni_history_struct rickr_history[] = {
 
+ { 27, JAN, 2012, RCR, "to3d", MINOR, TYPE_BUG_FIX,
+   "fix inf loop if some sSliceArray entries not set",
+   "Also, now there might be junk between ASCCONV BEGIN and ###, grrrrr...\n"
+   "Problem noted by J Lewis."
+ } ,
+
  { 25, JAN, 2012, RCR, "Dimon", MINOR, TYPE_BUG_FIX,
    "back out overzealous -quit changes for now",
    NULL
