@@ -67,6 +67,7 @@
 /*---------------------------------------------------------------------------*/
 
 #include "mrilib.h"
+#include "3ddata.h"
 
 static char * commandline = NULL ;         /* command line for history notes */
 
@@ -443,6 +444,12 @@ void write_afni_data (anova_options * option_data,  char * filename,
 void add_file_name (THD_3dim_dataset * new_dset, char * filename,
 		    char * command_str);
 
+
+/*---------------------------------------------------------------------------*/
+/*
+   Routine to get a nice string to use as sub-brick label.
+*/
+char *label_from_filename(char *fname);
 
 /*---------------------------------------------------------------------------*/
 /*

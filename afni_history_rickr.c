@@ -49,6 +49,22 @@
 
 afni_history_struct rickr_history[] = {
 
+ {  6, FEB, 2012, RCR, "Dimon", MINOR, TYPE_ENHANCE,
+   "added -no_wait option: never wait for new data",
+   "Also, suppress new glob warnings.\n"
+   "Done for F Ye and others."
+ } ,
+
+ {  6, FEB, 2012, RCR, "to3d", MICRO, TYPE_MODIFY,
+   "tiny help update, as enforced by D Glen",
+   NULL
+ } ,
+
+ {  6, FEB, 2012, RCR, "3dsvm", MICRO, TYPE_MODIFY,
+   "applied Makefile.INCLUDE updates for J Lisinski and S LaConte",
+   NULL
+ } ,
+
  {  3, FEB, 2012, RCR, "align_epi_anat.py", MICRO, TYPE_BUG_FIX,
    "updated @AddEdge command to match change to afni_base:shell_com",
    "Done with D Glen."

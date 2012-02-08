@@ -2887,6 +2887,10 @@ extern int    THD_deconflict_prefix( THD_3dim_dataset * ) ;          /* 23 Mar 2
 
 #define DSET_IDCODE_STR(ds) ((ds)->idcode.str)
 
+/*! Return the storage mode string */
+#define DSET_STORAGE_MODE_STR(ds) ( ((ds) && (ds)->dblk && (ds)->dblk->diskptr)\
+   ? storage_mode_str((ds)->dblk->diskptr->storage_mode):"NULL" )
+   
 /* 25 April 1998 */
 
 #define DBLK_BYTEORDER(db)  ((db)->diskptr->byte_order)
@@ -3986,6 +3990,7 @@ int storage_mode_from_prefix( char * fname );
 extern char *storage_mode_name(int mode);
 extern int has_known_non_afni_extension( char * fname ) ;   /*     [rickr] */
 extern char * find_filename_extension( char * fname );
+extern char * without_afni_filename_extension( char *fname); 
 
 extern void THD_datablock_apply_atr( THD_3dim_dataset * ) ; /* 09 May 2005 */
 

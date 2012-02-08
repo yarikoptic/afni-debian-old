@@ -710,7 +710,7 @@ char *SUMA_DsetColLabelCopy(SUMA_DSET *dset, int i, int addcolnum)
       }
    }
    SUMA_NEL_GET_STRING(nelb, 0, 0, lbl); 
-      /* sc is a pointer copy here, do not free */
+                     /* lbl is a pointer copy here, do not free */
    lbl = SUMA_Get_Sub_String(lbl, SUMA_NI_CSS, i);
    sprintf(Name, "%d: ", i);
    if (lbl) { 
@@ -740,6 +740,35 @@ char *SUMA_DsetColLabelCopy(SUMA_DSET *dset, int i, int addcolnum)
    /* give me a bone */
    if (addcolnum) SUMA_RETURN(SUMA_append_string(Name, "bone"));
    else  SUMA_RETURN(SUMA_copy_string("bone"));
+}
+
+int SUMA_FindDsetColLabeled(SUMA_DSET *dset, char *label) 
+{
+   static char FuncName[]={"SUMA_FindDsetColLabeled"};
+   int ind=-1;
+   NI_element *nelb=NULL;
+   char *lbl=NULL, *str=NULL;
+   
+   SUMA_ENTRY;
+   
+   if (!label || !dset || 
+       !(nelb = SUMA_FindDsetAttributeElement(dset, "COLMS_LABS"))) {
+      SUMA_S_Err("NULL input");
+      SUMA_RETURN(-1);    
+   }
+   SUMA_NEL_GET_STRING(nelb, 0, 0, lbl); 
+   
+   if (strstr(lbl,label)) {/* have something */
+      for (ind=0; ind<SDSET_VECNUM(dset); ++ind) {
+         if ((str = SUMA_DsetColLabelCopy(dset, ind, 0))) {
+            if (!strcmp(str,label)) {
+               SUMA_free(str); SUMA_RETURN(ind);
+            } else SUMA_free(str);
+         }
+      }
+   }
+   
+   SUMA_RETURN(-1);
 }
 
 /*!
@@ -12480,7 +12509,10 @@ static ENV_SPEC envlist[] = {
       "Default is f9.\n",
       "SUMA_CrossHairLabelFont",
       "f9" }, 
-   
+   {  "Linking mode of I and T sub-brick selectors\n"
+      "Choose one of: None, Stat\n",
+      "SUMA_IxT_LinkMode",
+      "Stat" }, 
    {  NULL, NULL, NULL  }
 };
       
@@ -12767,6 +12799,10 @@ SUMA_Boolean SUMA_ShowParsedFname(SUMA_PARSED_NAME *pn, FILE *out)
       SS = SUMA_StringAppend_va(SS, "StorageMode   :%d\n", pn->StorageMode);
       SS = SUMA_StringAppend_va(SS, "StorageModeNm.:%s\n", pn->StorageModeName);
       SS = SUMA_StringAppend_va(SS, "FileName_NoExt:%s\n", pn->FileName_NoExt);
+      SS = SUMA_StringAppend_va(SS, "FNameNoAfniExt:%s\n", \
+                                 without_afni_filename_extension(pn->FileName));
+      SS = SUMA_StringAppend_va(SS, "FNameLabel    :%s\n", \
+                                 without_afni_filename_extension(pn->Prefix));
       SS = SUMA_StringAppend_va(SS, "Col. Selector :%s\n", pn->ColSelect);
       SS = SUMA_StringAppend_va(SS, "Node Selector :%s\n", pn->NodeSelect);
       SS = SUMA_StringAppend_va(SS, "Row Selector  :%s\n", pn->RowSelect);
@@ -13318,7 +13354,9 @@ char *SUMA_FnameGet(char *Fname, char *sel, char *cccwd)
       strcpy (str[istr], ParsedFname->Ext); 
    else if  (sel[0] == 'f' && sel[1] == 'n' && sel[2] == 'e' )
       strcpy (str[istr], ParsedFname->FileName_NoExt); 
-   else {
+   else if  (sel[0] == 'l') {
+      strcpy (str[istr], without_afni_filename_extension(ParsedFname->Prefix));
+   } else {
       SUMA_S_Err("Selection not understood");
    }
 

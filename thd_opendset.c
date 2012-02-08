@@ -210,7 +210,8 @@ ENTRY("THD_open_one_dataset") ;
 
    /*-- 04 Mar 2003: allow input of .1D files --*/
 
-   if( STRING_HAS_SUFFIX(pathname,".1D") ){
+   if( STRING_HAS_SUFFIX(pathname,".1D") ||
+       STRING_HAS_SUFFIX(pathname,".1D.dset") ){
      CHECK_FOR_DATA(pathname) ;               /* 06 Jan 2005 */
      dset = THD_open_1D(pathname) ;
      THD_patch_brickim(dset) ;  /* 20 Oct 2006 */
@@ -581,6 +582,7 @@ ENTRY("storage_mode_from_prefix");
    RETURN(sm);
 }
 
+/* There is also: storage_mode_str() */
 char *storage_mode_name(int mode) {
    switch (mode) {
       case STORAGE_UNDEFINED:
@@ -657,4 +659,43 @@ ENTRY("has_known_non_afni_extension");
         mode  > LAST_STORAGE_MODE ) RETURN(0);
 
     RETURN(1); /* otherwise, we recognize it as non-AFNI */
+}
+
+/* ---------------------------------------------------- */
+/* given a filename, return a string excluding known 
+   afni extensions (from file_extension_list)
+   DO NOT FREE output.
+                                   06 Feb 2012 [ZSS] */
+
+char * without_afni_filename_extension( char * fname )
+{
+    char ** eptr;
+    static char onames[5][THD_MAX_NAME+1];
+    static int icall=0;
+    int c, flen, num_ext;
+
+ENTRY("without_afni_filename_extension");
+    
+    if( !fname || !*fname ) RETURN(NULL);
+    ++icall;
+    if (icall > 4) icall = 0;
+    onames[icall][0]='\0';
+    
+    if (strlen(fname) >= THD_MAX_NAME) {
+      WARNING_message("Filename too long for without_afni_filename_extension()"
+                      "Returing fname");
+      RETURN(fname);
+    }
+    num_ext = sizeof(file_extension_list)/sizeof(char *);
+    flen = strlen(fname);
+
+    for( c = 0, eptr = file_extension_list; c < num_ext; c++, eptr++ ) {
+        if( STRING_HAS_SUFFIX(fname, *eptr) ) {
+            flen = flen - strlen(*eptr);
+            strncpy(onames[icall], fname, flen);
+            onames[icall][flen]='\0';
+            RETURN(onames[icall]);
+        }
+    }
+    RETURN(fname);   /* not found */
 }
