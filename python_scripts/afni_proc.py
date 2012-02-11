@@ -313,9 +313,12 @@ g_history = """
         - added help updates for this
     3.09 Feb 01, 2012: check for pre-steady state outliers
         - added option -tcat_outlier_warn_limit
+    3.10 Feb 10, 2012:
+        - added -check_results_dir option for ZSS
+        - changed -tcat_outlier_warn_limit to -tcat_preSS_warn_limit
 """
 
-g_version = "version 3.09, February 1, 2012"
+g_version = "version 3.10, February 10, 2012"
 
 # version of AFNI required for script execution
 g_requires_afni = "27 Jan 2012"
@@ -362,6 +365,7 @@ class SubjProcSream:
 
         self.blocks     = []            # list of ProcessBlock elements
         self.dsets      = []            # list of afni_name elements
+        self.check_rdir = 'yes'         # check for existence of results dir
         self.stims_orig = []            # orig list of stim files to apply
         self.stims      = []            # list of stim files to apply
         self.extra_stims_orig = []      # orig list of extra_stims
@@ -543,6 +547,9 @@ class SubjProcSream:
         self.valid_opts.add_opt('-check_afni_version', 1, [],
                         acplist=['yes','no'],
                         helpstr='check that AFNI is current enough')
+        self.valid_opts.add_opt('-check_results_dir', 1, [],
+                        acplist=['yes','no'],
+                        helpstr='have script check for existing results dir')
         self.valid_opts.add_opt('-check_setup_errors', 1, [],
                         acplist=['yes','no'],
                         helpstr='terminate on setup errors')
@@ -586,7 +593,7 @@ class SubjProcSream:
                         helpstr="set the verbose level")
 
         # block options
-        self.valid_opts.add_opt('-tcat_outlier_warn_limit', 1, [],
+        self.valid_opts.add_opt('-tcat_preSS_warn_limit', 1, [],
                         helpstr='set limit where TR #0 outliers suggest pre-SS')
         self.valid_opts.add_opt('-tcat_remove_first_trs', 1, [],
                         helpstr='num TRs to remove from start of each run')
@@ -905,6 +912,9 @@ class SubjProcSream:
             return 1
 
         # end terminal options
+
+        opt = opt_list.find_opt('-check_results_dir')
+        if opt_is_no(opt): self.check_rdir = 'no'
 
         opt = opt_list.find_opt('-check_setup_errors')
         if opt and opt.parlist[0] == 'yes': self.check_setup_errors = 1
@@ -1542,7 +1552,8 @@ class SubjProcSream:
                       'endif\n\n' % self.subj_id )
         self.fp.write('# assign output directory name\n'
                       'set output_dir = %s\n\n' % self.out_dir)
-        self.fp.write( \
+        if self.check_rdir == 'yes':
+           self.fp.write( \
                 '# verify that the results directory does not yet exist\n'\
                 'if ( -d %s ) then\n'                                     \
                 '    echo output dir "$subj.results" already exists\n'    \

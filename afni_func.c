@@ -531,18 +531,16 @@ ENTRY("AFNI_range_rotate_av_CB") ;
 /** 6/01/95: changed to put the initialization constants
              in tables initialized in afni.c, not here. **/
 
-void AFNI_setup_inten_pbar( Three_D_View *im3d )
+void AFNI_setup_inten_pbar( MCW_pbar *pbar )
 {
-  MCW_pbar *pbar ;
   int np , i , jm , lcol ;
 
 ENTRY("AFNI_setup_inten_pbar") ;
 
-  if( ! IM3D_VALID(im3d) ) EXRETURN ;
+  if( pbar == NULL ) EXRETURN ;
 
-  pbar = im3d->vwid->func->inten_pbar ;
   jm   = pbar->mode ;
-  lcol = im3d->dc->ovc->ncol_ov - 1 ;
+  lcol = pbar->dc->ovc->ncol_ov - 1 ;
 
   /** load the 'save' values for all possible pane counts **/
 
@@ -5712,7 +5710,7 @@ ENTRY("AFNI_tips_CB") ;
      XMapRaised( XtDisplay(tips_hw->wshell) , XtWindow(tips_hw->wshell) ) ;
      EXRETURN ;
    } else if( !AFNI_noenv("AFNI_DONT_USE_HTMLWIN") ){
-     fpt = THD_find_regular_file("afnigui.html") ;
+     fpt = THD_find_regular_file("afnigui.html", NULL) ;
      if( fpt != NULL && *fpt != '\0' ){
        inf = (char *)malloc(sizeof(char)*(strlen(fpt)+16)) ;
        strcpy(inf,"file:") ; strcat(inf,fpt) ; free(fpt) ;
