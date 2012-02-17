@@ -16,7 +16,11 @@ static void PBAR_big_menu_CB( Widget , XtPointer , XtPointer ) ;
 static int      bigmap_num=0 ;    /* 31 Jan 2003 */
 static char   **bigmap_name ;
 static rgbyte **bigmap ;
-static int      debugprint=0;   /* print for debug purposes*/
+static int      debugprint=0;     /* debug print */
+
+static int      bigthree=-1 ;                 /* Feb 2012 stuff */
+static float PBAR_get_bigmax( MCW_pbar * ) ;
+static void PBAR_show_bigthree_panes( MCW_pbar * ) ;
 
 static MCW_DC *myfirst_dc = NULL ;  /* 04 Feb 2003 */
 
@@ -203,7 +207,6 @@ STATUS("init pval_save") ;
    pbar->mode         = 0 ;
    pbar->hide_changes = 0 ;
    pbar->keep_pval    = 0 ;  /* Dec 1997 */
-   pbar->three_level  = 0 ;  /* Feb 2012 */
 
    for( jm=0 ; jm < PANE_MAXMODE ; jm++ )
      pbar->npan_save[jm] = pbar->num_panes ;
@@ -214,6 +217,9 @@ STATUS("init pval_save") ;
 
    PBAR_add_bigmap(NULL,NULL) ;
 
+   if( bigthree < 0 )                      /* bigthree == bigmode shows 1 or 3 panes */
+     bigthree = AFNI_yesenv("AFNI_PBAR_THREE") ;  /* initialize to 0 or 1 [Feb 2012] */
+
    /*-- 30 Jan 2003: setup the "big" mode for 256 (NPANE_BIG) colors --*/
 
    pbar->bigmode      = 0 ;
@@ -221,15 +227,18 @@ STATUS("init pval_save") ;
    pbar->bigrota      = 0 ;
    pbar->bigset       = 0 ;
    pbar->bigmap_index = 0 ;
-   pbar->bigbot  = -1.0 ; pbar->bigtop = 1.0 ;
-   pbar->bigxim  = NULL ;
-   for( i=0 ; i < NPANE_BIG ; i++ )
-     pbar->bigcolor[i] = bigmap[0][i] ;
+   for( i=0 ; i < NPANE_BIG ; i++ ) pbar->bigcolor[i] = bigmap[0][i] ;
    pbar->bigname = bigmap_name[0] ;
+   pbar->bigxim  = NULL ;
+   pbar->bigbot  = -1.0f ; pbar->bigtop = 1.0f ;
 
-   XtAddCallback( pbar->panes[0], XmNexposeCallback, PBAR_bigexpose_CB, pbar ) ;
+   pbar->bigmax  = PBAR_get_bigmax(pbar) ;       /* Feb 2012 */
+   pbar->big30   = pbar->big32 = bigthree ;      /* Feb 2012 */
+   pbar->ignore_resize = 0 ;
 
-   XtInsertEventHandler( pbar->panes[0] ,
+   XtAddCallback( pbar->panes[bigthree], XmNexposeCallback, PBAR_bigexpose_CB, pbar ) ;
+
+   XtInsertEventHandler( pbar->panes[bigthree] ,
                          ButtonPressMask ,      /* get button presses */
                          FALSE ,                /* nonmaskable events? */
                          PBAR_button_EV ,       /* event handler */
@@ -561,7 +570,7 @@ ENTRY("PBAR_read_bigmap") ;
 }
 
 /*-----------------------------------------------------------------------*/
-/*! Button 3 event handler for pane #0 of a pbar, used only when
+/*! Button 3 event handler for pane #bigthree of a pbar, used only when
     in "big" mode, to select a color map.
 -------------------------------------------------------------------------*/
 
@@ -579,11 +588,11 @@ ENTRY("PBAR_button_EV") ;
      XUngrabPointer( bev->display , CurrentTime ) ;
 #endif
 
-   if( pbar == NULL || !pbar->bigmode ) EXRETURN ;
+   if( pbar == NULL || !pbar->bigmode || bev->button == Button1 ) EXRETURN ;
 
    /* get current position, value, and color */
 
-   MCW_widget_geom( pbar->panes[0] , NULL,&hh , NULL,NULL ) ;
+   MCW_widget_geom( pbar->panes[bigthree] , NULL,&hh , NULL,NULL ) ;
    ii = (int)( ((NPANE_BIG-1.0)*bev->y)/(hh-1) + 0.5 ) ;      /* color index */
    rr = (int)pbar->bigcolor[ii].r ;                           /* color */
    gg = (int)pbar->bigcolor[ii].g ;
@@ -685,7 +694,7 @@ ENTRY("PBAR_bigmap_finalize") ;
 
    MCW_kill_XImage(pbar->bigxim) ; pbar->bigxim = NULL ;
    PBAR_bigexpose_CB(NULL,pbar,NULL) ;
-   if( XtIsRealized(pbar->panes[0]) )
+   if( XtIsManaged(pbar->panes[bigthree]) )
      PBAR_callback(pbar,pbCR_COLOR) ;
 
    EXRETURN ;
@@ -693,7 +702,7 @@ ENTRY("PBAR_bigmap_finalize") ;
 
 /*--------------------------------------------------------------------*/
 
-int PBAR_get_bigmap_index ( char *bnam ) /* 26 Feb. 2010 ZSS */
+int PBAR_get_bigmap_index( char *bnam ) /* 26 Feb. 2010 ZSS */
 {
    int ii;
 
@@ -704,6 +713,8 @@ int PBAR_get_bigmap_index ( char *bnam ) /* 26 Feb. 2010 ZSS */
 
    return(-1);
 }
+
+/*--------------------------------------------------------------------*/
 
 void PBAR_set_bigmap( MCW_pbar *pbar , char *bnam )  /* 03 Feb 2003 */
 {
@@ -722,7 +733,10 @@ ENTRY("PBAR_set_bigmap") ;
    EXRETURN ;
 }
 
+
+/*--------------------------------------------------------------------*/
 /* set the color bar by index rather than name */
+
 void PBAR_set_bigmap_index( MCW_pbar *pbar , int pbar_index )  /* 08 Mar 2011 */
 {
    int ii ;
@@ -745,12 +759,46 @@ char * PBAR_get_bigmap( MCW_pbar *pbar )    /* 03 Feb 2003 */
 }
 
 /*--------------------------------------------------------------------*/
-/*! Actually redisplay pane #0 in "big" mode.
+/* if in bigthree mode,
+   set the fixed colors for the upper and lower panes [Feb 2012] */
+
+static void PBAR_show_bigthree_panes( MCW_pbar *pbar )
+{
+   char cname[16] ; int rr,gg,bb ;
+   if( pbar == NULL || !bigthree || !pbar->bigmode ) return ;
+
+   if( pbar->big30 ){
+     rr = (int)pbar->bigcolor[0].r ;
+     gg = (int)pbar->bigcolor[0].g ;
+     bb = (int)pbar->bigcolor[0].b ;
+     sprintf(cname,"#%02x%02x%02x",rr,gg,bb) ;
+     XtVaSetValues( pbar->panes[0] , XmNbackgroundPixmap , XmUNSPECIFIED_PIXMAP , NULL ) ;
+     MCW_set_widget_bg( pbar->panes[0] , cname , 0 ) ;
+   } else {
+     XtVaSetValues( pbar->panes[0] , XmNbackgroundPixmap , check_pixmap , NULL ) ;
+   }
+
+   if( pbar->big32 ){
+     rr = (int)pbar->bigcolor[NPANE_BIG-1].r ;
+     gg = (int)pbar->bigcolor[NPANE_BIG-1].g ;
+     bb = (int)pbar->bigcolor[NPANE_BIG-1].b ;
+     sprintf(cname,"#%02x%02x%02x",rr,gg,bb) ;
+     XtVaSetValues( pbar->panes[2] , XmNbackgroundPixmap , XmUNSPECIFIED_PIXMAP , NULL ) ;
+     MCW_set_widget_bg( pbar->panes[2] , cname , 0 ) ;
+   } else {
+     XtVaSetValues( pbar->panes[2] , XmNbackgroundPixmap , check_pixmap , NULL ) ;
+   }
+
+   return ;
+}
+
+/*--------------------------------------------------------------------*/
+/*! Actually redisplay pane #bigthree in "big" mode.
 ----------------------------------------------------------------------*/
 
 void PBAR_bigexpose_CB( Widget w , XtPointer cd , XtPointer cb )
 {
-   MCW_pbar *pbar = (MCW_pbar *) cd ;
+   MCW_pbar *pbar = (MCW_pbar *)cd ;
 
 ENTRY("PBAR_bigexpose_CB") ;
 
@@ -764,7 +812,7 @@ ENTRY("PBAR_bigexpose_CB") ;
      XImage    *xim ;
      byte      *car , r,g,b ;
 
-     MCW_widget_geom( pbar->panes[0] , &ww,&hh , NULL,NULL ) ;
+     MCW_widget_geom( pbar->panes[bigthree] , &ww,&hh , NULL,NULL ) ;
      cim = mri_new( ww,NPANE_BIG , MRI_rgb ) ;
      car = MRI_RGB_PTR(cim) ;
      for( kk=ii=0 ; ii < NPANE_BIG ; ii++ ){
@@ -779,19 +827,69 @@ ENTRY("PBAR_bigexpose_CB") ;
          }
        }
      }
-     xim = mri_to_XImage( pbar->dc , cim ) ;
-     pbar->bigxim = resize_XImage( pbar->dc , xim , ww,hh ) ;
-     MCW_kill_XImage(xim) ; mri_free(cim) ;
+#if 0
+     { XImage *xim = mri_to_XImage( pbar->dc , cim ) ;
+       pbar->bigxim = resize_XImage( pbar->dc , xim , ww,hh ) ;
+       MCW_kill_XImage(xim) ;
+     }
+#else
+     { MRI_IMAGE *dim = mri_resize( cim , ww,hh ) ;
+       pbar->bigxim = mri_to_XImage( pbar->dc , dim ) ;
+       mri_free(dim) ;
+     }
+#endif
+     mri_free(cim) ;
    }
 
    /* actually show the image to the window pane */
 
-   if( XtIsRealized(pbar->panes[0]) )
-     XPutImage( pbar->dc->display , XtWindow(pbar->panes[0]) ,
+   if( XtIsManaged(pbar->panes[bigthree]) )
+     XPutImage( pbar->dc->display , XtWindow(pbar->panes[bigthree]) ,
                 pbar->dc->origGC , pbar->bigxim , 0,0,0,0 ,
                 pbar->bigxim->width , pbar->bigxim->height ) ;
 
+   PBAR_show_bigthree_panes(pbar) ;
+
    EXRETURN ;
+}
+
+/*--------------------------------------------------------------------*/
+
+static float fround3( float aa )
+{
+   double am=fabs(aa) , bb ; float rr ;
+
+   if( am == 0.0 ) return 0.0f ;
+
+   bb = pow( 10.0 , (double)( ((int)log10(am))-2 ) ) ;
+   am = bb * rint(am/bb) ;
+
+   rr = (float)am ; if( aa < 0.0f ) rr = -rr ;
+   return rr ;
+}
+
+/*--------------------------------------------------------------------*/
+
+static float PBAR_get_bigmax( MCW_pbar *pbar )
+{
+   double abot,atop ;
+
+   if( pbar == NULL ) return 1.0f ;  /* should not happen */
+
+   abot = fabs(pbar->bigbot) ; atop = fabs(pbar->bigtop) ;
+   if( atop <  abot ) atop = abot ;
+   if( atop == 0.0f ) atop = 1.0  ;  /* should not transpire */
+
+   if( bigthree ){         /* move it upwards, and round it to 2 figures */
+     int dd ; double bb ;
+     atop *= 1.2 ;
+     dd    = (int)log10((double)atop) ;
+     bb    = pow(10.0,(double)(dd-1)) ;
+     dd    = 1+(int)(atop/bb-0.0001) ;
+     atop  = dd * bb ;
+   }
+
+   return (float)atop ;
 }
 
 /*--------------------------------------------------------------------*/
@@ -801,7 +899,11 @@ ENTRY("PBAR_bigexpose_CB") ;
 void PBAR_set_bigmode( MCW_pbar *pbar, int bmode, float bot,float top )
 {
 ENTRY("PBAR_set_bigmode") ;
-   if( bmode && bot < top ){ pbar->bigbot = bot; pbar->bigtop = top; }
+   if( bmode && bot < top ){
+     pbar->bigbot = bot; pbar->bigtop = top;
+if(bigthree) 
+INFO_message("set_bigmode: bot=%g top=%g",bot,top) ;
+   }
    pbar->bigmode   = bmode ;
    pbar->update_me = 1 ;
    update_MCW_pbar( pbar ) ;
@@ -819,40 +921,128 @@ ENTRY("PBAR_show_bigmode") ;
 
    if( pbar == NULL || !pbar->bigmode ) EXRETURN ;
 
-   if( !pbar->bigset ){   /* set up big mode */
+   if( 1 || !pbar->bigset ){   /* set up big mode */
 
      if( pbar->hide_changes ) XtUnmapWidget( pbar->top ) ;
+     pbar->ignore_resize = 1 ;
 
-     /* turn off all but 1 pane and all but 2 labels */
+     if( !bigthree ){ /* turn off all but 1 pane and all but 2 labels */
 
-     XtManageChild( pbar->labels[0] ) ;
-     XtManageChild( pbar->labels[1] ) ;
-     for( ii=2 ; ii <= NPANE_MAX ; ii++ )
-       XtUnmanageChild( pbar->labels[ii] ) ;
-     XtManageChild( pbar->panes[0] ) ;
-     for( ii=1 ; ii < NPANE_MAX ; ii++ )
-       XtUnmanageChild( pbar->panes[ii] ) ;
-     XtVaSetValues( pbar->panes[0] , XmNheight,pbar->panew_height , NULL ) ;
-     XtVaSetValues( pbar->panew    , XmNheight,pbar->panew_height , NULL ) ;
-     XtVaSetValues( pbar->top      , XmNheight,pbar->panew_height , NULL ) ;
+       /* manage and unmanage panes and labels */
 
-     if( pbar->hide_changes ) XtMapWidget( pbar->top ) ;
+       XtManageChild( pbar->labels[0] ) ;
+       XtManageChild( pbar->labels[1] ) ;
+       for( ii=2 ; ii <= NPANE_MAX ; ii++ ) XtUnmanageChild( pbar->labels[ii] ) ;
+       XtManageChild( pbar->panes[0] ) ;
+       for( ii=1 ; ii <  NPANE_MAX ; ii++ ) XtUnmanageChild( pbar->panes[ii] ) ;
 
-     MCW_widget_geom( pbar->panes[0] , NULL,NULL,NULL , &yy ) ;
-     XtVaSetValues( pbar->labels[0] , XmNy , yy , NULL ) ;
-     PBAR_labelize( pbar->bigtop , buf ) ;
-     MCW_set_widget_label( pbar->labels[0] , buf ) ;
+       /* set the only pane left standing to fill the entire window */
 
-     yy = pbar->panew_height - PANE_LOFF + PANE_SPACING ;
-     XtVaSetValues( pbar->labels[1] , XmNy , yy , NULL ) ;
-     PBAR_labelize( pbar->bigbot , buf ) ;
-     MCW_set_widget_label( pbar->labels[1] , buf ) ;
+       XtVaSetValues( pbar->panes[0] , XmNheight,pbar->panew_height , NULL ) ;
+       XtVaSetValues( pbar->panew    , XmNheight,pbar->panew_height , NULL ) ;
+       XtVaSetValues( pbar->top      , XmNheight,pbar->panew_height , NULL ) ;
 
-     pbar->bigset = 1 ;
+       if( pbar->hide_changes ) XtMapWidget( pbar->top ) ;
+
+       /* position and set top label */
+
+       MCW_widget_geom( pbar->panes[0] , NULL,NULL,NULL , &yy ) ;
+       XtVaSetValues( pbar->labels[0] , XmNy , yy , NULL ) ;
+       PBAR_labelize( pbar->bigtop , buf ) ;
+       MCW_set_widget_label( pbar->labels[0] , buf ) ;
+
+       /* position and set bottom label */
+
+       yy = pbar->panew_height - PANE_LOFF + PANE_SPACING ;
+       XtVaSetValues( pbar->labels[1] , XmNy , yy , NULL ) ;
+       PBAR_labelize( pbar->bigbot , buf ) ;
+       MCW_set_widget_label( pbar->labels[1] , buf ) ;
+
+     } else {  /* Feb 2012: keep 3 panes and 4 labels */
+
+       float ab,at,am,bm , hfac ; int h0,h1,h2 ;
+
+       /* manage and unmanage panes and labels */
+
+       XtManageChild( pbar->labels[0] ) ;
+       XtManageChild( pbar->labels[1] ) ;
+       XtManageChild( pbar->labels[2] ) ;
+       XtManageChild( pbar->labels[3] ) ;
+       for( ii=4 ; ii <= NPANE_MAX ; ii++ ) XtUnmanageChild( pbar->labels[ii] ) ;
+       XtManageChild( pbar->panes[0] ) ;
+       XtManageChild( pbar->panes[1] ) ;
+       XtManageChild( pbar->panes[2] ) ;
+       for( ii=3 ; ii <  NPANE_MAX ; ii++ ) XtUnmanageChild( pbar->panes[ii] ) ;
+
+       /* set the height of the 3 panes left upright */
+
+INFO_message("bigbot=%g  bigtop=%g  bigmax=%g",pbar->bigbot,pbar->bigtop,pbar->bigmax) ;
+
+       ab = fabsf(pbar->bigbot) ; at = fabsf(pbar->bigtop) ; am = MAX(ab,at) ;
+       if( 1.05f*am > pbar->bigmax ||
+           5.01f*am < pbar->bigmax   ) pbar->bigmax = PBAR_get_bigmax(pbar) ;
+       bm = pbar->bigmax ; ab = pbar->bigbot ; at = pbar->bigtop ;
+
+       hfac = (pbar->panew_height - 2*PANE_SPACING) / (2.0f*bm) ;
+
+       h0 = (int)( (bm-at)*hfac + 0.45f ) ; if( h0 < PANE_MIN_HEIGHT ) h0 = PANE_MIN_HEIGHT ;
+       h1 = (int)( (at-ab)*hfac + 0.45f ) ; if( h1 < PANE_MIN_HEIGHT ) h1 = PANE_MIN_HEIGHT ;
+       h2 = pbar->panew_height - 2*PANE_SPACING - h0 - h1 ;
+       if( h2 < PANE_MIN_HEIGHT ){
+         int deficit=PANE_MIN_HEIGHT-h2 , dh=deficit/2 ;  /* I cut the deficit in half! */
+         h2  = PANE_MIN_HEIGHT ;
+         h0 -= (deficit - dh) ;
+         h1 -= dh ;
+       }
+INFO_message("Set h0=%d h1=%d h2=%d",h0,h1,h2) ;
+ININFO_message("  bm=%g  ab=%g  at=%g",bm,ab,at) ;
+
+       XtVaSetValues( pbar->panes[0] , XmNheight,h0 , NULL ) ;
+       XtVaSetValues( pbar->panes[1] , XmNheight,h1 , NULL ) ;
+       XtVaSetValues( pbar->panes[2] , XmNheight,h2 , NULL ) ;
+       XtVaSetValues( pbar->panew    , XmNheight,pbar->panew_height , NULL ) ;
+       XtVaSetValues( pbar->top      , XmNheight,pbar->panew_height , NULL ) ;
+
+       if( pbar->hide_changes ) XtMapWidget( pbar->top ) ;
+
+       /* position and set top label */
+
+       MCW_widget_geom( pbar->panes[0] , NULL,NULL,NULL , &yy ) ;
+       XtVaSetValues( pbar->labels[0] , XmNy , yy , NULL ) ;
+       PBAR_labelize( bm , buf ) ;
+       MCW_set_widget_label( pbar->labels[0] , buf ) ;
+
+       /* second label */
+
+       MCW_widget_geom( pbar->panes[1] , NULL,NULL,NULL , &yy ) ;
+       yy -= PANE_LOFF ;
+       XtVaSetValues( pbar->labels[1] , XmNy , yy , NULL ) ;
+       PBAR_labelize( at , buf ) ;
+       MCW_set_widget_label( pbar->labels[1] , buf ) ;
+
+       /* third label */
+
+       MCW_widget_geom( pbar->panes[2] , NULL,NULL,NULL , &yy ) ;
+       yy -= PANE_LOFF ;
+       XtVaSetValues( pbar->labels[2] , XmNy , yy , NULL ) ;
+       PBAR_labelize( ab , buf ) ;
+       MCW_set_widget_label( pbar->labels[2] , buf ) ;
+
+       /* fourth label */
+
+       yy = pbar->panew_height - PANE_LOFF + PANE_SPACING ;
+       XtVaSetValues( pbar->labels[3] , XmNy , yy , NULL ) ;
+       PBAR_labelize( -bm , buf ) ;
+       MCW_set_widget_label( pbar->labels[3] , buf ) ;
+
+     }
+
+     pbar->bigset = 1 ; pbar->ignore_resize = 0 ;
    }
 
    /* show the thing */
 
+   MCW_kill_XImage(pbar->bigxim) ; pbar->bigxim = NULL ;
    PBAR_bigexpose_CB( NULL , pbar , NULL ) ;
    EXRETURN ;
 }
@@ -943,29 +1133,30 @@ ENTRY("PBAR_click_CB") ;
    XtVaGetValues( w , XmNuserData , &pbar , NULL ) ;
    if( pbar == NULL ) EXRETURN ;
 
+   /*-- continuous colors --*/
+
    if( pbar->bigmode ){   /* 30 Jan 2003: reverse color spectrum */
-     PBAR_flip( pbar ) ;
-     PBAR_callback(pbar,pbCR_COLOR) ;
+     int con=1 ;          /*    Feb 2012: or choose on/off for above/below */
+     if( w == pbar->panes[bigthree] ){  /* flipology */
+       PBAR_flip( pbar ) ;
+       PBAR_callback(pbar,pbCR_COLOR) ;
+       EXRETURN ;
+     }
+          if( w == pbar->panes[0] ){ ip = 0 ; con = pbar->big30 ; }
+     else if( w == pbar->panes[2] ){ ip = 2 ; con = pbar->big32 ; }
+     else                           EXRETURN ; /* should not happen */
+     MCW_choose_binary( w ,
+                        ((ip==0) ? "Colorize Above?" : "Colorize Below?") ,
+                        con , "Off" , "On" , PBAR_setonoff_CB , pbar ) ;
      EXRETURN ;
    }
+
+   /*-- discrete colors --*/
 
    for( ip=0 ; ip < pbar->num_panes ; ip++ ) if( pbar->panes[ip] == w ) break ;
    if( ip == pbar->num_panes ) EXRETURN ;
 
-   if( pbar->three_level ){  /* 10 Feb 2012 */
-     if( ip != 1 )
-       MCW_choose_binary( w ,
-                          ((ip==0) ? "Colorize Above?" : "Colorize Below?") ,
-                          (pbar->ov_index[ip] != 0) ,
-                          "Off" , "On" , PBAR_setonoff_CB , pbar ) ;
-     else
-       XBell(dc->display,100) ;
-
-   } else {  /* the standard way */
-
-     MCW_choose_ovcolor( w , dc , pbar->ov_index[ip] , PBAR_setcolor_CB , dc ) ;
-
-   }
+   MCW_choose_ovcolor( w , dc , pbar->ov_index[ip] , PBAR_setcolor_CB , dc ) ;
 
    EXRETURN ;
 }
@@ -994,13 +1185,20 @@ ENTRY("PBAR_set_panecolor") ;
 void PBAR_setonoff_CB( Widget w , XtPointer cd , MCW_choose_cbs *cbs )
 {
    MCW_pbar *pbar = (MCW_pbar *)cd ;
+   int *bp=NULL ;
 
 ENTRY("PBAR_setonoff_CB") ;
 
-   if( pbar->three_level == 0 || pbar->bigmode ) EXRETURN ;  /* error */
+   if( !bigthree || !pbar->bigmode ) EXRETURN ;  /* error */
 
-   if( cbs->ival != 0 ) cbs->ival = pbar->three_level ;
-   PBAR_setcolor_CB( w , pbar->dc , cbs ) ;
+        if( w == pbar->panes[0] ) bp = &(pbar->big30) ;
+   else if( w == pbar->panes[2] ) bp = &(pbar->big32) ;
+   else                          EXRETURN ;      /* error */
+
+   *bp = cbs->ival ;  /* set big30 or big32 */
+
+   PBAR_bigexpose_CB( NULL , pbar , NULL ) ;
+   PBAR_callback(pbar,pbCR_COLOR) ;
    EXRETURN ;
 }
 
@@ -1055,13 +1253,13 @@ ENTRY("rotate_MCW_pbar") ;
    if( pbar->bigmode ){             /* 30 Jan 2003: rotate the spectrum */
      rgbyte oldcolor[NPANE_BIG] ;
 
-     MCW_kill_XImage(pbar->bigxim) ; pbar->bigxim = NULL ;
      memcpy(oldcolor,pbar->bigcolor,sizeof(rgbyte)*NPANE_BIG) ;
 
      while( n < 0 ) n += NPANE_BIG ;  /* make n positive */
      for( ip=0 ; ip < NPANE_BIG ; ip++ )
        pbar->bigcolor[ip] = oldcolor[(ip+n)%NPANE_BIG] ;
 
+     MCW_kill_XImage(pbar->bigxim) ; pbar->bigxim = NULL ;
      PBAR_bigexpose_CB( NULL , pbar , NULL ) ;
 
      pbar->bigrota += (pbar->bigflip) ? -n : n ;  /* 07 Feb 2004 */
@@ -1106,30 +1304,73 @@ void PBAR_resize_CB( Widget w , XtPointer cd , XtPointer cb )
    char buf[16] ;
    float pmin , pmax , val ;
    int alter_all = pbar->renew_all ;
+   static int recur=0 ;  /* Feb 2012 */
 
 ENTRY("PBAR_resize_CB") ;
 
-   if( pbar == NULL || pbar->renew_all < 0 ) EXRETURN ;  /* skip it */
-   if( pbar->bigmode ) EXRETURN ;  /* 30 Jan 2003 */
+   if( pbar == NULL || pbar->renew_all < 0 ) EXRETURN ; /* skip it */
 
-   jm  = pbar->mode ;
-   sum = 0 ;
-   for( i=0 ; i < pbar->num_panes ; i++ ){
-     MCW_widget_geom( pbar->panes[i] , NULL , &(hh[i]) , NULL,NULL ) ;
-#ifdef PBAR_DEBUG
-printf("resize: read pane # %d height=%d\n",i,hh[i]) ; fflush(stdout) ;
-#endif
-     sum += hh[i] ;
-     if( w == pbar->panes[i] ) ip = i ;
+   if( recur || pbar->ignore_resize ) EXRETURN ;
+   recur++ ;
+
+   /*-- continuous colors --*/
+
+   if( pbar->bigmode ){
+     int h0,h1,yy ; float ab,at,bm,hfac ; char buf[16] ;
+
+     if( !bigthree || w != pbar->panes[1] || !MCW_widget_visible(w) ){ recur--; EXRETURN; }
+
+     MCW_kill_XImage(pbar->bigxim) ; pbar->bigxim = NULL ;  /* resize the */
+     PBAR_bigexpose_CB( NULL , pbar , NULL ) ;              /* colorscale */
+
+     /* find position and size of the middle pane */
+
+     MCW_widget_geom( pbar->panes[1] , NULL,&h1 , NULL,&yy ) ;
+     h0 = yy-2 ;
+
+     /* use these to compute the adjust bigtop and bigbot */
+
+     bm   = pbar->bigmax ;
+     hfac = (pbar->panew_height - 2*PANE_SPACING) / (2.0f*bm) ;
+     at   = bm - h0/hfac ; ab = at - h1/hfac ;
+     at   = fround3(at)  ; ab = fround3(ab)  ;
+
+INFO_message("Resize: h1=%d yy=%d bigbot=%g->%g bigtop=%g->%g",
+h1,yy,pbar->bigbot,ab,pbar->bigtop,at) ;
+
+     pbar->bigtop = at ; pbar->bigbot = ab ;
+
+     /* change the labels */
+
+     XtVaSetValues( pbar->labels[1] , XmNy , yy-PANE_LOFF , NULL ) ;
+     PBAR_labelize( at , buf ) ;
+     MCW_set_widget_label( pbar->labels[1] , buf ) ;
+
+     XtVaSetValues( pbar->labels[2] , XmNy , yy+h1 , NULL ) ;
+     PBAR_labelize( ab , buf ) ;
+     MCW_set_widget_label( pbar->labels[2] , buf ) ;
+
+     PBAR_callback(pbar,pbCR_VALUE) ;
+
+     recur-- ; EXRETURN ;
    }
 
+   /*-- discrete panes --*/
+
+   for( sum=i=0 ; i < pbar->num_panes ; i++ ){
+     MCW_widget_geom( pbar->panes[i] , NULL , &(hh[i]) , NULL,NULL ) ;
+     sum += hh[i] ; if( w == pbar->panes[i] ) ip = i ;
+   }
+   if( ip < 0 ){ recur--; EXRETURN; } /* should not happen */
+   jm = pbar->mode ;
+
    if( sum != pbar->panes_sum ){
-      if( ip != pbar->num_panes - 1 ) EXRETURN ;
+      if( ip != pbar->num_panes - 1 ){ recur--; EXRETURN; }
+/* INFO_message("reset panes_sum from %d to %d; old panew_height=%d",
+                pbar->panes_sum,sum,pbar->panew_height) ; */
       pbar->panes_sum = sum ;
       MCW_widget_geom( pbar->panew , NULL,&(pbar->panew_height),NULL,NULL) ;
-#if 0
-      XtVaSetValues( pbar->top , XmNheight , pbar->panew_height , NULL ) ;
-#endif
+/* ININFO_message("new panew_height = %d",pbar->panew_height) ; */
       alter_all = 1 ;
    }
 
@@ -1139,37 +1380,28 @@ printf("resize: read pane # %d height=%d\n",i,hh[i]) ; fflush(stdout) ;
 
    for( i=0 ; i <= pbar->num_panes ; i++ ){
 
-#if 0  /* the pre Dec 1997 way */
-      val = pmax - sum * (pmax-pmin) / pbar->panes_sum ;
-      if( alter_all || val != pbar->pval[i] ){
-#else
       if( alter_all || (i>0 && pbar->pane_hsum[i] != sum) ){
-#endif
 
-         if( ! pbar->keep_pval ){  /* Dec 1997 */
+        if( ! pbar->keep_pval ){  /* Dec 1997 */
 STATUS("reset pval_save") ;
-            val = pmax - sum * (pmax-pmin) / pbar->panes_sum ;
-            pbar->pval_save[pbar->num_panes][i][jm] =         /* reset this */
-                                      pbar->pval[i] = val ;   /* threshold  */
-                                                              /* to match pane size */
+          val = pmax - sum * (pmax-pmin) / pbar->panes_sum ;
+          pbar->pval_save[pbar->num_panes][i][jm] =         /* reset this */
+                                    pbar->pval[i] = val ;   /* threshold  */
+                                                            /* to match pane size */
          }
 
-         if( KEEP_LABEL(i,pbar->num_panes) ){
-            if( i < pbar->num_panes ){
-               MCW_widget_geom( pbar->panes[i] , NULL,NULL,NULL , &yy ) ;
-               if( i > 0 ) yy -= PANE_LOFF ;
-            } else {
-#if 1
-               yy = pbar->panew_height - PANE_LOFF + PANE_SPACING ;
-#else
-               yy = pbar->panew_height - 2 * PANE_LOFF + PANE_SPACING ;
-#endif
-            }
+        if( KEEP_LABEL(i,pbar->num_panes) ){
+          if( i < pbar->num_panes ){
+             MCW_widget_geom( pbar->panes[i] , NULL,NULL,NULL , &yy ) ;
+             if( i > 0 ) yy -= PANE_LOFF ;
+          } else {
+             yy = pbar->panew_height - PANE_LOFF + PANE_SPACING ;
+          }
 
-            XtVaSetValues( pbar->labels[i] , XmNy , yy , NULL ) ;
-            PBAR_labelize( pbar->pval[i] , buf ) ;
-            MCW_set_widget_label( pbar->labels[i] , buf ) ;
-         }
+          XtVaSetValues( pbar->labels[i] , XmNy , yy , NULL ) ;
+          PBAR_labelize( pbar->pval[i] , buf ) ;
+          MCW_set_widget_label( pbar->labels[i] , buf ) ;
+        }
 
       }
       if( i < pbar->num_panes ) sum += hh[i] ;
@@ -1182,7 +1414,7 @@ STATUS("reset pval_save") ;
    PBAR_callback(pbar,pbCR_VALUE) ;
 
    pbar->renew_all = 0 ;
-   EXRETURN ;
+   recur-- ; EXRETURN ;
 }
 
 /*-------------------------------------------------------------------------
@@ -1193,7 +1425,7 @@ STATUS("reset pval_save") ;
 void update_MCW_pbar( MCW_pbar *pbar )
 {
 ENTRY("update_MCW_pbar") ;
-   if( pbar == NULL ) EXRETURN ;
+   if( pbar == NULL || !XtIsManaged(pbar->panew) ) EXRETURN ;
    if( pbar->update_me ){
      if( pbar->bigmode ) PBAR_show_bigmode( pbar ) ;         /* 30 Jan 2003 */
      else                alter_MCW_pbar( pbar , 0 , NULL ) ;
@@ -1308,7 +1540,7 @@ STATUS("set pane heights") ;
    rhh = 0.0 ;
    for( i=0 ; i < npane-1 ; i++ ){
       fhh  = pbar->panes_sum * (pval[i]-pval[i+1]) / (pmax-pmin) ;
-      hh   = (int) (rhh+fhh+0.45) ;
+      hh   = (int) (rhh+fhh+0.45f) ;
       rhh  = fhh - hh ;
       sum -= hh ;
 #ifdef PBAR_DEBUG
