@@ -1,3 +1,6 @@
+#ifndef _THD_ATLAS_H_
+#define _THD_ATLAS_H_
+
 #include "thd_ttatlas_query.h"
 #undef DEBUG_SPACES
 /* continuous colormap */
@@ -15,9 +18,6 @@
 #define SPARSE_CMAP 2
 
 #define MAXINT 65535
-
-
-
 
 
 void free_atlas_point_list(ATLAS_POINT_LIST *apl);
@@ -93,8 +93,11 @@ void print_xform_chain(char *src, char *dest);
 void print_xform_list(ATLAS_XFORM_LIST *xfl);
 void print_space_list(ATLAS_SPACE_LIST *xsl);
 void print_atlas_list(ATLAS_LIST *xal);
+void print_atlas_table(ATLAS_LIST *xal);
 void print_atlas(ATLAS *xa, int level) ;
 void print_atlas_comment(ATLAS *xa) ;
+void print_atlas_type(ATLAS *xa) ;
+void print_atlas_orient(ATLAS *xa) ;
 void print_point_lists(ATLAS_LIST *xal);
 void print_template_list(ATLAS_TEMPLATE_LIST *xtl);
 void print_xform(ATLAS_XFORM *xf);
@@ -145,3 +148,5 @@ NI_element *atlas_point_to_niml_element(ATLAS_POINT *at_pt);
 char *atlas_point_to_niml_string(ATLAS_POINT *at_pt);
 int genx_load_atlas_dset(ATLAS *atlas);
 int atlas_dup_atlas(ATLAS *srcatlas, ATLAS *destatlas);
+
+#endif
