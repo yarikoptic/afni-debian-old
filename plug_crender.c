@@ -10,7 +10,7 @@
  */
 
 /*----------------------------------------------------------------------
-  $Id: plug_crender.c,v 1.61 2012/02/22 21:02:25 rickr Exp $
+  $Id: plug_crender.c,v 1.62 2012/02/23 19:43:57 rwcox Exp $
   ----------------------------------------------------------------------
 */
 
@@ -5645,8 +5645,8 @@ ENTRY( "RCREND_func_widgets" );
                         npane ,                     /* number panes */
                         sel_height / npane ,        /* init pane height */
                         pmin , pmax ,               /* value range */
-                        RCREND_color_pbar_CB ,        /* callback */
-                        NULL                ) ;     /* callback data */
+                        RCREND_color_pbar_CB ,      /* callback */
+                        NULL , 0            ) ;     /* callback data */
 
    wfunc_color_pbar->parent       = NULL ;
    wfunc_color_pbar->mode         = 0 ;
