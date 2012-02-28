@@ -2838,6 +2838,7 @@ SUMA_SO_File_Type SUMA_GuessSurfFormatFromExtension_core(char *Name)
    if (!Name) { SUMA_RETURN(form); }
    if (  SUMA_isExtension(Name, ".1D.coord") ||
          SUMA_isExtension(Name, ".1D.topo")) SUMA_RETURN(SUMA_VEC);
+   if (  SUMA_isExtension(Name, ".1D") ) SUMA_RETURN(SUMA_VEC);
    if (  SUMA_isExtension(Name, ".asc")) SUMA_RETURN(SUMA_FREE_SURFER);
    if (  SUMA_isExtension(Name, ".topo") ||
          SUMA_isExtension(Name, ".coord") ) SUMA_RETURN(SUMA_SUREFIT);
@@ -2926,7 +2927,7 @@ SUMA_GENERIC_PROG_OPTIONS_STRUCT * SUMA_Alloc_Generic_Prog_Options_Struct(void)
    Opt->v0 = 0.0;
    Opt->v1 = 0.0;
    Opt->dvec = NULL;
-   Opt->fvec = NULL;
+   Opt->fvec = NULL; Opt->n_fvec=-1; Opt->fvec_dim=-1;
    Opt->SurfFileType = SUMA_PLY;
    Opt->SurfFileFormat = SUMA_ASCII;
    Opt->xform = SUMA_ISO_XFORM_UNDEFINED;
@@ -3185,30 +3186,51 @@ SUMA_GENERIC_ARGV_PARSE *SUMA_FreeGenericArgParse(SUMA_GENERIC_ARGV_PARSE *ps)
    
    if (ps) {
       for (i=0; i<SUMA_MAX_SURF_ON_COMMAND; ++i) {
-         if (ps->t_surfnames[i]) SUMA_free(ps->t_surfnames[i]); ps->t_surfnames[i]= NULL;
-         if (ps->t_surftopo[i]) SUMA_free(ps->t_surftopo[i]); ps->t_surftopo[i]= NULL;
-         if (ps->t_surfpath[i]) SUMA_free(ps->t_surfpath[i]); ps->t_surfpath[i]= NULL;
-         if (ps->t_surfprefix[i]) SUMA_free(ps->t_surfprefix[i]);ps->t_surfprefix[i] = NULL;
+         if (ps->t_surfnames[i]) 
+            SUMA_free(ps->t_surfnames[i]); ps->t_surfnames[i]= NULL;
+         if (ps->t_surftopo[i]) 
+            SUMA_free(ps->t_surftopo[i]); ps->t_surftopo[i]= NULL;
+         if (ps->t_surfpath[i]) 
+            SUMA_free(ps->t_surfpath[i]); ps->t_surfpath[i]= NULL;
+         if (ps->t_surfprefix[i]) 
+            SUMA_free(ps->t_surfprefix[i]);ps->t_surfprefix[i] = NULL;
          if (ps->t_state[i]) SUMA_free(ps->t_state[i]);ps->t_state[i] = NULL;
-         if (ps->i_surfnames[i]) SUMA_free(ps->i_surfnames[i]); ps->i_surfnames[i]= NULL;
-         if (ps->i_surftopo[i]) SUMA_free(ps->i_surftopo[i]); ps->i_surftopo[i]= NULL;
-         if (ps->i_surfpath[i]) SUMA_free(ps->i_surfpath[i]); ps->i_surfpath[i]= NULL;
-         if (ps->i_surfprefix[i]) SUMA_free(ps->i_surfprefix[i]);ps->i_surfprefix[i] = NULL;
+         if (ps->i_surfnames[i]) 
+            SUMA_free(ps->i_surfnames[i]); ps->i_surfnames[i]= NULL;
+         if (ps->i_surftopo[i]) 
+            SUMA_free(ps->i_surftopo[i]); ps->i_surftopo[i]= NULL;
+         if (ps->i_surfpath[i]) 
+            SUMA_free(ps->i_surfpath[i]); ps->i_surfpath[i]= NULL;
+         if (ps->i_surfprefix[i]) 
+            SUMA_free(ps->i_surfprefix[i]);ps->i_surfprefix[i] = NULL;
          if (ps->i_state[i]) SUMA_free(ps->i_state[i]);ps->i_state[i] = NULL;
-         if (ps->ipar_surfnames[i]) SUMA_free(ps->ipar_surfnames[i]); ps->ipar_surfnames[i]= NULL;
-         if (ps->ipar_surftopo[i]) SUMA_free(ps->ipar_surftopo[i]); ps->ipar_surftopo[i]= NULL;
-         if (ps->ipar_surfpath[i]) SUMA_free(ps->ipar_surfpath[i]); ps->ipar_surfpath[i]= NULL;
-         if (ps->ipar_surfprefix[i]) SUMA_free(ps->ipar_surfprefix[i]);ps->ipar_surfprefix[i] = NULL;
-         if (ps->ipar_state[i]) SUMA_free(ps->ipar_state[i]);ps->ipar_state[i] = NULL;
-         if (ps->o_surfnames[i]) SUMA_free(ps->o_surfnames[i]); ps->o_surfnames[i]= NULL;
-         if (ps->o_surftopo[i]) SUMA_free(ps->o_surftopo[i]); ps->o_surftopo[i]= NULL;
-         if (ps->o_surfpath[i]) SUMA_free(ps->o_surfpath[i]); ps->o_surfpath[i]= NULL;
-         if (ps->o_surfprefix[i]) SUMA_free(ps->o_surfprefix[i]);ps->o_surfprefix[i] = NULL;
+         if (ps->ipar_surfnames[i]) 
+            SUMA_free(ps->ipar_surfnames[i]); ps->ipar_surfnames[i]= NULL;
+         if (ps->ipar_surftopo[i]) 
+            SUMA_free(ps->ipar_surftopo[i]); ps->ipar_surftopo[i]= NULL;
+         if (ps->ipar_surfpath[i]) 
+            SUMA_free(ps->ipar_surfpath[i]); ps->ipar_surfpath[i]= NULL;
+         if (ps->ipar_surfprefix[i]) 
+            SUMA_free(ps->ipar_surfprefix[i]);ps->ipar_surfprefix[i] = NULL;
+         if (ps->ipar_state[i]) 
+            SUMA_free(ps->ipar_state[i]);ps->ipar_state[i] = NULL;
+         if (ps->o_surfnames[i]) 
+            SUMA_free(ps->o_surfnames[i]); ps->o_surfnames[i]= NULL;
+         if (ps->o_surftopo[i]) 
+            SUMA_free(ps->o_surftopo[i]); ps->o_surftopo[i]= NULL;
+         if (ps->o_surfpath[i]) 
+            SUMA_free(ps->o_surfpath[i]); ps->o_surfpath[i]= NULL;
+         if (ps->o_surfprefix[i]) 
+            SUMA_free(ps->o_surfprefix[i]);   ps->o_surfprefix[i] = NULL;
          if (ps->o_state[i]) SUMA_free(ps->o_state[i]);ps->o_state[i] = NULL;
-         if (ps->s_surfnames[i]) SUMA_free(ps->s_surfnames[i]); ps->s_surfnames[i]= NULL;
-         if (ps->s_surfprefix[i]) SUMA_free(ps->s_surfprefix[i]);ps->s_surfprefix[i] = NULL;
-         if (ps->s_surfpath[i]) SUMA_free(ps->s_surfpath[i]); ps->s_surfpath[i]= NULL;
-         if (ps->spec_names[i]) SUMA_free(ps->spec_names[i]); ps->spec_names[i] = NULL;
+         if (ps->s_surfnames[i]) 
+            SUMA_free(ps->s_surfnames[i]); ps->s_surfnames[i]= NULL;
+         if (ps->s_surfprefix[i]) 
+            SUMA_free(ps->s_surfprefix[i]);ps->s_surfprefix[i] = NULL;
+         if (ps->s_surfpath[i]) 
+            SUMA_free(ps->s_surfpath[i]); ps->s_surfpath[i]= NULL;
+         if (ps->spec_names[i]) 
+            SUMA_free(ps->spec_names[i]); ps->spec_names[i] = NULL;
          if (ps->sv[i]) SUMA_free(ps->sv[i]); ps->sv[i] = NULL;
          if (ps->vp[i]) SUMA_free(ps->vp[i]); ps->vp[i] = NULL;
       }
@@ -3518,160 +3540,17 @@ SUMA_Boolean SUMA_isIOFormatFromArg(char *argi, SUMA_DSET_FORMAT *oformp,
    SUMA_TO_LOWER(arg);
    SUMA_LHv("%s-->%s\n", argi, arg);
    
-   if (!brk && (strcmp(arg, "1d") == 0))
-   {
+   oform = SUMA_FormatFromFormString(arg);
+   if (oform != SUMA_ERROR_DSET_FORMAT) {
       if (*oformp && *oformp != SUMA_NO_DSET_FORMAT) {
          SUMA_SL_Warn("output type already specified.");
       }
-      oform = SUMA_1D;
-      brk = YUP;
    }
-
-   if (!brk && (strcmp(arg, "1dp") == 0))
-   {
-      if (*oformp && *oformp != SUMA_NO_DSET_FORMAT) {
-         SUMA_SL_Warn("output type already specified.");
-      }
-      oform = SUMA_1D_PURE;
-      brk = YUP;
-   }
-   if (!brk && (strcmp(arg, "1dpt") == 0))
-   {
-      if (*oformp && *oformp != SUMA_NO_DSET_FORMAT) {
-         SUMA_SL_Warn("output type already specified.");
-      }
-      oform = SUMA_1D_PURE_TRANSPOSE;
-      brk = YUP;
-   }
-
-   if (!brk && (strcmp(arg, "1d_stderr") == 0))
-   {
-      if (*oformp && *oformp != SUMA_NO_DSET_FORMAT) {
-         SUMA_SL_Warn("output type already specified.");
-      }
-      oform = SUMA_1D_STDERR;
-      brk = YUP;
-   }
-   if (!brk && (strcmp(arg, "1dp_stderr") == 0))
-   {
-      if (*oformp && *oformp != SUMA_NO_DSET_FORMAT) {
-         SUMA_SL_Warn("output type already specified.");
-      }
-      oform = SUMA_1D_PURE_STDERR;
-      brk = YUP;
-   }
-   if (!brk && (strcmp(arg, "1dpt_stderr") == 0))
-   {
-      if (*oformp && *oformp != SUMA_NO_DSET_FORMAT) {
-         SUMA_SL_Warn("output type already specified.");
-      }
-      oform = SUMA_1D_PURE_STDERR_TRANSPOSE;
-      brk = YUP;
-   }
-   if (!brk && (strcmp(arg, "1d_stdout") == 0))
-   {
-      if (*oformp && *oformp != SUMA_NO_DSET_FORMAT) {
-         SUMA_SL_Warn("output type already specified.");
-      }
-      oform = SUMA_1D_STDOUT;
-      brk = YUP;
-   }
-
-   if (!brk && (strcmp(arg, "1dp_stdout") == 0))
-   {
-      if (*oformp && *oformp != SUMA_NO_DSET_FORMAT) {
-         SUMA_SL_Warn("output type already specified.");
-      }
-      oform = SUMA_1D_PURE_STDOUT;
-      brk = YUP;
-   }
-   if (!brk && (strcmp(arg, "1dpt_stdout") == 0))
-   {
-      if (*oformp && *oformp != SUMA_NO_DSET_FORMAT) {
-         SUMA_SL_Warn("output type already specified.");
-      }
-      oform = SUMA_1D_PURE_STDOUT_TRANSPOSE;
-      brk = YUP;
-   }
-   if (!brk && (strcmp(arg, "niml_stderr") == 0))
-   {
-      if (*oformp && *oformp != SUMA_NO_DSET_FORMAT) {
-         SUMA_SL_Warn("output type already specified.");
-      }
-      oform = SUMA_NIML_STDERR;
-      brk = YUP;
-   }
-
-   if (!brk && (strcmp(arg, "niml_stdout") == 0))
-   {
-      if (*oformp && *oformp != SUMA_NO_DSET_FORMAT) {
-         SUMA_SL_Warn("output type already specified.");
-      }
-      oform = SUMA_NIML_STDOUT;
-      brk = YUP;
-   }
-
-   if (  !brk && (
-         (strcmp(arg, "niml") == 0) ||
-         (strcmp(arg, "nii") == 0) ) ) 
-   {
-      if (*oformp && *oformp != SUMA_NO_DSET_FORMAT) {
-         SUMA_SL_Warn("output type already specified.");
-      }
-
-      oform = SUMA_NIML;
-      brk = YUP;
-   }
-
-   if (  !brk && (
-         (strncmp(arg, "niml_asc", 8) == 0)||
-         (strncmp(arg, "nii_asc", 7) == 0) ||
-         (strncmp(arg, "ni_as",5) == 0) ) )
-   {
-      if (*oformp && *oformp != SUMA_NO_DSET_FORMAT) {
-         SUMA_SL_Warn("output type already specified.");
-      }
-
-      oform = SUMA_ASCII_NIML;
-      brk = YUP;
-   }
-
-   if (  !brk && (
-         (strncmp(arg, "niml_bi", 7) == 0)||
-         (strncmp(arg, "nii_bi", 6) == 0) ||
-         (strncmp(arg, "ni_bi", 5) == 0) ) )
-   {
-      if (*oformp && *oformp != SUMA_NO_DSET_FORMAT) {
-         SUMA_SL_Warn("output type already specified.");
-      }
-
-      oform = SUMA_BINARY_NIML;
-      brk = YUP;
-   }
-
-   if (  !brk && (
-         (strncmp(arg, "gii", 3) == 0) ||
-         (strncmp(arg, "gifti", 5) == 0) ) )
-   {
-      if (*oformp && *oformp != SUMA_NO_DSET_FORMAT) {
-         SUMA_SL_Warn("output type already specified.");
-      }
-
-      if (SUMA_iswordin_ci(arg,"asc"))
-         oform = SUMA_XML_ASCII_DSET;
-      else if (SUMA_iswordin_ci(arg,"b64gz"))
-         oform = SUMA_XML_B64GZ_DSET;
-      else if (SUMA_iswordin_ci(arg,"b64"))
-         oform = SUMA_XML_B64_DSET;
-      else oform = SUMA_XML_DSET;
-
-      brk = YUP;
-   }
-   
    
    if (io) *io = sgn;
    
-   if (oformp && oform != SUMA_NO_DSET_FORMAT) {
+   if (oformp && oform != SUMA_ERROR_DSET_FORMAT
+              && oform != SUMA_NO_DSET_FORMAT) {
       *oformp = oform;
       SUMA_LHv("Returning %s with oform=%d, sgn %d\n", arg, oform, sgn);
       SUMA_free(arg); arg=NULL;
@@ -3683,6 +3562,49 @@ SUMA_Boolean SUMA_isIOFormatFromArg(char *argi, SUMA_DSET_FORMAT *oformp,
    }
    
 }
+
+int SUMA_setenv_option(char *s) 
+{
+   static char FuncName[]={"SUMA_setenv_option"};
+   char *aval=NULL, lhs[64]={""}, rhs[256]={""};
+   int closed=0;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   
+   if (!s) {
+      SUMA_S_Err("NULL input");
+      SUMA_RETURN(0);
+   }
+   if (s[0] != '\'' && s[0] != '\"') {
+      SUMA_S_Errv("You must enclose env expression with ' or \" quotes\n"
+                  "Have open %s\n", s);
+      SUMA_RETURN(0);
+   } 
+
+   aval = SUMA_copy_quoted(s,NULL,'\0','\0', 1, 0, &closed);
+   if (!aval) {
+      SUMA_S_Err("Failed to get env value");
+      SUMA_RETURN(0);
+   }
+   if (!closed) {
+      SUMA_S_Errv("You must enclose env expression with ' or \" quotes\n"
+                  "Have unterminated %s\n", aval);
+      SUMA_free(aval); aval=NULL;
+      SUMA_RETURN(0);
+   } 
+   SUMA_LHv("Got >%s<\n", aval);
+   if (SUMA_ParseLHS_RHS (aval, lhs, rhs)) {
+      strcpy(aval,lhs) ; strcat(aval,"=") ; strcat(aval,rhs) ;
+      SUMA_LHv("PUTENV: %s\n", aval);
+      putenv(aval); /* DO NOT FREE aval! */
+   } else {
+      SUMA_S_Errv("Failed to parse >%s<\n", s);
+   }
+
+   SUMA_RETURN(1);
+}
+
 /*!
    A function to parse command line arguments and return a convenient
    structure that can be used by various programs for surface specifications
@@ -3715,6 +3637,22 @@ SUMA_GENERIC_ARGV_PARSE *SUMA_Parse_IO_Args (int argc, char *argv[],
    kar = 1;
 	brk = NOPE;
 	while (kar < argc) { /* loop accross command ine options */
+      /* envs */
+      if (!brk) {
+         if (!strcmp(argv[kar],"-setenv")) {
+            ps->arg_checked[kar]=1; kar ++;
+            if (kar >= argc)  {
+		  		   fprintf (SUMA_STDERR, "need quoted env string after %s \n",
+                                     argv[kar-1]);
+				   exit (1);
+			   }
+            if (!SUMA_setenv_option(argv[kar])) {
+               exit(1);
+            }  
+            ps->arg_checked[kar]=1; 
+            brk = YUP;
+         }
+      }
       /* allow for users to set cmap */
       if (!brk && ps->accept_cmap) {   
          if (!brk && (  (strcmp(argv[kar], "-cmap") == 0) ||
@@ -3728,7 +3666,7 @@ SUMA_GENERIC_ARGV_PARSE *SUMA_Parse_IO_Args (int argc, char *argv[],
             ps->arg_checked[kar]=1; kar ++;
             if (kar >= argc)  {
 		  		   fprintf (SUMA_STDERR, "need 1 argument after %s \n",
-                                     argv[kar]);
+                                     argv[kar-1]);
 				   exit (1);
 			   }
             /* put the flags up */
@@ -4039,20 +3977,27 @@ SUMA_GENERIC_ARGV_PARSE *SUMA_Parse_IO_Args (int argc, char *argv[],
 		   }   
       }
       if (!brk && ps->accept_s) {
-         if (!brk && (strncmp(argv[kar], "-surf_", 6) == 0)) {
+         if (!brk 
+               && (strlen(argv[kar])==7 )
+               && (strncmp(argv[kar], "-surf_", 6) == 0)) {
             ps->arg_checked[kar]=1;
 		      if (kar + 1>= argc)  {
 		  	      SUMA_S_Err( "need argument after -surf_X SURF_NAME \n");
 			      exit (1);
 		      }
 		      ind = argv[kar][6] - 'A';
-            if (ind < 0 || ind >= 'Z') {
+            if (ind < 0 || ind >= ('Z'-'A')) {
                fprintf (SUMA_STDERR,   
-                        "Error %s:\n -surf_X SURF_NAME option is out of range.\n"
-                        "Only %d surfaces are allowed. \n"
-                        "Must start with surf_A for first surface.\n", 
-                        FuncName, 'Z');
+                  "Error %s:\n -surf_X SURF_NAME option (%s)is out of range.\n"
+                  "Only %d surfaces are allowed. \n"
+                  "Must start with surf_A for first surface.\n", 
+                        FuncName, argv[kar], ('Z'-'A'));
 			      exit (1);
+            }
+            if (ps->s_surfnames[ind]) {
+               SUMA_S_Errv("It looks like %s has been used already.\n",
+                           argv[kar]);
+               exit(1);
             }
             kar ++;
             ps->arg_checked[kar]=1;
@@ -4060,11 +4005,12 @@ SUMA_GENERIC_ARGV_PARSE *SUMA_Parse_IO_Args (int argc, char *argv[],
                SUMA_SL_Err("Exceeding maximum number of allowed surfaces...");
                exit(1);   
             }
-            ps->s_surfnames[ps->s_N_surfnames+ind] = SUMA_copy_string(argv[kar]);
+            ps->s_surfnames[ind] = SUMA_copy_string(argv[kar]);
+            
             ++ps->s_N_surfnames;
             brk = YUP;
 	      } 
-         if (!brk && (strncmp(argv[kar], "-surf", 5) == 0)) {
+         if (!brk && (strcmp(argv[kar], "-surf") == 0)) {
             ps->arg_checked[kar]=1;
 		      if (kar + 1>= argc)  {
 		  	      SUMA_S_Err( "need argument after -surf SURF_NAME \n");

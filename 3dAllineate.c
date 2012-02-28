@@ -23,10 +23,6 @@
 #endif
 #endif
 
-#ifdef SOLARIS
-# define strcasestr strstr  /* stupid Solaris */
-#endif
-
 #define MAXPAR   999
 #define PARC_FIX 1
 #define PARC_INI 2
@@ -274,8 +270,13 @@ static float BILINEAR_offdiag_norm(GA_setup stup)
 
 #define COUNT_FREE_PARAMS(nf)                                  \
  do{ int jj ;                                                  \
-     for( (nf)=jj=0 ; jj < stup.wfunc_numpar ; jj++ )          \
-       if( !stup.wfunc_param[jj].fixed ) (nf)++ ;              \
+     if( verb > 4 ) fprintf(stderr,"++ Free params:") ;        \
+     for( (nf)=jj=0 ; jj < stup.wfunc_numpar ; jj++ ){         \
+       if( !stup.wfunc_param[jj].fixed ){                      \
+         (nf)++ ; if( verb > 4 ) fprintf(stderr," %d",jj) ;    \
+       }                                                       \
+     }                                                         \
+     if( verb > 4 ) fprintf(stderr,"\n") ;                     \
  } while(0)
 
 /*---------------------------------------------------------------------------*/
@@ -419,7 +420,7 @@ int main( int argc , char *argv[] )
    float nwarp_parmax          = 0.10f ;         /* 05 Jan 2011 */
    int   nwarp_flags           = 0 ;             /* 29 Oct 2010 */
    int   nwarp_itemax          = 0 ;
-   int   nwarp_fixaff          = 1 ;             /* 26 Nov 2010 */
+   int   nwarp_fixaff          = 0 ;             /* 26 Nov 2010 */
    int   nwarp_fixmotX         = 0 ;             /* 07 Dec 2010 */
    int   nwarp_fixdepX         = 0 ;
    int   nwarp_fixmotY         = 0 ;
@@ -1165,7 +1166,7 @@ int main( int argc , char *argv[] )
         "                 of parameters being optimized.  The default values\n"
         "                 are m=2 and a=3.  Larger values will probably slow\n"
         "                 the program down for no good reason.  The smallest\n"
-        "                 values are 1.\n"
+        "                 allowed values are 1.\n"
         " -target ttt   = Same as '-source ttt'.  In the earliest versions,\n"
         "                 what I now call the 'source' dataset was called the\n"
         "                 'target' dataset:\n"
@@ -1458,7 +1459,8 @@ int main( int argc , char *argv[] )
         "  ++ If the warp is symbolized by x -> w(x) [here, x is a DICOM 3-vector],\n"
         "     then the '-nwarp_save' dataset contains w(x)-x; that is, it contains\n"
         "     the warp displacement of each grid point from its grid location.\n"
-        "  ++ Also see program 3dNwarpCalc for other things you can do with this file.\n"
+        "  ++ Also see program 3dNwarpCalc for other things you can do with this file:\n"
+        "       warp inversion, catenation, square root, ...\n"
         "\n"
         "* Bilinear warp formula:\n"
         "   Xout = inv[ I + {D1 (Xin-Xc) | D2 (Xin-Xc) | D3 (Xin-Xc)} ] [ A Xin ]\n"
@@ -1616,7 +1618,7 @@ int main( int argc , char *argv[] )
        } else {
          ERROR_exit("unknown -nwarp type '%s' :-(",argv[iarg]) ;
        }
-       nwarp_fixaff = ( strstr(argv[iarg],"FA") == NULL ) ;
+       nwarp_fixaff = ( strstr(argv[iarg],"FA") != NULL ) ;
        warp_code = WARP_AFFINE ; iarg++ ;
 
        if( iarg < argc && isdigit(argv[iarg][0]) ){      /** really secret **/
@@ -2702,7 +2704,9 @@ int main( int argc , char *argv[] )
 
      /*-----*/
 
-     ERROR_exit("Unknown and Illegal option '%s' :-( :-( :-(",argv[iarg]) ;
+     ERROR_message("Unknown and Illegal option '%s' :-( :-( :-(",argv[iarg]) ;
+     suggest_best_prog_option(argv[0], argv[iarg]);
+     exit(1);
    }
 
    if( iarg < argc )
@@ -3096,7 +3100,7 @@ int main( int argc , char *argv[] )
      if( twodim_code < 1 || twodim_code > 3 )
        ERROR_exit("2D image: orientation is %s",tnam) ;
      else if( verb )
-       ININFO_message("2D image: orientation is %s",tnam) ;
+       ININFO_message("2D image registration: orientation is %s",tnam) ;
 
      if( nwarp_pass ){ nwarp_fixaff = nwarp_fixmotK = nwarp_fixdepK = 1 ; }
    }
@@ -3644,7 +3648,7 @@ STATUS("zeropad weight dataset") ;
          dset_mast = qset ;
          THD_daxes_to_mat44(dset_mast->daxes) ;
          if( verb )
-           INFO_message("changing output grid spacing to %.3f mm",dxyz_mast) ;
+           INFO_message("changing output grid spacing to %.4f mm",dxyz_mast) ;
        }
      }
      if( !ISVALID_MAT44(dset_mast->daxes->ijk_to_dicom) ) /* make sure have */
@@ -3659,7 +3663,7 @@ STATUS("zeropad weight dataset") ;
                         ADN_nvals     , DSET_NVALS(dset_targ) ,
                         ADN_datum_all , MRI_float ,
                       ADN_none ) ;
-     if( DSET_NUM_TIMES(dset_targ) > 1 )
+       if( DSET_NUM_TIMES(dset_targ) > 1 )
        EDIT_dset_items( dset_out ,
                           ADN_ntt   , DSET_NVALS(dset_targ) ,
                           ADN_ttdel , DSET_TR(dset_targ) ,
@@ -3675,6 +3679,9 @@ STATUS("zeropad weight dataset") ;
      /* copy brick info into output */
 
      THD_copy_datablock_auxdata( dset_targ->dblk , dset_out->dblk ) ;
+     if (!THD_copy_labeltable_atr( dset_out->dblk,  dset_targ->dblk)) {
+      WARNING_message("Failed trying to preserve labeltables");
+     }
      for( kk=0 ; kk < DSET_NVALS(dset_out) ; kk++ )
        EDIT_BRICK_FACTOR(dset_out,kk,0.0);
 
@@ -4689,22 +4696,58 @@ STATUS("zeropad weight dataset") ;
 
          /* do the optimization */
 
-         for( jj=12 ; jj < NPNONI ; jj++ ) stup.wfunc_param[jj].fixed = 0 ;
-         FREEZE_POLYNO_PARAMS ; /* 07 Dec 2010 */
+         powell_set_mfac( 1.2f , 5.0f ) ;
 
-         COUNT_FREE_PARAMS(nbf) ;
-         if( verb > 0 )
-           INFO_message("Start Nonic/Poly9 warping: %d free parameters",nbf) ;
+         if( AFNI_noenv("AFNI_NONIC_GRADUAL") ){  /* old way: all params at once */
+           for( jj=12 ; jj < NPNONI ; jj++ ) stup.wfunc_param[jj].fixed = 0 ;
+           FREEZE_POLYNO_PARAMS ; /* 07 Dec 2010 */
+           COUNT_FREE_PARAMS(nbf) ;
+           if( verb > 0 )
+             INFO_message("Start Nonic/Poly9 warping: %d free parameters",nbf) ;
 
-         if( verb ) ctim = COX_cpu_time() ;
-         rad  = 0.01f ; crad = 0.003f ;
-         nite = MAX(5555,nwarp_itemax) ;
-         nbf  = mri_genalign_scalar_optim( &stup , rad, crad, nite );
-         if( verb ){
-           dtim = COX_cpu_time() ;
-           ININFO_message("- Nonic/Poly9 cost = %f ; %d funcs ; net CPU = %.1f s",
-                          stup.vbest,nbf,dtim-ctim) ;
-           ctim = dtim ;
+           if( verb ) ctim = COX_cpu_time() ;
+           rad  = 0.03f ; crad = 0.003f ;
+           nite = MAX(7777,nwarp_itemax) ;
+           nbf  = mri_genalign_scalar_optim( &stup , rad, crad, nite );
+           if( verb ){
+             dtim = COX_cpu_time() ;
+             ININFO_message("- Nonic/Poly9 cost = %f ; %d funcs ; net CPU = %.1f s",
+                            stup.vbest,nbf,dtim-ctim) ;
+             ctim = dtim ;
+           }
+         } else { /* the new way: cubic, then quintic, then heptic, then nonic */
+#undef  NPOL
+#define NPOL(k) (((k)+1)*((k)+2)*((k)+3)/6-4)
+           static int fst[8] = { 12+3*NPOL(3) , 12+3*NPOL(4) , 12+3*NPOL(5) ,
+                                 12+3*NPOL(6) , 12+3*NPOL(7) , 12+3*NPOL(8) ,
+                                 12+3*NPOL(9)  } ;
+           int pq ;
+           for( pq=0 ; pq < 7 ; pq++ ){
+             for( jj=12 ; jj < NPNONI ; jj++ ) stup.wfunc_param[jj].fixed = 0 ;
+             FREEZE_POLYNO_PARAMS ;
+             for( jj=fst[pq] ; jj < NPNONI ; jj++ )
+               if( stup.wfunc_param[jj].fixed == 0 ) stup.wfunc_param[jj].fixed = 1 ;
+             COUNT_FREE_PARAMS(nbf) ;
+             if( verb > 0 )
+               INFO_message("Level %d of Nonic/Poly9 warping: %d free parameters",pq+3,nbf) ;
+             if( nbf == 0 ) continue ;
+             if( pq > 0 ){
+               for( jj=0 ; jj < fst[pq] ; jj++ ){
+                 if( stup.wfunc_param[jj].fixed == 0 )
+                   stup.wfunc_param[jj].val_init = stup.wfunc_param[jj].val_out ;
+               }
+             }
+             if( verb ) ctim = COX_cpu_time() ;
+             rad  = 0.03f ; crad = 0.003f ;
+             nite = MAX(6*nbf,nwarp_itemax) ;
+             nbf  = mri_genalign_scalar_optim( &stup , rad, crad, nite );
+             if( verb ){
+               dtim = COX_cpu_time() ;
+               ININFO_message("- Nonic/Poly9 cost = %f ; %d funcs ; net CPU = %.1f s",
+                              stup.vbest,nbf,dtim-ctim) ;
+               ctim = dtim ;
+             }
+           }
          }
 
          /** if( verb > 1 ) PAROUT("- Nonic/Poly9 final") ; **/
@@ -4808,7 +4851,7 @@ STATUS("zeropad weight dataset") ;
          }
          free((void *)aval) ;
          fprintf(stderr," + Median of Parameters =") ;
-         for( jj=0 ; jj < stup.wfunc_numpar ; jj++ ) fprintf(stderr," %.4f",pval[jj]) ;
+         for( jj=0 ; jj < stup.wfunc_numpar ; jj++ ) fprintf(stderr," %.6f",pval[jj]) ;
          fprintf(stderr,"\n") ;
          if( meth_median_replace ){  /* replace final results with median! */
            ININFO_message("Replacing Final parameters with Median") ;
@@ -4825,7 +4868,7 @@ STATUS("zeropad weight dataset") ;
      if( warp_freeze && DSET_NVALS(dset_targ) > 1 ){  /* 10 Oct 2006 */
        for( jj=6 ; jj < stup.wfunc_numpar ; jj++ ){
          if( !stup.wfunc_param[jj].fixed ){
-           if( verb > 1 ) INFO_message("Freezing parameter #%d [%s] = %.5f",
+           if( verb > 1 ) INFO_message("Freezing parameter #%d [%s] = %.6f",
                                        jj+1 , stup.wfunc_param[jj].name ,
                                               stup.wfunc_param[jj].val_out ) ;
            stup.wfunc_param[jj].fixed = 2 ;
@@ -5064,7 +5107,7 @@ mri_genalign_set_pgmat(1) ;
      fprintf(fp,"\n") ;
      for( kk=0 ; kk < DSET_NVALS(dset_targ) ; kk++ ){
        for( jj=0 ; jj < stup.wfunc_numpar ; jj++ )
-         fprintf(fp," %.5f",parsave[kk][jj]) ;
+         fprintf(fp," %.6f",parsave[kk][jj]) ;
        fprintf(fp,"\n") ;                           /* oops */
      }
      if( fp != stdout ){
@@ -5106,7 +5149,7 @@ mri_genalign_set_pgmat(1) ;
      INFO_message("total CPU time = %.1f sec  Elapsed = %.1f\n",
                   COX_cpu_time() , COX_clock_time() ) ;
    MEMORY_CHECK("end of program (after final cleanup)") ;
-   if( verb && apply_1D == NULL ){
+   if( verb && apply_1D == NULL && prefix != NULL ){
     INFO_message("###########################################################");
     INFO_message("### Please check results visually for alignment quality ###");
    }

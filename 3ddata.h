@@ -95,6 +95,10 @@ extern "C" {
 
 #define THD_MAX_LABEL     38
 
+/*! Max length of a dataset sub-brick label. */
+
+#define THD_MAX_SBLABEL     64     /* added 11/03/2011 drg */
+
 /*! Max length of a dataset prefix. */
 
 #define THD_MAX_PREFIX     (255+1)  /* must be more than THD_MAX_LABEL
@@ -365,6 +369,12 @@ typedef struct {
       ((name)->num)++ ;                                               \
      } } while(0)
 
+/*! Add string str to dynamic string array "name" if str is not in there yet. */
+#define ADDUTO_SARR(name,str)                                          \
+ do{ if (SARR_find_string(name, str, 0)<0) ADDTO_SARR(name,str);   \
+   } while(0)
+
+
 /*! Remove the ijk-th string from dynamic string array "name". */
 
 #define REMOVEFROM_SARR(name,ijk)                \
@@ -386,11 +396,11 @@ typedef struct {
      for( qq=0; qq < (name)->num; qq++ ) printf(" '%s'",(name)->ar[qq]); \
      printf("\n") ; } while(0)
 
-extern int SARR_find_string( THD_string_array * sar , char * str ) ;
-extern int SARR_find_substring( THD_string_array * sar , char * sub ) ;
+extern int SARR_find_string( THD_string_array * sar , char * str , byte ci) ;
+extern int SARR_find_substring( THD_string_array * sar , char * sub , byte ci) ;
 
-extern int SARR_lookfor_string   ( THD_string_array * sar , char * str , int nstart ) ;
-extern int SARR_lookfor_substring( THD_string_array * sar , char * sub , int nstart ) ;
+extern int SARR_lookfor_string   ( THD_string_array * sar , char * str , int nstart , byte ci) ;
+extern int SARR_lookfor_substring( THD_string_array * sar , char * sub , int nstart , byte ci) ;
 
 /*! Concatenate strings p1 and p2 into string pout, making them a filesystem path.
 
@@ -1038,11 +1048,17 @@ extern void THD_delete_diskptr( THD_diskptr * ) ;
     - If there is no '+', puts an empty string into pr
     - Otherwise, scans backward from end to find last '+'; everything before that is the prefix
     - Space for pr must be allocated beforehand
+
+    Made strstr check for +orig, +acpc, and +tlrc instead of just
+      "+". Names like aseg+aparc.nii were getting butchered
+      ZSS: Dec 2011
 */
 
 #define FILECODE_TO_PREFIX(fc,pr)                                     \
   do{ char *qq , *ff , *pp ;                                          \
-      if( strstr((fc),"+") == NULL ){                                 \
+      if( strstr((fc),"+orig") == NULL &&\
+          strstr((fc),"+acpc") == NULL &&\
+          strstr((fc),"+tlrc") == NULL ){                             \
          (pr)[0] = '\0' ;                                             \
       } else {                                                        \
          for( qq=fc+strlen((fc)) ; *qq != '+' ; qq-- ) ;              \
@@ -1519,6 +1535,17 @@ extern mat44 THD_mat44_sqrt( mat44 A ) ;  /* matrix square root [30 Jul 2007] */
 
 #undef  INVALIDATE_MAT44
 #define INVALIDATE_MAT44(AA) ((AA).m[3][3] = 0.0f)
+
+#undef  ISZERO_MAT44
+#define ISZERO_MAT44(AA) \
+ ((AA.m[0][0] == 0.0) && \
+  (AA.m[0][2] == 0.0) && \
+  (AA.m[1][0] == 0.0) && \
+  (AA.m[1][2] == 0.0) && \
+  (AA.m[2][0] == 0.0) && \
+  (AA.m[2][2] == 0.0) && \
+  (AA.m[3][0] == 0.0) && \
+  (AA.m[3][2] == 0.0) )
 
 /* check if 2 mat44 matrices are equal-ish */
 
@@ -2820,9 +2847,9 @@ extern int THD_need_brick_factor( THD_3dim_dataset * ) ;
 #define DSET_THRESH_INDEX DSET_THRESH_VALUE
 
 /*! Return a pointer to the prefix of dataset ds */
-
 #define DSET_PREFIX(ds) (((ds)->dblk!=NULL && (ds)->dblk->diskptr!=NULL) \
                        ? ((ds)->dblk->diskptr->prefix) : "\0" )
+extern char *DSET_prefix_noext(THD_3dim_dataset *dset);
 
 extern char * THD_newprefix(THD_3dim_dataset * dset, char * suffix); /* 16 Feb 2001 */
 extern char * THD_deplus_prefix( char *prefix ) ;                    /* 22 Nov 2002 */
@@ -2860,6 +2887,10 @@ extern int    THD_deconflict_prefix( THD_3dim_dataset * ) ;          /* 23 Mar 2
 
 #define DSET_IDCODE_STR(ds) ((ds)->idcode.str)
 
+/*! Return the storage mode string */
+#define DSET_STORAGE_MODE_STR(ds) ( ((ds) && (ds)->dblk && (ds)->dblk->diskptr)\
+   ? storage_mode_str((ds)->dblk->diskptr->storage_mode):"NULL" )
+   
 /* 25 April 1998 */
 
 #define DBLK_BYTEORDER(db)  ((db)->diskptr->byte_order)
@@ -2896,6 +2927,17 @@ extern int    THD_deconflict_prefix( THD_3dim_dataset * ) ;          /* 23 Mar 2
 /*! Return number of voxels in each sub-brick of dataset ds */
 
 #define DSET_NVOX(ds) ( (ds)->daxes->nxx * (ds)->daxes->nyy * (ds)->daxes->nzz )
+
+/*! Find the largest node index in dset (for surface-based dsets) */
+#define DSET_MAX_NODE(ds, MM) {\
+   int i; \
+   MM = -1; \
+   if ((ds) && (ds)->dblk && (ds)->dblk->node_list) {\
+      for (i=0; i<(ds)->dblk->nnodes; ++i) {\
+         if ((ds)->dblk->node_list[i]>MM) MM = (ds)->dblk->node_list[i];\
+      }  \
+   }  \
+}
 
 /*! Return total size of dataset in bytes. */
 
@@ -3025,6 +3067,10 @@ extern int    THD_deconflict_prefix( THD_3dim_dataset * ) ;          /* 23 Mar 2
 #define DSET_TIMESTEP(ds)        ( ((ds)->taxis == NULL) ? 0.0 : (ds)->taxis->ttdel )
 
 #define DSET_TR                  DSET_TIMESTEP
+
+#define DSET_TR_SEC(ds) ( \
+            (DSET_TIMEUNITS(ds) == UNITS_SEC_TYPE) ? DSET_TR(ds) : \
+           ((DSET_TIMEUNITS(ds) == UNITS_MSEC_TYPE) ? DSET_TR(ds)*0.001 : 0.0 ) )
 
 /*! Return the time origin for dataset ds.
 
@@ -3190,6 +3236,7 @@ extern int   THD_create_all_fdrcurves( THD_3dim_dataset * ) ;
 extern float THD_fdrcurve_zval( THD_3dim_dataset *, int, float ) ;
 extern float THD_mdfcurve_mval( THD_3dim_dataset *, int, float ) ;
 extern int THD_count_fdrwork( THD_3dim_dataset *dset ) ; /* 12 Nov 2008 */
+extern float THD_fdrcurve_zqtot( THD_3dim_dataset *dset , int iv , float zval ) ;
 
 /*! Macro to load the self_name and labels of a dataset
     with values computed from the filenames;
@@ -3389,6 +3436,25 @@ extern void THD_force_ok_overwrite( int ) ; /* 07 Jan 2008 */
     Mastered datasets are specified on the command line with the [a..b] syntax, etc.
 */
 #define DSET_IS_MASTERED(ds) DBLK_IS_MASTERED((ds)->dblk)
+ /*! Swap dset for a fully copy of itself if it is mastered
+    This is useful when you want to modify a loaded dset that
+    has been mastered */
+#define DSET_NEW_IF_MASTERED(dset) {\
+   if ((dset) && DSET_IS_MASTERED((dset))) {\
+      THD_3dim_dataset *dsetc=EDIT_full_copy((dset), "THE_MASTER"); \
+      if (dsetc) { DSET_delete((dset)); (dset)=dsetc; }   \
+      else { ERROR_message("Failed to copy mastered dset. Nothing done."); }  \
+   }  \
+}
+/*! Prepare a dset that has been loaded from disk to be modified
+   and rewritten */
+#define PREP_LOADED_DSET_4_REWRITE(dset, prefix) {\
+   DSET_NEW_IF_MASTERED((dset)); \
+   ZERO_IDCODE((dset)->idcode); \
+   (dset)->idcode = MCW_new_idcode() ; \
+   EDIT_dset_items( (dset) , ADN_prefix , \
+                    (prefix) ? (prefix) : "HUMBUG", ADN_none ) ;  \
+}
 
 /*-------------------------------------------------------------------*/
 #undef  TWOGIG
@@ -3792,10 +3858,22 @@ extern int THD_is_file     ( char * ) ;
 extern int THD_is_symlink  ( char * ) ;  /* 03 Mar 1999 */
 extern int THD_is_directory( char * ) ;
 extern int THD_is_ondisk   ( char * ) ;  /* 19 Dec 2002 */
+extern int THD_is_prefix_ondisk( char *pathname ) ; /* Dec 2011 */
 extern int THD_mkdir       ( char * ) ;  /* 19 Dec 2002 */
 extern int THD_cwd         ( char * ) ;  /* 19 Dec 2002 */
 extern int THD_equiv_files ( char * , char * ) ;
 extern long long THD_filesize( char * pathname ) ;
+extern char *THD_filetime( char *pathname );
+extern char *THD_homedir(byte withslash);
+extern char *THD_custom_atlas_dir(byte withslash);
+extern char *THD_get_custom_atlas_dir(byte withslash);
+extern char *THD_afnirc(void);
+extern char *THD_custom_atlas_file(char *name);
+extern char *THD_helpdir(byte withslash);
+extern char *THD_get_helpdir(byte withslash);
+extern char *THD_abindir(byte withslash);
+char *THD_helpsearchlog(int createpath);
+
 extern THD_string_array * THD_get_all_subdirs( int , char * ) ;
 extern THD_string_array * THD_normalize_flist( THD_string_array * ) ;
 extern THD_string_array * THD_get_wildcard_filenames( char * ) ;
@@ -3803,11 +3881,19 @@ extern THD_string_array * THD_get_wildcard_filenames( char * ) ;
 extern int THD_check_for_duplicates( int, char **, int ) ; /* 31 May 2007 */
 
 extern time_t THD_file_mtime( char * ) ; /* 05 Dec 2001 */
-
-extern THD_string_array * THD_get_all_executables( char * ) ;    /* 26 Jun 2001 */
-extern THD_string_array * THD_getpathprogs( THD_string_array * );
+extern char *af_strnstr(char *s1, char *s2, size_t n);
+extern char *TrimString(char *lbl, int mxlen);
+extern THD_string_array * THD_get_all_files( char *, char ) ; /* 08 Jun 2011 */
+extern THD_string_array * THD_getpathprogs( THD_string_array *, char );
+extern THD_string_array * THD_get_all_afni_executables(void );
+extern THD_string_array * THD_get_all_afni_readmes(void);
+extern int list_afni_programs(int withpath, int withnum);
+extern int list_afni_readmes(int withpath, int withnum);
+extern int list_afni_dsets(int withpath, int withnum);
 extern int THD_is_executable( char * pathname ) ;
 extern char * THD_find_executable( char * ) ;
+extern char * THD_find_regular_file( char * , char *) ;
+extern THD_string_array *get_elist(void);
 
 extern int THD_is_dataset( char * , char * , int ) ; /* 17 Mar 2000 */
 extern char * THD_dataset_headname( char * , char * , int ) ;
@@ -3818,7 +3904,8 @@ extern NI_element * THD_mixed_table_read ( char *fname ) ; /* 26 Jul 2010 */
 extern MRI_IMARR * THD_get_all_timeseries( char * ) ;
 extern MRI_IMARR * THD_get_many_timeseries( THD_string_array * ) ;
 extern char * THD_trailname( char * fname , int lev ) ;
-
+extern char * THD_filepath( char *fname );
+extern int THD_filehaspath ( char *fname);
 extern int THD_linecount( char * ) ;
 
 extern void THD_read_all_atr ( char * , THD_datablock * ) ;
@@ -3838,12 +3925,30 @@ extern void THD_set_atr( THD_datablock * , char * , int,int, void * ) ;
 
 extern ATR_any * THD_copy_atr( ATR_any *atr ) ;  /* 03 Aug 2005 */
 extern void THD_insert_atr( THD_datablock *blk , ATR_any *atr ) ;
+extern int THD_copy_labeltable_atr( THD_datablock *d1,  THD_datablock *d2);
 
 extern void THD_store_dataset_keywords ( THD_3dim_dataset * , char * ) ;
 extern void THD_append_dataset_keywords( THD_3dim_dataset * , char * ) ;
 extern char * THD_dataset_info( THD_3dim_dataset * , int ) ;
-extern char * THD_zzprintf( char * sss , char * fmt , ... ) ;
+extern int THD_subbrick_minmax( THD_3dim_dataset *dset, int isb, int scl, 
+                                 float *min, float *max);
+extern float THD_subbrick_max(THD_3dim_dataset *dset, int isb, int scl);
+extern float THD_subbrick_min(THD_3dim_dataset *dset, int isb, int scl);
+extern int THD_dset_minmax( THD_3dim_dataset *dset, int scl, 
+                                 float *min, float *max);
+extern float THD_dset_max(THD_3dim_dataset *dset, int scl);
+extern float THD_dset_min(THD_3dim_dataset *dset, int scl);
 
+extern void THD_show_dataset_names( THD_3dim_dataset *dset,
+                                    char *head, FILE *out);
+extern const char * storage_mode_str(int);
+extern char * THD_zzprintf( char * sss , char * fmt , ... ) ;
+extern int dset_obliquity(THD_3dim_dataset *dset , float *anglep);
+double dset_obliquity_angle_diff(THD_3dim_dataset *dset1,
+                                 THD_3dim_dataset *dset2,
+                                 double tol);
+double daxes_obliquity_angle_diff(THD_dataxes *ax1, THD_dataxes *ax2,
+                                  double tol);
 extern void THD_set_float_atr( THD_datablock * , char * , int , float * ) ;
 extern void THD_set_int_atr  ( THD_datablock * , char * , int , int   * ) ;
 extern void THD_set_char_atr ( THD_datablock * , char * , int , char  * ) ;
@@ -3892,8 +3997,11 @@ extern int        NI_write_gifti( NI_group *, char * , int);
 extern NI_group * NI_read_gifti( char * , int ) ;
 
 extern int storage_mode_from_filename( char * fname );      /* 20 Apr 2006 */
+int storage_mode_from_prefix( char * fname );
+extern char *storage_mode_name(int mode);
 extern int has_known_non_afni_extension( char * fname ) ;   /*     [rickr] */
 extern char * find_filename_extension( char * fname );
+extern char * without_afni_filename_extension( char *fname); 
 
 extern void THD_datablock_apply_atr( THD_3dim_dataset * ) ; /* 09 May 2005 */
 
@@ -4049,6 +4157,7 @@ extern THD_3dim_dataset * THD_copy_one_sub  ( THD_3dim_dataset * , int ) ;
    "where to find this examination.\n"
 
 extern void THD_delete_3dim_dataset( THD_3dim_dataset * , Boolean ) ;
+extern void *DSET_Label_Dtable(THD_3dim_dataset *dset);
 extern THD_3dim_dataset * THD_3dim_from_block( THD_datablock * ) ;
 extern void THD_allow_empty_dataset( int ) ; /* 23 Mar 2001 */
 extern THD_3dim_dataset_array *
@@ -4161,6 +4270,7 @@ extern int THD_dataset_tshift( THD_3dim_dataset * , int ) ; /* 15 Feb 2001 */
 #define MISMATCH_DELTA   (1<<1)  /* within 0.001 voxel */
 #define MISMATCH_ORIENT  (1<<2)
 #define MISMATCH_DIMEN   (1<<3)
+#define MISMATCH_OBLIQ   (1<<4)
 
 /*----------------------------------------------------------------*/
 /*--------  FD_brick type: for rapid extraction of slices --------*/
@@ -4222,6 +4332,7 @@ extern MRI_IMAGE * FD_brick_to_mri( int,int , FD_brick * br ) ;
 extern MRI_IMAGE * FD_brick_to_series( int , FD_brick * br ) ;
 
 extern float THD_get_voxel( THD_3dim_dataset *dset , int ijk , int ival ) ;
+extern float THD_get_voxel_dicom( THD_3dim_dataset *dset, float x,float y,float z, int ival ) ;
 
 extern MRI_IMAGE * THD_extract_series( int , THD_3dim_dataset * , int ) ;
 extern MRI_IMARR * THD_extract_many_series( int, int *, THD_3dim_dataset * );
@@ -4313,6 +4424,8 @@ typedef struct {
   MRI_vectim *mv ;
   char *prefix ; int ndet ;
   float *tseed ;
+
+  THD_3dim_dataset *eset ; MRI_vectim *ev ;
 } ICOR_setup ;
 
 #undef  INIT_ICOR_setup
@@ -4327,6 +4440,7 @@ typedef struct {
        if( (is)->mmm    != NULL ) free((is)->mmm) ;          \
        if( (is)->gortim != NULL ) mri_free((is)->gortim) ;   \
        if( (is)->mv     != NULL ) VECTIM_destroy((is)->mv) ; \
+       if( (is)->ev     != NULL ) VECTIM_destroy((is)->ev) ; \
        if( (is)->prefix != NULL ) free((is)->prefix) ;       \
        if( (is)->tseed  != NULL ) free((is)->tseed) ;        \
        free((is)) ; (is) = NULL ;                            \
@@ -4622,6 +4736,7 @@ extern void THD_dicom_real_xform (THD_3dim_dataset * dset ,
 extern float THD_compute_oblique_angle(mat44 ijk_to_dicom44, int verbose);
 
 extern void THD_report_obliquity(THD_3dim_dataset *dset);
+extern void set_obliquity_report(int v);
 
 extern void THD_set_oblique_report(int n1, int n2);
 
@@ -4631,6 +4746,10 @@ extern void THD_reset_oblique_report_index(void);
 
 extern void THD_check_oblique_field(THD_3dim_dataset *dset);
 extern void THD_make_cardinal(THD_3dim_dataset *dset);
+extern void THD_updating_obliquity(int update);
+extern int THD_update_obliquity_status(void);
+extern void THD_set_dset_atr_status(int st);
+extern int THD_update_dset_atr_status(void);
 
   /* cf. thd_tmask.c */
 
@@ -4795,7 +4914,9 @@ extern void        mri_warp3D_align_cleanup( MRI_warp3D_align_basis * ) ;
 extern void THD_check_AFNI_version(char *) ;  /* 26 Aug 2005 */
 extern void THD_death_setup( int msec ) ;     /* 14 Sep 2009 */
 
-extern float THD_saturation_check( THD_3dim_dataset *, byte * ) ; /* 08 Feb 2010 */
+extern float THD_saturation_check( THD_3dim_dataset *, byte * , int,int ) ;       /* 08 Feb 2010 */
+extern float THD_saturation_check_multi( THD_3dim_dataset *, byte *, int,int *) ; /* 23 Dec 2011 */
+
 
 extern THD_3dim_dataset * THD_dummy_N27  (void) ;  /* 12 Feb 2010 */
 extern THD_3dim_dataset * THD_dummy_RWCOX(void) ;  /* 12 Feb 2010 */
@@ -5012,6 +5133,9 @@ extern float THD_quadrant_corr( int,float *,float *) ;
 extern float THD_pearson_corr ( int,float *,float *) ;
 extern float THD_ktaub_corr   ( int,float *,float *) ;  /* 29 Apr 2010 */
 extern float THD_eta_squared  ( int,float *,float *) ;  /* 25 Jun 2010 */
+extern double THD_eta_squared_masked(int,float *,float *,byte *);/* 16 Jun'11 */
+
+extern float THD_tictactoe_corr( int,float *,float *) ;  /* 19 Jul 2011 */
 
 extern float THD_pearson_corr_wt(int,float *,float *,float *); /* 13 Sep 2006 */
 
@@ -5082,6 +5206,9 @@ extern int  get_2Dhist_hbin  ( void ) ;
 extern void clear_2Dhist     ( void ) ;
 extern void build_2Dhist( int n , float xbot,float xtop,float *x ,
                           float ybot,float ytop,float *y , float *w ) ;
+extern void addto_2Dhist( int n , float xbot,float xtop,float *x ,
+                          float ybot,float ytop,float *y , float *w ) ;
+extern void normalize_2Dhist(void) ;
 
 extern void set_2Dhist_xybin( int nb, float *xb, float *yb ) ; /* 07 May 2007 */
 extern int get_2Dhist_xybin( float **xb , float **yb ) ;

@@ -6,7 +6,6 @@ Version 2.  See the file README.Copyright for details.
 
 #include "mrilib.h"
 #include "thd.h"
-#include "thd_atlas.h"
 /*----------------------------------------------------------------
   Given a directory name, and a header filename, create a
   datablock that corresponds (return NULL if impossible).
@@ -229,9 +228,12 @@ ENTRY("THD_datablock_from_atr") ;
    STATUS("checking if .BRIK file exists") ;
 
    brick_ccode = COMPRESS_filecode(dkptr->brick_name) ;
-   if( brick_ccode != COMPRESS_NOFILE )
-     dkptr->storage_mode = STORAGE_BY_BRICK ;  /* a .BRIK file */
-
+   if (dkptr->storage_mode == STORAGE_UNDEFINED) { /* ZSS: Oct. 2011 
+               the next line was being called all the time before */
+      if( brick_ccode != COMPRESS_NOFILE )
+        dkptr->storage_mode = STORAGE_BY_BRICK ;  /* a .BRIK file */
+   }
+   
    /*-- if VOLUME_FILENAMES attribute exists, make it so [20 Jun 2002] --*/
 
    if( headname != NULL && dkptr->storage_mode == STORAGE_UNDEFINED ){
@@ -345,10 +347,12 @@ ENTRY("THD_datablock_from_atr") ;
        ngood = ipos - ipold - 1 ;                   /* number of good chars */
        if( ngood > 0 ){
          XtFree(dblk->brick_lab[ibr]) ;
-         if( ngood > 32 ) ngood = 32 ;      /* 02 Sep 2004 */
+         /* 27 Oct 2011 - increase to 64 */
+         if( ngood > THD_MAX_SBLABEL ) ngood = THD_MAX_SBLABEL;  
          dblk->brick_lab[ibr] = (char *) XtMalloc(sizeof(char)*(ngood+2)) ;
          memcpy( dblk->brick_lab[ibr] , atr_labs->ch+(ipold+1) , ngood ) ;
          dblk->brick_lab[ibr][ngood] = '\0' ;
+
        }
 
         if( ipos >= atr_labs->nch ) break ;  /* nothing more to do */
@@ -755,7 +759,7 @@ ENTRY("THD_datablock_apply_atr") ;
        ngood = ipos - ipold - 1 ;                 /* number of good chars */
        if( ngood > 0 ){
          XtFree(blk->brick_lab[ibr]) ;
-         if( ngood > 32 ) ngood = 32 ;
+         if( ngood > THD_MAX_SBLABEL ) ngood = THD_MAX_SBLABEL ;
          blk->brick_lab[ibr] = (char *) XtMalloc(sizeof(char)*(ngood+2)) ;
          memcpy( blk->brick_lab[ibr] , atr_str->ch+(ipold+1) , ngood ) ;
          blk->brick_lab[ibr][ngood] = '\0' ;

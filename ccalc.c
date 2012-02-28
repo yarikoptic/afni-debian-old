@@ -14,10 +14,6 @@
 #include "readline.h"
 #endif
 
-#ifdef SOLARIS
-# define strcasestr strstr  /* stupid Solaris */
-#endif
-
 int main( int argc , char * argv[] )
 {
    PARSER_code * pcode ;
@@ -204,7 +200,7 @@ int main( int argc , char * argv[] )
          }
 #else
          printf("calc> ") ; fflush(stdout) ;
-         if( fgets(expr,900,stdin) == NULL ) {   /* quit on ctrl-D */
+         if( afni_fgets(expr,900,stdin) == NULL ) {   /* quit on ctrl-D */
             putchar('\n') ;
             exit(0) ;
          }

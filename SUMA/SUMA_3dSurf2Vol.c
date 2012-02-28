@@ -123,9 +123,14 @@ static char g_history[] =
  "\n"
  "3.6a March 22, 2005  [rickr]\n"
  "  - removed tabs\n"
+ "\n"
+ "3.7  November 4, 2011  [rickr]\n"
+ "  - 6.5 years since the last change?  really??\n"
+ "  - added 'mode' mapping function\n"
+ "  - for R Mruczek and Z Puckett\n"
  "----------------------------------------------------------------------\n";
  
-#define VERSION "version  3.6a (March 22, 2005)"
+#define VERSION "version  3.7 (November 4, 2011)"
 
 
 /*----------------------------------------------------------------------
@@ -148,7 +153,7 @@ SUMA_CommonFields  * SUMAg_CF = NULL;   /* info common to all viewers   */
 
 /* this must match s2v_map_num enum */
 char * gs2v_map_names[] = { "none", "mask", "mask2", "ave", "count",
-                            "min", "max", "max_abs" };
+                            "min", "max", "max_abs", "mode" };
 
 /* AFNI prototype */
 extern void machdep( void );
@@ -165,7 +170,7 @@ int main( int argc , char * argv[] )
     s2v_opts_t         sopt;
     opts_t             opts;
     int                ret_val;
-
+    
     mainENTRY("3dSurf2Vol main");
     machdep();
     AFNI_logger("3dSurf2Vol",argc,argv);
@@ -266,9 +271,10 @@ THD_3dim_dataset * s2v_nodes2volume( node_list_t * N, param_t * p,
     double           * ddata;
     void             * vdata = NULL;
     int              * cdata;
+    aggr_list_t        aggr = {NULL};
     float              fac;
     int                nvox, dsize, valid;
-    int                sub;
+    int                sub, vind;
 
 ENTRY("s2v_nodes2volume");
 
@@ -322,6 +328,23 @@ ENTRY("s2v_nodes2volume");
         DSET_delete( dout );  free( ddata );  free( cdata );
         RETURN(NULL);
     }
+
+    /* if we need to aggregate values, create arrays */
+    aggr.vlist = NULL;
+    if( is_aggregate_type(sopt->map) ) {
+        aggr.vlist = (float_list *)malloc(nvox*sizeof(float_list));
+        if( ! aggr.vlist ) {
+            fprintf(stderr,"** failed to alloc %d elem float_list\n", nvox);
+            DSET_delete( dout );  free( ddata );  free( cdata );
+            RETURN(NULL);
+        }
+        for( vind = 0; vind < nvox; vind++ )
+            if( init_float_list(aggr.vlist+vind, 4) != 4 ) {
+                fprintf(stderr,"** failed to init float_list %d\n", vind);
+                DSET_delete( dout );  free( ddata );  free( cdata );
+                RETURN(NULL);
+            }
+    }
     
     dsize = mri_datum_size(sopt->datum);
     /* create the sub-brick data for output */
@@ -353,7 +376,11 @@ ENTRY("s2v_nodes2volume");
             RETURN(NULL);
         }
 
-        if ( compute_results( p, N, sopt, ddata, cdata, pary ) == 0 )
+        /* if we have aggregate list, clear (ignore) the contents */
+        if( is_aggregate_type(sopt->map) && aggr.vlist )
+            for( vind = 0; vind < nvox; vind++ ) aggr.vlist[vind].num = 0;
+
+        if ( compute_results( p, N, sopt, ddata, cdata, pary, &aggr ) == 0 )
             valid = 1;
 
         if ( ! valid )  /* then clean up memory */
@@ -397,13 +424,18 @@ ENTRY("s2v_nodes2volume");
     if (sopt->debug > 0)
         fprintf(stderr,"++ %d sub-brick(s) computed\n", p->nsubs);
 
+    /* if we have an aggregate list, free it */
+    if( is_aggregate_type(sopt->map) && aggr.vlist ) {
+        for( vind = 0; vind < nvox; vind++ ) free_float_list(aggr.vlist+vind);
+        free(aggr.vlist);
+    }
+
     free(ddata);
     free(cdata);
     free(pary);
 
     RETURN(dout);
 }
-
 
 /*----------------------------------------------------------------------
  * compute_results   - fill ddata with results, cdata with count
@@ -413,7 +445,8 @@ ENTRY("s2v_nodes2volume");
  *----------------------------------------------------------------------
 */
 int compute_results( param_t * p, node_list_t * N, s2v_opts_t * sopt,
-                         double * ddata, int * cdata, THD_fvec3 * pary )
+                         double * ddata, int * cdata, THD_fvec3 * pary,
+                         aggr_list_t * aggr )
 {
     THD_fvec3          p1, pn;
     float              dist, min_dist, max_dist;
@@ -483,7 +516,7 @@ ENTRY("compute_results");
         make_point_list( pary, &p1, &pn, sopt );
 
         /* do all the work to insert data */
-        if ( insert_list(N, p, sopt, pary, nindex, ddata, cdata) )
+        if ( insert_list(N, p, sopt, pary, nindex, ddata, cdata, aggr) )
             RETURN(-1);
     }
 
@@ -492,10 +525,21 @@ ENTRY("compute_results");
                         "   %d of %d nodes were out of bounds\n",
                 min_dist, max_dist, oobc, N->ilen);
 
-    if ( final_computations(ddata, cdata, sopt, DSET_NVOX(p->gpar)) )
+    if ( final_computations(ddata, cdata, sopt, DSET_NVOX(p->gpar), aggr) )
         RETURN(-1);
 
     RETURN(0);
+}
+
+/* just compare 2 floats */
+int fcomp(const void *f0, const void *f1)
+{
+    float * fp0 = (float *)f0;
+    float * fp1 = (float *)f1;
+
+    if( *fp0  < *fp1 ) return -1;
+    if( *fp0 == *fp1 ) return 0;
+    return 1;
 }
 
 
@@ -503,8 +547,10 @@ ENTRY("compute_results");
  * final_computations   - perform any last computation over the dataset
  *----------------------------------------------------------------------
 */
-int final_computations(double *ddata, int *cdata, s2v_opts_t *sopt, int nvox)
+int final_computations(double *ddata, int *cdata, s2v_opts_t *sopt, int nvox,
+                       aggr_list_t * aggr)
 {
+    float_list * flp = NULL;
     int index;
 
 ENTRY("final_computations");
@@ -525,6 +571,53 @@ ENTRY("final_computations");
                 if ( cdata[index] > 0 )
                     ddata[index] /= cdata[index];
             break;
+
+        case E_SMAP_MODE: {
+            int mcount, ncount, find;
+            float mval, nval;
+            /* for each voxel, sort list and aggrigate */
+            for ( index = 0, flp = aggr->vlist; index < nvox; index++, flp++ ) {
+                /* if nothing here, set to 0 and continue */
+                if( flp->num == 0 ) {
+                    ddata[index] = 0.0;
+                    if( sopt->debug > 1 && sopt->dvox == index )
+                        fprintf(stderr, "\n-- voxel %d, nothing to aggregate\n",
+                                index);
+                    continue;
+                }
+                qsort(flp->list, flp->num, sizeof(float), fcomp);
+
+                /* get initial max count */
+                find = 0; /* current index */
+                mval = flp->list[find];
+                while(find < flp->num && mval == flp->list[find]) find++;
+                mcount = find; /* initial max is current index */
+
+                /* now continue looking for more */
+                while(find < flp->num) {
+                    ncount = 1; nval = flp->list[find];
+                    find++;
+                    while(find < flp->num && nval == flp->list[find]) {
+                        find++;
+                        ncount++;
+                    }
+                    if( ncount > mcount ) {      /* we have a new max! */
+                        mcount = ncount;  mval = nval;
+                    }
+                }
+                ddata[index] = mval;    /* and finally, assign */
+
+                if( sopt->debug > 1 && sopt->dvox == index ) {
+                    fprintf(stderr, "\n-- aggregating voxel %d, %d vals "
+                                    "from %g to %g\n",
+                                    index, flp->num, flp->list[0],
+                                    flp->list[flp->num-1]);
+                    fprintf(stderr, "++ final mode %g (%d vals)\n",mval,mcount);
+                }
+
+            }
+            break;
+        }
 
         case E_SMAP_COUNT:
         case E_SMAP_MAX_ABS:
@@ -557,7 +650,8 @@ ENTRY("final_computations");
  *----------------------------------------------------------------------
 */
 int insert_list( node_list_t * N, param_t * p, s2v_opts_t * sopt,
-                 THD_fvec3 * pary, int nindex, double * ddata, int * cdata )
+                 THD_fvec3 * pary, int nindex, double * ddata, int * cdata,
+                 aggr_list_t * aggr )
 {
     THD_ivec3 i3;
     int       vindex, prev_vind;
@@ -615,7 +709,8 @@ ENTRY("insert_list");
         if ( debug )
             fprintf( stderr, " : (old) %d %f", cdata[vindex],ddata[vindex]);
 
-        if (insert_value(sopt, ddata, cdata, vindex, node, N->fdata[nindex]))
+        if (insert_value(sopt, ddata, cdata, vindex, node, N->fdata[nindex],
+                         aggr))
             RETURN(-1);
 
         if ( debug )
@@ -623,6 +718,17 @@ ENTRY("insert_list");
     }
 
     RETURN(0);
+}
+
+/* aggregate types are ones for which:                  3 Nov 2011 [rickr]
+ *    for each voxel
+ *        - accumuate all node values
+ *        - aggregate into final voxel value (e.g. mode, median, rand)
+ */
+int is_aggregate_type(int map_func)
+{
+    if( map_func == E_SMAP_MODE ) return 1;
+    return 0;
 }
 
 
@@ -634,7 +740,7 @@ ENTRY("insert_list");
  *----------------------------------------------------------------------
 */
 int insert_value(s2v_opts_t * sopt, double *dv, int *cv, int vox, int node,
-                 float value)
+                 float value, aggr_list_t * aggr)
 {
 ENTRY("insert_value");
 
@@ -653,6 +759,12 @@ ENTRY("insert_value");
         default:
             fprintf(stderr,"** IV: mapping %d not ready\n", sopt->map );
             RETURN(-1);
+
+        case E_SMAP_MODE:
+            /* allocate memory in 4 value blocks */
+            add_to_float_list(aggr->vlist+vox, value, 4);
+            dv[vox] = value;      /* useless, but lets us track via debug */
+            break;
 
         case E_SMAP_AVE:
             if ( cv[vox] == 0 )
@@ -808,6 +920,7 @@ ENTRY("adjust_endpts");
         case E_SMAP_MIN:
         case E_SMAP_MASK:
         case E_SMAP_MASK2:
+        case E_SMAP_MODE:
             break;
     }
 
@@ -837,8 +950,8 @@ ENTRY("set_node_list_data");
     if ( sopt->debug > 1 )
         fprintf(stderr, "-- setting fdata for column %d\n", col);
 
-    /* if sdata_im does not exist, fill as mask and return */
-    if ( !p->sdata_im )
+    /* if neither sdata_im or dset exists, fill as mask and return */
+    if ( !p->sdata_im && !p->dset)
     {
         fval = 1.0;     /* init to mask value */
 
@@ -854,38 +967,39 @@ ENTRY("set_node_list_data");
             N->fdata[c] = fval;
 
         RETURN(0);
-    }
+    } else if ( p->sdata_im ) {
     
-    /* else sdata exists: check column, and copy data from sdata_im */
-    if ( col > (p->sdata_im->nx - 2) && !p->parser.pcode )
-    {
-        fprintf(stderr,"** snld error: col > nx-2 (%d > %d)\n",
-                col, p->sdata_im->nx-2);
-        RETURN(-1);
-    }
-    else if ( p->sdata_im->ny < N->ilen )
-    {
-        fprintf(stderr,"** snld error: ny < ilen (%d < %d)\n",
-                p->sdata_im->ny, N->ilen);
-        RETURN(-1);
-    }
-    else if ( !N->fdata )
-    {
-        fprintf(stderr,"** snld error: missing idata\n");
-        RETURN(-1);
-    }
-    else if ( p->parser.pcode && col != 0 )             /* let's be safe */
-    {
-        fprintf(stderr,"** snld error: cannot use parser with col = %d\n", col);
-        RETURN(-1);
-    }
+       /* else sdata exists: check column, and copy data from sdata_im */
+       if ( col > (p->sdata_im->nx - 2) && !p->parser.pcode )
+       {
+           fprintf(stderr,"** snld error: col > nx-2 (%d > %d)\n",
+                   col, p->sdata_im->nx-2);
+           RETURN(-1);
+       }
+       else if ( p->sdata_im->ny < N->ilen )
+       {
+           fprintf(stderr,"** snld error: ny < ilen (%d < %d)\n",
+                   p->sdata_im->ny, N->ilen);
+           RETURN(-1);
+       }
+       else if ( !N->fdata )
+       {
+           fprintf(stderr,"** snld error: missing idata\n");
+           RETURN(-1);
+       }
+       else if ( p->parser.pcode && col != 0 )             /* let's be safe */
+       {
+           fprintf(stderr,"** snld error: cannot use parser with col = %d\n", 
+                          col);
+           RETURN(-1);
+       }
 
-    /* hmmmm, we're still missing something...  oh yes, data! */
+       /* hmmmm, we're still missing something...  oh yes, data! */
 
-    fp = MRI_FLOAT_PTR( p->sdata_im ) + col+1;  /* offset by column number */
-
-    for ( c = 0; c < N->ilen; c++ )
-    {
+       fp = MRI_FLOAT_PTR( p->sdata_im ) + col+1;  /* offset by column number */
+   
+       for ( c = 0; c < N->ilen; c++ )
+         {
         if ( p->parser.pcode )
         {
             /* fill atoz with surface node data */
@@ -898,8 +1012,35 @@ ENTRY("set_node_list_data");
             N->fdata[c] = *fp;
 
         fp += p->sdata_im->nx;
-    }
-
+         }
+   } else if ( p->dset ){
+      if (!(fp = SUMA_DsetCol2Float (p->dset,  col, 1))) {
+         fprintf(stderr,"** snld error: Failed to get col %d from dset\n",
+                        col);
+         RETURN(-1);
+      } 
+       for ( c = 0; c < N->ilen; c++ )
+       {
+           if ( p->parser.pcode )
+           {
+               /* fill atoz with surface node data */
+               for ( lposn = 0; lposn < p->parser.max_sym; lposn++ )
+                   p->parser.atoz[lposn] = (float)
+                        SUMA_GetDsetValInCol2(p->dset,
+                                              lposn, c);
+               N->fdata[c] = PARSER_evaluate_one(p->parser.pcode, 
+                                 p->parser.atoz);
+           }
+           else
+               N->fdata[c] = fp[c];
+       }
+       SUMA_free(fp); fp=NULL;
+   } else {
+      fprintf(stderr,"** snld error: This NULLity should not be.\n");
+      RETURN(-1);
+   }
+    
+    
     RETURN(0);
 }
 
@@ -1419,6 +1560,13 @@ ENTRY("fill_node_list");
         if ( ! p->parser.pcode )
             p->nsubs = p->sdata_im->nx - 1;
     }
+    else if ( opts->sdata_file_niml )
+    {
+        if ( (rv = sdata_from_niml( opts, p, N )) != 0 )
+            RETURN(rv);
+        if ( ! p->parser.pcode )
+            p->nsubs = SDSET_VECNUM(p->dset);
+    }
     else
     {
         if ( (rv = sdata_from_default( N )) != 0 )
@@ -1450,11 +1598,12 @@ ENTRY("verify_parser_expr");
         fprintf(stderr,"** vpe: invalid params (%p,%p)\n", opts, p);
         RETURN(-1);
     }
-
+    
     /* if no parser code, there is nothing to do */
     if ( ! p->parser.pcode )
         RETURN(0);
 
+    
     for ( max_used = 25; max_used >= 0; max_used-- )
         if ( p->parser.has_sym[max_used] )
             break;
@@ -1462,29 +1611,49 @@ ENTRY("verify_parser_expr");
     p->parser.max_sym = max_used;
 
     /* if the expression is not constant, we need some data */
-    if ( max_used > 0 )
+    if ( !p->sdata_im && !p->dset) 
     {
-        if ( !p->sdata_im )
-        {
-            fprintf(stderr, "** parser expression requires surface data\n"
-                            "   (see '-sdata_1D')\n");
-            RETURN(-1);
-        }
-        else if ( max_used > p->sdata_im->nx - 1 )
-        {
-            fprintf(stderr,
-                    "** error: not enough surface values for expression\n"
-                    "          svals = %d, exp_vals = %d, expr = '%s'\n",
-                    p->sdata_im->nx - 1, max_used, opts->data_expr);
-            RETURN(-1);
-        }
+         fprintf(stderr, "** parser expression requires surface data\n"
+                         "   (see '-sdata_1D' or '-sdata')\n");
+         RETURN(-1);
     }
+    if (p->sdata_im) 
+    { 
+       if ( max_used > 0 )
+       {
+           if ( max_used > p->sdata_im->nx - 1 )
+           {
+               fprintf(stderr,
+                       "** error: not enough surface values for expression\n"
+                       "          svals = %d, exp_vals = %d, expr = '%s'\n",
+                       p->sdata_im->nx - 1, max_used, opts->data_expr);
+               RETURN(-1);
+           }
+       }
 
-    if ( opts->debug > 1 )
-        fprintf(stderr,"-- surf_vals = %d, expr_vals = %d\n",
-                p->sdata_im ? (p->sdata_im->nx - 1) : 0, max_used);
+       if ( opts->debug > 1 )
+           fprintf(stderr,"-- surf_vals = %d, expr_vals = %d\n",
+                   p->sdata_im ? (p->sdata_im->nx - 1) : 0, max_used);
+   } else if (p->dset) 
+   { 
+      if ( max_used > 0 )
+       {
+           if ( max_used > SDSET_VECNUM(p->dset) )
+           {
+               fprintf(stderr,
+                       "** error: not enough surface values for expression\n"
+                       "          svals = %d, exp_vals = %d, expr = '%s'\n",
+                       SDSET_VECNUM(p->dset), max_used, opts->data_expr);
+               RETURN(-1);
+           }
+       }
 
-    RETURN(0);
+       if ( opts->debug > 1 )
+           fprintf(stderr,"-- surf_vals = %d, expr_vals = %d\n",
+                   p->dset ? SDSET_VECNUM(p->dset) : 0, max_used);
+   }
+   
+   RETURN(0);
 }
 
 
@@ -1621,6 +1790,54 @@ ENTRY("sdata_from_1D");
     fim = MRI_FLOAT_PTR( p->sdata_im );
     for ( c = 0; c < N->ilen; c++, fim += p->sdata_im->nx )
         N->ilist[c] = (int)*fim;                          /* set node index */
+
+    RETURN(0);
+}
+
+/*----------------------------------------------------------------------
+ * fill node_list_t struct from niml surface file
+ *----------------------------------------------------------------------
+*/
+int sdata_from_niml ( opts_t * opts, param_t * p, node_list_t * N )
+{
+    int         c, *nind = NULL;
+    SUMA_DSET_FORMAT form = SUMA_NO_DSET_FORMAT;
+ENTRY("sdata_from_niml");
+
+    if ( !opts || !N || !p )
+        RETURN(-1);
+
+    if ( !(p->dset = SUMA_LoadDset_s(opts->sdata_file_niml, 
+                                     &form, 0)) )     {
+        fprintf(stderr,"** failed to read file '%s'\n", opts->sdata_file_niml);
+        RETURN(-2);
+    }
+    if (!(SUMA_PopulateDsetNodeIndexNel(p->dset,1))) {
+        fprintf(stderr,"** failed to populate node indices in '%s'\n", 
+                opts->sdata_file_niml);
+        RETURN(-2);
+    }
+    if (!(nind = SDSET_NODE_INDEX_COL(p->dset))) {
+         fprintf(stderr,"** No node index column in '%s'\n", 
+                  opts->sdata_file_niml);
+        RETURN(-2);
+    }
+    N->ilen = SDSET_VECLEN(p->dset);
+
+    if ( opts->debug > 0 )
+        fprintf(stderr,"++ read surface dset file '%s' (nx = %d, ny = %d)\n",
+                opts->sdata_file_niml, SDSET_VECNUM(p->dset), N->ilen );
+    
+    /* only allocate space ilist */
+    if ( (N->ilist = (int *)malloc(N->ilen*sizeof(int))) == NULL )
+    {
+        fprintf(stderr,"** sf a: failed to allocate %d ints\n", N->ilen);
+        RETURN(-1);
+    }
+
+    /* first set the node index values */
+    for ( c = 0; c < N->ilen; c++ )
+        N->ilist[c] = nind[c];                          /* set node index */
 
     RETURN(0);
 }
@@ -1952,11 +2169,11 @@ ENTRY("init_options");
 
             opts->sdata_file_1D = argv[++ac];
         }
-        else if ( ! strncmp(argv[ac], "-sdata_niml", 9) )
+        else if ( ! strcmp(argv[ac], "-sdata") )
         {
             if ( (ac+1) >= argc )
             {
-                fputs( "option usage: -sdata_niml SURF_DATA.niml\n\n", stderr );
+                fputs( "option usage: -sdata SURF_DATA.niml\n\n", stderr );
                 usage( PROG_NAME, S2V_USE_SHORT );
                 RETURN(-1);
             }
@@ -2028,6 +2245,7 @@ ENTRY("init_options");
         {
             fprintf( stderr, "invalid option <%s>\n", argv[ac] );
             usage( PROG_NAME, S2V_USE_SHORT );
+            suggest_best_prog_option(argv[0], argv[ac]);
             RETURN(-1);
         }
     }
@@ -2054,6 +2272,7 @@ ENTRY("validate_options");
     p->gpar         = NULL;    p->oset     = NULL;
     p->sxyz_im      = NULL;    p->sdata_im = NULL;
     p->parser.pcode = NULL;    p->cmask    = NULL;
+    p->dset         = NULL;
 
     if ( check_map_func( opts->map_str ) == E_SMAP_INVALID )
         RETURN(-1);
@@ -2249,13 +2468,6 @@ ENTRY("validate_surface");
         errs++;
     }
 
-    /* rcr - hopefully this will disappear someday */
-    if ( opts->sdata_file_niml )
-    {
-        fprintf(stderr,"** sorry, the niml feature is coming soon...\n");
-        errs++;
-    }
-
     if ( errs > 0 )
         RETURN(-1);
 
@@ -2432,10 +2644,13 @@ ENTRY("usage");
             "  Surface Data:\n"
             "\n"
             "      Surface domain data can be input via the '-sdata_1D'\n"
-            "      option.  In such a case, the data is with respect to the\n"
-            "      input surface.  The first column of the sdata_1D file\n"
-            "      should be a node index, and following columns are that\n"
-            "      node's data.  See the '-sdata_1D' option for more info.\n"
+            "      or '-sdata' option.  In such a case, the data is with \n"
+            "      respect to the input surface.  \n"
+            "      Note: With -sdata_1D,  the first column of the file \n"
+            "      should contain a node's index, and following columns are\n"
+            "      that node's data. See the '-sdata_1D' option for more info.\n"
+            "      Option -sdata takes NIML or GIFTI input which contain\n"
+            "      node index information in their headers.\n"
             "\n"
             "      If the surfaces have V values per node (pair), then the\n"
             "      resulting AFNI dataset will have V sub-bricks (unless the\n"
@@ -2588,6 +2803,28 @@ ENTRY("usage");
             "       -dvoxel       6789                                    \\\n"
             "       -prefix       fred_surf_max\n"
             "\n"
+            "    6. Draw some surface ROIs, and map them to the volume.  Some\n"
+            "       voxels may contain nodes from multiple ROIs, so take the\n"
+            "       most common one (the mode), as suggested by R Mruczek.\n"
+            "\n"
+            "       ROIs are left in 1D format for the -sdata_1D option.\n"
+            "\n"
+            "\n"
+            "    setenv AFNI_NIML_TEXT_DATA YES\n"
+            "    ROI2dataset -prefix rois.1D.dset -input rois.niml.roi\n"
+            "\n"
+            "    %s                           \\\n"
+            "       -spec         fred.spec           \\\n"
+            "       -surf_A       smoothwm            \\\n"
+            "       -surf_B       pial                \\\n"
+            "       -sv           fred_anat+orig      \\\n"
+            "       -grid_parent 'fred_func+orig[0]'  \\\n"
+            "       -sdata_1D     rois.1D.dset        \\\n"
+            "       -map_func     mode                \\\n"
+            "       -f_steps      10                  \\\n"
+            "       -prefix       rois.from.surf\n"
+            "\n"
+            "\n"
             "------------------------------------------------------------\n"
             "\n"
             "  REQUIRED COMMAND ARGUMENTS:\n"
@@ -2710,6 +2947,9 @@ ENTRY("usage");
             "          max_abs: find the number with maximum absolute value\n"
             "                   (the resulting value will retain its sign)\n"
             "\n"
+            "          mode   : apply the most common value per voxel\n"
+            "                   (appropriate where surf ROIs overlap)\n"
+            "\n"
             "    -prefix OUTPUT_PREFIX  : prefix for the output dataset\n"
             "\n"
             "        e.g. -prefix anat_surf_mask\n"
@@ -2731,6 +2971,8 @@ ENTRY("usage");
             "        The format of this data file is a surface index and a\n"
             "        list of data values on each row.  To be a valid 1D file,\n"
             "        each row must have the same number of columns.\n"
+            "\n"
+            "    -sdata SURF_DATA_DSET: NIML, or GIFTI formatted dataset.\n"
             "\n"
             "  ------------------------------\n"
             "  OPTIONS SPECIFIC TO SEGMENT SELECTION:\n"
@@ -2938,7 +3180,7 @@ ENTRY("usage");
             "                (many thanks to Z. Saad and R.W. Cox)\n"
             "\n",
             prog, prog,
-            prog, prog, prog, prog, prog,
+            prog, prog, prog, prog, prog, prog,
             VERSION );
     }
     else if ( level == S2V_USE_HIST )
@@ -3027,6 +3269,7 @@ ENTRY("disp_param_t");
             "    gpar  : vcheck    = %p : %s\n"
             "    oset  : vcheck    = %p : %s\n"
             "    sxyz_im, sdata_im = %p, %p\n"
+            "             dset     = %p\n"
             "    f3mm_min (xyz)    = (%f, %f, %f)\n"
             "    f3mm_max (xyz)    = (%f, %f, %f)\n"
             "    nvox, nsubs       = %d, %d\n"
@@ -3035,7 +3278,8 @@ ENTRY("disp_param_t");
             , p,
             p->gpar, ISVALID_DSET(p->gpar) ? "valid" : "invalid",
             p->oset, ISVALID_DSET(p->oset) ? "valid" : "invalid",
-            p->sxyz_im, p->sdata_im,
+            p->sxyz_im, p->sdata_im, 
+            p->dset,
             p->f3mm_min.xyz[0], p->f3mm_min.xyz[1], p->f3mm_min.xyz[2],
             p->f3mm_max.xyz[0], p->f3mm_max.xyz[1], p->f3mm_max.xyz[2],
             p->nvox, p->nsubs, p->cmask, p->ncmask, p->ccount

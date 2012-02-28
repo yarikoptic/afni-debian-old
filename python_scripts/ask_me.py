@@ -15,6 +15,12 @@ def ask_me_subj_proc(proc):
 
     (see "afni_proc.py -help" for the full list :).
 
+    *** NOTE: this -ask_me dialog is very old (has not been updated in
+              many years.
+
+              Users are highly encouraged to use uber_subject.py, instead.
+              It is essentially a graphical interface to afni_proc.py.
+
     This program minimally requires a list of AFNI datasets to process,
     and a list of stimulus files, if regression is to be run.
 
@@ -205,7 +211,7 @@ def get_datasets(proc):
             print '++ (%d remain) please enter dataset name(s): ' % nremain,
             words = string.split(sys.stdin.readline())
             print # for separation
-            new_dsets = afni_util.list_to_datasets(words)
+            new_dsets = afni_util.list_to_datasets(words, whine=1)
 
             if new_dsets and len(new_dsets) == 0: continue
             if not new_dsets: continue # good idea?

@@ -147,6 +147,42 @@ float mri_nstat( int code , int npt , float *far , float voxval)
 }
 
 /*--------------------------------------------------------------------------*/
+/*! 
+   A specialized function for speeding up computations for segmentation
+    computes  5 statistic values: mean, median, sigma, mad, and skew and 
+    stores them in fv5
+*/
+/*------------------------------------------------------------------------*/
+
+int mri_nstat_mMP2S( int npt , float *far , float voxval, float *fv5)
+{
+   /*             fv5[5]={mean, median, sigma, MAD, skew} */ 
+   register float mm,vv; 
+   register int ii ;
+   
+   fv5[0] = fv5[1] = fv5[2] = fv5[3] = fv5[4] = 0.0;
+   if( npt <= 0 || far == NULL ) return 0 ;
+   if ( npt == 1 ) {
+      fv5[0] = fv5[1] = voxval ; 
+      return 1;
+   }
+   
+   for( mm=0.0,ii=0 ; ii < npt ; ii++ ) mm += far[ii] ;
+   mm /= npt ; fv5[0] = mm; 
+   for( vv=0.0,ii=0 ; ii < npt ; ii++ ) 
+                           vv += (far[ii]-mm)*(far[ii]-mm) ;
+   vv /= (npt-1) ;
+   fv5[2] = sqrt(vv) ; 
+   if (fv5[2]) {
+     qmedmad_float( npt , far , fv5+1 , fv5+3 ) ;
+     fv5[4] = 3.0 * (fv5[0] - fv5[1]) / fv5[2];
+   } else fv5[4] = 0.0;
+
+
+   return 1 ;
+}
+
+/*--------------------------------------------------------------------------*/
 
 #if 0
 static int fwhm_use_variance = 1 ;
@@ -382,19 +418,47 @@ int DSET_1Dindex_to_regrid_ijk( THD_3dim_dataset *iset, int ijk,
    return(1);
 }
 
+/*
+   Return a downsampled grid, or just an empty copy
+*/
+THD_3dim_dataset * THD_reduced_grid_copy(THD_3dim_dataset *dset, float *redx)
+{
+   float dx_o,dy_o,dz_o ;
+   THD_3dim_dataset *oset=NULL;
+   
+   if( dset == NULL) return(NULL);
+   
+   if (!redx) {
+      oset  = EDIT_empty_copy( dset ) ;
+   } else { /* create a new grid */
+      if (verb) {
+         INFO_message("Reducing output grid by %f %f %f",
+                      redx[0], redx[1], redx[2]);
+      }
+      dx_o = fabs(DSET_DX(dset)*redx[0]);
+      dy_o = fabs(DSET_DY(dset)*redx[1]);
+      dz_o = fabs(DSET_DZ(dset)*redx[2]);
+      if (!(oset = r_new_resam_dset( dset, dset, dx_o, dy_o, dz_o,
+                               NULL, 0, NULL, 0, 1))) {
+         ERROR_message("Failed to reduce output grid");
+         return(NULL);
+      }      
+   }
+   return(oset);
+}
+
 
 /*--------------------------------------------------------------------------*/
-
 THD_3dim_dataset * THD_localstat( THD_3dim_dataset *dset , byte *mask ,
                                   MCW_cluster *nbhd , int ncode, int *code,
                                   float codeparam[][MAX_CODE_PARAMS+1], 
-                                  float *redx )
+                                  float *redx, int resam_mode)
 {
-   THD_3dim_dataset *oset ;
+   THD_3dim_dataset *oset=NULL;
    int iv,cc , nvin,nvout , nxyz_o , need_nbar=0 , npt ;
    float **aar ;
    MRI_IMAGE *dsim ;
-   float dx,dy,dz , dx_o,dy_o,dz_o , fac ;
+   float dx,dy,dz , fac ;
    float *brick=NULL, voxval=0.0;
 #ifndef USE_OMP
    int vstep ;
@@ -408,19 +472,11 @@ ENTRY("THD_localstat") ;
    /* check for stupid reduction parameters allowing = 1.0 for testing purposes*/
    if (redx && redx[0] < 1.0 && redx[1]<1.0 && redx[2] <1.0) redx = NULL;
    
-   if (!redx) {
-      oset  = EDIT_empty_copy( dset ) ;
-   } else { /* create a new grid */
-      INFO_message("Reducing output grid by %f %f %f",redx[0], redx[1], redx[2]);
-      dx_o = fabs(DSET_DX(dset)*redx[0]);
-      dy_o = fabs(DSET_DY(dset)*redx[1]);
-      dz_o = fabs(DSET_DZ(dset)*redx[2]);
-      if (!(oset = r_new_resam_dset( dset, dset, dx_o, dy_o, dz_o,
-                               NULL, 0, NULL, 0, 1))) {
-         ERROR_message("Failed to reduce output grid");
-         return(NULL);
-      }      
+   if (!(oset  = THD_reduced_grid_copy(dset, redx))) {
+      ERROR_message("Failed to create output dset");
+      return(NULL);
    }
+   
    nvin  = DSET_NVALS( dset ) ;
    nvout = nvin * ncode ;
    EDIT_dset_items( oset ,
@@ -477,10 +533,9 @@ ENTRY("THD_localstat") ;
 #pragma omp parallel if( nxyz_o > 1111 )    /* parallelization: 13 Jul 2009 */
  {
    int ijk,kk,jj,ii,cc ;
-   MRI_IMAGE *nbim=NULL ;
    THD_fvec3 fwv ;
    double perc[MAX_CODE_PARAMS], mpv[MAX_CODE_PARAMS] ;  /* no longer static */
-   float *nbar ; int nbar_num=0;
+   float *nbar , fv5[5]={0.0f, 0.0f, 0.0f, 0.0f, 0.0f}; int nbar_num=0;
 
    /* 17 Jul 2009: create workspace for neighborhood data */
 
@@ -539,14 +594,6 @@ ENTRY("THD_localstat") ;
 
                ERROR_exit("Failed to compute percentiles.");
              }
-                /***
-                  fprintf(stderr,"sar=[");
-                  for (pp=0; pp<nbim->nvox; ++pp) 
-                     fprintf(stderr,"%f,", sfar[pp]);
-                  fprintf(stderr,"];\nperc=[");
-                  for (pp=0; pp<N_mp; ++pp) fprintf(stderr,"%f,", perc[pp]);
-                  fprintf(stderr,"];\n");
-                ***/
 
              for (pp=0; pp<N_mp; ++pp) aar[cc+pp][ijk] = (float)perc[pp];
           } else {
@@ -555,8 +602,22 @@ ENTRY("THD_localstat") ;
 
           cc += (N_mp-1) ; /* number of sub-bricks added, minus 1 */
 
+         } else if( code[cc] == NSTAT_mMP2s0 ){ /*3 values, median, MAD, P2Skew*/
+           mri_nstat_mMP2S( nbar_num , nbar, brick[ijk], fv5 ) ;
+           aar[cc  ][ijk] = fv5[1]; /* median */
+           aar[cc+1][ijk] = fv5[3]; /* MAD */
+           aar[cc+2][ijk] = fv5[4]; /* Skew */ 
+           cc += 2 ;  /* skip redundant codes that follow */
+         } else if( code[cc] == NSTAT_mmMP2s0 ){ 
+               /*4 values, mean, median, MAD, P2Skew*/
+           mri_nstat_mMP2S( nbar_num , nbar, brick[ijk], fv5 ) ;
+           aar[cc  ][ijk] = fv5[0]; /* mean */
+           aar[cc+1][ijk] = fv5[1]; /* median */
+           aar[cc+2][ijk] = fv5[3]; /* MAD */
+           aar[cc+3][ijk] = fv5[4]; /* Skew */ 
+           cc += 3 ;  /* skip redundant codes that follow */
          } else {   /* the "usual" (catchall) case */
-
+      
            aar[cc][ijk] = mri_nstat( code[cc] , nbar_num , nbar, brick[ijk] ) ;
            
          }
@@ -588,5 +649,16 @@ ENTRY("THD_localstat") ;
    } /** end of sub-brick loop **/
 
    free((void *)aar) ;
+   
+   if ( resam_mode >= FIRST_RESAM_TYPE) {
+      THD_3dim_dataset *tout=NULL;
+      INFO_message("Restoring grid with %d resampling mode", resam_mode);
+      /* resample back to original grid */
+      if (!(tout = r_new_resam_dset( oset, dset, 0.0, 0.0, 0.0,
+                               NULL, resam_mode, NULL, 1, 1))) {
+         ERROR_exit("Failed to reduce output grid");
+      }
+      DSET_delete(oset) ; oset = tout; tout = NULL;  
+   }
    RETURN(oset) ;
 }

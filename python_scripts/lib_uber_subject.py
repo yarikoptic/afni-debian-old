@@ -121,10 +121,18 @@ g_history = """
     0.23 May 11, 2011 : small help/todo update
     0.24 May 19, 2011 : revert to /usr/bin/env python
          - fink use may be ready on the macs (tried: fink install pyqt4-py27)
-
+    0.25 Sep 22, 2011 : altered spacing and made other minor changes
+    0.26 Oct  5, 2011 : do not re-create proc script on proc execution
+         - was losing any user changes between creation and execution
+    0.27 Oct 11, 2011 : small -help_install update
+    0.28 Oct 18, 2011 :
+         - added blur size control
+         - removed requirement of stim timing files
+    0.29 Nov 22, 2011 : allow for passing variables directly, not via -svar
+         - added accompanying -show_svar_dict option
 """
 
-g_version = '0.24 (May 19, 2011)'
+g_version = '0.29 (November 22, 2011)'
 
 # ----------------------------------------------------------------------
 # global definition of default processing blocks
@@ -176,9 +184,12 @@ g_subj_defs.stim_basis    = []          # basis functions: empty=GAM,
 g_subj_defs.tcat_nfirst   = 0           # first TRs to remove from each run
 g_subj_defs.volreg_base   = g_def_vreg_base  # in g_vreg_base_list, or ''
 g_subj_defs.motion_limit  = 0.3         # in mm
+g_subj_defs.blur_size     = 4.0         # in mm
+
 # symbolic GLTs
 g_subj_defs.gltsym           = []       # list of -gltsym options (sans SYM:)
 g_subj_defs.gltsym_label     = []       # list of -gltsym options (sans SYM:)
+
 # extra regress opts
 g_subj_defs.outlier_limit    = 0.0
 g_subj_defs.regress_jobs     = 1
@@ -198,6 +209,44 @@ g_subj_defs.regress_opts_3dD = ''       # extra options for 3dDeconvolve
 g_subj_defs.align_opts_aea   = ''       # extra aea opts, e.g. -AddEdge
 g_subj_defs.tlrc_opts_at     = ''       # extra at opts
 
+g_svar_dict = {
+   'blocks'             : 'set list of processing blocks to apply',
+   'sid'                : 'set subject ID',
+   'gid'                : 'set group ID',
+   'anat'               : 'set anatomical dataset name',
+   'get_tlrc'           : 'yes/no: get any +tlrc anat dset',
+   'epi'                : 'set list of EPI datasets',
+   'epi_wildcard'       : 'yes/no: use wildcard for EPI dsets',
+   'stim'               : 'set list of stim timing files',
+   'stim_wildcard'      : 'yes/no: use wildcard for stim files',
+   'stim_label'         : 'set stim file labels',
+   'stim_basis'         : 'set basis functions for stim classes',
+
+   'tcat_nfirst'        : 'set number of TRs to remove, per run',
+   'volreg_base'        : 'set volreg base string (first/third/last)',
+   'motion_limit'       : 'set per-TR motion limit, in mm',
+   'blur_size'          : 'set blur size, in mm',
+
+   'gltsym'             : 'specify list of symbolic GLTs',
+   'gltsym_label'       : 'set corresponding GLT labels',
+
+   'outlier_limit'      : 'specify outlier limit for censoring',
+   'regress_jobs'       : 'number of jobs to use in 3dDeconvolve',
+   'regress_GOFORIT'    : 'set GOFORIT level in 3dDeconvolve',
+   'reml_exec'          : 'yes/no: whether to run 3dREMLfit',
+   'run_clustsim'       : 'yes/no: whether to run 3dClustSim',
+   'compute_fitts'      : 'yes/no: whether to just compute the fitts',
+
+   'align_cost'         : 'specify cost function for anat/EPI alignment',
+   'tlrc_base'          : 'specify anat for standard space alignment',
+   'align_giant_move'   : 'yes/no: use -giant_move in AEA.py',
+   'tlrc_ss'            : 'yes/no: whether anat has skull',
+   'tlrc_ok_maxite'     : 'yes/no: pass -OK_maxite to @auto_tlrc',
+
+   'regress_opts_3dD'   : 'specify extra options for 3dDeconvolve',
+   'align_opts_aea'     : 'specify extra options for align_epi_anat.py',
+   'tlrc_opts_at'       : 'specify extra options for @auto_tlrc',
+}
 
 # string versions of subject variables, to be used by GUI
 g_cdef_strs = g_ctrl_defs.copy(as_strings=1)
@@ -280,10 +329,11 @@ class AP_Subject(object):
       self.ap_command += self.script_ap_align()
       self.ap_command += self.script_ap_tlrc()
       self.ap_command += self.script_ap_volreg()
+      self.ap_command += self.script_ap_blur()
       self.ap_command += self.script_ap_regress()
 
       # alter ap_command, removing last '\'
-      self.ap_command = self.script_ap_nuke_last_LC(self.ap_command)
+      self.ap_command = UTIL.nuke_final_whitespace(self.ap_command)
 
       if len(self.errors) > 0: return   # if any errors so far, give up
 
@@ -427,18 +477,6 @@ class AP_Subject(object):
       self.LV.retdir = SUBJ.ret_from_proc_dir(self.LV.retdir)
       # ------------------------- done -------------------------
 
-   def script_ap_nuke_last_LC(self, cmd):
-      """Find last useful character (not in {space, newline, '\\'}).
-         That should end the command (insert newline).
-      """
-
-      clen = len(cmd)
-      ind = clen-1
-      skipchars = [' ', '\t', '\n', '\\']
-      while ind > 0 and cmd[ind] in skipchars: ind -= 1
-
-      return cmd[0:ind+1]+'\n\n'
-
    def script_ap_regress(self):
       """add any -regress_* options
          - start with stim files, labels and basis function(s)
@@ -455,7 +493,8 @@ class AP_Subject(object):
 
       # ------------------------------------------------------------
       # at end, add post 3dD options
-      cmd += '%s-regress_make_ideal_sum sum_ideal.1D \\\n' % self.LV.istr
+      if self.svars.stim:
+         cmd += '%s-regress_make_ideal_sum sum_ideal.1D \\\n' % self.LV.istr
       cmd += '%s-regress_est_blur_epits \\\n' \
              '%s-regress_est_blur_errts \\\n' % (self.LV.istr, self.LV.istr)
 
@@ -616,7 +655,7 @@ class AP_Subject(object):
               matches the list of stim names (else warning)
       """
       if not self.svars.stim:
-         self.errors.append('** error: no stim timing files given\n')
+         self.warnings.append('** warnings: no stim timing files given\n')
          return ''
       if len(self.svars.stim) == 0:
          self.errors.append('** error: no stim timing files given\n')
@@ -728,6 +767,20 @@ class AP_Subject(object):
          cmd += '%s-volreg_tlrc_warp \\\n' % self.LV.istr
       elif self.LV.warp == 'adwarp':
          cmd += '%s-volreg_tlrc_adwarp \\\n' % self.LV.istr
+
+      return cmd
+
+   def script_ap_blur(self):
+      """- possibly set the following options: -blur_size
+      """
+
+      if 'blur' not in self.svars.blocks: return ''
+
+      cmd = ''
+
+      # add the -blur_size in any case, just to be explicit
+      if self.svars.blur_size > 0:
+         cmd += '%s-blur_size %s \\\n' % (self.LV.istr, self.svars.blur_size)
 
       return cmd
 
@@ -896,7 +949,7 @@ class AP_Subject(object):
 
       cmd  = '# set subject and group identifiers\n'
       if self.svars.sid: cmd += 'set subj      = %s\n' % self.svars.sid
-      if self.svars.gid: cmd += 'set group     = %s\n' % self.svars.gid
+      if self.svars.gid: cmd += 'set group_id  = %s\n' % self.svars.gid
       if cmd != '': return cmd + '\n'
       else:         return cmd
 
@@ -1281,7 +1334,7 @@ def update_svars_from_special(name, svars, check_sort=0):
       if nf < 2: return 0       # nothing to do
 
       if check_sort: # try to sort by implied index list
-         dir, snames, gstr = flist_to_table_pieces(fnames)
+         dir, snames, gstr = UTIL.flist_to_table_pieces(fnames)
          indlist = UTIL.list_minus_glob_form(snames)
          apply = 0
          try:
@@ -1303,7 +1356,7 @@ def update_svars_from_special(name, svars, check_sort=0):
       if nf < 2: return 0               # nothing to do
 
       # stim file names are more complex...
-      dir, snames, gstr = flist_to_table_pieces(fnames)
+      dir, snames, gstr = UTIL.flist_to_table_pieces(fnames)
       stable = UTIL.parse_as_stim_list(snames)
 
       if len(stable) != nf: return 0    # nothing to do
@@ -1338,24 +1391,6 @@ def update_svars_from_special(name, svars, check_sort=0):
 
    return changes
 
-def flist_to_table_pieces(flist):
-      """return:
-           - common directory name
-           - short dlist names (after removing directory name)
-           - glob string of short names
-         note: short names will be new data (not pointers to flist)
-      """
-      if len(flist) == 0: return '', [], ''
-
-      ddir = UTIL.common_dir(flist)
-      dirlen = len(ddir)
-      if dirlen > 0: snames = [dset[dirlen+1:] for dset in flist]
-      else:          snames = [dset[:]         for dset in flist]
-
-      globstr = UTIL.glob_form_from_list(snames)
-
-      return ddir, snames, globstr
-
 
 # ===========================================================================
 # help strings accessed both from command-line and GUI
@@ -1365,6 +1400,8 @@ helpstr_todo = """
 ---------------------------------------------------------------------------
                         todo list:  
 
+- surface analysis
+- resting state analysis
 - change print statements to LOG statements
    - optionally store to pass up to GUI (maybe start applying APSubj.status)
    - GUI could process (display as html?) and clear log
@@ -1375,12 +1412,13 @@ helpstr_todo = """
 - does tcsh exist?
 - make UberInterface class in uber_subject.py?
 - more verb output
-- group box : choose blocks
+- group box : choose blocks?
    - display 2 methods, method 1 is grayed when 2 is not empty
    1. list of toggle boxes showing all standard blocks (what about copy_anat?)
    2. text edit field to simply type list of blocks
 
 - allow stim_file regressors and labels
+- note usubj version in parameter file (warn user of version differences)
 - add range error checking for many variables?
   (types are done when converting from str)
 - be able to change font (individual windows?  whole GUI?)
@@ -1396,6 +1434,7 @@ helpstr_todo = """
 
 tools (maybe put in uber_proc.py, instead):
    - compute average blur
+       - generate a table based on the output from @ss_review_basic output
    - plot regressors of interest (run xmat_tool.py or ExamineXmat?)
    - test alignment (uber_align_test.py - give 'afni' command to cut-n-paste?)
    - help to create and play with stimulus timing design (sug. by A Barbey)
@@ -1403,33 +1442,39 @@ tools (maybe put in uber_proc.py, instead):
 """
 
 helpstr_usubj_gui = """
-===========================================================================
-==  Until uber_subject.py is fully integrated within the parent program
-==  uber_proc.py, it is recommended to use uber_subject.py mostly to help
-==  write afni_proc.py commands, and to learn about processing and shell
-==  scripting.
-==
-==  At this level there is no control over importing options from other
-==  subjects or verifying that options are consistent across subjects.
-==  Integration under uber_proc.py will include those abilities, and will
-==  provide control for analysis of multiple subjects and groups at once.
-==
-==  From uber_proc.py, one should eventually be able to:
-==
-==     - analyze many subjects/groups using similar processing options
-==     - process all of the data at once (not having to watch one subject
-==       get processed at a time)
-==     - generate and run group analysis scripts for commands like:
-==          3dttest++, 3dMEMA, 3dANOVA2/3, others as interest dictates
-==     - incorporate tools like uber_align_test.py, reporting average blur,
-==         censor counts and fractions, max F-stats, plotting regressors of
-==         interest
-==
-==  Currently, uber_subject.py provides (what we think are) good defaults
-==  for afni_proc.py (and therefore a good sample of how to process data).
-===========================================================================
-
 uber_subject.py GUI             - a graphical interface to afni_proc.py
+
+   One can quickly analyze an entire set of subjects, with results stored in
+   an organized directory tree.
+   
+   ==========================================================================
+   Eventually, uber_subject.py will be integrated underneath uber_proc.py.
+   That will provide a higher level of control for analysis of a full study,
+   as well as many tools for evaluation of results.
+   
+   From uber_proc.py, one should eventually be able to:
+   
+      o analyze many subjects/groups using similar processing options
+          Note: currently, one can import a subject by running that subject's
+                .orig.cmd.usubj.SUBJECT script (note the leading '.'), and
+                then alter the parameters for a new subject.
+      o process all of the data at once (not having to watch one subject
+        get processed at a time)
+      o generate and run group analysis scripts for commands like:
+          - 3dttest++, 3dMEMA, 3dANOVA2/3 (and others depending on interest)
+      o incorporate tools like uber_align_test.py
+      o generate a table of subject info (as generated by @ss_review_basic),
+          - blur estimates, censor counts/fractions, max F-stats
+          - attributes: group and covariate information
+
+   Other expected future capabilities:
+
+      o surface analysis       (should be easy, let me know of interest)
+      o resting state analysis (should be easy, let me know of interest)
+   
+   Currently, uber_subject.py provides (what we think are) good defaults
+   for afni_proc.py, and therefore a good sample of how to process data.
+   ==========================================================================
 
    purposes:
 

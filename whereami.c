@@ -7,100 +7,9 @@
 #include "afni.h"
 #include <stdio.h>
 #include <stdlib.h>
-#include "thd_atlas.h"
 #include "matrix.h"
 #include "suma_suma.h"
 
-
-#ifdef USE_CURL
-   /* Some demo code to show how curl can be used to read a URL
-      At the moment, we're not using it because we'd become 
-      dependent on libcurl . 
-      To toy with curl, replace the call to read_URL_http with
-      CURL_read_URL_http and just add -libcurl to whereami's compile
-      command */
-   #include <curl/curl.h>
-
-   typedef struct {
-      char *page;
-      size_t size; /* page is null terminated, and page[size]='\0'; */
-   } CURL_BUFFER_DATA;   
-
-   size_t CURL_buffer2data( void *buffer, size_t size, size_t nmemb, 
-                              void *ud) 
-   {
-      CURL_BUFFER_DATA *cbd=(CURL_BUFFER_DATA *)ud;
-      fprintf(stderr,"Curling %zu, %zu\n", size*nmemb, cbd->size);
-      if (!(cbd->page = 
-            (char *)realloc(cbd->page, cbd->size+(size*nmemb)+sizeof(char)))) {
-         ERROR_message("Failed to realloc for cbd->page (%d)\n",
-                  cbd->size+(size*nmemb));
-         return(-1);
-      }
-      memcpy(cbd->page+cbd->size, buffer, size*nmemb); 
-      cbd->size = cbd->size+(size*nmemb);
-      cbd->page[cbd->size] = '\0';
-      fprintf(stderr,"Returning\n");   
-      return(size*nmemb);
-   }
-
-   size_t CURL_read_URL_http ( char *url, char **data) 
-   {
-      CURL *curl;
-      CURLcode res;
-      CURL_BUFFER_DATA cbd;
-
-      curl = curl_easy_init();
-      cbd.page = (char *)calloc(1, sizeof(char)); cbd.size = 0;
-      curl_easy_setopt(curl, CURLOPT_URL, url);
-      curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, CURL_buffer2data);
-      curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&cbd); 
-      res = curl_easy_perform(curl);
-      curl_easy_cleanup(curl);
-
-      *data = cbd.page;
-      return(cbd.size);
-   }
-#endif /* CURL illustration */
-
-char * whereami_XML_get(char *data, char *name) {
-   char n0[512], n1[512], *s0, *s1, *sout=NULL;
-   if (strlen(name) > 500) return(NULL);
-   snprintf(n0,510,"<%s>", name);
-   snprintf(n1,510,"</%s>", name);
-   if (!(s0 = strstr(data, n0))) return(NULL);
-   if (!(s1 = strstr(s0, n1))) return(NULL);
-   s0 = s0+strlen(n0);
-   if (s1 > s0) {
-      sout = (char *)calloc(s1-s0+1, sizeof(char));
-      memcpy(sout,s0,sizeof(char)*(s1-s0));
-      sout[s1-s0]='\0';
-   }
-   return(sout);
-}
-
-int whereami_browser(char *url)
-{
-   char cmd[2345] ;
-   static int icall=0;
-   
-   if (!GLOBAL_browser && !icall) {
-      if (!(GLOBAL_browser = GetAfniWebBrowser())) {
-         ERROR_message("Have no browser set. "
-           "Specify one by adding the environment variable AFNI_WEB_BROWSER to\n"
-           "your ~/.afnirc. For example:  AFNI_WEB_BROWSER firefox\n"
-           "On a MAC you can also do: AFNI_WEB_BROWSER open\n"); 
-      }
-      icall = 1;
-   }
-   if (!GLOBAL_browser) return(0);
-   
-   sprintf(cmd ,
-          "%s '%s' &" ,
-          GLOBAL_browser, url ) ;
-   
-   return(system(cmd));
-}
 
 /**Original code by Mike Angstadt *******************************************
   Main function added by Mike Angstadt on 1/12/05
@@ -117,6 +26,10 @@ int whereami_browser(char *url)
 
 #define zischar(ch) ( ( ((ch) >= 'A' && (ch) <= 'Z' ) || ((ch) >= 'a' && (ch) <= 'z' ) ) ? 1 : 0 )
 #define isnakedarg(s) ( ( (s)[0] == '-' && strlen(s) > 1 && zischar((s)[1]) ) ? 0 : 1 )
+
+int compute_overlap(char *bmsk, byte *cmask, int ncmask, int dobin,
+  int N_atlas_names, char **atlas_names, ATLAS_LIST *atlas_alist);
+
 
 char *PrettyRef(char *ref) {
    int i=0;
@@ -166,11 +79,8 @@ int print_atlas_reference(char *atname)
 }
 
 
-void whereami_usage(ATLAS_LIST *atlas_alist) 
+void whereami_usage(ATLAS_LIST *atlas_alist, int detail) 
 {
-   int i = 0;
-   
-   ENTRY("whereami_usage");
    /* print help message in three sections */
    printf(  
 "Usage: whereami [x y z [output_format]] [-lpi/-spm] [-atlas ATLAS] \n"
@@ -179,7 +89,9 @@ void whereami_usage(ATLAS_LIST *atlas_alist)
 "   ++ Show the contents of available atlases\n"
 "   ++ Extract ROIs for certain atlas regions using symbolic notation\n"
 "   ++ Report on the overlap of ROIs with Atlas-defined regions.\n"
-"\n"
+"\n%s", detail ? "":"use -h or -help for more help detail.\n");
+   if (detail) {
+      printf ( 
 "Options (all options are optional):\n"
 "-----------------------------------\n"
 "    x y z [output_format] : Specifies the x y z coordinates of the \n"
@@ -226,9 +138,12 @@ void whereami_usage(ATLAS_LIST *atlas_alist)
 " -atlas ATLAS: Use atlas ATLAS for the query.\n"
 "               You can use this option repeatedly to specify\n"
 "               more than one atlas. Default is all available atlases.\n");
-  
-  printf("               ATLAS is one of:\n");
-  print_atlas_table(atlas_alist);
+   if (detail > 1) {
+      printf("              ATLAS is one of:\n");
+      print_atlas_table(atlas_alist);
+   } else {
+      printf("              Use whereami -help to see all available atlases.\n");
+   }
 
   /* third section for usage help*/
   printf(
@@ -305,7 +220,8 @@ void whereami_usage(ATLAS_LIST *atlas_alist)
 "              Would set to 0, all voxels in JoeROIs that are not\n"
 "              equal to 2.\n"
 "        Note that this mask should form a single sub-brick,\n"
-"        and must be at the same resolution as BINARY_MASK or ORDERED_MASK.\n"
+"        and must be at the same resolution as the bmask (binary mask) or\n"
+"        the omask (the ordered mask) datasets.\n"
 "        This option follows the style of 3dmaskdump (since the\n"
 "        code for it was, uh, borrowed from there (thanks Bob!, thanks Rick!)).\n"
 "        See '3dmaskdump -help' for more information.\n"
@@ -361,7 +277,9 @@ void whereami_usage(ATLAS_LIST *atlas_alist)
 "   Note: You can safely ignore the:\n"
 "              ** Can't find anat parent ....  \n"
 "         messages for the Atlas datasets.\n"
-"\n"
+"\n", Init_Whereami_Max_Find(), Init_Whereami_Max_Rad());
+   if (detail > 1) {
+      printf(
 "Convenient Color maps For Atlas Datasets:\n"
 "----------------------------------------\n"
 "   Color maps (color scales) for atlas dataset should automatically be used\n"
@@ -390,11 +308,20 @@ void whereami_usage(ATLAS_LIST *atlas_alist)
 "     have Talairach view datasets actually written out to disk\n"
 "   The whereami and \"Talairach to\" functions are also available by right-\n"
 "     clicking in an image window.\n\n"
-"Examples:\n"
-"_________\n"
+      );
+   } else {
+      printf("    Use whereami -help to see more information on:\n"
+             "      Convenient Color maps For Atlas Datasets:\n"
+             "         and \n"
+             "      How To See Atlas regions overlaid in the AFNI GUI:\n"
+      );
+   }
+   printf(
+"Example 1:\n"
+"----------\n"
 "   To find a cluster center close to the top of the brain at -12,-26, 76 (LPI),\n"
 "   whereami, assuming the coordinates are in Talairach space, would report:\n"
-"   > whereami -12 -26 76 -lpi\n"
+"    whereami -12 -26 76 -lpi\n"
 "     ++ Input coordinates orientation set by user to LPI\n"
 "     +++++++ nearby Atlas structures +++++++\n"
 "\n"
@@ -414,16 +341,38 @@ void whereami_usage(ATLAS_LIST *atlas_alist)
 "       Within 6 mm: Left Precentral Gyrus\n"
 "          -AND- Left Postcentral Gyrus\n"
 "\n"
-"   To create a mask dataset of both the left and right amygdala, you can do the\n"
-"   following :\n"
-"   > whereami -prefix amymask -mask_atlas_region 'TT_Daemon::amygdala'\n\n"
+"Example 2:\n"
+"----------\n"
+"   To create a mask dataset of both  left and right amygdala, you can do:\n"
+"    whereami -prefix amymask -mask_atlas_region 'TT_Daemon::amygdala'\n\n"
 "\n"
 "   Note masks based on atlas regions can be specified \"on the fly\" in \n"
 "   the same way with other afni commands as a dataset name (like 3dcalc,\n"
 "   for instance), so a mask, very often, is not needed as a separate,\n"
 "   explicit dataset on the disk.\n\n"
-"\n" 
-"\n",Init_Whereami_Max_Find(), Init_Whereami_Max_Rad());
+"\n"
+"Example 3:\n"
+"----------\n"
+"   To create a mask from a FreeSurfer 'aparc' volume parcellation:\n"
+"   (This assumes you have already run @SUMA_Make_Spec_FS, and your\n"
+"    afni distribution is recent. Otherwise update afni then run:\n"
+"    @MakeLabelTable -atlasize_labeled_dset aparc.a2009s+aseg_rank.nii\n"
+"    from the SUMA/ directory for that subject.)\n"
+"   To find the region's name, try something like:\n"
+"    whereami -atlas aparc.a2009s+aseg_rank -show_atlas_code | grep -i insula\n"
+"   Or you can try this search, assuming you screwed up the spelling:\n"
+"   whereami -atlas aparc+aseg_rank -show_atlas_code | \\\n"
+"                                  apsearch -word insola -stdin\n"
+"   If you really screw up the spelling try:\n"
+"   whereami -atlas aparc+aseg_rank -show_atlas_code | \\\n"
+"                                  sed 's/[-_]/ /g'  | \\\n"
+"                                  apsearch -word insolent -stdin\n"
+"   Pick one area then run:\n"
+"    whereami -atlas aparc.a2009s+aseg_rank \\\n"
+"               -mask_atlas_region   \\\n"
+"                     aparc.a2009s+aseg_rank::ctx_rh_S_circular_insula_sup\n"
+"\n"
+"\n");
 
 printf(
 " \n---------------\n"
@@ -455,20 +404,37 @@ printf(
 " -xform_xyz  used with calc_chain, takes the x,y,z coordinates and \n"
 "             applies the combined chain of transformations to compute\n"
 "             a new x,y,z coordinate\n"
-
-"Note setting the environment variable AFNI_WAMI_VERB will show detailed\n"
+" -xform_xyz_quiet Same as -xform_xyz but only ouputs the final result\n"
+"Note setting the environment variable AFNI_WAMI_DEBUG will show detailed\n"
 " progress throughout the various functions called within whereami.\n"
 " For spaces defined using a NIML table, a Dijkstra search is used to find\n"
 " the shortest path between spaces. Each transformation carries with it a\n"
 " distance attribute that is used for this computation. By modifying this\n"
-" field, the user can control which transformations are preferred.\n"
+" field, the user can control which transformations are preferred.\n\n"
+" -web_atlas_type XML/browser/struct : report results from web-based atlases\n"
+"            using XML output to screen, open a browser for output or just\n"
+"            return the name of the structure at the coordinate\n"
+
+" \n---------------\n"
+" More information about Atlases in AFNI can be found here:\n"
+"      http://afni.nimh.nih.gov/sscc/dglen/AFNIAtlases\n"
+" Class document illustrating whereami usage:\n"
+"      http://afni.nimh.nih.gov/pub/dist/edu/latest/afni11_roi/afni11_roi.pdf\n"
 "---------------\n"
 );
 
+if (detail > 1) {
+   printf(     
+     "Global Options (available to all AFNI/SUMA programs)\n"
+     "%s",
+     get_gopt_help());
+}
+      
 printf("Thanks to Kristina Simonyan for feedback and testing.\n");
 
+}
    PRINT_COMPILE_DATE ;
-   EXRETURN;
+   return;
 }
 
 
@@ -477,7 +443,7 @@ printf("Thanks to Kristina Simonyan for feedback and testing.\n");
 int main(int argc, char **argv)
 {
    float x, y, z, xi, yi, zi;
-   char *string, *fstring, *sfp=NULL, *shar = NULL;
+   char *string, *shar = NULL;
    int output = 0;
    int nakedland = 0, k = 0, Show_Atlas_Code=0;
    int iarg, dicom = 1, i, nakedarg, arglen, ixyz=0, nxyz=0;
@@ -493,20 +459,22 @@ int main(int argc, char **argv)
    int dobin = 0, N_areas, mni;
    char *coord_file=NULL;
    float *coord_list = NULL, rad;
-   THD_fvec3 tv, m;
    THD_3dim_dataset *space_dset = NULL, *atlas_dset = NULL;
    int read_niml_atlas = 0, show_atlas = 0, show_atlas_spaces = 0;
    int show_atlas_templates = 0, show_atlas_xforms = 0;
    int show_xform_chain = 0, calc_xform_chain=0, show_avail_space=0;
+   int show_atlas_point_lists = 0;
+
    char *srcspace=NULL, *destspace=NULL;
    ATLAS_XFORM_LIST *xfl = NULL, *cxfl = NULL;
    float xout, yout, zout;
-   int xform_xyz = 0;
+   int xform_xyz = 0, xform_xyz_quiet = 0;
    int atlas_writehard = 0, atlas_readhard = 0, alv=1, wv=1;
    ATLAS_LIST *atlas_alist=NULL, *atlas_list=NULL, *atlas_rlist=NULL;
    byte b1;
    int LocalHead = wami_lh();
    
+   mainENTRY("whereami main"); machdep(); AFNI_logger("whereami",argc,argv);
    
    b1 = 0;
    mni = -1;
@@ -522,13 +490,16 @@ int main(int argc, char **argv)
    N_areas = -1;
    OldMethod = 0; /* Leave at 0 */
    coord_file = NULL;
-   alv=1; wv=1;
+   alv=2; wv=2;
+   xform_xyz_quiet = 0;
    iarg = 1 ; nakedarg = 0; Show_Atlas_Code = 0; shar = NULL;
 
    set_TT_whereami_version(alv,wv);
-   
-   init_custom_atlas();   /* allow for custom atlas in old framework */
+   if(alv<2)
+      init_custom_atlas();   /* allow for custom atlas in old framework */
    xi = 0.0; yi=0.0, zi=0.0;
+   set_wami_web_reqtype(WAMI_WEB_STRUCT); /* set web atlas output to simple structure */
+
    while( iarg < argc ){
       arglen = strlen(argv[iarg]);
       if(!isnakedarg(argv[iarg])) {
@@ -573,10 +544,10 @@ int main(int argc, char **argv)
             continue; 
          }
          
-         if (strcmp(argv[iarg],"-help") == 0 ) { 
+         if (strcmp(argv[iarg],"-h") == 0 || strcmp(argv[iarg],"-help") == 0 ) { 
             atlas_alist = get_G_atlas_list();
-            whereami_usage(atlas_alist);
-            return(1); 
+            whereami_usage(atlas_alist, strlen(argv[iarg]) > 3 ? 2:1);
+            return(0); 
             continue; 
          }
          if (strcmp(argv[iarg],"-old") == 0 ) { 
@@ -593,11 +564,45 @@ int main(int argc, char **argv)
                fprintf( stderr,
                         "** Error: Need parameter after -space\n"); return(1);
             }
+            if (srcspace) {
+               fprintf( stderr,
+               "** Error: Specify space of input (or output mask) with either -space or -dset, not both\n");
+               return(1);
+            }
+
             /* use srcspace as is on commandline */
             srcspace = argv[iarg];
             if ( strcmp(argv[iarg],"Paxinos_Rat_2007@Elsevier")==0 )
                srcspace = "paxinos_rat_2007@Elsevier";
+            set_out_space(srcspace);   /* make output space for mask dset */
 
+            ++iarg;
+            continue; 
+         }
+
+         if (strcmp(argv[iarg],"-web_atlas_type") == 0) { 
+            ++iarg;
+            if (iarg >= argc) {
+               fprintf( stderr,
+                        "** Error: Need parameter after -web_atlas_type\n"); return(1);
+            }
+            if(strcmp(argv[iarg],"XML")==0) {
+               set_wami_web_reqtype(WAMI_WEB_PRINT_XML);
+            }
+            else{
+               if(strcmp(argv[iarg],"browser")==0) {
+                  set_wami_web_reqtype(WAMI_WEB_BROWSER);
+               }
+               else {
+                  if(strcmp(argv[iarg],"struct")==0) {
+                     set_wami_web_reqtype(WAMI_WEB_STRUCT);
+                  }
+                  else {
+                     fprintf( stderr, "** Error: option not value for web_atlas_type\n");
+                     return(1);
+                  }
+               }
+            }
             ++iarg;
             continue; 
          }
@@ -608,13 +613,19 @@ int main(int argc, char **argv)
                fprintf(stderr,"** Error: Need dset after -dset\n"); 
                return(1);
             }
+            if (srcspace) {
+               fprintf( stderr,
+               "** Error: Specify space of input (or output mask) with either -space or -dset, not both\n");
+               return(1);
+            }
+
             if (!(space_dset = THD_open_dataset (argv[iarg]))) {
                fprintf(stderr,"** Error: Failed to open data set %s.\n",
                        argv[iarg]);
                return(1);
             } 
             srcspace = THD_get_space(space_dset); /* update space if necess*/
-
+            set_out_space(srcspace);   /* make output space for mask dset */
             ++iarg;
             continue; 
          }
@@ -865,7 +876,9 @@ int main(int argc, char **argv)
             continue; 
          }
 
-        if( strcmp(argv[iarg],"-xform_xyz") == 0){
+        if( strcmp(argv[iarg],"-xform_xyz") == 0 ||
+            strcmp(argv[iarg],"-xform_xyz_quiet") == 0){
+            if (strlen(argv[iarg]) > 12) xform_xyz_quiet = 1;
             iarg++;
             read_niml_atlas = 1;
             xform_xyz = 1;
@@ -896,6 +909,12 @@ int main(int argc, char **argv)
             show_atlas_xforms = 1;
             continue ;
          }          
+         if(strcmp(argv[iarg],"-show_atlas_point_lists") == 0) {
+            iarg++;
+            read_niml_atlas = 1;
+            show_atlas_point_lists = 1;
+            continue ;
+         }          
          if(strcmp(argv[iarg],"-show_atlas_all") == 0) {
             iarg++;
             read_niml_atlas = 1;
@@ -903,6 +922,7 @@ int main(int argc, char **argv)
             show_atlas_spaces = 1;
             show_atlas_templates = 1;
             show_atlas_xforms = 1;
+            show_atlas_point_lists = 1;
             continue ;
          }          
 
@@ -927,6 +947,7 @@ int main(int argc, char **argv)
 
          { /* bad news in tennis shoes */
             fprintf(stderr,"** Error: bad option %s\n", argv[iarg]);
+            suggest_best_prog_option(argv[0], argv[iarg]);
             return 1;
          }
       
@@ -959,19 +980,25 @@ int main(int argc, char **argv)
       if(show_avail_space)
          report_available_spaces(srcspace);
       if(show_xform_chain)
-         xfl = report_xform_chain(srcspace, destspace, 1);
+         xfl = report_xform_chain(srcspace, destspace, !xform_xyz_quiet);
       if(calc_xform_chain) {
          cxfl = calc_xform_list(xfl);
-         print_xform_list(cxfl);  /* print the xforms briefly with names only */
-         print_all_xforms(cxfl);  /* print combined list transforms with data */
+         if (!xform_xyz_quiet) {
+            print_xform_list(cxfl);/* print the xforms briefly with names only */
+            print_all_xforms(cxfl);/* print combined list transforms with data */
+         }
       }
       if(xform_xyz) {
          if(!cxfl)
             cxfl = calc_xform_list(xfl);
          apply_xform_chain(cxfl, xi, yi, zi, &xout, &yout, &zout);
                
-         printf("Coords in: %f, %f, %f -> Coords out: %f, %f, %f\n", 
+         if (xform_xyz_quiet) {
+            printf("%f %f %f\n", xout,yout,zout);
+         } else {   
+            printf("Coords in: %f, %f, %f -> Coords out: %f, %f, %f\n", 
                   xi,yi,zi,xout,yout,zout);
+         }
       }
       if(xfl)
         free_xform_list(xfl);
@@ -985,6 +1012,8 @@ int main(int argc, char **argv)
          print_space_list(get_G_space_list());
       if(show_atlas_xforms)
          print_all_xforms(get_G_xform_list());
+      if(show_atlas_point_lists)
+         print_point_lists(get_G_atlas_list());
          
       free_global_atlas_structs(); 
       exit(0);
@@ -1039,6 +1068,8 @@ int main(int argc, char **argv)
       else { fprintf(stderr,"** Error: Should not happen!\n"); return(1); } 
    }
 
+#if 0
+/* now moved functionality to thd_ttatlas_query */
    if (srcspace && !strcmp(srcspace,"paxinos_rat_2007@Elsevier")) { 
       /* for testing purposes. */
       size_t nread;
@@ -1071,6 +1102,7 @@ int main(int argc, char **argv)
       }
       exit(0);
    } 
+#endif
 
    atlas_alist = get_G_atlas_list(); /* get the whole atlas list */
    if (N_atlas_names == 0) {
@@ -1083,7 +1115,11 @@ int main(int argc, char **argv)
       /* check for missing atlases and stop in case of error */
       for (k=0; k < N_atlas_names; ++k) {
          if (!get_Atlas_Named(atlas_names[k], atlas_alist)) {
-            ERROR_message("Atlas %s not found in list", atlas_names[k]);
+            ERROR_message("Atlas %s not found in list.\n", atlas_names[k]);
+            string = suggest_Atlas_Named(atlas_names[k], atlas_alist);
+            if (string[0] != '\0') {
+               fprintf(stderr,"  Perhaps:      %s  is what you want?\n", string);
+            }
             exit(1);
          }  
       }
@@ -1100,7 +1136,8 @@ int main(int argc, char **argv)
    }
    
    if (nakedarg < 3 && !Show_Atlas_Code && !shar && !bmsk && !coord_file) {
-      whereami_usage(atlas_alist);
+      ERROR_message("Bad option combinations");
+      whereami_usage(atlas_alist, 0);
       return 1;
    }
    
@@ -1173,6 +1210,10 @@ int main(int argc, char **argv)
                   ERROR_message("Failed to create mask");
                   exit(1);
                } else {
+                  if(!equivalent_space(THD_get_space(maskset))){
+                     ERROR_message("Atlas does not match space requested.");
+                     exit(1);
+                  }
                   tross_Make_History( "whereami" , argc, argv , maskset ) ;
                   if (mskpref) {
                         EDIT_dset_items(  maskset,
@@ -1263,32 +1304,6 @@ int main(int argc, char **argv)
          y = -y; 
       }
 
-      /* coords here are now in RAI - this was old 2010 way */
-#ifdef KILLTHIS      
-      if (mni == 1) { /* go from mni to tlrc */
-         LOAD_FVEC3( tv , -x, -y, z ) ;  /* next call expects input in MNI, LPI*/
-         m = THD_mni_to_tta( tv );  /* m units are in RAI */
-         if (ixyz == 0) {
-            fprintf(stdout,
-   "++ Input coordinates being transformed from MNI  RAI ([%.2f %.2f %.2f]) \n"
-   "                                         to TLRC RAI ([%.2f %.2f %.2f]).\n", 
-                     x, y, z, m.xyz[0],  m.xyz[1], m.xyz[2]);
-         }
-         x = m.xyz[0]; y = m.xyz[1]; z = m.xyz[2];
-      }
-      else if (mni == 2) { /* go from mni_anat to tlrc */
-         LOAD_FVEC3( tv , -x, -y, z ) ;  /* next call expects input in MNI, LPI*/
-         m = THD_mni_to_tta( tv );  /* m units are in RAI */
-         if (ixyz == 0) {
-            fprintf(stdout,
-   "++ Input coordinates being transformed from MNI  RAI ([%.2f %.2f %.2f]) \n"
-   "                                         to TLRC RAI ([%.2f %.2f %.2f]).\n", 
-                                         x, y, z, m.xyz[0],  m.xyz[1], m.xyz[2]);
-         }
-         x = m.xyz[0]; y = m.xyz[1]; z = m.xyz[2];
-      }
-#endif      
-
       if (!OldMethod) {
          /* the new whereami */
          if (atlas_sort) {
@@ -1300,8 +1315,13 @@ int main(int argc, char **argv)
          }
 
          set_TT_whereami_version(alv,wv);
-         if(!atlas_rlist)
-            atlas_list = atlas_alist;
+
+         if(!atlas_rlist){
+            atlas_list = env_atlas_list();
+            if(!atlas_list) {
+               atlas_list = atlas_alist;
+            }
+         }
          else {
             atlas_list = atlas_rlist; /* use reduced list */
             if (wami_verb() >= 2){
@@ -1322,7 +1342,10 @@ int main(int argc, char **argv)
            string = TT_whereami(x,y,z, srcspace, atlas_list);
          }
          if (string) fprintf(stdout,"%s\n", string);
-         else fprintf(stdout,"whereami NULL string out.\n");
+         else{
+            if(!get_wami_web_found())
+               fprintf(stdout,"whereami NULL string out.\n");
+         }
          if (string) free(string); string = NULL;            
       }
    } /* ixyz */   
@@ -1345,7 +1368,7 @@ compute_overlap(char *bmsk, byte *cmask, int ncmask, int dobin,
       ATLAS *atlas=NULL;
       int isb, nvox_in_mask=0, *count = NULL, dset_kind;
       int *ics=NULL, *unq=NULL, n_unq=0, iroi=0, nonzero, i, k;
-      float frac=0.0, sum = 0.0;
+      float frac=0.0, sum = 0.0, *fba=NULL;
       char tmps[20];
       
       /* load the mask dset */
@@ -1354,13 +1377,15 @@ compute_overlap(char *bmsk, byte *cmask, int ncmask, int dobin,
          return(1);
       } 
       
-      /* are we in TLRC land? */
+      #if 0 /* No longer enforced here. See is_identity_xform_chain below*/
+      /* are we in TLRC land? */ 
       if (mset_orig->view_type != VIEW_TALAIRACH_TYPE) {
          fprintf( stderr,
                   "** Error: Mask set %s is not of the Talairach persuasion.\n", 
                   bmsk);
          return(1);
       }
+      #endif
       
       if (cmask) {
          if (ncmask != DSET_NVOX(mset_orig)) {
@@ -1427,6 +1452,21 @@ compute_overlap(char *bmsk, byte *cmask, int ncmask, int dobin,
                                atlas_names[k]);
                continue;
             }
+            
+            if (!is_identity_xform_chain(THD_get_space(mset_orig), 
+                                                atlas->atlas_space)) {
+               if (wami_verb()) {
+                  fprintf(stderr,
+            "** Error: Not ready to deal with non-Identity transform chain.\n"
+            "Path from input in %s to atlas %s in %s is:\n" , 
+                  THD_get_space(mset_orig), 
+                  Atlas_Name(atlas), atlas->atlas_space);
+                  print_xform_chain(THD_get_space(mset_orig), 
+                  atlas->atlas_space);
+               }
+               continue;
+            } 
+            
             if (is_probabilistic_atlas(atlas)) {
                /* not appropriate, skip*/
                continue;
@@ -1475,7 +1515,7 @@ compute_overlap(char *bmsk, byte *cmask, int ncmask, int dobin,
                          ba[i] >= atlas->adh->minkeyval) ++count[ba[i]]; 
                   }
                }
-               else {
+               else if(dset_kind == MRI_byte) {
                   bba = DSET_BRICK_ARRAY(ATL_DSET(atlas),isb); /* byte array */
                   if (!bba) { 
                      ERROR_message("Unexpected NULL array");
@@ -1488,6 +1528,26 @@ compute_overlap(char *bmsk, byte *cmask, int ncmask, int dobin,
                       if (bmask_vol[i] && 
                           bba[i] >= atlas->adh->minkeyval) ++count[bba[i]]; 
                    }
+               }
+               else if(dset_kind == MRI_float) {
+                  fba = DSET_BRICK_ARRAY(ATL_DSET(atlas),isb); /* float array */
+                  if (!fba) { 
+                     ERROR_message("Unexpected NULL array");
+                     free(bmask_vol); bmask_vol = NULL;
+                     continue;
+                  }
+                 /* Create count array for range of integral values in atlas */
+                   count = (int *)calloc(atlas->adh->maxkeyval+1, sizeof(int));
+                   for (i=0; i<DSET_NVOX(ATL_DSET(atlas)); ++i) {
+                      if (bmask_vol[i] && 
+                          fba[i] >= atlas->adh->minkeyval) ++count[(int)fba[i]]; 
+                   }
+               }
+               else {
+                  ERROR_message(
+                     "Atlas %s is not of type short, byte, or float.\n",
+                     Atlas_Name(atlas));
+                  continue;
                }
 
                /* Now form percentages */
@@ -1546,5 +1606,6 @@ compute_overlap(char *bmsk, byte *cmask, int ncmask, int dobin,
 
       /* done with mset_orig */
       DSET_delete(mset_orig); mset_orig = NULL;
-           
+
+      return(0);
 }

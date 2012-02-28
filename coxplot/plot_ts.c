@@ -192,7 +192,7 @@ MEM_plotdata * plot_ts_mem( int nx , float *x , int ny , int ymask , float **y ,
                             char **nam_yyy )
 {
    int ii , jj , np , nnax,nnay , mmax,mmay ;
-   float *xx , *yy ;
+   float *xx , *yy=NULL ;
    float xbot,xtop , ybot,ytop , pbot,ptop , xobot,xotop,yobot,yotop ;
    char str[32] ;
    int yall , ysep ;
@@ -412,7 +412,12 @@ MEM_plotdata * plot_ts_mem( int nx , float *x , int ny , int ymask , float **y ,
 
          if( tsbox > 0.0f ){
            set_thick_memplot( 0.002f ) ;
-           for( ii=0 ; ii < nx ; ii++ ) plot_onebox( xx[ii] , yy[ii] ) ;
+           for( ii=0 ; ii < nx ; ii++ ){
+             if( noline != 2 ||
+                 ( xx[ii] >= xbot && xx[ii] <= xtop &&
+                   yy[ii] >= ybot && yy[ii] <= ytop   ) )
+             plot_onebox( xx[ii] , yy[ii] ) ;
+           }
            set_thick_memplot( THIK ) ;
          }
       }
@@ -489,7 +494,12 @@ MEM_plotdata * plot_ts_mem( int nx , float *x , int ny , int ymask , float **y ,
          }
 
          if( tsbox > 0.0f ){
-           for( ii=0 ; ii < nx ; ii++ ) plot_onebox( xx[ii] , yy[ii] ) ;
+           for( ii=0 ; ii < nx ; ii++ ){
+             if( noline != 2 ||
+                 ( xx[ii] >= xbot    && xx[ii] <= xtop    &&
+                   yy[ii] >= ylo[jj] && yy[ii] <= yhi[jj]    ) )
+               plot_onebox( xx[ii] , yy[ii] ) ;
+           }
          }
 
          set_color_memplot( 0.0 , 0.0 , 0.0 ) ;

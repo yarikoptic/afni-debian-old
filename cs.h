@@ -113,10 +113,14 @@ extern int powell_newuoa_constrained(
                                double rstart , double rend ,
                                int maxcall , double (*ufunc)(int,double *) ) ;
 
-extern char *approximate_number_string( double ) ;   /* 16 Jan 2004 */
-extern char * commaized_integer_string( long long ); /* 18 Mar 2010 */
+extern char * approximate_number_string( double ) ;   /* 16 Jan 2004 */
+extern char * commaized_integer_string( long long );  /* 18 Mar 2010 */
+extern char * string_substitute( char *src , char *targ , char *repl ) ;
 
 extern int strcmp_aboot( char * , char * ) ;        /* 12 Mar 2007 */
+
+extern char * afni_fgets( char *buf , int nbuf , FILE *fp ) ; /* 20 Dec 2011 */
+extern void   afni_fgets_setskip(int) ;
 
 #ifndef DEBLANK
 #define DEBLANK(cc) do{ if( (cc) != NULL ){                   \
@@ -137,13 +141,21 @@ typedef struct {
 } Z_QSORT_FLOAT;
 
 typedef struct {
+      char * x;
+      int Index;
+} Z_QSORT_STRING;
+
+
+typedef struct {
       int x;
       int Index;
 } Z_QSORT_INT;
 
+extern int compare_Z_IQSORT_STRING (Z_QSORT_STRING *a, Z_QSORT_STRING *b );
 extern int compare_Z_IQSORT_DOUBLE (Z_QSORT_DOUBLE *a, Z_QSORT_DOUBLE *b );
 extern int compare_Z_IQSORT_FLOAT (Z_QSORT_FLOAT *a, Z_QSORT_FLOAT *b );
 extern int compare_Z_IQSORT_INT (Z_QSORT_INT *a, Z_QSORT_INT *b );
+extern int compare_string (const void *a, const void *b );
 extern int compare_double (double *a, double *b );
 extern int compare_float (float *a, float *b );
 extern int compare_int (int *a, int *b );

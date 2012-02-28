@@ -88,6 +88,15 @@ STATUS("copy surface node_list") ;
       }
    }
 
+   #if 0               /* Overkill, you don't want 3dcalc preserving. 
+                          such things for example ...              */
+   /* preserve label tables                        ZSS: Jan 2012 */
+   STATUS("copying labeltables and Atlas PointLists, if any");
+   if (!THD_copy_labeltable_atr( new_dblk,  old_dblk)) {
+      WARNING_message("Failed trying to preserve labeltables");
+   } 
+   #endif                                                    
+
    EXRETURN ;
 }
 
@@ -130,7 +139,8 @@ void THD_store_datablock_label( THD_datablock *dblk , int iv , char *str )
    myXtFree( dblk->brick_lab[iv] ) ;
    if( str != NULL && str[0] != '\0' ){
       sss = strdup(str) ;
-      if( strlen(sss) > 32 ) sss[32] = '\0' ;
+      /* mod 10/27/2011 - drg */
+      if( strlen(sss) >= THD_MAX_SBLABEL ) sss[THD_MAX_SBLABEL-1] = '\0' ;
       dblk->brick_lab[iv] = XtNewString( sss ) ;
       free((void *)sss) ;
    } else {

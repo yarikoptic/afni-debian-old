@@ -11,6 +11,10 @@ static int oblique_report_index = 0;
 static int oblique_report_repeat = 20;
 static int oblique_report_repeat2 = 100;
 static int first_oblique = 1;
+static int oblique_update = 0;
+static int OBL_report=1;
+void set_obliquity_report(int v) { OBL_report=v; } 
+
 
 /*====================================================================
    3D coordinate conversion routines;
@@ -613,7 +617,7 @@ void THD_report_obliquity(THD_3dim_dataset *dset)
    double angle;
 
    ENTRY("THD_report_obliquity");
-   if(AFNI_yesenv("AFNI_NO_OBLIQUE_WARNING")) EXRETURN;
+   if(AFNI_yesenv("AFNI_NO_OBLIQUE_WARNING") || !OBL_report) EXRETURN;
 
    if( !ISVALID_DSET(dset) || oblique_report_repeat==0 ) EXRETURN;
 
@@ -700,4 +704,16 @@ void THD_check_oblique_field(THD_3dim_dataset *dset)
 {
    if( !ISVALID_MAT44(dset->daxes->ijk_to_dicom_real) )
       THD_make_cardinal(dset);
+}
+
+/* allow for updating of obliquity - IJK_TO_DICOM_REAL attribute and structure */
+void THD_updating_obliquity(int update)
+{
+   oblique_update = update;
+}
+
+/* accessor function to get current status - can we update ijk_to_dicom_real*/
+int THD_update_obliquity_status()
+{
+   return(oblique_update);
 }

@@ -88,6 +88,8 @@ static char shelp_GenPriors[] = {
 static char shelp_Seg[] = {
 "3dSeg segments brain volumes into tissue classes.\n"
 "\n"
+"There is no help yet, sorry.\n"
+#if 0
 "Examples: (All examples can do without the -gold* options)\n"
 "  Case A: Segmenting a T1 volume with a brain mask available\n"
 "  A.1:  Brain mask and MRF only.\n"
@@ -110,6 +112,7 @@ static char shelp_Seg[] = {
 "           -prefix case.A.2  -overwrite    \\\n"
 "           -mixfrac WHOLE_BRAIN \\\n"
 "           -Bmrf 1.0 -main_N 4           \\\n"
+#endif
 "\n"
 "\n"
 };
@@ -159,7 +162,7 @@ static HELP_OPT SegOptList[] = {
    {  NULL, NULL, NULL  }
 };
 
-void GenPriors_usage(void) 
+void GenPriors_usage(int detail) 
 {
    int i = 0;
    
@@ -170,7 +173,7 @@ void GenPriors_usage(void)
    EXRETURN;
 }
 
-void Seg_usage(void) 
+void Seg_usage(int detail) 
 {
    int i = 0;
    
@@ -246,7 +249,6 @@ SEG_OPTS *SegOpt_Struct()
    Opt->DO_f = FALSE;
    Opt->DO_c = FALSE;
    Opt->DO_x = FALSE;
-   
    Opt->group_classes = NULL;
    Opt->group_keys = NULL;
    
@@ -284,6 +286,8 @@ SEG_OPTS *SegOpt_Struct()
    Opt->pstCgALLname = NULL;
    Opt->Bsetname = NULL;
    Opt->Split = NULL;
+   
+   Opt->blur_meth = SEG_BIM;
    RETURN(Opt);
 }
 
@@ -342,7 +346,7 @@ SEG_OPTS *Seg_ParseInput (SEG_OPTS *Opt, char *argv[], int argc)
 	while (kar < argc) { /* loop accross command ine options */
 		/*fprintf(stdout, "%s verbose: Parsing command line...\n", FuncName);*/
 		if (strcmp(argv[kar], "-h") == 0 || strcmp(argv[kar], "-help") == 0) {
-			 Opt->helpfunc();
+			 Opt->helpfunc(0);
           exit (0);
 		}
       
@@ -722,6 +726,23 @@ SEG_OPTS *Seg_ParseInput (SEG_OPTS *Opt, char *argv[], int argc)
          brk = 1;
 		}
       
+      if (!brk && (strcmp(argv[kar], "-blur_meth") == 0)) {
+         kar ++;
+			if (kar >= argc)  {
+		  		fprintf (stderr, "need argument after -blur_meth \n");
+				exit (1);
+			}
+			if (!strcmp(argv[kar],"BIM")) Opt->blur_meth = SEG_BIM;
+         else if (!strncmp(argv[kar],"LS",2)) Opt->blur_meth = SEG_LSB;
+         else if (!strcmp(argv[kar],"BNN")) Opt->blur_meth = SEG_BNN;
+         else if (!strcmp(argv[kar],"BFT")) Opt->blur_meth = SEG_BFT;
+         else {
+            SUMA_S_Errv("-blur_meth %s not valid\n", argv[kar]);
+            exit(1);
+         }
+         brk = 1;
+		}
+            
       if (!brk && (strcmp(argv[kar], "-prefix") == 0)) {
          kar ++;
 			if (kar >= argc)  {
@@ -999,7 +1020,8 @@ SEG_OPTS *Seg_ParseInput (SEG_OPTS *Opt, char *argv[], int argc)
       if (!brk) {
 			fprintf (stderr,"Option %s not understood. \n"
                          "Try -help for usage\n", argv[kar]);
-			exit (1);
+			suggest_best_prog_option(argv[0], argv[kar]);
+         exit (1);
 		} else {	
 			brk = 0;
 			kar ++;
@@ -1020,10 +1042,14 @@ byte *MaskSetup(SEG_OPTS *Opt, THD_3dim_dataset *aset,
                 THD_3dim_dataset **msetp, byte **cmaskp, int dimcmask, 
                 float mask_bot, float mask_top, int *mcount) 
 { 
+   static char FuncName[]={"MaskSetup"};
    byte *mmm=NULL;
-   int ii=0, kk=0;
+   int ii=0, kk=0, Fixit=0;
    byte *cmask = NULL;
    THD_3dim_dataset *mset = NULL;
+   float *fa=NULL;
+   MRI_IMAGE *imin=NULL;
+
    
    /* ------------- Mask business -----------------*/
    
@@ -1035,6 +1061,7 @@ byte *MaskSetup(SEG_OPTS *Opt, THD_3dim_dataset *aset,
       if( Opt->debug ) 
          INFO_message("%d voxels in the entire dataset (no mask)\n",
                      DSET_NVOX(aset)) ;
+      *mcount = DSET_NVOX(aset);
    } else {
       if( DSET_NVOX(mset) != DSET_NVOX(aset) )
         ERROR_exit("Input and mask datasets are not same dimensions!\n");
@@ -1073,6 +1100,29 @@ byte *MaskSetup(SEG_OPTS *Opt, THD_3dim_dataset *aset,
       }
    }
    
+   /* Make sure that aset has no exact 0s that are in the mask */
+   imin = THD_extract_float_brick(0,aset) ;
+   fa = MRI_FLOAT_PTR(imin);
+   Fixit = 0;
+   for( ii=0 ; ii < DSET_NVOX(aset) && !Fixit; ii++ ) {
+      if (IN_MASK(mmm, ii) && fa[ii] == 0.0) {
+         Fixit = 1; 
+      }
+   }
+   if (Fixit) {
+      SUMA_S_Note("Have to merge mask with anat");
+      if (!mmm) {
+         mmm = (byte *)malloc(DSET_NVOX(aset)*sizeof(byte));
+         memset(mmm, 1, sizeof(byte)*DSET_NVOX(aset));
+         *mcount = DSET_NVOX(aset);
+      }
+      for( ii=0 ; ii < DSET_NVOX(aset); ii++ ) {
+         if (IN_MASK(mmm, ii) && fa[ii] == 0.0) {
+            mmm[ii] = 0; *mcount = *mcount - 1;
+         }
+      }
+   }
+   mri_free(imin); imin = NULL; fa = NULL;
    return(mmm);         
 }
 
@@ -1100,7 +1150,11 @@ void *Seg_NI_read_file(char *fname) {
 int SUMA_ShortizeDset(THD_3dim_dataset **dsetp, float thisfac) {
    static char FuncName[]={"SUMA_ShortizeDset"};
    char sprefix[THD_MAX_PREFIX+10];
-   int i;
+   int i, j;
+   byte *bb=NULL;
+   short *sb=NULL;
+   float bbf=0.0;
+   
    THD_3dim_dataset *cpset=NULL, *dset=*dsetp;
    
    SUMA_ENTRY;
@@ -1109,12 +1163,33 @@ int SUMA_ShortizeDset(THD_3dim_dataset **dsetp, float thisfac) {
       SUMA_S_Err("NULL *dsetp at input!");
       SUMA_RETURN(0);
    }
+   
    sprintf(sprefix, "%s.s", dset->dblk->diskptr->prefix);
    NEW_SHORTY(dset, DSET_NVALS(dset), "ss.cp", cpset);      
    for (i=0; i<DSET_NVALS(dset); ++i) {
-      EDIT_substscale_brick(cpset, i, DSET_BRICK_TYPE(dset,i), 
+      if (DSET_BRICK_TYPE(dset,i) == MRI_byte) {
+         bb = (byte *)DSET_ARRAY(dset,i);
+         sb = (short *)DSET_ARRAY(cpset,i);
+         if (thisfac <= 0.0) {
+            for (j=0; j<DSET_NVOX(dset); ++j) {
+               sb[j] = (short)bb[j];
+            }
+            thisfac = DSET_BRICK_FACTOR(dset,i);
+         } else {
+            bbf = DSET_BRICK_FACTOR(dset,i); if (bbf == 0.0f) bbf = 1.0;
+            bbf = bbf/thisfac;
+            for (j=0; j<DSET_NVOX(dset); ++j) {
+               sb[j] = SHORTIZE((((float)bb[j])*bbf));
+            }
+         }
+         EDIT_BRICK_FACTOR( cpset,i,thisfac ) ;
+      } else {
+         EDIT_substscale_brick(cpset, i, DSET_BRICK_TYPE(dset,i), 
                             DSET_ARRAY(dset,i), MRI_short, thisfac);
+      }
    }
+   /* preserve tables, if any */
+   THD_copy_labeltable_atr( cpset->dblk,  dset->dblk); 
    DSET_delete(dset); dset = NULL; 
    *dsetp=cpset;
 

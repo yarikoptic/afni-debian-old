@@ -6,6 +6,7 @@
 
 #include "afni.h"
 #include "afni_plugout.h"
+#include "thd_ttatlas_query.h"
 
 /*---------------------------------------------------------------*/
 /*------------ Stuff for logos and pixmap definitions -----------*/
@@ -184,6 +185,10 @@ static char *AFNI_funcmode_bbox_label[2] =
    "the crosshair point in the\n"      \
    "DICOM coordinates (3D input)\n"    \
    "or voxel indices (image input)\n"  \
+   "The * indicates that you are  \n"  \
+   "viewing an oblique dataset and\n"  \
+   "voxel coordinates are those of\n"  \
+   "closest cardinal orientation.\n"   \
    "\n"                                \
    "A Button-3 popup menu lets you\n"  \
    "change coordinate display order."
@@ -1012,7 +1017,8 @@ STATUS("making imag->rowcol") ;
          NULL ) ;
    LABELIZE(imag->crosshair_label) ;
    MCW_register_help( imag->crosshair_label , AFNI_crosshair_label_help ) ;
-   MCW_register_hint( imag->crosshair_label , "Coordinates of crosshair point" ) ;
+   MCW_register_hint( imag->crosshair_label ,
+               "Coordinates of crosshair point. * indicates oblique dataset." ) ;
 
    /*--- 12 Mar 2004: coordinate order popup menu ---*/
 
@@ -1022,7 +1028,9 @@ STATUS("making imag->rowcol") ;
 
     SAVEUNDERIZE(XtParent(imag->crosshair_menu)) ;
     VISIBILIZE_WHEN_MAPPED(imag->crosshair_menu) ;
+#if 0
     if( !AFNI_yesenv("AFNI_DISABLE_TEAROFF") ) TEAROFFIZE(imag->crosshair_menu) ;
+#endif
 
     XtInsertEventHandler( imag->crosshair_label , /* handle events in label */
                              ButtonPressMask ,    /* button presses */
@@ -1076,6 +1084,28 @@ STATUS("making imag->rowcol") ;
     XtAddCallback( imag->crosshair_ijk_pb , XmNactivateCallback ,
                    AFNI_crosshair_pop_CB , im3d ) ;
 
+    imag->crosshair_jtxyz_pb =      /* 01 Aug 2011 */
+       XtVaCreateManagedWidget(
+          "menu" , xmPushButtonWidgetClass , imag->crosshair_menu ,
+             LABEL_ARG("Jump to (xyz)") ,
+             XmNmarginHeight , 0 ,
+             XmNtraversalOn , True  ,
+             XmNinitialResourcesPersistent , False ,
+          NULL ) ;
+    XtAddCallback( imag->crosshair_jtxyz_pb , XmNactivateCallback ,
+                   AFNI_crosshair_pop_CB , im3d ) ;
+
+    imag->crosshair_jtijk_pb =      /* 01 Aug 2011 */
+       XtVaCreateManagedWidget(
+          "menu" , xmPushButtonWidgetClass , imag->crosshair_menu ,
+             LABEL_ARG("Jump to (ijk)") ,
+             XmNmarginHeight , 0 ,
+             XmNtraversalOn , True  ,
+             XmNinitialResourcesPersistent , False ,
+          NULL ) ;
+    XtAddCallback( imag->crosshair_jtijk_pb , XmNactivateCallback ,
+                   AFNI_crosshair_pop_CB , im3d ) ;
+
    } /*- end of crosshair_label popup menu -*/
 
    /*--- 01 Jan 1997: horizontal rowcol for crosshair stuff ---*/
@@ -1121,7 +1151,7 @@ STATUS("making imag->crosshair_av") ;
                         ) ;
 
    if( AVOPT_STYLE == MCW_AV_optmenu )
-      AVOPT_columnize( imag->crosshair_av , 3 ) ;
+     AVOPT_columnize( imag->crosshair_av , 3 ) ;
 
    imag->crosshair_av->parent     = (XtPointer) im3d ;
    imag->crosshair_av->allow_wrap = True ;
@@ -2952,6 +2982,7 @@ STATUS("making func->rowcol") ;
 
    /** Jul 1997: optmenu to choose top value for scale **/
 
+   BBOX_set_wtype("font8") ;
    func->thr_top_av = new_MCW_arrowval( func->thr_rowcol ,
                                         "**" ,
                                         AVOPT_STYLE ,
@@ -2959,6 +2990,7 @@ STATUS("making func->rowcol") ;
                                         MCW_AV_notext , 0 ,
                                         AFNI_thresh_top_CB , (XtPointer)im3d ,
                                         AFNI_thresh_tlabel_CB , NULL ) ;
+   BBOX_set_wtype(NULL) ;
 
    im3d->vinfo->func_thresh_top = 1.0 ;
 
@@ -2972,6 +3004,8 @@ STATUS("making func->rowcol") ;
 
    MCW_reghint_children( func->thr_top_av->wrowcol ,
                          "Power-of-10 range of slider" ) ;
+
+   sel_height -= (8+view_height/view_count) * 0.5 ;
 
    /*-- intensity threshold stuff --*/
 
@@ -3060,7 +3094,6 @@ STATUS("making func->rowcol") ;
             XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
-
    XtAddCallback( func->pbar_equalize_pb , XmNactivateCallback ,
                   AFNI_pbar_CB , im3d ) ;
 
@@ -3074,11 +3107,21 @@ STATUS("making func->rowcol") ;
             XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
-
    XtAddCallback( func->pbar_settop_pb , XmNactivateCallback ,
                   AFNI_pbar_CB , im3d ) ;
-
    MCW_register_hint( func->pbar_settop_pb , "Is scaled by 'range' controls" ) ;
+
+   func->pbar_flip_pb =
+      XtVaCreateManagedWidget(
+         "dialog" , xmPushButtonWidgetClass , func->pbar_menu ,
+            LABEL_ARG("Flip Colors") ,
+            XmNmarginHeight , 0 ,
+            XmNtraversalOn , True  ,
+            XmNinitialResourcesPersistent , False ,
+         NULL ) ;
+   XtAddCallback( func->pbar_flip_pb , XmNactivateCallback ,
+                  AFNI_pbar_CB , im3d ) ;
+   MCW_register_hint( func->pbar_flip_pb , "Top-to-Bottom color inversion" ) ;
 
    (void) XtVaCreateManagedWidget(
             "dialog" , xmSeparatorWidgetClass , func->pbar_menu ,
@@ -3245,12 +3288,6 @@ STATUS("making func->rowcol") ;
      npane = (im3d->vinfo->use_posfunc) ? INIT_panes_pos
                                         : INIT_panes_sgn ;
 
-#if 0
-     sel_height -= (8+view_height/view_count) * 1 ; /* 1 = widgets below pbar */
-#else
-     sel_height -= (8+view_height/view_count) * 0.5 ;
-#endif
-
      func->inten_pbar = new_MCW_pbar(
                           func->inten_rowcol ,        /* parent */
                           im3d->dc ,                  /* display */
@@ -3258,7 +3295,8 @@ STATUS("making func->rowcol") ;
                           sel_height / npane ,        /* init pane height */
                           pmin , pmax ,               /* value range */
                           AFNI_inten_pbar_CB ,        /* callback */
-                          (XtPointer)im3d     ) ;     /* callback data */
+                          (XtPointer)im3d ,           /* callback data */
+                          AFNI_yesenv("AFNI_PBAR_THREE") ) ; /* bigthree mode? */
 
      /* 04 Feb 2002: colorscale-ize? */
 
@@ -3280,7 +3318,7 @@ STATUS("making func->rowcol") ;
    func->inten_pbar->npan_save[1] = INIT_panes_pos ;
    func->inten_pbar->hide_changes = INIT_panes_hide ;
 
-   AFNI_setup_inten_pbar( im3d ) ;  /* other setup stuff (afni_func.c) */
+   AFNI_setup_inten_pbar( func->inten_pbar ) ;  /* other setup stuff (afni_func.c) */
 
    MCW_reghelp_children( func->inten_pbar->panew ,
       "Drag the separator bars to alter the thresholds.\n"
@@ -3321,6 +3359,7 @@ STATUS("making func->rowcol") ;
                 XmNseparatorType , XmSINGLE_LINE ,
             NULL ) ;
 
+   BBOX_set_wtype("font8") ;
    func->inten_av = new_MCW_arrowval(
                        func->inten_rowcol ,
                         "#" ,
@@ -3354,6 +3393,8 @@ STATUS("making func->rowcol") ;
                     MCW_BB_check ,
                     MCW_BB_noframe ,
                     AFNI_inten_bbox_CB , (XtPointer)im3d ) ;
+
+   BBOX_set_wtype(NULL) ;
 
    func->inten_bbox->parent = (XtPointer)im3d ;
 
@@ -3510,6 +3551,7 @@ STATUS("making func->rowcol") ;
          NULL ) ;
    im3d->vedset.code = 0 ; im3d->vedset.ival = -1 ;
    im3d->vedskip = 0 ;  /* 20 Dec 2007 */
+   im3d->vednomask = 0 ; /* 01 Aug 2011 */
 
    func->clu_cluster_pb =
       XtVaCreateManagedWidget(
@@ -3964,9 +4006,7 @@ STATUS("making func->rowcol") ;
                              MCW_AV_notext , 0 ,
                              AFNI_range_rotate_av_CB , (XtPointer) func->inten_pbar ,
                              NULL,NULL ) ;
-
    func->range_rotate_av->parent = (XtPointer) im3d ;
-
    MCW_reghelp_children( func->range_rotate_av->wrowcol ,
                          "Rotate the colors on\n"
                          "the 'pbar' up or down.\n"
@@ -3974,8 +4014,22 @@ STATUS("making func->rowcol") ;
                          "[rotate in steps of 4]"  ) ;
    MCW_reghint_children( func->range_rotate_av->wrowcol ,
                          "Rotate pbar colors" ) ;
-
    ADDTO_KILL(im3d->kl,func->range_rotate_av) ;
+
+   func->pbar_flip_pb2 =
+      XtVaCreateManagedWidget(
+         "dialog" , xmPushButtonWidgetClass , hrc ,
+            LABEL_ARG("F") ,
+            XmNmarginWidth  , 1 ,
+            XmNmarginHeight , 0 ,
+            XmNspacing      , 1 ,
+            XmNborderWidth  , 0 ,
+            XmNtraversalOn , True  ,
+            XmNinitialResourcesPersistent , False ,
+         NULL ) ;
+   XtAddCallback( func->pbar_flip_pb2 , XmNactivateCallback ,
+                  AFNI_pbar_CB , im3d ) ;
+   MCW_register_hint( func->pbar_flip_pb2 , "Top-to-Bottom color inversion" ) ;
 
    XtManageChild( hrc ) ;
 
@@ -4066,7 +4120,7 @@ STATUS("making func->rowcol") ;
 
    func->bkgd_lab =
       XtVaCreateWidget(
-         "dialog" , xmLabelWidgetClass , func->options_rowcol ,
+         "font8" , xmLabelWidgetClass , func->options_rowcol ,
             XmNrecomputeSize , False ,
             XmNlabelString , xstr ,
             XmNmarginHeight, 0 ,
@@ -4908,6 +4962,7 @@ STATUS("making prog->rowcol") ;
 
    vwid->picture       = NULL ;  /* default ==> no picture */
    vwid->picture_index = 0 ;
+   vwid->tips_pb       = NULL ;  /* not always created */
 
 #ifdef WANT_LOGO_BITMAP
    if( im3d->type == AFNI_3DDATA_VIEW ){
@@ -4931,6 +4986,31 @@ STATUS("making prog->rowcol") ;
                  XmNinitialResourcesPersistent , False ,
              NULL ) ;
       MCW_register_help( vwid->picture , AFNI_abohelp ) ;
+
+      if( num_entry == 1 && !ALLOW_realtime ){
+        vwid->tips_pb =
+           XtVaCreateManagedWidget(
+              "dialog" , xmPushButtonWidgetClass , vwid->top_form ,
+                 LABEL_ARG("AFNI Tips") ,
+                 XmNleftAttachment   , XmATTACH_WIDGET ,
+                 XmNleftWidget       , vwid->picture ,
+                 XmNleftOffset       , TIPS_PLUS_SHIFT ,
+                 XmNbottomAttachment , XmATTACH_OPPOSITE_WIDGET ,
+                 XmNbottomWidget     , vwid->picture ,
+                 XmNbottomOffset     , 2 ,
+                 XmNshadowThickness  , 3 ,
+                 XmNtraversalOn      , True  ,
+                 XmNinitialResourcesPersistent , False ,
+              NULL ) ;
+        MCW_register_help( vwid->tips_pb , "Gives some help about\n"
+                                           "parts of the AFNI GUI\n"
+                                           "that are hard to find." ) ;
+        MCW_register_hint( vwid->tips_pb , "Tips about AFNI interface" ) ;
+        XtAddCallback( vwid->tips_pb , XmNactivateCallback ,
+                       AFNI_tips_CB , im3d ) ;
+        MCW_set_widget_bg( vwid->tips_pb , "#000044" , 0 ) ;
+        MCW_set_widget_fg( vwid->tips_pb , "#ffddaa" ) ;
+      }
    }
 #else
    MCW_register_help( imag->rowcol  , AFNI_abohelp ) ;
@@ -5807,6 +5887,9 @@ ENTRY("AFNI_initialize_controller") ;
    POPUP_cursorize( imag->crosshair_label ) ;
    POPUP_cursorize( im3d->vwid->func->thr_label ) ;
 
+   if( im3d->vwid->view->marks_enabled )
+     SHIFT_TIPS( im3d , TIPS_MINUS_SHIFT ) ;
+
    RESET_AFNI_QUIT(im3d) ;
    EXRETURN ;
 }
@@ -6078,6 +6161,25 @@ ENTRY("AFNI_lock_button") ;
 
    MCW_reghint_children( dmode->ijk_lock_bbox->wrowcol ,
                          "Lock using voxel indices?" ) ;
+
+   /*** button box to control the threshold lock ***/
+
+   { static char *thr_lock_label[3] = { "Free Thr.",
+                                        "Lock V." ,
+                                        "Lock P."  } ;
+     GLOBAL_library.thr_lock = AFNI_thresh_lock_env_val();
+     dmode->thr_lock_bbox =
+            new_MCW_bbox( menu ,
+                          3 ,
+                          thr_lock_label ,
+                          MCW_BB_radio_zero ,
+                          MCW_BB_frame ,
+                          AFNI_func_thrlock_change_CB,
+                          (XtPointer)im3d );
+     MCW_set_bbox( dmode->thr_lock_bbox, 1<<GLOBAL_library.thr_lock);
+     MCW_reghint_children( dmode->thr_lock_bbox->wrowcol ,
+                            "Lock thresholds?" ) ;
+    }
 
    /*** pushbuttons ***/
 
@@ -6737,7 +6839,7 @@ int AFNI_set_func_range_nval(XtPointer *vp_im3d, float rval)
      im3d->cont_range_fval = im3d->vwid->func->range_av->fval;
      im3d->cont_pos_only = MCW_val_bbox( im3d->vwid->func->inten_bbox) ;
      im3d->cont_pbar_index = im3d->vwid->func->inten_pbar->bigmap_index;
-     
+
      im3d->first_integral = 0;
    }
 
@@ -6794,6 +6896,37 @@ int AFNI_reset_func_range_cont(XtPointer *vp_im3d)
    RETURN(0) ;
 }
 
+/* suggest a colormap for ROI dsets */
+char *AFNI_smallest_intpbar(THD_3dim_dataset *dset)
+{
+   float mxset;
+   static int warn=0;
+
+   mxset = THD_dset_max(dset, 1);
+
+   if (mxset <= 32) {
+      return("ROI_i32" ) ;
+   } else if (mxset <= 64) {
+      return("ROI_i64" ) ;
+   } else if (mxset <= 128) {
+      return("ROI_i128" ) ;
+   } else if (mxset <= 256) {
+      return("ROI_i256" ) ;
+   } else if (mxset > 256) {
+      if (!(warn % 10)) {
+         /* You might want to override the automatic setting of the
+         range with a call to
+            AFNI_set_func_range_nval(pbar->parent,
+                           THD_dset_max(dset, 1));
+            after all the bigmap setup is done ... */
+         WARNING_message("Distinct values might map to the same color"
+                      "in %s\n", DSET_PREFIX(dset));
+      } ++ warn;
+      return("ROI_i256" ) ;
+   }
+
+   return("ROI_i256" ) ;
+}
 
 /*----------------------------------------------------------------------*/
 
@@ -6815,10 +6948,8 @@ int AFNI_set_dset_pbar(XtPointer *vp_im3d)
    im3d = (Three_D_View *)vp_im3d;
    if( !IM3D_OPEN(im3d) ) RETURN(0) ;
 
-   atr = THD_find_string_atr( im3d->fim_now->dblk ,
-                              "VALUE_LABEL_DTABLE" ) ;
-
-   if (atr) {
+   if ((atr = THD_find_string_atr( im3d->fim_now->dblk ,
+                              "VALUE_LABEL_DTABLE" ))) {
       /* switch to an ROI colormap */
       if (!(nel = NI_read_element_fromstring(atr->ch))) {
          fprintf(stderr,"** WARNING: Poorly formatted VALUE_LABEL_DTABLE\n");
@@ -6830,9 +6961,13 @@ int AFNI_set_dset_pbar(XtPointer *vp_im3d)
       if (icmap >=0 ) {
          PBAR_set_bigmap( im3d->vwid->func->inten_pbar ,  pbar_name) ;
       } else {
-         PBAR_set_bigmap_index( im3d->vwid->func->inten_pbar ,
+         if (1) { /* one approach */
+            PBAR_set_bigmap( im3d->vwid->func->inten_pbar ,
+                             AFNI_smallest_intpbar(im3d->fim_now) ) ;
+         } else { /* another perhaps */
+            PBAR_set_bigmap_index( im3d->vwid->func->inten_pbar ,
                               im3d->int_pbar_index ) ;
-/*         PBAR_set_bigmap( im3d->vwid->func->inten_pbar , "ROI_i256" ) ; */
+         }
       }
       switched = 1;
       /* Problem is that when you switch back to a non  ROI dset,
@@ -6840,6 +6975,33 @@ int AFNI_set_dset_pbar(XtPointer *vp_im3d)
       Perhaps one should bite the bullet and create a structure
       that preserves the last colormap setup for a dset.
       Hmmm, got to discuss this with Bob, Daniel, and Rick */
+   } else if ((atr = THD_find_string_atr( im3d->fim_now->dblk ,
+                              "ATLAS_LABEL_TABLE" ))) {
+      /* switch to an ROI colormap */
+      icmap = -1;
+      if (!(nel = NI_read_element_fromstring(atr->ch))) {
+         fprintf(stderr,"** WARNING: Poorly formatted ATLAS_LABEL_TABLE\n");
+      } else {
+         /* usually atlases don't have a pbar_name, but it does
+         not hurt to check, allowing for its potential use someday */
+         if ((pbar_name = NI_get_attribute(nel,"pbar_name"))) {
+            icmap = PBAR_get_bigmap_index(pbar_name);
+         }
+         NI_free_element(nel); nel = NULL;
+      }
+
+      if (icmap >=0 ) {
+         PBAR_set_bigmap( im3d->vwid->func->inten_pbar ,  pbar_name) ;
+      } else {
+         if (1) { /* one approach */
+            PBAR_set_bigmap( im3d->vwid->func->inten_pbar ,
+                             AFNI_smallest_intpbar(im3d->fim_now) ) ;
+         } else { /* another perhaps */
+            PBAR_set_bigmap_index( im3d->vwid->func->inten_pbar ,
+                              im3d->int_pbar_index ) ;
+         }
+      }
+      switched = 1;
    } else {
       /*
       Here one could guess at the moment (See is_integral_dset).
@@ -6850,7 +7012,12 @@ int AFNI_set_dset_pbar(XtPointer *vp_im3d)
       */
       /* use ROI_i256 for now for datasets marked as integer cmaps (even sparse ones) */
       if(im3d->fim_now->int_cmap) {
-         PBAR_set_bigmap( im3d->vwid->func->inten_pbar , "ROI_i256" ) ;
+         if (1) { /* one approach */
+            PBAR_set_bigmap( im3d->vwid->func->inten_pbar ,
+                             AFNI_smallest_intpbar(im3d->fim_now) );
+         } else { /* or perhaps */
+            PBAR_set_bigmap( im3d->vwid->func->inten_pbar , "ROI_i256" ) ;
+         }
       }
       else {
 #if 0
@@ -6867,82 +7034,6 @@ int AFNI_set_dset_pbar(XtPointer *vp_im3d)
      AFNI_inten_pbar_CB( im3d->vwid->func->inten_pbar , im3d , 0 ) ;
      POPUP_cursorize(im3d->vwid->func->inten_pbar->panew ) ;
    }
-   RETURN(0);
-}
-
-/*
-   Put the label associated with value val in string str
-      (64 chars are copied into str)
-*/
-int AFNI_get_dset_val_label(THD_3dim_dataset *dset, double val, char *str)
-{
-/*   MCW_pbar *pbar = NULL;*/
-   ATR_string *atr=NULL;
-/*   char *pbar_name=NULL;*/
-   char *str_lab=NULL, sval[128]={""};
-
-   ENTRY("AFNI_get_dset_val_label") ;
-
-   if (!str) RETURN(1);
-
-   str[0]='\0';
- 
-   if (!dset) RETURN(1);
-
-   if (!dset->Label_Dtable &&
-       (atr = THD_find_string_atr( dset->dblk ,
-                              "VALUE_LABEL_DTABLE" ))) {
-      dset->Label_Dtable = Dtable_from_nimlstring(atr->ch);
-   }
-
-   if (dset->Label_Dtable) {
-      /* Have hash, will travel */
-      sprintf(sval,"%d", (int)val);
-      str_lab = findin_Dtable_a(sval,
-                                dset->Label_Dtable);
-      /* fprintf(stderr,"ZSS: Have label '%s' for value '%s'\n",
-                     str_lab ? str_lab:"NULL", sval); */
-      if (str_lab) snprintf(str,64, "%s",str_lab);
-   }
-
-   RETURN(0);
-}
-
-/*
-   Put the value associated with label in val
-   Unlike AFNI_get_dset_val_label,
-   This function has not been tested. 
-*/
-int AFNI_get_dset_label_val(THD_3dim_dataset *dset, double *val, char *str)
-{
-/*   MCW_pbar *pbar = NULL;*/
-   ATR_string *atr=NULL;
-/*   char *pbar_name=NULL;*/
-   char *str_lab=NULL;
-
-   ENTRY("AFNI_get_dset_label_val") ;
-
-   if (!str) RETURN(1);
- 
-   *val = 0;
-    
-   if (!dset) RETURN(1);
-
-   if (!dset->Label_Dtable &&
-       (atr = THD_find_string_atr( dset->dblk ,
-                              "VALUE_LABEL_DTABLE" ))) {
-      dset->Label_Dtable = Dtable_from_nimlstring(atr->ch);
-   }
- 
-   if (dset->Label_Dtable) {
-      /* Have hash, will travel */
-      str_lab = findin_Dtable_b(str,
-                                dset->Label_Dtable);
-      /* fprintf(stderr,"ZSS: Have value '%s' for label '%s'\n",
-                     str_lab ? str_lab:"NULL", str); */
-      if (str_lab) *val = strtol(str_lab,NULL, 10);
-   }
-
    RETURN(0);
 }
 
@@ -6978,6 +7069,10 @@ ENTRY("AFNI_sesslab_EV") ;
            view->marks_enabled = 1 ;
          }
          XWarpPointer( XtDisplay(w) , None , XtWindow(w) , 0,0,0,0,30,10 ) ;
+
+         SHIFT_TIPS( im3d ,
+                     (view->marks_enabled) ? TIPS_MINUS_SHIFT : TIPS_PLUS_SHIFT ) ;
+
        } else if( event->button == Button2 ){
          XUngrabPointer( event->display , CurrentTime ) ;
        }

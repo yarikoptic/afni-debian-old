@@ -3,7 +3,7 @@
 
 
 #if 1
-void usage_SUMA_BrainWrap (SUMA_GENERIC_ARGV_PARSE *ps)
+void usage_SUMA_BrainWrap (SUMA_GENERIC_ARGV_PARSE *ps, int detail)
    {
       static char FuncName[]={"usage_SUMA_BrainWrap"};
       char * s = NULL, *sio=NULL, *st = NULL, *sts = NULL;
@@ -14,8 +14,13 @@ void usage_SUMA_BrainWrap (SUMA_GENERIC_ARGV_PARSE *ps)
       printf ( 
 "\n"
 "Usage: A program to extract the brain from surrounding.\n"
-"  tissue from MRI T1-weighted images. The fully automated\n"
-"  process consists of three steps:\n"
+"  tissue from MRI T1-weighted images. \n"
+"  The simplest command would be:\n"
+"        3dSkullStrip <-input DSET>\n"
+"\n%s", detail ? "":"use -h or -help for more help detail.\n");
+   if (detail) {
+      printf ( 
+"  The fully automated process consists of three steps:\n"
 "  1- Preprocessing of volume to remove gross spatial image \n"
 "  non-uniformity artifacts and reposition the brain in\n"
 "  a reasonable manner for convenience.\n"
@@ -339,6 +344,7 @@ void usage_SUMA_BrainWrap (SUMA_GENERIC_ARGV_PARSE *ps)
 "     -brain_contour_xyz_file BRAIN_CONTOUR_XYZ.1D\n"
 "     -brain_hull_xyz_file BRAIN_HULL_XYZ.1D\n"
 "     -skull_outer_xyz_file SKULL_OUTER_XYZ.1D\n"
+"     -help: The help you need\n"
 "\n"
 /*
 "     -sm_fac SMFAC: Smoothing factor (Default is 1)\n"
@@ -350,10 +356,14 @@ void usage_SUMA_BrainWrap (SUMA_GENERIC_ARGV_PARSE *ps)
 */
 "%s"
 "\n", sio,  s);
-       SUMA_free(s); s = NULL; SUMA_free(st); st = NULL; SUMA_free(sio); sio = NULL; SUMA_free(sts); sts = NULL;         
-       s = SUMA_New_Additions(0, 1); printf("%s\n", s);SUMA_free(s); s = NULL;
-       printf("       Ziad S. Saad SSCC/NIMH/NIH saadz@mail.nih.gov     \n");
-       exit (0);
+      }
+      SUMA_free(s); s = NULL; SUMA_free(st); st = NULL; 
+      SUMA_free(sio); sio = NULL; SUMA_free(sts); sts = NULL;         
+      if (detail) {
+         s = SUMA_New_Additions(0, 1); printf("%s\n", s);SUMA_free(s); s = NULL;
+         printf("       Ziad S. Saad SSCC/NIMH/NIH saadz@mail.nih.gov     \n");
+      }
+      return;
    }
 /*!
    \brief parse the arguments for SurfSmooth program
@@ -467,7 +477,7 @@ SUMA_GENERIC_PROG_OPTIONS_STRUCT *SUMA_BrainWrap_ParseInput (
 	while (kar < argc) { /* loop accross command ine options */
 		/*fprintf(stdout, "%s verbose: Parsing command line...\n", FuncName);*/
 		if (strcmp(argv[kar], "-h") == 0 || strcmp(argv[kar], "-help") == 0) {
-			 usage_SUMA_BrainWrap(ps);
+			 usage_SUMA_BrainWrap(ps, strlen(argv[kar])>3?2:1);
           exit (0);
 		}
 		
@@ -990,8 +1000,10 @@ SUMA_GENERIC_PROG_OPTIONS_STRUCT *SUMA_BrainWrap_ParseInput (
       }
       
       if (!brk && !ps->arg_checked[kar]) {
-			fprintf (SUMA_STDERR,"Error %s:\nOption %s not understood. Try -help for usage\n", FuncName, argv[kar]);
-			exit (1);
+			SUMA_S_Errv("Option %s not understood. Try -help for usage\n", 
+                     argv[kar]);
+			suggest_best_prog_option(argv[0], argv[kar]);
+         exit (1);
 		} else {	
 			brk = NOPE;
 			kar ++;
@@ -1129,7 +1141,8 @@ int main (int argc,char *argv[])
    ps = SUMA_Parse_IO_Args(argc, argv, "-o;-talk;");
    
    if (argc < 2) {
-      usage_SUMA_BrainWrap(ps);
+      SUMA_S_Err("Too few parameters. Use 3dSkullStrip for details");
+      usage_SUMA_BrainWrap(ps, 0);
       exit (1);
    }
    
@@ -1558,7 +1571,7 @@ int main (int argc,char *argv[])
                ncode = 1;
                nbhd = MCW_rectmask ( 1.0f, 1.0f, 1.0f , 1.0f, 1.0f, 1.0f  ) ;
                fatoutset = THD_localstat( outset , NULL , nbhd , 1 , code, 
-                                          NULL, NULL) ;
+                                          NULL, NULL, -1) ;
                Opt->fatemask = 
                   (float *) SUMA_malloc( sizeof(float)*DSET_NVOX(fatoutset));
                if (!Opt->fatemask) {
@@ -2623,6 +2636,9 @@ int main (int argc,char *argv[])
       fprintf (SUMA_STDERR,"%s: Writing masked volume  ...\n", FuncName);
    OptDs->full_list = 1;
    OptDs->dval = 1;
+   if (Opt->MaskMode == 2) { /* Feb 2012, some anats ranged in the millions!*/
+      OptDs->datum = DSET_BRICK_TYPE(Opt->iset,0);
+   }
    dset = SUMA_FormAfnidset (NULL, isin_float,
                              SO->VolPar->nx*SO->VolPar->ny*SO->VolPar->nz,
                              OptDs);
@@ -2637,8 +2653,11 @@ int main (int argc,char *argv[])
       edopt->edit_clust = ECFLAG_SAME;
       edopt->clust_rmm = SUMA_MAX_PAIR(SUMA_ABS((DSET_DX(OptDs->mset))),
                                        SUMA_ABS((DSET_DY(OptDs->mset))));
-      edopt->clust_rmm = SUMA_MAX_PAIR(SUMA_ABS((DSET_DZ(OptDs->mset))), edopt->clust_rmm)*1.01;
-	   edopt->clust_vmul = 1000*SUMA_ABS((DSET_DX(OptDs->mset)))*SUMA_ABS((DSET_DY(OptDs->mset)))*SUMA_ABS((DSET_DZ(OptDs->mset)));
+      edopt->clust_rmm = SUMA_MAX_PAIR(SUMA_ABS((DSET_DZ(OptDs->mset))), 
+                                                 edopt->clust_rmm)*1.01;
+	   edopt->clust_vmul = 1000*SUMA_ABS((DSET_DX(OptDs->mset)))*
+                               SUMA_ABS((DSET_DY(OptDs->mset)))*
+                               SUMA_ABS((DSET_DZ(OptDs->mset)));
       edopt->erode_pv  = 75.0 / 100.0;
       edopt->dilate = 1;
       EDIT_one_dataset( dset , edopt);
@@ -2666,18 +2685,19 @@ int main (int argc,char *argv[])
                   "input dataset lie in the brain.\n");
          }
          fprintf(SUMA_STDERR,
-               "To obtain a masked version of the input with identical values inside\n"
-               "the brain, you can either use 3dSkullStrip's -orig_vol option\n"
-               "or run the following command:\n"
-               "  3dcalc -a %s -b %s+orig -expr 'a*step(b)' \\\n"
-               "         -prefix %s_orig_vol\n"
-               "to generate a new masked version of the input.\n",
+      "To obtain a masked version of the input with identical values inside\n"
+      "the brain, you can either use 3dSkullStrip's -orig_vol option\n"
+      "or run the following command:\n"
+      "  3dcalc -a %s -b %s+orig -expr 'a*step(b)' \\\n"
+      "         -prefix %s_orig_vol\n"
+      "to generate a new masked version of the input.\n",
                Opt->in_name, Opt->out_vol_prefix, Opt->out_vol_prefix);
                
       }
    }
    
-   /* you don't want to exit rapidly because the SUMA might not be done processing the last elements*/
+   /* you don't want to exit rapidly because the SUMA might not be done 
+      processing the last elements*/
    if (ps->cs->Send && !ps->cs->GoneBad) {
       /* cleanup and close connections */
       if (!SUMA_SendToSuma (SO, ps->cs, NULL, SUMA_NODE_XYZ, 2)) {

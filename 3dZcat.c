@@ -138,6 +138,7 @@ void ZCAT_read_opts( int argc , char * argv[] )
          ERROR_exit("Can't open dataset %s\n",argv[nopt-1]) ;
       }
       THD_force_malloc_type( dset->dblk , DATABLOCK_MEM_MALLOC ) ;
+      THD_make_cardinal(dset);    /* deoblique    21 Oct, 2011 [rickr] */
 
       if( ZCAT_type < 0 ) ZCAT_type = dset->type ;
 
@@ -220,13 +221,13 @@ void ZCAT_Syntax(void)
 int main( int argc , char * argv[] )
 {
    int ninp , ids , iv ,kz,new_nz, nx,ny,nz,nxy,nxyz ;
-   THD_3dim_dataset * new_dset=NULL , * dset ;
+   THD_3dim_dataset * new_dset=NULL , * dset=NULL ;
    THD_ivec3 iv_nxyz ;
    float * fvol , *ffac ;
    void  * svol ;
    int fscale ; FILE * data_file = NULL ;
    MRI_IMAGE *svol_im;
-   MRI_IMARR *im_array;
+   MRI_IMARR *im_array=NULL;
 
    /*** read input options ***/
 

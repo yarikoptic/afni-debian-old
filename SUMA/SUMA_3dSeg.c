@@ -37,7 +37,7 @@ int SUMA_SegEngine(SEG_OPTS *Opt)
  {
   if( LocalHead && omp_get_thread_num() == 0 )
     INFO_message("OpenMP thread count = %d",omp_get_num_threads()) ;
- }
+}
 #endif
 
    if (Opt->cset) {/* Hide Classes not for analysis */
@@ -452,6 +452,16 @@ int Seg_CheckOpts(SEG_OPTS *Opt)
       }
    }
    
+   /* Fix VoxDbg */
+   if (Opt->VoxDbg >= 0) {
+      Vox1D2Vox3D(Opt->VoxDbg, 
+                  DSET_NX(Opt->aset), DSET_NX(Opt->aset)*DSET_NY(Opt->aset),
+                  Opt->VoxDbg3);
+   } else if (Opt->VoxDbg3[0]>=0) {
+      Opt->VoxDbg = Opt->VoxDbg3[0] + Opt->VoxDbg3[1]*DSET_NX(Opt->aset) +
+                        Opt->VoxDbg3[2]*DSET_NX(Opt->aset)*DSET_NY(Opt->aset);
+   }
+   
    SUMA_set_SegFunc_debug(Opt->debug, Opt->VoxDbg, Opt->VoxDbg3, Opt->VoxDbgOut);
    
    SUMA_RETURN(1);
@@ -478,24 +488,14 @@ int main(int argc, char **argv)
    Opt = Seg_ParseInput (Opt,argv,  argc);
    Opt->hist = tross_commandline( FuncName , argc , argv ) ;
    
-   if (!Seg_CheckOpts(Opt)) {
-      SUMA_S_Err("Failed on option check");
-      SUMA_RETURN(1);
-   }
-   
    /* load the input data */
    if (!(Opt->aset = Seg_load_dset( Opt->aset_name ))) {      
       SUMA_RETURN(1);
    }
    
-   /* Fix VoxDbg */
-   if (Opt->VoxDbg >= 0) {
-      Vox1D2Vox3D(Opt->VoxDbg, 
-                  DSET_NX(Opt->aset), DSET_NX(Opt->aset)*DSET_NY(Opt->aset),
-                  Opt->VoxDbg3);
-   } else if (Opt->VoxDbg3[0]>=0) {
-      Opt->VoxDbg = Opt->VoxDbg3[0] + Opt->VoxDbg3[1]*DSET_NX(Opt->aset) +
-                        Opt->VoxDbg3[2]*DSET_NX(Opt->aset)*DSET_NY(Opt->aset);
+   if (!Seg_CheckOpts(Opt)) {
+      SUMA_S_Err("Failed on option check");
+      SUMA_RETURN(1);
    }
    
    /* Load mask dataset */
@@ -635,6 +635,14 @@ int main(int argc, char **argv)
          SUMA_S_Errv("Failed to shortize priCgA %s\n", Opt->priCgAname);
          SUMA_RETURN(1);
       }
+      /* set the floor of the input dset */
+      if (0) {
+         SUMA_S_Note("Setting probability floor, USEFULNESS NOT TESTED...");
+         if (!set_p_floor(Opt->priCgA, 0.1, Opt->cmask)) {
+            SUMA_S_Errv("Failed to set p floor for priCgA %s\n", Opt->priCgAname);
+            SUMA_RETURN(1);
+         }
+      }
    } else {
       /* uniform probability */
    }
@@ -750,7 +758,10 @@ int main(int argc, char **argv)
                           Opt->pstCgALL, -1, Opt->hist);
       AFNI_FEED(Opt->ps->cs, "pstCgALL-final", -1, Opt->pstCgALL);
    }
-   
+   if (Opt->aset) {
+      SUMA_Seg_Write_Dset(Opt->proot, "Anat",  
+                          Opt->aset, -1, Opt->hist);
+   }
    SUMA_S_Warn("Unmodulated output");
    if (!(SUMA_pst_C_giv_ALL(Opt->xset, 
                                Opt->cmask, Opt->cmask_count,

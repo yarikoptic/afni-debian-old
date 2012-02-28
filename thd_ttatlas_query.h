@@ -24,6 +24,10 @@ from a downloaded SPM toolbox. See the matlab function
 CA_EZ_Prep.m */
 #include "thd_ttatlas_CA_EZ.h"
 
+/* global web browser, unless we find somewhere better to put it          */
+extern char *GLOBAL_browser ;   /* moved from afni.h  22 Feb 2012 [rickr] */
+
+
 /* generic atlas functions and definitions - 03/13/2009 */
 /* #include "thd_atlas.h" */
 
@@ -148,6 +152,8 @@ typedef struct {
    char *atlas_name;
    char *atlas_description;
    char *atlas_comment;
+   char *atlas_type;  /* web or NULL for now, for web type, dset is http webpage address */
+   char *atlas_orient;  /* string to specify xyz order requests - Elsevier's web version uses "RSA"*/
    int atlas_found;
    ATLAS_DSET_HOLDER *adh;
 } ATLAS; /*!< All char * should be initialized when .niml file is loaded,
@@ -156,6 +162,8 @@ typedef struct {
               by the function Atlas_With_Trimming. The latter should
               be used almost exclusively to get an atlas */
 
+/* macro accessors for the atlas fields - first version is to pointer location, 
+   second _S version is for default string if NULL string in structure */
 #define ATL_COMMENT(xa) ( ( (xa) && (xa)->atlas_comment) ?   \
                            (xa)->atlas_comment : NULL )
 #define ATL_COMMENT_S(xa) ( (ATL_COMMENT(xa)) ? \
@@ -176,6 +184,18 @@ typedef struct {
 
 #define ATL_ADH_SET(xa) ( ( (xa) && (xa)->adh ) ? \
                            (xa)->adh->params_set : 0 )                            
+
+#define ATL_ORIENT(xa) ( ( (xa) && (xa)->atlas_orient) ?   \
+                           (xa)->atlas_orient : NULL )
+#define ATL_ORIENT_S(xa) ( (ATL_ORIENT(xa)) ? \
+                              (ATL_ORIENT(xa)) : "RAI" )
+
+#define ATL_TYPE(xa) ( ( (xa) && (xa)->atlas_type) ?   \
+                           (xa)->atlas_type : NULL )
+#define ATL_TYPE_S(xa) ( (ATL_TYPE(xa)) ? \
+                              (xa)->atlas_type : "None" )
+/* is the atlas a web type */
+#define ATL_WEB_TYPE(xa) (strcasecmp((ATL_TYPE_S(xa)),"web")== 0)
 
 #define ATL_FOUND(xa) ( (xa)  ? \
                            ((xa)->atlas_found) : 0 )
@@ -223,6 +243,33 @@ typedef struct {
    void *rgblist;
 } ATLAS_LUT;
 
+typedef enum { LEV=0, /* Levenshtein distance */
+               FLD, /* Length Difference */
+               FCD, /* Number of characters from s2 found in s1*/
+               PMD, /* partial match depth */
+               MWI, /* Matching word index (in line of words) */
+               MWL, /* Line in multi-line text of matching word */
+               IWD, /* Intra Words Distance */ 
+               N_APPROX_STR_DIMS /* leave the last */ } APPROX_STR_DIMS;
+
+#define SRCFILE_MAX 32
+
+typedef struct {
+   int d[N_APPROX_STR_DIMS];
+   char srcfile[SRCFILE_MAX+1]; 
+} APPROX_STR_DIFF;
+
+typedef struct {
+   float w[N_APPROX_STR_DIMS]; 
+} APPROX_STR_DIFF_WEIGHTS;
+
+
+#define WAMI_WEB_PRINT_XML    1
+#define WAMI_WEB_BROWSER      2
+#define WAMI_WEB_STRUCT       3
+
+#define MAX_URL 1024
+
 const char *Atlas_Val_Key_to_Val_Name(ATLAS *atlas, int tdval);
 int Init_Whereami_Max_Find(void);
 void Set_Whereami_Max_Find(int n);
@@ -235,6 +282,7 @@ int *z_rand_order(int bot, int top, long int seed);
 int *z_iqsort (float *x , int nx );
 int *z_idoubleqsort (double *x , int nx );
 int *z_idqsort (int *x , int nx );
+int *z_istrqsort (char **x , int nx );
 void Show_Atlas_Region (AFNI_ATLAS_REGION *aar);
 AFNI_ATLAS_REGION * Free_Atlas_Region (AFNI_ATLAS_REGION *aar);
 AFNI_ATLAS_REGION * Atlas_Chunk_Label(char *lbli, int id, char *aname);
@@ -242,6 +290,47 @@ AFNI_ATLAS *Build_Atlas (char *aname, ATLAS_LIST *atlas_list) ;
 void Show_Atlas (AFNI_ATLAS *aa);
 AFNI_ATLAS *Free_Atlas(AFNI_ATLAS *aa) ;
 AFNI_ATLAS_REGION *ROI_String_Decode(char *str, ATLAS_LIST *atlas_list);
+char * deblank_name(char *name);
+char * depunct_name(char *name);
+char * dequote_name(char *name, char qo);
+int begins_with(char *name, char *quote, int debl);
+int ends_with(char *name, char *quote, int debl);
+APPROX_STR_DIFF_WEIGHTS *init_str_diff_weights(APPROX_STR_DIFF_WEIGHTS *Dwi);
+float best_approx_str_match(char **words, int N_words, char *str, byte ci,
+                           APPROX_STR_DIFF_WEIGHTS *Dwi);
+char **approx_str_sort(char **words, int N_words, char *str, byte ci, 
+                       float **sorted_score, byte word_split,
+                       APPROX_STR_DIFF_WEIGHTS *Dwi,
+                       APPROX_STR_DIFF **Dout);
+char **approx_str_sort_text(char *text, int *N_ws, char *str, 
+                            byte ci, float **sorted_score,
+                            APPROX_STR_DIFF_WEIGHTS *Dwi,
+                            APPROX_STR_DIFF **Dout);                    
+char **approx_str_sort_tfile(char *fname, int *N_ws, char *str, 
+                            byte ci, float **sorted_score,
+                            APPROX_STR_DIFF_WEIGHTS *Dwi,
+                            APPROX_STR_DIFF **Dout, int verb);
+THD_string_array *approx_str_sort_Ntfile(
+                      char **fnames, int N_names, char *str, 
+                      byte ci, float **sorted_score,
+                      APPROX_STR_DIFF_WEIGHTS *Dwi,
+                      APPROX_STR_DIFF **Doutp, int verb);
+#define APSEARCH_TMP_PREF "__apsearch"
+char **approx_str_sort_phelp(char *prog, int *N_ws, char *str, 
+                            byte ci, float **sorted_score,
+                            APPROX_STR_DIFF_WEIGHTS *Dwi,
+                            APPROX_STR_DIFF **Dout);
+char **approx_str_sort_all_popts(char *prog, int *N_ws, 
+                            byte ci, float **sorted_score,
+                            APPROX_STR_DIFF_WEIGHTS *Dwi,
+                            APPROX_STR_DIFF **Dout);
+char **approx_str_sort_readmes(char *str, int *N_r);
+char *find_readme_file(char *str);
+int view_text_file(char *progname);
+void web_prog_help(char *prog);
+void web_class_docs(char *prog);
+int view_web_link(char *link, char *browser);
+char *approx_string_diff_info(APPROX_STR_DIFF *D,APPROX_STR_DIFF_WEIGHTS *Dwi); 
 ATLAS_SEARCH *Find_Atlas_Regions(AFNI_ATLAS *aa, AFNI_ATLAS_REGION *ur , 
                                  ATLAS_SEARCH *usethissearch);
 ATLAS_SEARCH *Free_Atlas_Search(ATLAS_SEARCH *as);
@@ -308,6 +397,8 @@ char *Atlas_Code_to_Atlas_Description(AFNI_ATLAS_CODES icod);
 char *Atlas_Code_to_Atlas_Name (AFNI_ATLAS_CODES cod);
 int init_global_atlas_list (void);
 ATLAS *get_Atlas_Named(char *atname, ATLAS_LIST *atlas_list);
+char *suggest_Atlas_Named(char *atname, ATLAS_LIST *atlas_list);
+ATLAS *get_Atlas_ByDsetID(char *dsetid, ATLAS_LIST *atlas_list);
 ATLAS_LIST *Atlas_Names_to_List(char **atnames, int natlases);
 char **free_names_list(char **nl, int N_nl);
 int find_in_names_list(char **nl, int N_nl, char *name);
@@ -325,19 +416,48 @@ int is_small_TT(ATLAS *atlas);
 int is_big_TT(ATLAS *atlas);
 char * TT_whereami_default_spc_name (void);
 int is_Dset_Space_Named(THD_3dim_dataset *dset, char *name);
+char *gen_space_str(char *space_str);
+int equivalent_space(char *inspace_str);
+char *get_out_space(void);
+void set_out_space(char *space_str);
+
 char **atlas_reference_string_list(char *atname, int *N_refs);
 char *atlas_version_string(char *atname);
 ATLAS_POINT_LIST *atlas_point_list(char *atname);
 ATLAS_POINT_LIST *atlas_point_list_old_way(char *atname);
 int genx_load_atlas_dset(ATLAS *atlas);
 int purge_atlas(char *atname);
+THD_string_array *get_working_atlas_name_list(void);
+THD_string_array *recreate_working_atlas_name_list(void);
 ATLAS_SPACE_LIST *get_G_space_list(void);
 ATLAS_XFORM_LIST *get_G_xform_list(void);
 ATLAS_LIST* get_G_atlas_list(void);
 ATLAS_TEMPLATE_LIST *get_G_templates_list(void);
-NI_stream find_atlas_niml_file(void);
-NI_stream open_atlas_niml(char * nimlname);
-          
+char *find_atlas_niml_file(char * nimlname, int nini);
+ATLAS_LIST *env_atlas_list(void);
+char **env_space_list(int *);
+int env_dec_places(void);
+
+char *Current_Atlas_Default_Name(void);
+char **Atlas_Names_List(ATLAS_LIST *atl);
+int AFNI_get_dset_val_label(THD_3dim_dataset *dset,  /* 26 Feb 2010 ZSS */
+                                    double val, char *str);
+int AFNI_get_dset_label_val(THD_3dim_dataset *dset, 
+                                    double *val, char *str);/* 02 Nov 2010 ZSS */
+char *elsevier_query(float xx, float yy, float zz, ATLAS *atlas);
+char *elsevier_query_request(float xx, float yy, float zz, ATLAS *atlas, int el_req_type);
+void wami_query_web(ATLAS *atlas, ATLAS_COORD ac, ATLAS_QUERY *wami);
+
+char * whereami_XML_get(char *data, char *name);
+int whereami_browser(char *url);
+void set_wami_web_found(int found);
+int get_wami_web_found(void);
+void set_wami_web_reqtype(int reqtype);
+int get_wami_web_reqtype(void);
+void set_wami_webpage(char *url);
+char * get_wami_webpage(void);
+void open_wami_webpage(void);
+
 /* Transforms for going from one space to another */
 #if 0
 static char MNI_N27_to_AFNI_TLRC_HEAD[256] = {"TT_N27+tlrc"}; /*!<  TT_N27+tlrc was obtained by transforming N27 from MNI 

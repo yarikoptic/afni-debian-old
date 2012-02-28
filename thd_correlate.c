@@ -184,6 +184,18 @@ float tictactoe_corr( int n , float *x , float rv , float *r )
    return ( ss/sqrtf(rv*xv) ) ;
 }
 
+/*------------------------------------------------------------------------------*/
+
+float THD_tictactoe_corr( int n , float *x , float *y )
+{
+   float yv , xv ; register float ss ; register int ii ;
+   if( n < 3 ) return 0.0f ;
+   xv = tictactoe_corr_prepare(n,x) ; if( xv <= 0.0f ) return 0.0f ;
+   yv = tictactoe_corr_prepare(n,y) ; if( yv <= 0.0f ) return 0.0f ;
+   for( ii=0,ss=0.0f ; ii < n ; ii++ ) ss += x[ii]*y[ii] ;
+   return( ss / sqrtf(xv*yv) ) ;
+}
+
 /*=============================================================================
   Compute correlations, destructively (i.e., mangling the input arrays)
 ===============================================================================*/
@@ -193,7 +205,9 @@ float tictactoe_corr( int n , float *x , float rv , float *r )
 
 float THD_spearman_corr( int n , float *x , float *y )
 {
-   float xv = spearman_rank_prepare(n,x) ;
+   float xv ;
+   if( n < 2 ) return 0.0f ;
+   xv =  spearman_rank_prepare(n,x) ;
    if( xv <= 0.0f ) return 0.0f ;
    return spearman_rank_corr( n,y,xv,x ) ;
 }
@@ -216,6 +230,7 @@ float THD_spearman_corr_nd( int n , float *x , float *y )
 
 float THD_ktaub_corr( int n , float *x , float *y )
 {
+   if( n < 2 ) return 0.0f ;
    qsort_floatfloat( n , x , y ) ;    /* preliminary sorting of x, carrying y */
    return kendallNlogN( x , y , n ) ; /* the actual work */
 }
@@ -225,7 +240,9 @@ float THD_ktaub_corr( int n , float *x , float *y )
 
 float THD_quadrant_corr( int n , float *x , float *y )
 {
-   float xv = quadrant_corr_prepare(n,x) ;
+   float xv ;
+   if( n < 2 ) return 0.0f ;
+   xv = quadrant_corr_prepare(n,x) ;
    if( xv <= 0.0f ) return 0.0f ;
    return quadrant_corr( n,y,xv,x ) ;
 }
@@ -276,6 +293,7 @@ float THD_pearson_corr( int n, float *x , float *y )
    float xm=0.0f , ym=0.0f ;
    register int ii ;
 
+   if( n < 2 ) return 0.0f ;
    for( ii=0 ; ii < n ; ii++ ){ xm += x[ii] ; ym += y[ii] ; }
    xm /= n ; ym /= n ;
    for( ii=0 ; ii < n ; ii++ ){
@@ -463,6 +481,45 @@ float THD_eta_squared( int n, float *x , float *y )
    return 1.0 - num/denom ;
 }
 
+/*----------------------------------------------------------------*/
+/*! eta^2 (Cohen, NeuroImage 2008)              16 Jun 2011 [rickr]
+ *
+ *  Same as THD_eta_squared, but allow a mask and return a double.
+ *
+ *  eta^2 = 1 -  SUM[ (a_i - m_i)^2 + (b_i - m_i)^2 ]
+ *               ------------------------------------
+ *               SUM[ (a_i - M  )^2 + (b_i - M  )^2 ]
+ *
+ *  where  o  a_i and b_i are the vector elements
+ *         o  m_i = (a_i + b_i)/2
+ *         o  M = mean across both vectors
+ -----------------------------------------------------------------*/
+double THD_eta_squared_masked( int n, float *x , float *y, byte *mask )
+{
+   double num=0.0f , denom = 0.0f ;
+   float gm=0.0f , lm, vv, ww;
+   int ii, nm ;
+
+   for( ii=0, nm=0 ; ii < n ; ii++ )
+      if( !mask || mask[ii] ) { gm += x[ii] + y[ii] ; nm++ ; }
+
+   if( nm == 0 ) return 0.0 ;          /* bail on empty mask */
+
+   gm /= (2*nm) ;
+
+   for( ii=0 ; ii < n ; ii++ ){
+     if( mask && !mask[ii] ) continue;  /* skip any not in mask */
+
+     lm = 0.5f * ( x[ii] + y[ii] ) ;
+     vv = (x[ii]-lm); ww = (y[ii]-lm); num   += ( vv*vv + ww*ww );
+     vv = (x[ii]-gm); ww = (y[ii]-gm); denom += ( vv*vv + ww*ww );
+   }
+
+   if( num < 0.0 || denom <= 0.0 || num >= denom ) return 0.0 ;
+
+   return 1.0 - num/denom ;
+}
+
 /****************************************************************************/
 /*** Histogram-based measurements of dependence between two float arrays. ***/
 /****************************************************************************/
@@ -478,7 +535,7 @@ float THD_eta_squared( int n, float *x , float *y )
 #define WW(i) ((w==NULL) ? 1.0f : w[i])   /* weight function for i'th datum */
 
 static float *xc=NULL , *yc=NULL , *xyc=NULL , nww=0.0f ;
-static int nbin=0 , nbp=0 ;
+static int nbin=0 , nbp=0 , nbm=0 ;
 
 static float *xbin=NULL , *ybin=NULL ;
 static int  nxybin=0 ;
@@ -510,7 +567,7 @@ static float yclip_bot, yclip_top ;
 
 void clear_2Dhist(void)
 {
-   FREEIF(xc); FREEIF(yc); FREEIF(xyc); nbin = nbp = 0; return;
+   FREEIF(xc); FREEIF(yc); FREEIF(xyc); nbin = nbp = nbm = 0; nww = 0.0f; return;
 }
 
 /*--------------------------------------------------------------------------*/
@@ -744,15 +801,15 @@ int get_2Dhist_xybin( float **xb , float **yb )
 }
 
 /*--------------------------------------------------------------------------*/
-/*! Build 2D histogram of x[0..n-1] and y[0..n-1], each point optionally
+/*! Load 2D histogram of x[0..n-1] and y[0..n-1], each point optionally
     weighted by w[0..n-1] (weights are all 1 if w==NULL).
     Used in the histogram-based measures of dependence between x[] and y[i].
     If something is bad on input, nbin is set to 0.  Otherwise, these global
     variables are set:
       - nbin = # of bins, nbp = nbin+1
       - nww  = sum of the weights used
-      - xc   = marginal histogram of x[], for xc[0..nbin]
-      - yc   = marginal histogram of y[], for yc[0..nbin]
+      - xc   = marginal histogram of x[], for xc[0..nbin]   (nbp points in)
+      - yc   = marginal histogram of y[], for yc[0..nbin]   (each direction)
       - xyc  = joint histogram of (x[],y[]), for XYC(0..nbin,0..nbin)
       - The histograms are normalized (by 1/nww) to have sum==1
       - Histogram can be retrieved by retrieve_2Dhist() and can be
@@ -766,106 +823,110 @@ int get_2Dhist_xybin( float **xb , float **yb )
         not be used in the histogram; mutatis mutandum for y[]
 ----------------------------------------------------------------------------*/
 
-void build_2Dhist( int n , float xbot,float xtop,float *x ,
-                           float ybot,float ytop,float *y , float *w )
+static void stuff_2Dhist( int n, float xbot,float xtop,float *x,
+                                 float ybot,float ytop,float *y, float *w, int addon )
 {
    register int ii,jj,kk ;
    float xb,xi , yb,yi , xx,yy , x1,y1 , ww ;
-   byte *good ; int ngood , xyclip , nbm ;
+   byte *good ; int ngood , xyclip ;
+   static float xxbot=0.0f,xxtop=0.0f , yybot=0.0f,yytop=0.0f ;
 
-ENTRY("build_2Dhist") ;
+ENTRY("stuff_2Dhist") ;
 
-   /* bad inputs? */
+   if( n <= 0 || x == NULL || y == NULL ) EXRETURN ;
 
-   if( n <= 1 || x == NULL || y == NULL ){ clear_2Dhist(); EXRETURN; }
+   /* get the min..max range for x and y data? */
 
-   /* get the min..max range for x data? */
-
-   STATUS("compute good[]") ;
    good = (byte *)malloc(sizeof(byte)*n) ;         /* 28 Feb 2007 */
    for( ii=0 ; ii < n ; ii++ )
      good[ii] = GOODVAL(x[ii]) && GOODVAL(y[ii]) ;
 
-   if( nxybin > 2 ){                       /* unequal bins */
-     xbot = xbin[0] ; xtop = xbin[nxybin] ;
-#if 0
-     INFO_message("build_2Dhist: nxybin=%d x=%f..%f",nxybin,xbot,xtop) ;
-#endif
-   } else if( xbot >= xtop ){              /* equal bins, and must find range */
-     xbot = WAY_BIG ; xtop = -WAY_BIG ;
-     STATUS("compute xbot..xtop") ;
-     for( ii=0 ; ii < n ; ii++ )
-       if( good[ii] ){
-              if( x[ii] > xtop ) xtop = x[ii] ;
-         else if( x[ii] < xbot ) xbot = x[ii] ;
-       }
+   addon = addon && (xxbot < xxtop) && (yybot < yytop) && (nww > 0.0f) ;
+
+   if( addon ){
+
+     xbot = xxbot ; ybot = yybot ; xtop = xxtop ; ytop = yytop ;
+
+   } else {
+
+     clear_2Dhist() ;
+
+     if( nxybin > 2 ){                       /* unequal bins */
+       xbot = xbin[0] ; xtop = xbin[nxybin] ;
+     } else if( xbot >= xtop ){              /* equal bins, and must find range */
+       xbot = WAY_BIG ; xtop = -WAY_BIG ;
+       for( ii=0 ; ii < n ; ii++ )
+         if( good[ii] ){
+                if( x[ii] > xtop ) xtop = x[ii] ;
+           else if( x[ii] < xbot ) xbot = x[ii] ;
+         }
+     }
+     if( xbot >= xtop ){ clear_2Dhist(); free(good); EXRETURN; }
+
+     if( nxybin > 2 ){
+       ybot = ybin[0] ; ytop = ybin[nxybin] ;
+     } else if( ybot >= ytop ){
+       ybot = WAY_BIG ; ytop = -WAY_BIG ;
+       for( ii=0 ; ii < n ; ii++ )
+         if( good[ii] ){
+                if( y[ii] > ytop ) ytop = y[ii] ;
+           else if( y[ii] < ybot ) ybot = y[ii] ;
+         }
+     }
+     if( ybot >= ytop ){ free(good); EXRETURN; }
+
+     xxbot = xbot ; xxtop = xtop ; yybot = ybot ; yytop = ytop ;
+
    }
-   if( xbot >= xtop ){ clear_2Dhist(); free(good); EXRETURN; }
-
-   /* get the min..max range for y data? */
-
-   if( nxybin > 0 ){
-     ybot = ybin[0] ; ytop = ybin[nxybin] ;
-#if 0
-     INFO_message("build_2Dhist: nxybin=%d y=%f..%f",nxybin,ybot,ytop) ;
-#endif
-   } else if( ybot >= ytop ){
-     ybot = WAY_BIG ; ytop = -WAY_BIG ;
-     STATUS("compute ybot..ytop") ;
-     for( ii=0 ; ii < n ; ii++ )
-       if( good[ii] ){
-              if( y[ii] > ytop ) ytop = y[ii] ;
-         else if( y[ii] < ybot ) ybot = y[ii] ;
-       }
-   }
-   if( ybot >= ytop ){ clear_2Dhist(); free(good); EXRETURN; }
-
-   /*--- allocate space for 2D and 1D histograms ---*/
-
-   if( nxybin > 2 ){                        /* array size is fixed by bins */
-     nbin = nxybin ;
-   } else {                                 /* compute new histo array size */
-     nbin = (nhbin > 2) ? nhbin : (int)pow((double)n,hpow) ;
-     if( nbin > 255 ) nbin = 255; else if( nbin < 3 ) nbin = 3;
-   }
-   nbp = nbin+1 ; nbm = nbin-1 ;
-
-   STATUS("free-ing") ;
-   FREEIF(xc) ; FREEIF(yc) ; FREEIF(xyc) ;
-
-   STATUS("malloc-ing") ;
-   xc  = (float *)calloc(sizeof(float),nbp) ;
-   yc  = (float *)calloc(sizeof(float),nbp) ;
-   xyc = (float *)calloc(sizeof(float),nbp*nbp) ;
 
    /*-- count number of good values left in range (in both x and y) --*/
 
-   STATUS("counting") ;
    memset(good,0,n) ;
    for( ngood=ii=0 ; ii < n ; ii++ ){
      if( RANGVAL(x[ii],xbot,xtop) && RANGVAL(y[ii],ybot,ytop) && WW(ii) > 0.0f ){
        good[ii] = 1 ; ngood++ ;
      }
    }
-   if( ngood < 3*nbin ){ clear_2Dhist(); free(good); EXRETURN; }
+   if( ngood == 0 ){ free(good) ; EXRETURN ; }
+
+   /*--- allocate space for 2D and 1D histograms ---*/
+
+   if( !addon ){
+     if( nxybin > 2 ){                        /* array size is fixed by bins */
+       nbin = nxybin ;
+     } else {                                 /* compute new histo array size */
+       nbin = (nhbin > 2) ? nhbin : (int)pow((double)n,hpow) ;
+       if( nbin > 255 ) nbin = 255; else if( nbin < 3 ) nbin = 3;
+     }
+     nbp = nbin+1 ; nbm = nbin-1 ;
+
+     FREEIF(xc) ; FREEIF(yc) ; FREEIF(xyc) ;
+
+     xc  = (float *)calloc(sizeof(float),nbp) ;
+     yc  = (float *)calloc(sizeof(float),nbp) ;
+     xyc = (float *)calloc(sizeof(float),nbp*nbp) ;
+     nww = 0.0f ;
+   }
 
    /*--------------- make the 2D and 1D histograms ---------------*/
 
-   xyclip = (nxybin <= 0) && use_xyclip &&
+   xyclip = (nxybin <= 2) && use_xyclip &&
             (xbot < xclip_bot) && (xclip_bot < xclip_top) && (xclip_top < xtop) &&
             (ybot < yclip_bot) && (yclip_bot < yclip_top) && (yclip_top < ytop) ;
 
    if( nxybin <= 0 && !xyclip ){  /*------------ equal size bins ------------*/
 
+#if 0
 if(PRINT_TRACING){
   char str[256];
   sprintf(str,"equal size bins: xbot=%g xtop=%g ybot=%g ytop=%g nbin=%d nval=%d ngood=%d",
           xbot,xtop,ybot,ytop,nbin,n,ngood);
   STATUS(str);
 }
+#endif
 
      xb = xbot ; xi = nbm/(xtop-xbot) ;
-     yb = ybot ; yi = nbm/(ytop-ybot) ; nww = 0.0f ;
+     yb = ybot ; yi = nbm/(ytop-ybot) ;
      for( ii=0 ; ii < n ; ii++ ){
        if( !good[ii] ) continue ;
        xx = (x[ii]-xb)*xi ;
@@ -891,15 +952,16 @@ if(PRINT_TRACING){
 
      float xbc=xclip_bot , xtc=xclip_top , ybc=yclip_bot , ytc=yclip_top ;
 
+#if 0
 if(PRINT_TRACING){
   char str[256];
   sprintf(str,"mostly equal bins: xbc=%g xtc=%g ybc=%g ytc=%g nbin=%d",
           xbc,xtc,ybc,ytc,nbin) ; STATUS(str);
 }
+#endif
 
-     STATUS("mostly equal bins") ;
      xi = (nbin-2.000001f)/(xtc-xbc) ;
-     yi = (nbin-2.000001f)/(ytc-ybc) ; nww = 0.0f ;
+     yi = (nbin-2.000001f)/(ytc-ybc) ;
      for( ii=0 ; ii < n ; ii++ ){
        if( !good[ii] ) continue ;
        xx = x[ii] ;
@@ -931,7 +993,7 @@ if(PRINT_TRACING){
      float *xdup, *ydup, *xv, *yv, *wv, frac,val,xt,yt ;
      int   *xn, *yn, *xin, *yin , ib,nb , maxsort ;
 
-     maxsort = 16*nxybin ; if( maxsort > 512 ) maxsort = 512 ;
+     maxsort = 32*nxybin ; if( maxsort > 2048 ) maxsort = 2048 ;
      xdup = (float *)malloc(sizeof(float)*maxsort) ;
      ydup = (float *)malloc(sizeof(float)*maxsort) ;
      xv   = (float *)malloc(sizeof(float)*maxsort) ;
@@ -944,8 +1006,6 @@ if(PRINT_TRACING){
 
      /* outer loop: process points starting at index = ib */
 
-     STATUS("unequal sized bins") ;
-     nww = 0.0f ;
      for( ib=0 ; ib < n ; ){
 
        /* extract up to maxsort good points from the data arrays */
@@ -1028,20 +1088,42 @@ if(PRINT_TRACING){
 
    } /*----- end of test on equal or unequal size bins -----*/
 
-   STATUS("binning done") ;
+   free(good); EXRETURN;
+}
 
-   /*--- 26 Sep 2006: scale histogram to have sum==1 ---*/
+/*............................................................................*/
 
-   if( nww > 0.0f ){
-     register float ni ; register int nbq ;
-     STATUS("scaling") ;
+void build_2Dhist( int n , float xbot,float xtop,float *x ,
+                           float ybot,float ytop,float *y , float *w )
+{
+   if( n > 9 && x != NULL && y != NULL )
+     stuff_2Dhist( n , xbot,xtop,x , ybot,ytop,y , w , 0 ) ;
+   return ;
+}
+
+/*............................................................................*/
+
+void addto_2Dhist( int n , float xbot,float xtop,float *x ,
+                           float ybot,float ytop,float *y , float *w )
+{
+   if( n > 0 && x != NULL && y != NULL )
+     stuff_2Dhist( n , xbot,xtop,x , ybot,ytop,y , w , 1 ) ;
+   return ;
+}
+
+/*............................................................................*/
+/* scale histogram to have sum==1 */
+
+void normalize_2Dhist(void)
+{
+   if( nww > 0.0f && xyc != NULL && xc != NULL && yc != NULL ){
+     register float ni ; register int nbq , ii ;
      ni = 1.0f / nww ;
      for( ii=0 ; ii < nbp ; ii++ ){ xc[ii]  *= ni; yc[ii] *= ni; }
      nbq = nbp*nbp ;
      for( ii=0 ; ii < nbq ; ii++ ){ xyc[ii] *= ni; }
    }
-
-   free(good); EXRETURN;
+   return ;
 }
 
 /*--------------------------------------------------------------------------*/
@@ -1253,6 +1335,7 @@ float THD_mutual_info_scl( int n , float xbot,float xtop,float *x ,
 
    build_2Dhist( n,xbot,xtop,x,ybot,ytop,y,w ) ;
    if( nbin <= 0 || nww <= 0 ) return 0.0f ;  /* something bad happened! */
+   normalize_2Dhist() ;
 
    /*-- compute MI from histogram --*/
 
@@ -1292,6 +1375,7 @@ float THD_norm_mutinf_scl( int n , float xbot,float xtop,float *x ,
 
    build_2Dhist( n,xbot,xtop,x,ybot,ytop,y,w ) ;
    if( nbin <= 0 || nww <= 0 ) return 0.0f ;  /* something bad happened! */
+   normalize_2Dhist() ;
 
    /*-- compute NMI from histogram --*/
 
@@ -1332,6 +1416,7 @@ float THD_jointentrop_scl( int n , float xbot,float xtop,float *x ,
 
    build_2Dhist( n,xbot,xtop,x,ybot,ytop,y,w ) ;
    if( nbin <= 0 || nww <= 0 ) return 0.0f ;  /* something bad happened! */
+   normalize_2Dhist() ;
 
    /*-- compute MI from histogram --*/
 
@@ -1375,6 +1460,7 @@ float THD_corr_ratio_scl( int n , float xbot,float xtop,float *x ,
 
    build_2Dhist( n,xbot,xtop,x,ybot,ytop,y,w ) ;
    if( nbin <= 0 ) return 0.0f ;  /* something bad happened! */
+   normalize_2Dhist() ;
 
    /*-- compute CR(y|x) from histogram --*/
 
@@ -1445,6 +1531,7 @@ float THD_hellinger_scl( int n , float xbot,float xtop,float *x ,
 
    build_2Dhist( n,xbot,xtop,x,ybot,ytop,y,w ) ;
    if( nbin <= 0 || nww <= 0 ) return 0.0f ;  /* something bad happened! */
+   normalize_2Dhist() ;
 
    /*-- compute metric from histogram --*/
 
@@ -1495,6 +1582,7 @@ float_quad THD_helmicra_scl( int n , float xbot,float xtop,float *x ,
 
    build_2Dhist( n,xbot,xtop,x,ybot,ytop,y,w ) ;
    if( nbin <= 0 || nww <= 0 ) return hmc ;  /* something bad happened! */
+   normalize_2Dhist() ;
 
    /*-- compute Hel, MI, NMI from histogram --*/
 

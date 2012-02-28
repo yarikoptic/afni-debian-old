@@ -16,7 +16,10 @@ int main( int argc , char *argv[] )
    char *old_name , *new_name ;
    char old_prefix[THD_MAX_PREFIX] , new_prefix[THD_MAX_PREFIX] ;
    int ii , old_len , new_len ;
-
+   
+   mainENTRY("3drename") ; machdep() ; AFNI_logger("3drename",argc,argv) ;
+   PRINT_VERSION("3drename") ;
+   
    if( argc != 3 || strcmp(argv[1],"-help") == 0 ){
       printf(
        "Usage 1: 3drename old_prefix new_prefix\n"
@@ -29,6 +32,9 @@ int main( int argc , char *argv[] )
        "\n"
        "Usage 2: 3drename old_prefix+view new_prefix\n"
        "  Will rename only the dataset with the given view (orig, acpc, tlrc).\n"
+       "\n"
+       "You cannot have paths in the old or the new prefix\n"
+       "\n"
       ) ;
       PRINT_COMPILE_DATE ; exit(0) ;
    }
@@ -41,10 +47,12 @@ int main( int argc , char *argv[] )
    new_name = argv[nopt++] ; new_len = strlen(new_name) ;
 
    if( old_len < 1 || old_len > THD_MAX_PREFIX || !THD_filename_pure(old_name) ){
-      fprintf(stderr,"** Illegal old dataset name!\n") ; exit(1) ;
+      fprintf(stderr,"** Illegal old dataset name!(no paths allowed)\n") ; 
+      exit(1) ;
    }
    if( new_len < 1 || new_len > THD_MAX_PREFIX || !THD_filename_pure(new_name) ){
-      fprintf(stderr,"** Illegal new dataset name!\n") ; exit(1) ;
+      fprintf(stderr,"** Illegal new dataset name!(no paths allowed)\n") ; 
+      exit(1) ;
    }
 
    /* disallow operation on MINC or ANALYZE files */
@@ -185,7 +193,7 @@ fprintf(stderr,"++ THD_rename_dataset_files: old_headname=%s\n",old_headname) ;
 fprintf(stderr,"++ THD_rename_dataset_files: new_headname=%s\n",new_headname) ;
 #endif
 
-   if( THD_is_file(new_headname) ){
+   if( THD_is_file(new_headname) && !THD_ok_overwrite()){
       fprintf(stderr,"** THD_rename_dataset_files: new header %s already exists!\n",
               new_headname) ;
       return 0 ;
@@ -223,7 +231,7 @@ fprintf(stderr,"++ THD_rename_dataset_files: old_brikname=%s\n",old_brikname) ;
 fprintf(stderr,"++ THD_rename_dataset_files: new_brikname=%s\n",new_brikname) ;
 #endif
 
-      if( THD_is_file(new_brikname) ){
+      if( THD_is_file(new_brikname) && !THD_ok_overwrite()){
          fprintf(stderr,"** THD_rename_dataset_files: new brick %s already exists!\n",
                  new_brikname) ;
          if( old_bname != NULL ) free(old_bname) ;

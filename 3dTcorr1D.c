@@ -70,7 +70,7 @@ int main( int argc , char *argv[] )
    }
 
    mainENTRY("3dTcorr1D main"); machdep(); AFNI_logger("3dTcorr1D",argc,argv);
-   PRINT_VERSION("3dTcorr1D") ;
+   PRINT_VERSION("3dTcorr1D") ; THD_check_AFNI_version("3dTcorr1D") ;
 
    /*-- option processing --*/
 
@@ -230,7 +230,8 @@ int main( int argc , char *argv[] )
 
  AFNI_OMP_START ;
 #pragma omp parallel if( ny > 1 )
- { float *ysar, *xsar, *fcar, *ydar, val ; int ii, kk, jj ; short *scar ;
+ { float *ysar, *xsar, *fcar = NULL, *ydar, val ; 
+   int ii, kk, jj ; short *scar = NULL;
 
 #ifdef USE_OMP
    if( omp_get_thread_num() == 0 )

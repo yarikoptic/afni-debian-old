@@ -148,7 +148,6 @@
 typedef enum { SUMA_VOX_NEIGHB_FACE, SUMA_VOX_NEIGHB_EDGE, SUMA_VOX_NEIGHB_CORNER } SUMA_VOX_NEIGHB_TYPES;
 typedef enum { SUMA_DONT_KNOW = 0, SUMA_IN_TRIBOX_OUTSIDE = 1, SUMA_INTERSECTS_TRIANGLE_OUTSIDE, SUMA_ON_NODE, SUMA_INTERSECTS_TRIANGLE_INSIDE, SUMA_IN_TRIBOX_INSIDE, SUMA_INSIDE_SURFACE } SUMA_SURF_GRID_INTERSECT_OPTIONS;
                                     
-typedef enum { SUMA_SIDE_ERROR=-1, SUMA_NO_SIDE, SUMA_LR, SUMA_LEFT, SUMA_RIGHT } SUMA_SO_SIDE; 
 typedef enum { SUMA_GEOM_NOT_SET=-1, SUMA_GEOM_IRREGULAR = 0,    
                SUMA_GEOM_SPHERE = 1, SUMA_GEOM_ICOSAHEDRON, 
                SUMA_N_GEOM } SUMA_GEOM_TYPE;
@@ -315,8 +314,9 @@ typedef enum { SW_View,
                                                       with SW_N_View */
 typedef enum { SW_Help, 
                SW_HelpUsage,  SW_HelpMessageLog, SW_HelpSep1, 
-               SW_HelpSUMAGlobal, SW_HelpViewerStruct, SW_HelpSurfaceStruct, SW_HelpSep2, 
-               SW_HelpIONotify, SW_HelpMemTrace,  
+               SW_HelpSUMAGlobal, SW_HelpViewerStruct, SW_HelpSurfaceStruct, 
+               SW_HelpSep2, SW_HelpIONotify, SW_HelpEchoKeyPress, 
+               SW_HelpMemTrace,  
                SW_N_Help } SUMA_WIDGET_INDEX_HELP; /*!< Indices to widgets under Help menu.
                                                          Make sure you begin with SW_View and end
                                                          with SW_N_View */                                                   
@@ -353,6 +353,11 @@ typedef enum { SW_CoordBias,
                SW_CoordBias_X, SW_CoordBias_Y, SW_CoordBias_Z,
                SW_CoordBias_N, 
                SW_N_CoordBias } SUMA_WIDGET_INDEX_COORDBIAS;
+
+typedef enum { SW_LinkMode,
+               SW_LinkMode_None,
+               SW_LinkMode_Stat,  
+               SW_N_LinkMode } SUMA_WIDGET_LINK_MODE;
 
 typedef enum { SW_CmapMode,
                   SW_Direct, SW_NN, SW_Interp,  
@@ -606,6 +611,9 @@ typedef struct {
                               that would be closed path, etc, etc, */
 
    char *Parent_idcode_str; /*!< idcode of parent surface */
+   SUMA_SO_SIDE Parent_side; /*!< Hemisphere of parent. 
+                  Comes in handy when trying to find parent if 
+                  Parent_idcode_str does not work */
    char *ColPlaneName;  /*!< Name of color plane that the ROI is painted in.
                      If this field is set to NULL then the ROI will be painted
                      in the generic ROI_Plane plane. 
@@ -638,6 +646,7 @@ typedef struct {
                            see SUMA_ROI_DRAWING_TYPE*/
    char *idcode_str;
    char *Parent_idcode_str;
+   SUMA_SO_SIDE Parent_side;
    char *Label;
    int *iNode; /*!< A node's index */
    int *iLabel; /*!< A node's value */
@@ -780,6 +789,7 @@ typedef struct {
    int N_Contours;            /* Number of contours ROIs*/
    SUMA_DRAWN_ROI **Contours; /* Using the ROI structure to store contours
                                  which can be displayed along with color blobs */
+   SUMA_WIDGET_LINK_MODE LinkMode;          /* How to link I & T selectors */
 } SUMA_OVERLAYS;
 
 
@@ -851,17 +861,22 @@ typedef struct {
 typedef struct {
    int LinkedPtrType; /*!< Indicates the type of linked pointer */
    int N_links;   /*!< Number of links to this pointer */
-   char owner_id[SUMA_IDCODE_LENGTH];   /*!< The id of whoever created that pointer. Might never get used.... */
+   char owner_id[SUMA_IDCODE_LENGTH];   /*!< The id of whoever created that 
+                                       pointer. Might never get used.... */
 
 
-   char *idcode_str; /*!< identifier of element containing node's first order neighbors */
-   int N_Node; /*!< Number of nodes whose neighbors are listed in this structure */
+   char *idcode_str; /*!< identifier of element containing node's first 
+                           order neighbors */
+   int N_Node; /*!< Number of nodes whose neighbors are listed in this 
+                    structure */
    int *NodeId; /*!< Id of each node whose neighbors are listed in this structure 
-                     *** WARNING: *** A lot of functions do not use this field and assume
-                     N_Node = number of nodes in the surface! */
-   int **FirstNeighb; /*!< N_Node x N_Neighb_max matrix with each row specifying the indices of neighboring nodes.
-                        After Tue Jan  7 18:13:44 EST 2003: The nodes are now ordered to form a path on the surface.
-                        Note: There is no guarantee that the path is closed. */
+            *** WARNING: *** A lot of functions do not use this field and assume
+            N_Node = number of nodes in the surface! */
+   int **FirstNeighb; /*!< N_Node x N_Neighb_max matrix with each row specifying 
+                        the indices of neighboring nodes.
+                       After Tue Jan  7 18:13:44 EST 2003: The nodes are now 
+                       ordered to form a path on the surface.
+                   Note: There is no guarantee that the path is closed. */
    int *N_Neighb; /*!< maximum number of neighbors for a particular node */
    int N_Neighb_max; /*!< maximum number of neighbors of all nodes */
 } SUMA_NODE_FIRST_NEIGHB;
@@ -987,12 +1002,17 @@ typedef struct {
    Widget text_output;  /*!< widget of search result field */
    SUMA_Boolean case_sensitive;  /*!< Case sensitive widget search */
    SUMA_Boolean allow_edit; /*!< allow editing of text displayed*/
-   void (*OpenCallBack)(void *data); /*!< call back performed when SUMA_CreateTextShell is entered */
+   void (*OpenCallBack)(void *data); /*!< call back performed when 
+                              SUMA_CreateTextShell is entered */
    void * OpenData;  /*!< data sent along with OpenCallBack */
-   void (*DestroyCallBack)(void *data);   /*!< call back performed when SUMA_DestroyTextShell is entered */
+   void (*DestroyCallBack)(void *data);   /*!< call back performed when 
+                                 SUMA_DestroyTextShell is entered */
    void * DestroyData; /*!< data sent along with DestroyCallBack */
-   SUMA_Boolean CursorAtBottom; /*!< If YUP then cursor is positioned at end of text field */
-} SUMA_CREATE_TEXT_SHELL_STRUCT; /*!< structure containing options and widgets for the text shell window */
+   SUMA_Boolean CursorAtBottom; /*!< If YUP then cursor is positioned at 
+                                       end of text field */
+   char *title; /* the title string */
+} SUMA_CREATE_TEXT_SHELL_STRUCT; /*!< structure containing options and widgets 
+                                       for the text shell window */
 
 typedef enum {SUMA_OK_BUTTON, SUMA_APPLY_BUTTON, 
                SUMA_CLEAR_BUTTON, SUMA_CANCEL_BUTTON, 
@@ -1243,7 +1263,10 @@ typedef struct {
    Widget *SwitchCmapMenu; /* vector of widgets controlling the switch cmap widgets */
    Widget rc_CmapCont; /* rc container to contain Cmap menu */
    int N_CmapMenu; /* Number of widgets in SwitchCmapMenu */
-   Widget CoordBiasMenu[SW_N_CoordBias]; /* vector of widgets controlling the switch coord bias widgets */
+   Widget CoordBiasMenu[SW_N_CoordBias]; /* vector of widgets controlling the  
+                                            coord bias widgets */
+   Widget LinkModeMenu[SW_N_LinkMode]; /* vector of widgets controlling the 
+                                          linking of I, T widgets */
    Widget CmapModeMenu[SW_N_CmapMode];
    Widget opts_rc; /*!< rowcolumn containing color map, color bar and the switch buttons */
    Widget opts_form; /*!< rowcolumn containing all options for colormapping */
@@ -1605,6 +1628,7 @@ typedef struct {
 
 /*! structure containing the geometric settings for viewing the surface */
 typedef struct {
+   float DimSclFac;
    float ViewFrom[3]; /*!< Location of observer's eyes */
    float ViewFromOrig[3]; /*!< Original Location of observer's eyes */
    float ViewCenter[3];   /*!< Center of observer's gaze */
@@ -1729,18 +1753,21 @@ typedef struct {
 
 
 typedef struct {
-   int N_DO;      /*!< Total number of surface objects registered with the viewer */
-   int *RegisteredDO;    /*!< RegisteredDO[i] (i=0..N_DO) contains Object indices into DOv for DOs visible in the surface viewer*/
+   int N_DO;   /*!< Total number of surface objects registered with the viewer */
+   int *RegisteredDO;    /*!< RegisteredDO[i] (i=0..N_DO) contains Object indices
+                              into DOv for DOs visible in the surface viewer*/
    
    SUMA_Boolean Record; /*!< Set record mode */
    SUMA_Boolean ShowLeft; /*!< Show left side surfaces */
    SUMA_Boolean ShowRight; /*!< Show right side surfaces */
    
-   SUMA_COLORLIST_STRUCT *ColList; /*!< pointer to structures containing NodeColorLists for surfaces listed in RegisteredDO */
+   SUMA_COLORLIST_STRUCT *ColList; /*!< pointer to structures containing 
+                        NodeColorLists for surfaces listed in RegisteredDO */
    int N_ColList; /*!< Number of structures in ColList */
    
    SUMA_STANDARD_VIEWS StdView; /*!< viewing mode, for 2D or 3D */
-   SUMA_GEOMVIEW_STRUCT *GVS; /*! pointer to structures containing geometric viewing settings */
+   SUMA_GEOMVIEW_STRUCT *GVS; /*! pointer to structures containing 
+                                  geometric viewing settings */
    int N_GVS; /*!< Number of different geometric viewing structures */
    
    short verbose;   /*!< Verbosity of viewer */
@@ -1748,29 +1775,36 @@ typedef struct {
    SUMA_X *X; /*!< structure containing X widget midgets */
 
    int ortho; /*!< Orthographic (1) or perspective (0, default) projection */
+   int ShowLabelAtXhair; /*!< Show label at location of cross hair */
    float Aspect;   /*!< Aspect ratio of the viewer*/
    int WindWidth;   /*!< Width of window */
    int WindHeight;   /*!< Height of window */
    float ZoomCompensate; /*!< Compensate mouse movements by zoom factor */
-   float *FOV; /*!< Field of View (affects zoom level, there is a separate FOV for each ViewState)*/
+   float *FOV; /*!< Field of View (affects zoom level, there is a 
+                    separate FOV for each ViewState)*/
    float FOV_original; /*!< Original field of view of viewer */
-   float ArrowRotationAngle; /*!< Angle to rotate surface by when arrows are used.
+   float ArrowRotationAngle; /*!< Angle to rotate surface by when arrows 
+                                 are used.
                                  Units are in radians */
-   float KeyZoomGain; /*!< gain for zooming in and out with the 'z' and 'Z' keys. Typical range from 0 to 0.5. Must be < 1*/
+   float KeyZoomGain; /*!< gain for zooming in and out with the 'z' and 'Z' keys.
+                           Typical range from 0 to 0.5. Must be < 1*/
    float KeyNodeJump; /*!< Number of node jumps to do in response to 'alt+arrow'
                            clicks. Default is 1 */
    byte BF_Cull; /*!< flag for backface culling */
-   SUMA_RENDER_MODES PolyMode; /*!< polygon viewing mode, SRM_Fill, SRM_Line, SRM_Points
-                                    There is a similar field for each surface object to 
-                                    allow independent control for each surface. If the rendering mode
-                                    is specified for a certain surface, it takes precedence over the
-                                    one specified here*/
+   SUMA_RENDER_MODES PolyMode; /*!< polygon viewing mode, SRM_Fill, 
+            SRM_Line, SRM_Points
+            There is a similar field for each surface object to 
+            allow independent control for each surface. If the rendering mode
+            is specified for a certain surface, it takes precedence over the
+            one specified here*/
 
-   float Back_Modfact; /*!< Factor to apply when modulating foreground color with background intensity
-                           background does not modulate foreground, 
-                           Color = Fore * avg_Bright * AttenFactor; (w/ 0 <= avg_Bright <=1)
-                           a good setting is such that SUMA_BACKGROUND_ATTENUATION_FACTOR * SUMA_DIM_AFNI_COLOR_FACTOR = 1
-                            Watch for saturation effects!  */
+   float Back_Modfact; /*!< Factor to apply when modulating foreground 
+               color with background intensity
+               background does not modulate foreground, 
+               Color = Fore * avg_Bright * AttenFactor; (w/ 0 <= avg_Bright <=1)
+               a good setting is such that 
+      SUMA_BACKGROUND_ATTENUATION_FACTOR * SUMA_DIM_AFNI_COLOR_FACTOR = 1
+               Watch for saturation effects!  */
 
    int lit_for;   /*! 1 = lit for surfaces of normdir = 1, -1 for normdir = -1, 0 for not set. */
    GLfloat light0_position[4]; /*!< Light 0 position: 1st 3 vals --> direction of light . Last value is 0 -->  directional light*/
@@ -1846,6 +1880,7 @@ typedef struct {
    
    int Do_3Drender;
    SUMA_EnablingRecord SER;
+   
 } SUMA_SurfaceViewer;
 
 /*! structure defining an EngineData structure */
@@ -2237,9 +2272,6 @@ typedef struct {
    
    SUMA_X_SurfCont *SurfCont;/*!< pointer to structure containing surface  
                                   controller widget structure */
-   NI_element *texnel;  /*!< a copy of a pointer to a texture element.
-                         This should be set only before drawing and turned
-                         back to NULL immediately after that */
    
    SUMA_DO *CommonNodeObject; /*!< a node marker which can be any of the 
                             node-based displayable objects. 
@@ -2681,6 +2713,8 @@ typedef struct {
                      (allows the use of confusing or kludge options) */
    SUMA_Boolean InOut_Notify; /*!< prints to STDERR a notice when a function 
                                  is entered or exited */ 
+   SUMA_Boolean Echo_KeyPress; /*!< prints to STDERR a notice when a function 
+                                 is entered or exited */ 
    int InOut_Level; /*!< level of nested function calls */
    int PointerSize; /*!< size of void * */
    int N_OpenSV; /*!< Number of open (visible) surface viewers.
@@ -2809,6 +2843,7 @@ typedef struct {
    
    GICOR_setup *giset; /*!< parameters for group icorr setup */
    
+   SUMA_PARSED_NAME *autorecord; /*!< Autorecord prefix */
 } SUMA_CommonFields;
 
 
@@ -2854,6 +2889,7 @@ typedef struct {
    int full_list;
    THD_3dim_dataset *mset;
    int exists;
+   int coorder_xyz;
 }  SUMA_FORM_AFNI_DSET_STRUCT;
  
 extern SUMA_SurfaceViewer *SUMAg_cSV; /*!< Global pointer to current Surface Viewer structure*/

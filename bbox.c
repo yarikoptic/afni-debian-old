@@ -8,6 +8,15 @@
 
 static Widget wtemp ;
 
+static char *wtype = NULL ;
+void BBOX_set_wtype( char *wt ){ wtype = wt ; }
+
+#undef  DIALOG
+#define DIALOG ( (wtype==NULL) ? "dialog" : wtype )
+
+#undef  MENU
+#define MENU   ( (wtype==NULL) ? "menu" : wtype )
+
 /*------------------------------------------------------------------------*/
 /*
    This function was meant to find the top parent of a widget and later 
@@ -354,7 +363,7 @@ ENTRY("new_MCW_bbox") ;
 
       STATUS("create rowcol") ;
       bb->wrowcol = XtCreateWidget(
-                      "dialog" , xmRowColumnWidgetClass , rc_parent ,
+                      DIALOG , xmRowColumnWidgetClass , rc_parent ,
                       wa , na ) ;
       if( bb->wframe == NULL ) bb->wtop = bb->wrowcol ;  /* topmost widget */
    } else {
@@ -377,7 +386,7 @@ ENTRY("new_MCW_bbox") ;
    STATUS("create toggle buttons") ;
    for( ib=0 ; ib < num_but ; ib++ ){
       bb->wbut[ib] = XtVaCreateManagedWidget(
-                        "dialog" , xmToggleButtonWidgetClass , 
+                        DIALOG , xmToggleButtonWidgetClass , 
                            is_popup ?  parent : bb->wrowcol ,
                            LABEL_ARG(label_but[ib]) ,
                            XmNmarginHeight  , 0 ,
@@ -529,7 +538,7 @@ ENTRY("new_MCW_arrowval") ;
    av = myXtNew( MCW_arrowval ) ;
    STATUS("creating wrowcol") ;
    av->wrowcol = XtVaCreateWidget(
-                    "dialog" , xmRowColumnWidgetClass , parent ,
+                    DIALOG , xmRowColumnWidgetClass , parent ,
 
                        XmNpacking      , XmPACK_TIGHT ,
                        XmNorientation  , XmHORIZONTAL ,
@@ -550,7 +559,7 @@ ENTRY("new_MCW_arrowval") ;
 
       STATUS("creating wlabel") ;
       av->wlabel = XtVaCreateManagedWidget(
-                    "dialog" , xmLabelWidgetClass , av->wrowcol ,
+                    DIALOG , xmLabelWidgetClass , av->wrowcol ,
                        XmNlabelString   , xstr  ,
                        XmNrecomputeSize , False ,
                        XmNmarginWidth   , 0     ,
@@ -641,7 +650,7 @@ ENTRY("new_MCW_arrowval") ;
       case MCW_AV_readtext:
          STATUS("creating wtext1") ;
          av->wtext = XtVaCreateManagedWidget(
-                       "dialog" , TEXT_CLASS , av->wrowcol ,
+                       DIALOG , TEXT_CLASS , av->wrowcol ,
 
                           XmNcolumns         , AV_NCOL ,
                           XmNeditable        , False ,
@@ -671,7 +680,7 @@ ENTRY("new_MCW_arrowval") ;
 
          if( textype == MCW_AV_noactext ){
             STATUS("creating frame") ;
-            wf = XtVaCreateWidget( "dialog" , xmFrameWidgetClass , av->wrowcol ,
+            wf = XtVaCreateWidget( DIALOG , xmFrameWidgetClass , av->wrowcol ,
                                       XmNshadowType , XmSHADOW_OUT ,
                                       XmNshadowThickness , 1 ,
                                       XmNtraversalOn , True ,
@@ -685,7 +694,7 @@ ENTRY("new_MCW_arrowval") ;
 
          STATUS("creating wtext2") ;
          av->wtext = XtVaCreateManagedWidget(
-                       "dialog" , TEXT_CLASS , wf ,
+                       DIALOG , TEXT_CLASS , wf ,
 
                           XmNcolumns         , AV_NCOL ,
                           XmNeditable        , True ,
@@ -887,6 +896,19 @@ void enter_EV( Widget w , XtPointer client_data ,
    #endif  
 }
 
+/* create a chooser list of text strings */
+/* label - title string to the left of the chooser dropdown
+   minval - minimum value of index (usually 0)
+   maxval - maximum value of index (usually the number of strings - 1
+   inival - initial value of index (to get default string shown)
+   decim - number of decimal places to shift a number in a string (I haven't used this yet)
+   delta_value - callback function when item is changed (use void function)
+   delta_data - ?
+   text_proc - function to use as the chooser list is filled
+               (usually MCW_av_substring_CB)
+   text_data - list of strings to fill chooser list (char **)
+               (probably should not freed (static may be good too) )
+*/
 MCW_arrowval * new_MCW_optmenu( Widget parent ,
                                 char *label ,
                                 int   minval , int maxval , int inival , 
@@ -895,6 +917,8 @@ MCW_arrowval * new_MCW_optmenu( Widget parent ,
                                 str_func *text_proc  , XtPointer text_data
                               )
 {
+ENTRY("new_MCW_optmenu") ;
+
    #ifdef USING_LESSTIF_NOT_DOING_THIS_CRAP
       if (CPU_IS_64_BIT() ){
          RETURN(new_MCW_optmenu_64fix( 
@@ -934,7 +958,7 @@ ENTRY("new_MCW_optmenu_orig") ;
 
    /** create the menu window **/
    
-   av->wmenu = wmenu = XmCreatePulldownMenu( parent , "menu" , NULL , 0 ) ;
+   av->wmenu = wmenu = XmCreatePulldownMenu( parent , MENU , NULL , 0 ) ;
    av->optmenu_call_if_unchanged = 0 ;  /* 10 Oct 2007 */
 
    VISIBILIZE_WHEN_MAPPED(wmenu) ;
@@ -953,7 +977,7 @@ ENTRY("new_MCW_optmenu_orig") ;
    xstr = XmStringCreateLtoR( label , XmFONTLIST_DEFAULT_TAG ) ;
    XtSetArg( args[nargs] , XmNlabelString , xstr ) ; nargs++ ;
 
-   av->wrowcol = XmCreateOptionMenu( parent , "dialog" , args , nargs ) ;
+   av->wrowcol = XmCreateOptionMenu( parent , DIALOG , args , nargs ) ;
    XmStringFree(xstr) ;
    XtVaSetValues( av->wrowcol ,
                      XmNmarginWidth  , 0 ,
@@ -1016,7 +1040,7 @@ ENTRY("new_MCW_optmenu_orig") ;
       xstr = XmStringCreateLtoR( blab , XmFONTLIST_DEFAULT_TAG ) ;
 
       wbut = XtVaCreateManagedWidget(
-                "dialog" , xmPushButtonWidgetClass , wmenu ,
+                DIALOG , xmPushButtonWidgetClass , wmenu ,
                   XmNlabelString  , xstr ,
                   XmNmarginWidth  , 0 ,
                   XmNmarginHeight , 0 ,
@@ -1098,7 +1122,7 @@ rcparent = XtVaCreateWidget ("rowcolumn",
          XmNmarginWidth , 0 ,
          NULL);   /** create the menu window **/
    
-   av->wmenu = wmenu = XmCreatePulldownMenu( rcparent , "menu" , NULL , 0 ) ;
+   av->wmenu = wmenu = XmCreatePulldownMenu( rcparent , MENU , NULL , 0 ) ;
    av->optmenu_call_if_unchanged = 0 ;  /* 10 Oct 2007 */
 
    VISIBILIZE_WHEN_MAPPED(wmenu) ;
@@ -1141,7 +1165,7 @@ rcparent = XtVaCreateWidget ("rowcolumn",
                                      
    xstr = XmStringCreateLtoR( "" , XmFONTLIST_DEFAULT_TAG ) ;
    XtSetArg( args[nargs] , XmNlabelString , xstr ) ; nargs++ ;
-   av->wrowcol = XmCreateOptionMenu( rcholder , "dialog" , args , nargs ) ;
+   av->wrowcol = XmCreateOptionMenu( rcholder , DIALOG , args , nargs ) ;
    XmStringFree(xstr) ;
    XtVaSetValues( av->wrowcol ,
                      XmNmarginWidth  , 0 ,
@@ -1235,7 +1259,7 @@ rcparent = XtVaCreateWidget ("rowcolumn",
       xstr = XmStringCreateLtoR( blab , XmFONTLIST_DEFAULT_TAG ) ;
 
       wbut = XtVaCreateManagedWidget(
-                "dialog" , xmPushButtonWidgetClass , wmenu ,
+                DIALOG , xmPushButtonWidgetClass , wmenu ,
                   XmNlabelString  , xstr ,
                   XmNmarginWidth  , 0 ,
                   XmNmarginHeight , 0 ,
@@ -1305,7 +1329,8 @@ void refit_MCW_optmenu( MCW_arrowval *av ,
    char *butlabel , *blab ;
    XmString xstr ;
    int maxbut ;   /* 23 Aug 2003 */
-
+   static int iwarn=0;
+   
 ENTRY("refit_MCW_optmenu") ;
 
    /** sanity check **/
@@ -1328,10 +1353,32 @@ ENTRY("refit_MCW_optmenu") ;
                    with maxbut from environment variable */
 
    maxbut = AFNI_numenv( "AFNI_MAX_OPTMENU" ) ;
-        if( maxbut <= 0 ) maxbut = 255 ;
+        if( maxbut <= 0 ) maxbut = 1024 ; /* up from 255 ZSS Aug. 4 2011 */
    else if( maxbut < 99 ) maxbut = 99 ;
-   if( maxval > minval+maxbut ) maxval = minval+maxbut ;  /* 23 Mar 2003 */
-
+   if( maxval > minval+maxbut ) {
+      if (!iwarn % 15) {   /* ZSS June 2011 */
+         INFO_message(
+   "\n"
+   "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n"
+   "The number of sub-bricks in one of your datasets exceeds \n"
+   "   the current maximum of %d. Some menus like Ulay/Olay/Thr \n"
+   "   will not allow you to select sub-bricks beyond #%d.\n"
+   "To access all sub-bricks from such menus, increase the value of \n"
+   "   environment variable 'AFNI_MAX_OPTMENU'. You can do so for this \n"
+   "   AFNI session via the 'Edit Environment' plugin. For a more lasting \n"
+   "   fix, add the line:\n"
+   "        AFNI_MAX_OPTMENU = XXX \n"
+   "   under the '***ENVIRONMENT' section of your .afnirc file with XXX \n"
+   "   being a suitably large number. \n"
+   "For details, search for 'AFNI_MAX_OPTMENU' in AFNI's README.environment.\n"
+   "\n"
+   "This message is shown intermittently.\n"
+   "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n"
+            , maxbut, maxbut); 
+      }
+      ++iwarn;
+      maxval = minval+maxbut ;  /* 23 Mar 2003 */
+   }
    /** reset some internal parameters **/
 
    av->text_CB   = (text_proc != NULL ) ? (text_proc)
@@ -1391,7 +1438,7 @@ ENTRY("refit_MCW_optmenu") ;
       } else {
          STATUS("setting up new button") ;
          wbut = XtVaCreateManagedWidget(
-                   "dialog" , xmPushButtonWidgetClass , wmenu ,
+                   DIALOG , xmPushButtonWidgetClass , wmenu ,
                      XmNlabelString  , xstr ,
                      XmNmarginWidth  , 0 ,
                      XmNmarginHeight , 0 ,
@@ -1656,7 +1703,7 @@ ENTRY("new_MCW_colormenu") ;
    av = new_MCW_optmenu( parent , label ,
                          min_col , max_col , ini_col , 0 ,
                          delta_value , delta_data ,
-                         MCW_DC_ovcolor_text , (XtPointer) dc ) ;
+                         MCW_DC_ovcolor_text , (XtPointer)dc ) ;
 
    XtVaGetValues( av->wmenu , XmNchildren    , &children ,
                               XmNnumChildren , &num_children , NULL ) ;
@@ -2293,7 +2340,7 @@ ENTRY("MCW_choose_ovcolor") ;
    /*--- create popup widget ---*/
 
    wpop = XtVaCreatePopupShell(                        /* Popup Shell */
-             "menu" , xmDialogShellWidgetClass , wpar ,
+             MENU , xmDialogShellWidgetClass , wpar ,
                 XmNtraversalOn , True ,
                 XmNinitialResourcesPersistent , False ,
                 XmNkeyboardFocusPolicy , XmEXPLICIT ,
@@ -2314,7 +2361,7 @@ ENTRY("MCW_choose_ovcolor") ;
         MCW_kill_chooser_CB , wpop ) ;
 
    wrc  = XtVaCreateWidget(                    /* RowColumn to hold all */
-             "menu" , xmRowColumnWidgetClass , wpop ,
+             MENU , xmRowColumnWidgetClass , wpop ,
                 XmNpacking      , XmPACK_TIGHT ,
                 XmNorientation  , XmVERTICAL ,
                 XmNtraversalOn , True ,
@@ -2410,7 +2457,7 @@ ENTRY("MCW_choose_vector") ;
    /*--- create popup widget ---*/
 
    wpop = XtVaCreatePopupShell(                           /* Popup Shell */
-             "menu" , xmDialogShellWidgetClass , wpar ,
+             MENU , xmDialogShellWidgetClass , wpar ,
                 XmNtraversalOn , True ,
                 XmNinitialResourcesPersistent , False ,
                 XmNkeyboardFocusPolicy , XmEXPLICIT ,
@@ -2431,7 +2478,7 @@ ENTRY("MCW_choose_vector") ;
         MCW_kill_chooser_CB , wpop ) ;
 
    wrc  = XtVaCreateWidget(                 /* RowColumn to hold all */
-             "menu" , xmRowColumnWidgetClass , wpop ,
+             MENU , xmRowColumnWidgetClass , wpop ,
                 XmNpacking      , XmPACK_TIGHT ,
                 XmNorientation  , XmVERTICAL ,
                 XmNtraversalOn , True ,
@@ -2440,12 +2487,12 @@ ENTRY("MCW_choose_vector") ;
 
    if( label != NULL ){
      wtemp = XtVaCreateManagedWidget(
-                  "menu" , xmLabelWidgetClass , wrc ,
+                  MENU , xmLabelWidgetClass , wrc ,
                      LABEL_ARG(label) ,
                      XmNinitialResourcesPersistent , False ,
                   NULL ) ; LABELIZE(wtemp) ;
      (void) XtVaCreateManagedWidget(
-              "menu" , xmSeparatorWidgetClass , wrc ,
+              MENU , xmSeparatorWidgetClass , wrc ,
                   XmNseparatorType , XmSHADOW_ETCHED_IN ,
                   XmNinitialResourcesPersistent , False ,
               NULL ) ;
@@ -2551,7 +2598,7 @@ ENTRY("MCW_choose_integer") ;
    /*--- create popup widget ---*/
 
    wpop = XtVaCreatePopupShell(                           /* Popup Shell */
-             "menu" , xmDialogShellWidgetClass , wpar ,
+             MENU , xmDialogShellWidgetClass , wpar ,
                 XmNtraversalOn , True ,
                 XmNinitialResourcesPersistent , False ,
                 XmNkeyboardFocusPolicy , XmEXPLICIT ,
@@ -2572,7 +2619,7 @@ ENTRY("MCW_choose_integer") ;
         MCW_kill_chooser_CB , wpop ) ;
 
    wrc  = XtVaCreateWidget(                 /* RowColumn to hold all */
-             "menu" , xmRowColumnWidgetClass , wpop ,
+             MENU , xmRowColumnWidgetClass , wpop ,
                 XmNpacking      , XmPACK_TIGHT ,
                 XmNorientation  , XmVERTICAL ,
                 XmNtraversalOn , True ,
@@ -2644,7 +2691,7 @@ ENTRY("new_MCW_arrowpad") ;
    /*--- form to hold the stuff: everything is tied to rubber positions ---*/
 
    apad->wform = XtVaCreateWidget(
-                    "dialog" , xmFormWidgetClass , parent ,
+                    DIALOG , xmFormWidgetClass , parent ,
                        XmNfractionBase , AP_FBASE ,
                        XmNinitialResourcesPersistent , False ,
                        XmNtraversalOn , True  ,
@@ -2861,7 +2908,7 @@ ENTRY("MCW_choose_string") ;
    /*--- create popup widget ---*/
 
    wpop = XtVaCreatePopupShell(                           /* Popup Shell */
-             "menu" , xmDialogShellWidgetClass , wpar ,
+             MENU , xmDialogShellWidgetClass , wpar ,
                 XmNtraversalOn , True ,
                 XmNinitialResourcesPersistent , False ,
                 XmNkeyboardFocusPolicy , XmEXPLICIT ,
@@ -2882,7 +2929,7 @@ ENTRY("MCW_choose_string") ;
         MCW_kill_chooser_CB , wpop ) ;
 
    wrc  = XtVaCreateWidget(                 /* RowColumn to hold all */
-             "menu" , xmRowColumnWidgetClass , wpop ,
+             MENU , xmRowColumnWidgetClass , wpop ,
                 XmNpacking      , XmPACK_TIGHT ,
                 XmNorientation  , XmVERTICAL ,
                 XmNtraversalOn , True ,
@@ -2892,7 +2939,7 @@ ENTRY("MCW_choose_string") ;
    if( label != NULL && (ncol=strlen(label)) > 0 ){
      char *cpt ;
      wlab = XtVaCreateManagedWidget(
-               "menu" , xmLabelWidgetClass , wrc ,
+               MENU , xmLabelWidgetClass , wrc ,
                   LABEL_ARG(label) ,
                   XmNinitialResourcesPersistent , False ,
                NULL ) ;
@@ -2909,7 +2956,7 @@ ENTRY("MCW_choose_string") ;
    if( ncol < AV_NCOL ) ncol = AV_NCOL ;
 
    wtf = XtVaCreateManagedWidget(
-             "menu" , TEXT_CLASS , wrc ,
+             MENU , TEXT_CLASS , wrc ,
 
                  XmNcolumns         , ncol ,
                  XmNeditable        , True ,
@@ -3019,6 +3066,19 @@ void MCW_choose_strlist( Widget wpar , char *label ,
 
 /*-------------------------------------------------------------------------*/
 
+void MCW_choose_binary( Widget wpar , char *label ,         /* 10 Feb 2012 */
+                        int init , char *str0 , char *str1 ,
+                        gen_func *func , XtPointer func_data )
+{
+   char *strlist[2] ;
+   strlist[0] = (str0 == NULL || *str0 == '\0' ) ? "Off" : str0 ;
+   strlist[1] = (str1 == NULL || *str1 == '\0' ) ? "On"  : str1 ;
+   MCW_choose_strlist( wpar, label, 2, (init!=0), strlist, func,func_data ) ;
+   return ;
+}
+
+/*-------------------------------------------------------------------------*/
+
 static Widget str_wlist           = NULL ;  /* 12 Oct 2007 */
 static int    str_wlist_num       = 0 ;
 static MCW_arrowval *str_wlist_av = NULL ;
@@ -3119,7 +3179,7 @@ ENTRY("MCW_choose_multi_strlist") ;
    /*--- create popup widget ---*/
 
    wpop = XtVaCreatePopupShell(                           /* Popup Shell */
-            "menu" , xmDialogShellWidgetClass , wpar ,
+            MENU , xmDialogShellWidgetClass , wpar ,
                XmNtraversalOn , True ,
                XmNinitialResourcesPersistent , False ,
                 XmNkeyboardFocusPolicy , XmEXPLICIT ,
@@ -3141,7 +3201,7 @@ ENTRY("MCW_choose_multi_strlist") ;
         MCW_kill_chooser_CB , wpop ) ;
 
    wrc  = XtVaCreateWidget(                 /* RowColumn to hold all */
-             "menu" , xmRowColumnWidgetClass , wpop ,
+             MENU , xmRowColumnWidgetClass , wpop ,
                 XmNpacking     , XmPACK_TIGHT ,
                 XmNorientation , XmVERTICAL ,
                 XmNtraversalOn , True  ,
@@ -3159,7 +3219,7 @@ ENTRY("MCW_choose_multi_strlist") ;
    }
    xms = XmStringCreateLtoR( lbuf , XmFONTLIST_DEFAULT_TAG ) ;
    wlab = XtVaCreateManagedWidget(
-                "menu" , xmLabelWidgetClass , wrc ,
+                MENU , xmLabelWidgetClass , wrc ,
                    XmNlabelString   , xms  ,
                    XmNalignment     , XmALIGNMENT_CENTER ,
                    XmNinitialResourcesPersistent , False ,
@@ -3167,7 +3227,7 @@ ENTRY("MCW_choose_multi_strlist") ;
    myXtFree(lbuf) ; XmStringFree(xms) ; LABELIZE(wlab) ;
 
    (void) XtVaCreateManagedWidget(
-            "menu" , xmSeparatorWidgetClass , wrc ,
+            MENU , xmSeparatorWidgetClass , wrc ,
                 XmNseparatorType , XmSHADOW_ETCHED_IN ,
                 XmNinitialResourcesPersistent , False ,
             NULL ) ;
@@ -3176,7 +3236,7 @@ ENTRY("MCW_choose_multi_strlist") ;
    for( ib=0 ; ib < num_str ; ib++ )
      xmstr[ib] = XmStringCreateSimple(strlist[ib]) ;
 
-   wlist = XmCreateScrolledList( wrc , "menu" , NULL , 0 ) ;
+   wlist = XmCreateScrolledList( wrc , MENU , NULL , 0 ) ;
 
    nvisible = (num_str < list_maxmax ) ? num_str : list_max ;
 
@@ -3230,7 +3290,7 @@ ENTRY("MCW_choose_multi_strlist") ;
 
    if( mode == mcwCT_multi_mode ){
       (void) XtVaCreateManagedWidget(
-               "menu" , xmSeparatorWidgetClass , wrc ,
+               MENU , xmSeparatorWidgetClass , wrc ,
                    XmNseparatorType , XmSINGLE_LINE ,
                    XmNinitialResourcesPersistent , False ,
                NULL ) ;
@@ -3248,7 +3308,7 @@ ENTRY("MCW_choose_multi_strlist") ;
       int ival = 0 ;
 
       (void) XtVaCreateManagedWidget(
-               "menu" , xmSeparatorWidgetClass , wrc ,
+               MENU , xmSeparatorWidgetClass , wrc ,
                    XmNseparatorType , XmSINGLE_LINE ,
                    XmNinitialResourcesPersistent , False ,
                NULL ) ;
@@ -3406,7 +3466,7 @@ if(PRINT_TRACING){
    /*--- create popup widget ---*/
 
    wpop = XtVaCreatePopupShell(                           /* Popup Shell */
-             "menu" , xmDialogShellWidgetClass , wpar ,
+             MENU , xmDialogShellWidgetClass , wpar ,
                 XmNtraversalOn , True ,
                 XmNinitialResourcesPersistent , False ,
                 XmNkeyboardFocusPolicy , XmEXPLICIT ,
@@ -3428,7 +3488,7 @@ if(PRINT_TRACING){
         MCW_kill_chooser_CB , wpop ) ;
 
    wrc  = XtVaCreateWidget(                 /* RowColumn to hold all */
-             "menu" , xmRowColumnWidgetClass , wpop ,
+             MENU , xmRowColumnWidgetClass , wpop ,
                 XmNpacking     , XmPACK_TIGHT ,
                 XmNorientation , XmVERTICAL ,
                 XmNtraversalOn , True ,
@@ -3444,7 +3504,7 @@ if(PRINT_TRACING){
    }
    xms = XmStringCreateLtoR( lbuf , XmFONTLIST_DEFAULT_TAG ) ;
    wlab = XtVaCreateManagedWidget(
-                "menu" , xmLabelWidgetClass , wrc ,
+                MENU , xmLabelWidgetClass , wrc ,
                    XmNlabelString   , xms  ,
                    XmNalignment     , XmALIGNMENT_CENTER ,
                    XmNinitialResourcesPersistent , False ,
@@ -3452,7 +3512,7 @@ if(PRINT_TRACING){
    myXtFree(lbuf) ; XmStringFree(xms) ; LABELIZE(wlab) ;
 
    (void) XtVaCreateManagedWidget(
-            "menu" , xmSeparatorWidgetClass , wrc ,
+            MENU , xmSeparatorWidgetClass , wrc ,
                 XmNseparatorType , XmSHADOW_ETCHED_IN ,
                 XmNinitialResourcesPersistent , False ,
             NULL ) ;
@@ -3491,7 +3551,7 @@ if(PRINT_TRACING){
       xmstr[ib] = XmStringCreateSimple( qbuf ) ;
    }
 
-   wlist = XmCreateScrolledList( wrc , "menu" , NULL , 0 ) ;
+   wlist = XmCreateScrolledList( wrc , MENU , NULL , 0 ) ;
 
    nvisible = (num_ts < list_maxmax ) ? num_ts : list_max ;
    XtVaSetValues( wlist ,
@@ -3625,7 +3685,7 @@ ENTRY("MCW_choose_multi_editable_strlist") ;
    /*--- create popup widget ---*/
 
    wpop = XtVaCreatePopupShell(                           /* Popup Shell */
-             "menu" , xmDialogShellWidgetClass , wpar ,
+             MENU , xmDialogShellWidgetClass , wpar ,
                 XmNallowShellResize , True ,
                 XmNtraversalOn , True ,
                 XmNinitialResourcesPersistent , False ,
@@ -3650,7 +3710,7 @@ ENTRY("MCW_choose_multi_editable_strlist") ;
    /* RowColumn to hold all */
 
    wrc  = XtVaCreateWidget(
-             "menu" , xmRowColumnWidgetClass , wpop ,
+             MENU , xmRowColumnWidgetClass , wpop ,
                 XmNpacking     , XmPACK_TIGHT ,
                 XmNorientation , XmVERTICAL ,
                 XmNtraversalOn , True ,
@@ -3670,7 +3730,7 @@ ENTRY("MCW_choose_multi_editable_strlist") ;
    }
    xms = XmStringCreateLtoR( lbuf , XmFONTLIST_DEFAULT_TAG ) ;
    wlab = XtVaCreateManagedWidget(
-                "menu" , xmLabelWidgetClass , wrc ,
+                MENU , xmLabelWidgetClass , wrc ,
                    XmNlabelString   , xms  ,
                    XmNalignment     , XmALIGNMENT_CENTER ,
                    XmNinitialResourcesPersistent , False ,
@@ -3680,14 +3740,14 @@ ENTRY("MCW_choose_multi_editable_strlist") ;
    /* Separator line */
 
    (void) XtVaCreateManagedWidget(
-            "menu" , xmSeparatorWidgetClass , wrc ,
+            MENU , xmSeparatorWidgetClass , wrc ,
                 XmNseparatorType , XmSHADOW_ETCHED_IN ,
                 XmNinitialResourcesPersistent , False ,
             NULL ) ;
 
    /* List to choose from */
 
-   wlist = XmCreateScrolledList( wrc , "menu" , NULL , 0 ) ;
+   wlist = XmCreateScrolledList( wrc , MENU , NULL , 0 ) ;
    XtVaSetValues( wlist ,
                     XmNtraversalOn      , True ,
                     XmNselectionPolicy  , (mode == mcwCT_single_mode)
@@ -3754,7 +3814,7 @@ ENTRY("MCW_choose_multi_editable_strlist") ;
       MCW_arrowval *av ;
 
       (void) XtVaCreateManagedWidget(
-               "menu" , xmSeparatorWidgetClass , wrc ,
+               MENU , xmSeparatorWidgetClass , wrc ,
                    XmNseparatorType , XmSHADOW_ETCHED_IN ,
                    XmNinitialResourcesPersistent , False ,
                NULL ) ;
@@ -3770,7 +3830,7 @@ ENTRY("MCW_choose_multi_editable_strlist") ;
    /* Separator line */
 
    (void) XtVaCreateManagedWidget(
-            "menu" , xmSeparatorWidgetClass , wrc ,
+            MENU , xmSeparatorWidgetClass , wrc ,
                 XmNseparatorType , XmSINGLE_LINE ,
                 XmNinitialResourcesPersistent , False ,
             NULL ) ;
@@ -3778,7 +3838,7 @@ ENTRY("MCW_choose_multi_editable_strlist") ;
    /*-- Stuff to string array --*/
 
    wrc2 = XtVaCreateWidget(                            /* Rowcol for stuff */
-             "menu" , xmRowColumnWidgetClass , wrc ,
+             MENU , xmRowColumnWidgetClass , wrc ,
                 XmNpacking      , XmPACK_TIGHT ,
                 XmNorientation  , XmHORIZONTAL ,
                 XmNtraversalOn , True ,
@@ -3786,7 +3846,7 @@ ENTRY("MCW_choose_multi_editable_strlist") ;
              NULL ) ;
 
    wtf = XtVaCreateManagedWidget(                      /* String to add */
-             "menu" , TEXT_CLASS , wrc2 ,
+             MENU , TEXT_CLASS , wrc2 ,
 
                  XmNcolumns         , 24 ,
                  XmNeditable        , True ,
@@ -3807,7 +3867,7 @@ ENTRY("MCW_choose_multi_editable_strlist") ;
    xms = XmStringCreateLtoR( "Add" , XmFONTLIST_DEFAULT_TAG ) ;
 
    wadd = XtVaCreateManagedWidget(                     /* Button to add it */
-             "menu" , xmPushButtonWidgetClass , wrc2 ,
+             MENU , xmPushButtonWidgetClass , wrc2 ,
                 XmNlabelString  , xms ,
                 XmNtraversalOn , True ,
                 XmNinitialResourcesPersistent , False ,

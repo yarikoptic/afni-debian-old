@@ -3003,7 +3003,7 @@ void PLUG_finalize_dataset_CB( Widget w, XtPointer fd, MCW_choose_cbs * cbs )
    PLUGIN_dsetval   * av = NULL ;
    XmString           xstr ;
    int id ;
-   char str[THD_MAX_NAME] ;
+   char str[THD_MAX_NAME], *shrtit=NULL;
 
 ENTRY("PLUG_finalize_dataset_CB") ;
 
@@ -3011,12 +3011,13 @@ ENTRY("PLUG_finalize_dataset_CB") ;
 
    XtVaGetValues( w , XmNuserData , &av , NULL ) ;
    if( plint == NULL || av == NULL ) EXRETURN ;
-
+   
+   shrtit = TrimString(av->dset_link[cbs->ival].title, 20); /* ZSS Jan 2012*/
    if( ! av->multi ){
-      xstr = XmStringCreateLtoR( av->dset_link[cbs->ival].title ,
+      xstr = XmStringCreateLtoR( shrtit ,
                                  XmFONTLIST_DEFAULT_TAG ) ;
    } else {
-      sprintf( str , "[%d]%s" , cbs->nilist , av->dset_link[cbs->ival].title ) ;
+      sprintf( str , "[%d]%s" , cbs->nilist , shrtit ) ;
       xstr = XmStringCreateLtoR( str , XmFONTLIST_DEFAULT_TAG ) ;
    }
    XtVaSetValues( w , XmNlabelString , xstr , NULL ) ;
@@ -3502,7 +3503,9 @@ ENTRY("AFNI_plugin_button") ;
    menu = XmCreatePulldownMenu( mbar , "menu" , NULL,0 ) ;
 
    VISIBILIZE_WHEN_MAPPED(menu) ;
+#if 0
    if( !AFNI_yesenv("AFNI_DISABLE_TEAROFF") ) TEAROFFIZE(menu) ;
+#endif
 
    xstr = XmStringCreateLtoR( "Plugins" , XmFONTLIST_DEFAULT_TAG ) ;
    cbut = XtVaCreateManagedWidget(
@@ -5161,7 +5164,7 @@ ENTRY("PLUTO_scatterplot") ;
 
    /* x-axis label? */
 
-   set_color_memplot( 0.0 , 0.0 , 0.0 ) ; set_thick_memplot( 0.002f ) ;
+   set_color_memplot( 0.0 , 0.0 , 0.0 ) ; set_thick_memplot( 0.004f ) ;
    if( STGOOD(xlab) )
       plotpak_pwritf( 0.5*(xobot+xotop) , yobot-0.06 , xlab , 16 , 0 , 0 ) ;
 

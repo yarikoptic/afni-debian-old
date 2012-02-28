@@ -254,13 +254,16 @@ void display_help_menu(void)
       "* COVAR_FILE is the name of a text file with a table for the covariate(s).\n"
       "   Each column in the file is treated as a separate covariate, and each\n"
       "   row contains the values of these covariates for one sample (dataset). Note\n"
-      "   that you can use '-covariates' only once -- the COVAR_FILE should contain\n"
+      "   that you can use '-covariates' only ONCE -- the COVAR_FILE should contain\n"
       "   the covariates for ALL input samples from both sets.\n"
       "\n"
-      "* Rows in COVAR_FILE that don't match a dataset label are ignored (silently).\n"
+      "* Rows in COVAR_FILE whose first column don't match a dataset label are\n"
+      "   ignored (silently).\n"
       "\n"
-      "* A dataset label that doesn't match a row in COVAR_FILE, on the other hand,\n"
-      "   is a fatal error.\n"
+      "* An input dataset label that doesn't match a row in COVAR_FILE, on the other\n"
+      "   hand, is a fatal error.\n"
+      "  ++ The program doesn't know how to get the covariate values for such a\n"
+      "     dataset, so it can't continue.\n"
       "\n"
       "* There is no provision for missing values -- the entire table must be filled!\n"
       "\n"
@@ -274,13 +277,17 @@ void display_help_menu(void)
       "                      Lucy    133   32  Lucy_GM+tlrc[8]\n"
       "                      Ricky   121   37  Ricky_GM+tlrc[8]\n"
       "\n"
-      "* The first column contains the labels that must match the dataset\n"
+      "* The first line of COVAR_FILE contains column headers.  The header label\n"
+      "   for the first column (#0) isn't used for anything.  The later header labels\n"
+      "   are used in the sub-brick labels stored in the output dataset.\n"
+      "\n"
+      "* The first column contains the dataset labels that must match the dataset\n"
       "   LABL_K labels given in the '-setX' option(s).\n"
       "\n"
       "* If you used a short form '-setX' option, each dataset label is\n"
       "   the dataset's prefix name (truncated to 12 characters).\n"
-      "  ++ e.g.,  fred+tlrc'[3]'  ==>  fred\n"
-      "  ++ e.g.,  elvis.nii.gz    ==>  elvis\n"
+      "  ++ e.g.,  Fred+tlrc'[3]'  ==>  Fred\n"
+      "  ++ e.g.,  Elvis.nii.gz    ==>  Elvis\n"
       "\n"
       "* '-covariates' can only be used with the short form '-setX' option\n"
       "   if each input dataset has only 1 sub-brick (so that each label\n"
@@ -289,15 +296,31 @@ void display_help_menu(void)
       "     will not work well!\n"
       "\n"
       "* The later columns in COVAR_FILE contain numbers (e.g., 'IQ' and 'age',\n"
-      "    above), or dataset names.  In the latter case, you are specifying a\n"
+      "    above), OR dataset names.  In the latter case, you are specifying a\n"
       "    voxel-wise covariate (e.g., 'GMfrac').\n"
+      "  ++ Do NOT put the dataset names or labels in this file in quotes.\n"
       "\n"
-      "* A column can contain numbers only, or datasets only.  But one\n"
+      "* A column can contain numbers only, OR datasets names only.  But one\n"
       "   column CANNOT contain a mix of numbers and dataset names!\n"
+      " ++ In the second line of the file (after the header line), a column entry\n"
+      "    that is purely numeric indicates that column will be all numbers.\n"
+      " ++ A column entry that is not numeric indicates that column will be\n"
+      "    dataset names.\n"
+      " ++ You are not required to make the columns and rows line up neatly,\n"
+      "    (separating entries in the same row with 1 or more blanks is OK),\n"
+      "    but your life will be much nicer if you DO make them well organized.\n"
       "\n"
-      "* The first line of COVAR_FILE contains column headers.  The header label\n"
-      "   for the first column isn't used for anything.  The later header labels\n"
-      "   are used in the sub-brick labels stored in the output dataset.\n"
+      "* You cannot enter covariates as pure labels (e.g., 'Male' and 'Female').\n"
+      "   To assign such categorical covariates, you must use numeric values.\n"
+      "   A column in the covariates file that contains strings rather than\n"
+      "   numbers is assumed to be a list of dataset names, not category labels!\n"
+     "\n"
+      "* If you want to omit some columns in COVAR_FILE from the analysis, you\n"
+      "   can do so with the standard AFNI column selector '[...]'.  However,\n"
+      "   you MUST include column #0 first (the dataset labels) and at least\n"
+      "   one more column.  For example:\n"
+      "     -covariates Cov.table'[0,2..4]'\n"
+      "   to skip column #1 but keep columns #2, #3, and #4.\n"
       "\n"
       "* Only the -paired and -pooled options can be used with covariates.\n"
       "  ++ If you use -unpooled, it will be changed to -pooled.\n"
@@ -319,6 +342,12 @@ void display_help_menu(void)
       "\n"
       "* See the section 'STRUCTURE OF THE OUTPUT DATASET' for details of\n"
       "   what is calculated and stored by 3dttest++.\n"
+      "\n"
+      "* If you are having trouble getting the program to read your covariates\n"
+      "  table file, then set the environment variable AFNI_DEBUG_TABLE to YES\n"
+      "  and run the program.  A lot of progress reports will be printed out,\n"
+      "  which may help pinpoint the problem; for example:\n"
+      "     3dttest++ -DAFNI_DEBUG_TABLE=YES -covariates cfile.txt |& more\n"
       "\n"
       "* A maximum of 31 covariates are allowed.  If you have more, then\n"
       "   seriously consider the likelihood that you are completely deranged.\n"
@@ -502,6 +531,10 @@ void display_help_menu(void)
       "                 Deities of Mathematics.\n"
       "\n"
       " -prefix p = Gives the name of the output dataset file.\n"
+      "          ++ For surface-based datasets, use something like:\n"
+      "              -prefix p.niml.dset or -prefix p.gii.dset \n"
+      "             Otherwise you may end up files containing numbers but\n"
+      "             not a full set of header information.\n" 
       "\n"
       " -debug    = Prints out information about the analysis, which can\n"
       "               be VERY lengthy -- not for general usage.\n"
@@ -699,6 +732,20 @@ void display_help_menu(void)
   PRINT_COMPILE_DATE ; exit(0) ;
 }
 
+/* Can this option be a label or subject name?  [ZSS Nov 29 2011] */
+
+int is_possible_filename( char * fname )
+{
+    int mode;
+
+    mode = storage_mode_from_filename(fname);
+
+    if (THD_is_ondisk(fname) && 
+         (mode > STORAGE_UNDEFINED || mode <LAST_STORAGE_MODE )) return(1);
+    
+    return(0);
+}
+
 /*----------------------------------------------------------------------------*/
 
 int main( int argc , char *argv[] )
@@ -711,8 +758,10 @@ int main( int argc , char *argv[] )
    char blab[64] , *stnam ;
    float dof_AB=0.0f , dof_A=0.0f , dof_B=0.0f ;
    int BminusA=-1 , ntwosam=0 ;  /* 05 Nov 2010 */
-   char *snam_PPP , *snam_MMM ;
-
+   char *snam_PPP=NULL, *snam_MMM=NULL ;
+   static int iwarn=0;
+   
+   
    /*--- help the piteous luser? ---*/
 
    if( argc < 2 || strcmp(argv[1],"-help") == 0 ) display_help_menu() ;
@@ -720,7 +769,7 @@ int main( int argc , char *argv[] )
    /*--- record things for posterity, et cetera ---*/
 
    mainENTRY("3dttest++ main"); machdep(); AFNI_logger("3dttest++",argc,argv);
-   PRINT_VERSION("3dttest++") ; AUTHOR("The Bob") ;
+   PRINT_VERSION("3dttest++") ; AUTHOR("The Bob++") ;
 
 #if defined(USING_MCW_MALLOC) && !defined(USE_OMP)
    enable_mcw_malloc() ;
@@ -919,8 +968,13 @@ int main( int argc , char *argv[] )
 
          snam = strdup(argv[nopt]) ; LTRUNC(snam) ;
          for( nopt++ ; nopt < argc && argv[nopt][0] != '-' ; nopt+=2 ){
-           if( nopt+1 >= argc || argv[nopt+1][0] == '-' )
-             ERROR_exit("Option %s: ends prematurely",onam) ;
+           if( nopt+1 >= argc || argv[nopt+1][0] == '-' ) {
+             ERROR_message("Option %s: ends prematurely after option %s.\n"
+       "   Make sure you are properly formatting your -set[A/B] parameters.\n"
+       "   Search for 'SHORT FORM' and 'LONG FORM' in the output of %s -help\n"
+               ,onam, argv[nopt], argv[0]) ;
+             exit(1);
+           }
            qset = THD_open_dataset( argv[nopt+1] ) ;
            if( !ISVALID_DSET(qset) )
              ERROR_exit("Option %s: can't open dataset '%s'",onam,argv[nopt+1]) ;
@@ -933,6 +987,18 @@ int main( int argc , char *argv[] )
            dset = (THD_3dim_dataset **)realloc(dset,sizeof(THD_3dim_dataset *)*nds) ;
            nams[nds-1] = strdup(argv[nopt+1]) ; dset[nds-1] = qset ;
            labs[nds-1] = strdup(argv[nopt]  ) ; LTRUNC(labs[nds-1]) ;
+           /* check syntax */
+           if (!iwarn && 
+               (is_possible_filename( nams[nds-1] ) ||
+                is_possible_filename( labs[nds-1] ) )) {
+              WARNING_message(
+               "Label %s or name %s appear to be a file on disk\n"
+            "  Perhaps your command line syntax for %s is incorrect.\n"
+            "  Lookfor 'SHORT FORM' and 'LONG FORM' in the output of %s -help\n"
+            "  Similar warnings will be muted.\n"
+               ,labs[nds-1], nams[nds-1], onam, argv[0]) ; 
+              ++iwarn;   
+           }
          }
 
          if( nv < 2 )
@@ -974,12 +1040,15 @@ int main( int argc , char *argv[] )
      /*----- covariates -----*/
 
      if( strcasecmp(argv[nopt],"-covariates") == 0 ){  /* 20 May 2010 */
-       char *lab ; float sig ;
+       char *lab ; float sig , men ; char nlab[2048] , dlab[2048] ;
        if( ++nopt >= argc ) ERROR_exit("need 1 argument after option '%s'",argv[nopt-1]);
        if( covnel != NULL ) ERROR_exit("can't use -covariates twice!") ;
        covnel = THD_mixed_table_read( argv[nopt] ) ;
-       if( covnel == NULL )
-         ERROR_exit("Can't read table from -covariates file '%s'",argv[nopt]) ;
+       if( covnel == NULL ){
+         ERROR_message("Can't read table from -covariates file '%s'",argv[nopt]) ;
+         ERROR_message("Try re-running this program with the extra option -DAFNI_DEBUG_TABLE=YES") ;
+         ERROR_exit(   "Can't continue after the above error!") ;
+       }
        INFO_message("Covariates file: %d columns, each with %d rows",
                     covnel->vec_num , covnel->vec_len ) ;
        mcov = covnel->vec_num - 1 ;
@@ -996,20 +1065,40 @@ int main( int argc , char *argv[] )
        } else {
          ERROR_exit("Can't get labels from -covariates file '%s'",argv[nopt]) ;
        }
+       nlab[0] = dlab[0] = '\0' ;
        for( nbad=0,jj=1 ; jj <= mcov ; jj++ ){
          if( covnel->vec_typ[jj] == NI_FLOAT ){  /* numeric column */
-           meansigma_float(covnel->vec_len,(float *)covnel->vec[jj],NULL,&sig) ;
+           meansigma_float(covnel->vec_len,(float *)covnel->vec[jj],&men,&sig) ;
            if( sig <= 0.0f ){
-             ERROR_message("Covariate '%s' is constant; how can this be used?!" ,
-                           covlab->str[jj] ) ; nbad++ ;
+             ERROR_message(
+               "Numeric covariate column '%s' is constant '%f'; can't be used!" ,
+               covlab->str[jj] , men ) ; nbad++ ;
            }
+           strcat(nlab,covlab->str[jj]) ; strcat(nlab," ") ;
          } else {                                /* string column: */
+           char **qpt = (char **)covnel->vec[jj] ; int nsame=1 ;
+           for( kk=1 ; kk < covnel->vec_len ; kk++ ){
+             if( strcmp(qpt[0],qpt[kk]) == 0 ) nsame++ ;
+           }
+           if( nsame == covnel->vec_len ){
+             ERROR_message(
+               "Dataset covariate column '%s' is constant '%s'; can't be used!",
+               covlab->str[jj] , qpt[0] ) ; nbad++ ;
+           }
            num_covset_col++ ;              /* count number of them */
+           strcat(dlab,covlab->str[jj]) ; strcat(dlab," ") ;
          }
          LTRUNC(covlab->str[jj]) ;
        }
        if( nbad > 0 ) ERROR_exit("Cannot continue past above ERROR%s :-(",
                                   (nbad==1) ? "\0" : "s" ) ;
+       if( mcov-num_covset_col > 0 )
+         ININFO_message("Found %d numeric column%s: %s",
+                        mcov-num_covset_col , (mcov-num_covset_col==1) ? "\0" : "s" ,
+                        nlab ) ;
+       if( num_covset_col > 0 )
+         ININFO_message("Found %d dataset name column%s: %s",
+                      num_covset_col , (num_covset_col==1) ? "\0" : "s" , dlab ) ;
        nopt++ ; continue ;
      }
 

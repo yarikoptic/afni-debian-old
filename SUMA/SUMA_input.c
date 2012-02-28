@@ -77,6 +77,10 @@ int SUMA_KeyPress(char *keyin, char *keynameback)
             SUMA_RETURN(XK_n);
          case 'N':
             SUMA_RETURN(XK_N);
+         case 'o':
+            SUMA_RETURN(XK_o);
+         case 'O':
+            SUMA_RETURN(XK_O);
          case 'p':
             SUMA_RETURN(XK_p);
          case 'P':
@@ -126,7 +130,8 @@ int SUMA_KeyPress(char *keyin, char *keynameback)
       if (SUMA_iswordsame_ci(keyname,"f6") == 1) SUMA_RETURN(XK_F6);
       if (SUMA_iswordsame_ci(keyname,"f7") == 1) SUMA_RETURN(XK_F7);
       if (SUMA_iswordsame_ci(keyname,"f8") == 1) SUMA_RETURN(XK_F8);
-      
+      if (SUMA_iswordsame_ci(keyname,"f9") == 1) SUMA_RETURN(XK_F9);
+
       SUMA_S_Errv("Key '%s' not yet supported, complain to author.\n", keyname);
       SUMA_RETURN(XK_VoidSymbol);
    }
@@ -184,13 +189,14 @@ int SUMA_CHAR_Key(SUMA_SurfaceViewer *sv, char *key, char *callmode)
 }
 #endif
 
+static int Nwarn_bracket = 0;
+
 int SUMA_bracketleft_Key(SUMA_SurfaceViewer *sv, char *key, char *callmode) 
 {
    static char FuncName[]={"SUMA_bracketleft_Key"};
    char tk[]={"["}, keyname[100];
    int k, nc;
    char stmp[200];   
-   static int nwarn=0;
    SUMA_Boolean LocalHead = NOPE;
    
    SUMA_ENTRY;
@@ -208,15 +214,16 @@ int SUMA_bracketleft_Key(SUMA_SurfaceViewer *sv, char *key, char *callmode)
          SUMA_postRedisplay(sv->X->GLXAREA, NULL, NULL);
          if (sv->ShowLeft) {
             sprintf(stmp,"Showing Left side%s",
-               nwarn > 1 ? 
-            "":"\nFurther Show notices for '[' key will be echoed in the shell"); 
+               Nwarn_bracket  ? 
+      "":"\nFurther notices for '[' or ']' keys will be echoed in the shell"); 
          } else {
             sprintf(stmp,"Hiding Left side%s",
-               nwarn > 1 ? 
-            "":"\nFurther Hide notices for '[' key will be echoed in the shell");
+               Nwarn_bracket > 1 ? 
+      "":"\nFurther notices for '[' or ']' keys will be echoed in the shell");
          }
-         if (nwarn < 2 && callmode && strcmp(callmode, "interactive") == 0) { 
-            SUMA_SLP_Note(stmp); ++nwarn;
+         if (!Nwarn_bracket && callmode && 
+               strcmp(callmode, "interactive") == 0) { 
+            SUMA_SLP_Note(stmp); ++Nwarn_bracket;
          } else { SUMA_S_Note(stmp); } 
          break;
       default:
@@ -234,7 +241,6 @@ int SUMA_bracketright_Key(SUMA_SurfaceViewer *sv, char *key, char *callmode)
    char tk[]={"]"}, keyname[100];
    int k, nc;
    char stmp[200];   
-   static int nwarn=0;
    SUMA_Boolean LocalHead = NOPE;
    
    SUMA_ENTRY;
@@ -252,15 +258,16 @@ int SUMA_bracketright_Key(SUMA_SurfaceViewer *sv, char *key, char *callmode)
          SUMA_postRedisplay(sv->X->GLXAREA, NULL, NULL);
          if (sv->ShowRight) {
             sprintf(stmp,"Showing Right side%s",
-               nwarn > 1 ? 
-                  "":"\nFurther Show notices for ']' key will be in the shell"); 
+               Nwarn_bracket ? 
+            "":"\nFurther notices for '[' or ']' key will be in the shell"); 
          } else {
             sprintf(stmp,"Hiding right side%s",
-               nwarn > 1 ? 
-                  "":"\nFurther Hide notices for ']' key will be in the shell");
+               Nwarn_bracket  ? 
+            "":"\nFurther notices for '[' or ']' key will be in the shell");
          }
-         if (nwarn < 2 && callmode && strcmp(callmode, "interactive") == 0) { 
-            SUMA_SLP_Note(stmp); ++nwarn;
+         if (!Nwarn_bracket && callmode && 
+               strcmp(callmode, "interactive") == 0) { 
+            SUMA_SLP_Note(stmp); ++Nwarn_bracket;
          } else { SUMA_S_Note(stmp); } 
          break;
       default:
@@ -761,7 +768,8 @@ int SUMA_F6_Key(SUMA_SurfaceViewer *sv, char *key, char *callmode)
          sv->clear_color[0] = 1 - sv->clear_color[0];
          sv->clear_color[1] = 1 - sv->clear_color[1];
          sv->clear_color[2] = 1 - sv->clear_color[2];
-
+         
+         SUMA_UpdateCrossHairNodeLabelField(sv);
          if (!list) list = SUMA_CreateList();
          SUMA_REGISTER_HEAD_COMMAND_NO_DATA(list, SE_Redisplay, SES_Suma, sv);
          if (!SUMA_Engine (&list)) {
@@ -848,7 +856,8 @@ int SUMA_F8_Key(SUMA_SurfaceViewer *sv, char *key, char *callmode)
                sprintf(stmp,"Using perspective viewing");
                sv->FOV[sv->iState] = sv->FOV[sv->iState] * 2.0;
             }
-            if (callmode && strcmp(callmode, "interactive") == 0) { SUMA_SLP_Note(stmp); }
+            if (callmode && strcmp(callmode, "interactive") == 0) { 
+                  SUMA_SLP_Note(stmp); }
             else { SUMA_S_Note(stmp); }
          }
 
@@ -857,6 +866,48 @@ int SUMA_F8_Key(SUMA_SurfaceViewer *sv, char *key, char *callmode)
          break; 
       default:
          SUMA_S_Err("Il ne faut pas etre over yonder");
+         SUMA_RETURN(0);
+         break;
+   }
+
+   SUMA_RETURN(1);
+}
+
+int SUMA_F9_Key(SUMA_SurfaceViewer *sv, char *key, char *callmode)
+{
+   static char FuncName[]={"SUMA_F9_Key"};
+   char tk[]={"F9"}, keyname[100];
+   int k, nc;
+   SUMA_EngineData *ED = NULL; 
+   DList *list = NULL;
+   DListElmt *NextElm= NULL;
+   static int inote = 0;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+
+   SUMA_KEY_COMMON;
+   
+   /* do the work */
+   switch (k) {
+      case XK_F9:
+         sv->ShowLabelAtXhair = !sv->ShowLabelAtXhair;
+         SUMA_UpdateCrossHairNodeLabelField(sv);
+         {
+            char stmp[200];
+            if (sv->ShowLabelAtXhair) {
+               sprintf(stmp,"Showing Label At Xhair");
+            } else {
+               sprintf(stmp,"Hiding Label At Xhair");
+            }
+            if (callmode && strcmp(callmode, "interactive") == 0 && inote < 2) { 
+               SUMA_SLP_Note(stmp); ++inote;}
+            else { SUMA_S_Note(stmp); }
+         }
+         SUMA_postRedisplay(sv->X->GLXAREA, NULL, NULL);
+         break; 
+      default:
+         SUMA_S_Err("Il ne faut pas etre hawn");
          SUMA_RETURN(0);
          break;
    }
@@ -1514,15 +1565,16 @@ int SUMA_J_Key(SUMA_SurfaceViewer *sv, char *key, char *callmode, char *strgval)
              } else if (SUMA_AALT_KEY(key)){     
                   sv->X->JumpFocusNode_prmpt = SUMA_CreatePromptDialogStruct( 
                                  SUMA_OK_APPLY_CLEAR_CANCEL, 
-                                 "Enter index of focus node\n"
-                                 "Cross hair's XYZ will not be affected:", 
+                     "Enter index of focus node\n"
+                     "Prepend/append L/R for hemiisphere selection\n"
+                     "Cross hair's XYZ will not be affected:", 
                                  "",
                                  sv->X->TOPLEVEL, YUP,
                                  SUMA_APPLY_BUTTON,
                                  SUMA_JumpFocusNode, (void *)sv,
                                  NULL, NULL,
                                  NULL, NULL,
-                                 SUMA_CleanNumString, (void*)1,                                                    sv->X->JumpFocusNode_prmpt);
+                                 SUMA_CleanNumStringSide, (void*)1,                                                    sv->X->JumpFocusNode_prmpt);
 
                   sv->X->JumpFocusNode_prmpt = SUMA_CreatePromptDialog(
                                     sv->X->Title, sv->X->JumpFocusNode_prmpt);
@@ -1530,15 +1582,15 @@ int SUMA_J_Key(SUMA_SurfaceViewer *sv, char *key, char *callmode, char *strgval)
              } else {
                   sv->X->JumpIndex_prmpt = SUMA_CreatePromptDialogStruct(
                                  SUMA_OK_APPLY_CLEAR_CANCEL, 
-                                 "Enter index of node \n"
-                                 "to send the cross hair to:", 
+                            "Enter index of node to send the cross hair to:\n"
+                            "(prepend/append L/R for specifying hemisphere):", 
                                  "",
                                  sv->X->TOPLEVEL, YUP,
                                  SUMA_APPLY_BUTTON,
                                  SUMA_JumpIndex, (void *)sv,
                                  NULL, NULL,
                                  NULL, NULL,
-                                 SUMA_CleanNumString, (void*)1,  
+                                 SUMA_CleanNumStringSide, (void*)1,  
                                  sv->X->JumpIndex_prmpt);
 
                   sv->X->JumpIndex_prmpt = SUMA_CreatePromptDialog(
@@ -1795,6 +1847,52 @@ int SUMA_N_Key(SUMA_SurfaceViewer *sv, char *key, char *callmode)
    SUMA_RETURN(1);
 }
 
+/*!
+   Execute commands when O or o is pressed
+*/
+int SUMA_O_Key(SUMA_SurfaceViewer *sv, char *key, char *callmode)
+{
+   static char FuncName[]={"SUMA_O_Key"};
+   char tk[]={"O"}, keyname[100];
+   int k, nc;
+   int N_SOlist, SOlist[SUMA_MAX_DISPLAYABLE_OBJECTS];
+   SUMA_SurfaceObject *SO = NULL;
+   
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+
+   SUMA_KEY_COMMON;
+
+   /* do the work */
+   switch (k) {
+      case XK_O:
+         break;
+      case XK_o:
+         if (SUMA_CTRL_KEY(key)) {
+           sv->X->SetRot_prmpt = SUMA_CreatePromptDialogStruct (
+                  SUMA_OK_APPLY_CLEAR_CANCEL, "Center of Rotation X,Y,Z:", 
+                  "0,0,0",
+                  sv->X->TOPLEVEL, YUP,
+                  SUMA_APPLY_BUTTON,
+                  SUMA_SetRotCenter, (void *)sv,
+                  NULL, NULL,
+                  NULL, NULL,
+                  NULL, NULL,  
+                  sv->X->SetRot_prmpt);
+
+            sv->X->SetRot_prmpt = SUMA_CreatePromptDialog(sv->X->Title, 
+                                                          sv->X->SetRot_prmpt);
+         }
+         break;
+      default:
+         SUMA_S_Err("Il ne faut pas etre ici");
+         SUMA_RETURN(0);
+         break;
+   }
+
+   SUMA_RETURN(1);
+}
 
 /*!
    Execute commands when P or p is pressed
@@ -1861,6 +1959,19 @@ int SUMA_R_Key(SUMA_SurfaceViewer *sv, char *key, char *callmode)
    switch (k) {
       case XK_r:
          if ((SUMA_APPLE_KEY(key) || SUMA_ALT_KEY(key))) {
+            SUMAg_CF->SUMA_SnapshotOverSampling = 
+                  (SUMAg_CF->SUMA_SnapshotOverSampling +1)%5;
+            if (SUMAg_CF->SUMA_SnapshotOverSampling == 0) 
+                     SUMAg_CF->SUMA_SnapshotOverSampling = 1;
+            { 
+               sprintf(msg,"Oversampling now set to %d", 
+                           SUMAg_CF->SUMA_SnapshotOverSampling);
+               if (callmode && strcmp(callmode, "interactive") == 0) { 
+                  SUMA_SLP_Note (msg); 
+               } else { SUMA_S_Note (msg); }
+            }
+         } else if (SUMA_CTRL_KEY(key)) {
+            #if 0
             sv->X->SetRot_prmpt = SUMA_CreatePromptDialogStruct (
                   SUMA_OK_APPLY_CLEAR_CANCEL, "Center of Rotation X,Y,Z:", 
                   "0,0,0",
@@ -1874,21 +1985,12 @@ int SUMA_R_Key(SUMA_SurfaceViewer *sv, char *key, char *callmode)
 
             sv->X->SetRot_prmpt = SUMA_CreatePromptDialog(sv->X->Title, 
                                                           sv->X->SetRot_prmpt);
-
-         } else if (SUMA_CTRL_KEY(key)) {
-            SUMAg_CF->SUMA_SnapshotOverSampling = 
-                  (SUMAg_CF->SUMA_SnapshotOverSampling +1)%5;
-            if (SUMAg_CF->SUMA_SnapshotOverSampling == 0) 
-                     SUMAg_CF->SUMA_SnapshotOverSampling = 1;
-            { 
-               sprintf(msg,"Oversampling now set to %d", 
-                           SUMAg_CF->SUMA_SnapshotOverSampling);
-               if (callmode && strcmp(callmode, "interactive") == 0) { 
-                  SUMA_SLP_Note (msg); 
-               } else { SUMA_S_Note (msg); }
-            }
+            #else
+            /* save image to disk */
+            SUMA_SnapToDisk(sv,1);
+            #endif
          } else {
-            GLvoid *pixels;
+            GLvoid *pixels=NULL;
             double rat;
             int oh=-1,ow=-1;
             /* Control for GL_MAX_VIEWPORT_DIMS */
@@ -1953,40 +2055,63 @@ int SUMA_R_Key(SUMA_SurfaceViewer *sv, char *key, char *callmode)
                                 SUMAg_CF->SUMA_SnapshotOverSampling * 
                                  sv->X->HEIGHT);
                      SUMA_handleRedisplay((XtPointer)sv->X->GLXAREA);
+                     #if 0 /* problem should be fixed by SUMA_grabRenderedPixels
+                              Throw section out if no new problems arise.
+                              Search for KILL_DOUBLE_RENDERING to locate
+                              other chunks for removal 
+                                       ZSS Feb 2012 */
+                        if (1) {
+                           /* seems to fix an problem with snapping the older 
+                           image... at least on mac
+                           None of glFlush(); glFinish();glXWaitGL();glXWaitX(); 
+                           or NI_sleep did the trick               
+                           Perhaps the wrong buffer is being grabbed? 
+                           Check SUMA_grabPixels ...
+                                 ZSS Feb 2012. 
+                           Yes it was,  SUMA_grabRenderedPixels does the trick.
+                                 ZSS Feb the next morning 2012 */
+                           SUMA_handleRedisplay((XtPointer)sv->X->GLXAREA);
+                        }
+                     #endif
                   } else {
-                     /* ZSS   Nov 20 2009 
-                        If you do not redisplay here, you could strange cases of
-                        snapping the previous frame as reported by Colm Connolly.
-                        
-                     1. suma -spec N27_both_tlrc.spec -sv TT_N27+tlrc. &
-                     2. press F2 five times to cycle through the various axes 
-                        from none to all and back to none.
-                     3. press r to record
+                     #if 0 /* Search for KILL_DOUBLE_RENDERING to locate
+                              other chunks for removal 
+                                       ZSS Feb 2012 */
+                  /* ZSS   Nov 20 2009 
+                     If you do not redisplay here, you could strange cases of
+                     snapping the previous frame as reported by Colm Connolly.
 
-                     The first image recorded has axes present even though none 
-                     are present in the viewer. Pressing r again produces an 
-                     image with no axes as expected.
-                     
-                     Actually, it seems this happens in many other cases, F1, F6,
-                     change state, etc. 
-                     
-                     This seems to be the same problem reported by Chunmao W. 
-                     a while back. 
-                     Same happens with R option. 
-                     
-                     Problem only happens under DARWIN it seems.
-                     
-                     I do not know why the call to SUMA_handleRedisplay does the 
-                     trick. Perhaps it is a buffer reading problem in double 
-                     buffer rendering. The fix is ugly, especially in continuous
-                     record mode (see SUMA_display function in 'if(csv->record)'
-                     block), but it works.
-                     */
-                     #ifdef DARWIN
-                     SUMA_handleRedisplay((XtPointer)sv->X->GLXAREA);
+                  1. suma -spec N27_both_tlrc.spec -sv TT_N27+tlrc. &
+                  2. press F2 five times to cycle through the various axes 
+                     from none to all and back to none.
+                  3. press r to record
+
+                  The first image recorded has axes present even though none 
+                  are present in the viewer. Pressing r again produces an 
+                  image with no axes as expected.
+
+                  Actually, it seems this happens in many other cases, F1, F6,
+                  change state, etc. 
+
+                  This seems to be the same problem reported by Chunmao W. 
+                  a while back. 
+                  Same happens with R option. 
+
+                  Problem only happens under DARWIN it seems.
+
+                  I do not know why the call to SUMA_handleRedisplay does the 
+                  trick. Perhaps it is a buffer reading problem in double 
+                  buffer rendering. The fix is ugly, especially in continuous
+                  record mode (see SUMA_display function in 'if(csv->record)'
+                  block), but it works.
+                  */
+                        #ifdef DARWIN
+                        SUMA_handleRedisplay((XtPointer)sv->X->GLXAREA);
+                        #endif
                      #endif
                   }
-                  pixels = SUMA_grabPixels(1, sv->X->WIDTH, sv->X->HEIGHT);
+                  pixels = SUMA_grabRenderedPixels(sv, 1, 
+                                       sv->X->WIDTH, sv->X->HEIGHT);
                   if (pixels) {
                     ISQ_snapsave (sv->X->WIDTH, -sv->X->HEIGHT, 
                                   (unsigned char *)pixels, sv->X->GLXAREA ); 
@@ -2030,15 +2155,42 @@ int SUMA_R_Key(SUMA_SurfaceViewer *sv, char *key, char *callmode)
          }
          break;
       case XK_R:
-         sv->Record = !sv->Record;
-         if (sv->Record) { 
-            if (callmode && strcmp(callmode, "interactive") == 0) { SUMA_SLP_Note ("Recording ON"); }
-            else { SUMA_S_Note ("Recording ON"); }
-         } else { 
-            if (callmode && strcmp(callmode, "interactive") == 0) { SUMA_SLP_Note ("Recording OFF"); }
-            else { SUMA_S_Note ("Recording OFF");} 
+         if (SUMA_CTRL_KEY(key)) {
+            char sbuf[256];
+            sv->Record = !sv->Record;
+            if (sv->Record) sv->Record = 2;
+            if (sv->Record) {
+               SUMA_VALIDATE_RECORD_PATH(SUMAg_CF->autorecord);
+               snprintf(sbuf,256*sizeof(char), 
+                        "Disk Recording ON to: %s%s*",
+                           SUMAg_CF->autorecord->Path,
+                           SUMAg_CF->autorecord->FileName_NoExt);
+               if (callmode && strcmp(callmode, "interactive") == 0) { 
+                  SUMA_SLP_Note (sbuf); }
+               else { SUMA_S_Note (sbuf); }
+            } else { 
+               snprintf(sbuf,256*sizeof(char), 
+                        "Disk Recording OFF. Results in: %s%s*",
+                           SUMAg_CF->autorecord->Path,
+                           SUMAg_CF->autorecord->FileName_NoExt);
+               if (callmode && strcmp(callmode, "interactive") == 0) { 
+                  SUMA_SLP_Note (sbuf); }
+               else { SUMA_S_Note (sbuf);} 
+            }
+            SUMA_UpdateViewerTitle(sv);
+         } else {
+            sv->Record = !sv->Record;
+            if (sv->Record) { 
+               if (callmode && strcmp(callmode, "interactive") == 0) { 
+                  SUMA_SLP_Note ("Recording ON"); }
+               else { SUMA_S_Note ("Recording ON"); }
+            } else { 
+               if (callmode && strcmp(callmode, "interactive") == 0) { 
+                  SUMA_SLP_Note ("Recording OFF"); }
+               else { SUMA_S_Note ("Recording OFF");} 
+            }
+            SUMA_UpdateViewerTitle(sv);
          }
-         SUMA_UpdateViewerTitle(sv);
          break;
       default:
          SUMA_S_Err("Il ne faut pas etre ici");
@@ -2612,7 +2764,7 @@ void SUMA_input(Widget w, XtPointer clientData, XtPointer callData)
    GLwDrawingAreaCallbackStruct *cd;
    char buffer[10], cbuf = '\0', cbuf2='\0';
    KeySym keysym;
-   int xls, ntot, id = 0, ND, ip, NP;
+   int xls=-1, ntot, id = 0, ND, ip, NP;
    float ArrowDeltaRot = 0.05; /* The larger the value, 
                         the bigger the rotation increment */
    SUMA_EngineData *ED = NULL; 
@@ -2639,9 +2791,6 @@ void SUMA_input(Widget w, XtPointer clientData, XtPointer callData)
                                              that are not to be preserved */
    SUMA_Boolean LocalHead = NOPE; /* local debugging messages */
 
-   /*float ft;
-   int **im, iv15[15];*/ /* keep unused variables undeclared to quite compiler */
-
    SUMA_ENTRY;
    
    /* get the callData pointer */
@@ -2666,38 +2815,48 @@ void SUMA_input(Widget w, XtPointer clientData, XtPointer callData)
    Mev = *(XMotionEvent *) &cd->event->xmotion;
    
    /* a sample keypresses */
-   #if 0
+   if (SUMAg_CF->Echo_KeyPress) {
+      if (Kev.type == KeyPress) {
+         buffer[0] = '\0';
+         xls = XLookupString((XKeyEvent *) cd->event, buffer, 8, &keysym, NULL);
+         fprintf (SUMA_STDERR,"%s KeyPress char>>%s<< sym>>%d<< ", 
+                  FuncName, buffer, (int)keysym);
+      } else {
+         fprintf (SUMA_STDERR,"%s Mouse Action: ", FuncName);
+      }
       if (Kev.state & ShiftMask) {
-         fprintf (SUMA_STDERR,"%s: Shift down\n", FuncName);
+         fprintf (SUMA_STDERR,"Shift ");
       }
       if (Kev.state & ControlMask){
-         fprintf (SUMA_STDERR,"%s: Control down\n", FuncName);
+         fprintf (SUMA_STDERR,"Control ");
       }
       if (Kev.state & Mod1Mask){
-         fprintf (SUMA_STDERR,"%s: alt down\n", FuncName);
+         fprintf (SUMA_STDERR,"alt ");
       }
       if (Kev.state & Mod2Mask){
-         fprintf (SUMA_STDERR,"%s: Mod2 down (apple on mac)\n", FuncName);
+         fprintf (SUMA_STDERR,"Mod2 (command on mac) ");
       }
       if (Kev.state & Mod3Mask){
-         fprintf (SUMA_STDERR,"%s: Mod3 down\n", FuncName);
+         fprintf (SUMA_STDERR,"Mod3 ");
       }
       if (Kev.state & Mod4Mask){
-         fprintf (SUMA_STDERR,"%s: Mod4 down\n", FuncName);
+         fprintf (SUMA_STDERR,"Mod4 ");
       }
       if (Kev.state & Mod5Mask){
-         fprintf (SUMA_STDERR,"%s: Mod5 down\n", FuncName);
+         fprintf (SUMA_STDERR,"Mod5 ");
       }
       if (Kev.state & SUMA_APPLE_AltOptMask){
-         fprintf (SUMA_STDERR,"%s: Apple Alt/Opt down\n", FuncName);
+         fprintf (SUMA_STDERR,"Apple Alt/Opt ");
       }
-      fprintf (SUMA_STDERR,"state %d\n\n", Kev.state);
-   #endif
+      fprintf (SUMA_STDERR,"State %d\n\n", Kev.state);
+  }
    
   switch (Kev.type) { /* switch event type */
   case KeyPress:
-      xls = XLookupString((XKeyEvent *) cd->event, buffer, 8, &keysym, NULL);
-
+      if (xls < 0) { 
+         /* avoid double call in case SUMAg_CF->Echo_KeyPress called already */
+         xls = XLookupString((XKeyEvent *) cd->event, buffer, 8, &keysym, NULL);
+      }
       /* XK_* are found in keysymdef.h */ 
       switch (keysym) { /* keysym */
          case XK_bracketleft: /* The left bracket */
@@ -3222,7 +3381,36 @@ void SUMA_input(Widget w, XtPointer clientData, XtPointer callData)
                   }
                }
             break;
-
+         case XK_o:
+            if (SUMA_ALTHELL) {
+               if (!SUMA_O_Key(sv, "alt+o", "interactive")) {
+                  SUMA_S_Err("Failed in key func.");
+               }
+            } else if (Kev.state & ControlMask){
+               if (!SUMA_O_Key(sv, "ctrl+o", "interactive")) {
+                  SUMA_S_Err("Failed in key func.");
+               }
+            } else {
+               if (!SUMA_O_Key(sv, "o", "interactive")) {
+                  SUMA_S_Err("Failed in key func.");
+               }
+            }
+            break;
+         case XK_O:
+            if (SUMA_ALTHELL) {
+               if (!SUMA_O_Key(sv, "alt+O", "interactive")) {
+                  SUMA_S_Err("Failed in key func.");
+               }
+            } else if (Kev.state & ControlMask){
+               if (!SUMA_O_Key(sv, "ctrl+O", "interactive")) {
+                  SUMA_S_Err("Failed in key func.");
+               }
+            } else {
+               if (!SUMA_O_Key(sv, "O", "interactive")) {
+                  SUMA_S_Err("Failed in key func.");
+               }
+            }
+            break;
          case XK_p:
             if (!SUMA_P_Key(sv, "p", "interactive")) {
                SUMA_S_Err("Failed in key func.");
@@ -3236,11 +3424,11 @@ void SUMA_input(Widget w, XtPointer clientData, XtPointer callData)
             break;
          
          case XK_r:
-            if (SUMAg_CF->Dev && (SUMA_ALTHELL)) {
+            if (SUMA_ALTHELL) {
                if (!SUMA_R_Key(sv, "alt+r", "interactive")) {
                   SUMA_S_Err("Failed in key func.");
                }
-            } if (Kev.state & ControlMask){
+            } else if (Kev.state & ControlMask){
                if (!SUMA_R_Key(sv, "ctrl+r", "interactive")) {
                   SUMA_S_Err("Failed in key func.");
                }
@@ -3252,8 +3440,14 @@ void SUMA_input(Widget w, XtPointer clientData, XtPointer callData)
             break;
 
          case XK_R:
-            if (!SUMA_R_Key(sv, "R", "interactive")) {
-                  SUMA_S_Err("Failed in key func.");
+            if (Kev.state & ControlMask){
+               if (!SUMA_R_Key(sv, "ctrl+R", "interactive")) {
+                     SUMA_S_Err("Failed in key func.");
+               }
+            } else {
+               if (!SUMA_R_Key(sv, "R", "interactive")) {
+                     SUMA_S_Err("Failed in key func.");
+               }
             }
             break;
             
@@ -3662,6 +3856,12 @@ void SUMA_input(Widget w, XtPointer clientData, XtPointer callData)
             }
             break;
          
+         case XK_F9: /*F9 */
+            if (!SUMA_F9_Key(sv, "F9", "interactive")) {
+               SUMA_S_Err("Failed in key func.");
+            }
+            break;
+            
          case XK_F12: /* F12 */
             /* time display speed */
             {
@@ -7040,7 +7240,8 @@ void SUMA_JumpIndex (char *s, void *data)
    DListElmt *el=NULL;
    SUMA_EngineData *ED = NULL;
    SUMA_SurfaceViewer *sv = NULL;
-   SUMA_SurfaceObject *SO= NULL;
+   SUMA_SurfaceObject *SO= NULL, *SOc=NULL;
+   SUMA_SO_SIDE sd=SUMA_NO_SIDE;
    float fv3[3];
    int it, iv3[3];
    SUMA_Boolean LocalHead = NOPE; 
@@ -7051,12 +7252,46 @@ void SUMA_JumpIndex (char *s, void *data)
 
    sv = (SUMA_SurfaceViewer *)data;
 
+  /* HERE you should check if you have an L or R at the beginning
+   or end of s.
+   If you do, then first see if the side of SO (the focus surface)
+   is the same as the letter. If it is, proceed. If it is not,
+   try to get the contralateral surface with SUMA_Contralateral_SO
+   then set the contralateral as the focus surface, then proceed
+   with setting the focus node. Needs more work 
+   */
    /* parse s */
-   if (SUMA_StringToNum (s, (void*)fv3, 1,1) != 1) {/*problem, beep and ignore */
+   SUMA_LHv("Parsing %s\n", s);
+   if (SUMA_StringToNumSide(s, (void*)fv3, 1,1, &sd) != 1) {
+                                    /*problem, beep and ignore */
       XBell (XtDisplay (sv->X->TOPLEVEL), 50);
       SUMA_RETURNe;
    }
    
+   /* do we have side match with Focus node? */
+   SO = (SUMA_SurfaceObject *)(SUMAg_DOv[sv->Focus_SO_ID].OP);
+   if (SO) {
+      SUMA_LHv("Side of jump is %d, SO %s side %d\n", sd, SO->Label, SO->Side);
+   }
+   if (sd == SUMA_RIGHT || sd == SUMA_LEFT) {
+      if ((SO->Side == SUMA_RIGHT || SO->Side == SUMA_LEFT) &&
+            SO->Side != sd) {
+         /* Need to swith sides */
+         if ((SOc = SUMA_Contralateral_SO(SO, SUMAg_DOv, SUMAg_N_DOv))) {
+            sv->Focus_SO_ID = SUMA_findSO_inDOv(SOc->idcode_str, 
+                                             SUMAg_DOv, SUMAg_N_DOv);
+            SUMA_LHv("Jumping to %s (contralateral of %s)\n", 
+                  SOc->Label, SO->Label);
+            SO = SOc;
+         } else {
+            SUMA_S_Errv("Failed to find contralateral surface to %s\n"
+                        "Ignoring jump to node's side marker\n",
+                        SO->Label);
+         }
+      }
+   } 
+
+
    /* Set the Nodeselection  */
    it = (int) fv3[0];
    if (!list) list = SUMA_CreateList ();
@@ -7076,7 +7311,6 @@ void SUMA_JumpIndex (char *s, void *data)
 
 
    /* Now set the cross hair position at the selected node*/
-   SO = (SUMA_SurfaceObject *)SUMAg_DOv[sv->Focus_SO_ID].OP;
    ED = SUMA_InitializeEngineListData (SE_SetCrossHair);
    if (!SUMA_RegisterEngineListCommand (  list, ED, 
                                           SEF_fv3, (void*)&(SO->NodeList[3*it]),
@@ -7257,6 +7491,8 @@ void SUMA_JumpFocusNode (char *s, void *data)
    SUMA_SurfaceViewer *sv = NULL;
    float fv3[3];
    int it;
+   SUMA_SurfaceObject *SO=NULL, *SOc=NULL;
+   SUMA_SO_SIDE sd=SUMA_NO_SIDE;
    SUMA_Boolean LocalHead = NOPE; 
 
    SUMA_ENTRY;
@@ -7265,13 +7501,42 @@ void SUMA_JumpFocusNode (char *s, void *data)
 
    sv = (SUMA_SurfaceViewer *)data;
 
+   /* HERE you should check if you have an L or R at the beginning
+   or end of s.
+   If you do, then first see if the side of SO (the focus surface)
+   is the same as the letter. If it is, proceed. If it is not,
+   try to get the contralateral surface with SUMA_Contralateral_SO
+   then set the contralateral as the focus surface, then proceed
+   with setting the focus node. Needs more work 
+   */
    /* parse s */
-   if (SUMA_StringToNum (s, (void*)fv3, 1,1) != 1) {/*problem, beep and ignore */
+   SUMA_LHv("Parsing %s\n", s);
+   if (SUMA_StringToNumSide(s, (void*)fv3, 1,1, &sd) != 1) {
+                                    /*problem, beep and ignore */
       XBell (XtDisplay (sv->X->TOPLEVEL), 50);
       SUMA_RETURNe;
    }
    
-
+   SUMA_LHv("Side of focus jump is %d\n", sd);
+   /* do we have side match with Focus node? */
+   if (sd == SUMA_RIGHT || sd == SUMA_LEFT) {
+      SO = (SUMA_SurfaceObject *)(SUMAg_DOv[sv->Focus_SO_ID].OP);
+      if ((SO->Side == SUMA_RIGHT || SO->Side == SUMA_LEFT) &&
+            SO->Side != sd) {
+         /* Need to swith sides */
+         if ((SOc = SUMA_Contralateral_SO(SO, SUMAg_DOv, SUMAg_N_DOv))) {
+            sv->Focus_SO_ID = SUMA_findSO_inDOv(SOc->idcode_str, 
+                                             SUMAg_DOv, SUMAg_N_DOv);
+            SUMA_LHv("Jumping focus only to %s (contralateral of %s)\n", 
+                  SOc->Label, SO->Label);
+            SO = SOc;
+         } else {
+            SUMA_S_Errv("Failed to find contralateral surface to %s\n"
+                        "Ignoring jump to node's side marker\n",
+                        SO->Label);
+         }
+      }
+   } 
    /* Set the Nodeselection  */
    it = (int) fv3[0];
    if (!list) list = SUMA_CreateList ();

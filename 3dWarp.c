@@ -389,10 +389,16 @@ int main( int argc , char * argv[] )
            ERROR_exit("-matvec file not a 3x4 matrix!\n");
          matar = MRI_FLOAT_PTR(matim) ;
        }
-
-       use_matvec = (strstr(argv[nopt-1],"_in2out") != NULL) ? 
-                        MATVEC_FOR : MATVEC_BAC ;
-
+       
+       if (!strcmp(argv[nopt-1],"-matvec_in2out")) {
+         use_matvec = MATVEC_FOR;  
+       } else if (!strcmp(argv[nopt-1],"-matvec_out2in")) {
+         use_matvec = MATVEC_BAC;  
+       } else {
+         ERROR_exit( "Your -matvec option must end with either \n"
+                     "_in2out or _out2in. You have %s\n",
+                     argv[nopt-1]+7);
+       }
        switch( use_matvec ){
 
          case MATVEC_FOR:
@@ -446,8 +452,9 @@ int main( int argc , char * argv[] )
 
      /*-----*/
 
-     ERROR_exit("Unknown option %s\n",argv[nopt]) ;
-
+     ERROR_message("Unknown option %s\n",argv[nopt]) ;
+     suggest_best_prog_option(argv[0], argv[nopt]);
+     exit(1);
    } /* end of loop over options */
 
    /*-- check to see if we have a warp specified --*/
@@ -677,15 +684,9 @@ DUMP_MAT44("Twcombined", Tw);
    }
 #endif
 
-   if(oblique_flag) {
-      /* recompute Tc (Cardinal transformation matrix for new grid output */
-      THD_dicom_card_xform(outset, &tmat, &tvec); 
-      LOAD_MAT44(Tc, 
-          tmat.mat[0][0], tmat.mat[0][1], tmat.mat[0][2], tvec.xyz[0],
-          tmat.mat[1][0], tmat.mat[1][1], tmat.mat[1][2], tvec.xyz[1],
-          tmat.mat[2][0], tmat.mat[2][1], tmat.mat[2][2], tvec.xyz[2]);
-      outset->daxes->ijk_to_dicom_real = Tc;
-   }
+   /* lose obliquity if using 3dWarp for any transformation */
+   /* recompute Tc (Cardinal transformation matrix for new grid output */
+   THD_make_cardinal(outset);
 
    tross_Copy_History( inset , outset ) ;
    tross_Make_History( "3dWarp" , argc,argv , outset ) ;

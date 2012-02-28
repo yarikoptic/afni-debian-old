@@ -818,6 +818,7 @@ if( PRINT_TRACING ){
 
    strcpy( newseq->im_label , "hi bob" ) ;
    newseq->scl_label[0] = '\0' ;
+   newseq->overlay_label = NULL ;
 
    /* set display processing options */
 
@@ -963,6 +964,7 @@ if( PRINT_TRACING ){
 
            XmNallowShellResize , False ,       /* let code resize shell */
 
+
            XmNinitialResourcesPersistent , False ,
       NULL ) ;
 
@@ -1087,10 +1089,6 @@ if( PRINT_TRACING ){
                xmPushButtonWidgetClass , newseq->wform ,
                wa , na ) ;
 
-      if( ii == NBUT_DONE )   /* added 3/25/95 */
-         MCW_set_widget_bg( newseq->wbut_bot[ii] ,
-                            MCW_hotcolor(newseq->wbut_bot[ii]) , 0 ) ;
-
       XtAddCallback( newseq->wbut_bot[ii] , XmNactivateCallback ,
                      ISQ_but_bot_def[ii].func_CB , newseq ) ;
 
@@ -1098,6 +1096,9 @@ if( PRINT_TRACING ){
       MCW_register_hint( newseq->wbut_bot[ii] , ISQ_but_bot_hint[ii] ) ;
    }
    SET_SAVE_LABEL(newseq) ;
+
+   MCW_set_widget_bg( newseq->wbut_bot[NBUT_DONE] ,
+                      MCW_hotcolor(newseq->wbut_bot[ii]) , 0 ) ;
 
    /* 27 Jun 2001: popup menu for Save: button */
 
@@ -1109,6 +1110,16 @@ if( PRINT_TRACING ){
                            (XtPointer) newseq , /* client data */
                            XtListTail           /* last in queue */
                           ) ;
+
+   /* 17 Jun 2011: Button3 actions for Disp button */
+
+   XtInsertEventHandler( newseq->wbut_bot[NBUT_DISP] ,
+                         ButtonPressMask ,    /* button presses */
+                         FALSE ,              /* nonmaskable events? */
+                         ISQ_butdisp_EV ,     /* handler */
+                         (XtPointer) newseq , /* client data */
+                         XtListTail           /* last in queue */
+                        ) ;
 
    /* 24 Apr 2001: initialize recording stuff */
 
@@ -1562,7 +1573,17 @@ if( PRINT_TRACING ){
    SAVEUNDERIZE(XtParent(newseq->wbar_menu)) ;  /* 27 Feb 2001 */
 
    VISIBILIZE_WHEN_MAPPED(newseq->wbar_menu) ;
+#if 0
    if( !AFNI_yesenv("AFNI_DISABLE_TEAROFF") ) TEAROFFIZE(newseq->wbar_menu) ;
+#else
+   (void) XtVaCreateManagedWidget(
+            "dialog" , xmPushButtonWidgetClass , newseq->wbar_menu ,
+               LABEL_ARG("--- Cancel ---") ,
+               XmNrecomputeSize , False ,
+               XmNtraversalOn , False ,
+               XmNinitialResourcesPersistent , False ,
+            NULL ) ;
+#endif
 
    newseq->wbar_rng_but =
       XtVaCreateManagedWidget(
@@ -1572,6 +1593,7 @@ if( PRINT_TRACING ){
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
    XtAddCallback( newseq->wbar_rng_but, XmNactivateCallback, ISQ_wbar_menu_CB, newseq ) ;
+   MCW_register_hint(newseq->wbar_rng_but,"Fix bot,top values for underlay") ;
 
    newseq->wbar_zer_but =
       XtVaCreateManagedWidget(
@@ -1581,12 +1603,14 @@ if( PRINT_TRACING ){
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
    XtAddCallback( newseq->wbar_zer_but, XmNactivateCallback, ISQ_wbar_menu_CB, newseq ) ;
+   MCW_register_hint(newseq->wbar_zer_but,"Color for zero value in underlay") ;
 
    { char *blab[1] = { "Automask?" } ;
      newseq->wbar_amask_bbox = new_MCW_bbox( newseq->wbar_menu ,  /* 14 Jun 2010 */
                                              1 , blab ,
                                              MCW_BB_check , MCW_BB_noframe ,
                                              ISQ_wbar_amask_CB , (XtPointer)newseq ) ;
+     MCW_reghint_children(newseq->wbar_amask_bbox->wrowcol,"Automatically zero out image exterior") ;
    }
 
 
@@ -1732,6 +1756,7 @@ STATUS("creation: widgets created") ;
                                              MCW_BB_check , MCW_BB_noframe ,
                                              ISQ_wbar_plots_CB , (XtPointer)newseq ) ;
      MCW_set_bbox( newseq->wbar_plots_bbox , 1 ) ;
+     MCW_reghint_children(newseq->wbar_plots_bbox->wrowcol,"Allow line drawing overlay stuff") ;
 
      newseq->wbar_graymap_pb =
         XtVaCreateManagedWidget(
@@ -1741,6 +1766,7 @@ STATUS("creation: widgets created") ;
               XmNinitialResourcesPersistent , False ,
            NULL ) ;
      XtAddCallback( newseq->wbar_graymap_pb, XmNactivateCallback, ISQ_wbar_menu_CB, newseq ) ;
+     MCW_register_hint(newseq->wbar_graymap_pb,"Graph intensity vs underlay image value") ;
 
      (void) XtVaCreateManagedWidget( "menu",
                                      xmSeparatorWidgetClass, newseq->wbar_menu,
@@ -1772,6 +1798,7 @@ STATUS("creation: widgets created") ;
                           MCW_av_substring_CB , /* text creation routine */
                           alabel                /* data for above */
                         ) ;
+     MCW_reghint_children(newseq->wbar_label_av->wrowcol,"Show coordinate label") ;
 
      iii = 1 ;
      eee = getenv("AFNI_IMAGE_LABEL_SIZE") ;
@@ -1792,6 +1819,17 @@ STATUS("creation: widgets created") ;
                           MCW_av_substring_CB , /* text creation routine */
                           slabel                /* data for above */
                         ) ;
+     MCW_reghint_children(newseq->wbar_labsz_av->wrowcol,"Set coordinate label size") ;
+
+     newseq->wbar_labst_pb =
+        XtVaCreateManagedWidget(
+           "menu" , xmPushButtonWidgetClass , newseq->wbar_menu ,
+              LABEL_ARG("Label Append String") ,
+              XmNtraversalOn , False ,
+              XmNinitialResourcesPersistent , False ,
+           NULL ) ;
+     XtAddCallback( newseq->wbar_labst_pb, XmNactivateCallback, ISQ_wbar_menu_CB, newseq ) ;
+     MCW_register_hint(newseq->wbar_labst_pb,"Set string to append to overlay label") ;
 
    } /* end of plots & labels stuff */
 
@@ -2428,6 +2466,34 @@ void ISQ_butcrop_choice_CB( Widget w , XtPointer client_data ,
 }
 
 /*--------------------------------------------------------------------
+  Button 3 action for Disp button  [17 Jun 2011]
+----------------------------------------------------------------------*/
+
+void ISQ_butdisp_EV( Widget w , XtPointer client_data ,
+                     XEvent *ev , Boolean *continue_to_dispatch )
+{
+   MCW_imseq *seq = (MCW_imseq *)client_data ;
+
+   if( !ISQ_REALZ(seq) ) return ;
+   ISQ_timer_stop(seq) ;
+
+   switch( ev->type ){
+     case ButtonPress:{
+       XButtonEvent *event = (XButtonEvent *)ev ;
+       if( event->button == Button3 && seq->status->send_CB != NULL ){
+         ISQ_cbs cbs ;
+         cbs.reason = isqCR_raiseupthedead ; SEND(seq,cbs) ;
+       } else if( event->button == Button2 ){
+         XBell(XtDisplay(w),100) ;
+         MCW_popup_message( w, " \n Don't! \n ", MCW_USER_KILL );
+       }
+     }
+     break ;
+   }
+   return ;
+}
+
+/*--------------------------------------------------------------------
   make Button 3 popup for Crop button
 ----------------------------------------------------------------------*/
 
@@ -2437,7 +2503,6 @@ void ISQ_butcrop_EV( Widget w , XtPointer client_data ,
    MCW_imseq *seq = (MCW_imseq *)client_data ;
 
    if( !ISQ_REALZ(seq) ) return ;
-
    ISQ_timer_stop(seq) ;
 
    switch( ev->type ){
@@ -2897,8 +2962,9 @@ ENTRY("ISQ_make_image") ;
 MEM_plotdata * ISQ_plot_label( MCW_imseq *seq , char *lab )
 {
    MEM_plotdata *mp ; int ww ; float asp , dd ;
-   static int sz[5] = { 20 , 28 , 40 , 56 , 80 } ;  /* sz[j] = 20 * pow(2,0.5*j) */
-   char *eee ; float rr=1.0,gg=1.0,bb=0.8 , sb=0.003 ;
+   static int   sz[5] = { 20    , 28    , 40    , 56    , 80     } ;
+   static float th[5] = { 0.002f, 0.003f, 0.004f, 0.005f, 0.006f } ;
+   char *eee ; float rr=1.0,gg=1.0,bb=0.7 , sb=0.003 ;
 
 ENTRY("ISQ_plot_label") ;
 
@@ -2914,13 +2980,13 @@ ENTRY("ISQ_plot_label") ;
    dd = 0.0007*ww ;  /* offset from edge */
 
    create_memplot_surely( "Ilabelplot" , asp ) ;
-   set_thick_memplot(0.0) ;
+
+   set_thick_memplot(th[seq->wbar_labsz_av->ival]) ; /* 09 Dec 2011 */
 
    /* get the color to plot with */
 
    eee = getenv("AFNI_IMAGE_LABEL_COLOR") ;
-   if( eee != NULL )
-      DC_parse_color( seq->dc , eee , &rr,&gg,&bb ) ;
+   if( eee != NULL ) DC_parse_color( seq->dc , eee , &rr,&gg,&bb ) ;
    set_color_memplot(rr,gg,bb) ;
 
    /* get the setback */
@@ -4575,6 +4641,10 @@ ENTRY("ISQ_free_alldata") ;
       delete_memplot( seq->mplot ); seq->mplot = NULL;
    }
 
+   if( seq->overlay_label != NULL ){               /* 23 Dec 2011 */
+     free(seq->overlay_label) ; seq->overlay_label = NULL ;
+   }
+
    EXRETURN ;
 }
 
@@ -5337,6 +5407,7 @@ ENTRY("ISQ_drawing_EV") ;
          /* Button1 release: turn off zoom-pan mode, if it was on */
 
          if( event->button == Button1 && w == seq->wimage ){
+           int xrel=event->x , yrel=event->y ;
 
            if( seq->zoom_button1 && !AFNI_yesenv("AFNI_KEEP_PANNING") ){
              seq->zoom_button1 = 0 ;
@@ -5355,17 +5426,19 @@ ENTRY("ISQ_drawing_EV") ;
              } else if( seq->status->send_CB != NULL ){  /* 04 Nov 2003 */
                 int imx,imy,nim;
                 seq->wimage_width = -1 ;
-                ISQ_mapxy( seq , seq->last_bx,seq->last_by , &imx,&imy,&nim ) ;
-                cbs.reason = isqCR_buttonpress ;
-                cbs.event  = ev ;
-                cbs.xim    = imx ;       /* delayed send of Button1 */
-                cbs.yim    = imy ;       /* event to AFNI now       */
-                cbs.nim    = nim ;
+                if( abs(seq->last_bx-xrel)+abs(seq->last_by-yrel) < 8 ){
+                  ISQ_mapxy( seq , seq->last_bx,seq->last_by , &imx,&imy,&nim ) ;
+                  cbs.reason = isqCR_buttonpress ;
+                  cbs.event  = ev ;
+                  cbs.xim    = imx ;       /* delayed send of Button1 */
+                  cbs.yim    = imy ;       /* event to AFNI now       */
+                  cbs.nim    = nim ;
 #if 0
-                seq->status->send_CB( seq , seq->getaux , &cbs ) ;
+                  seq->status->send_CB( seq , seq->getaux , &cbs ) ;
 #else
-                SEND(seq,cbs) ;
+                  SEND(seq,cbs) ;
 #endif
+               }
              }
            }
          }
@@ -5427,7 +5500,7 @@ ENTRY("ISQ_drawing_EV") ;
                 else if( ydif > 0 ) seq->rgb_offset -= 0.014;
                 ISQ_redisplay( seq , -1 , isqDR_reimage ) ;
                 seq->cmap_changed = 1 ;
-                seq->last_bx=event->x ; seq->last_by=event->y;
+                seq->last_bx = event->x ; seq->last_by = event->y;
 
               } else {                          /* the old way: change the gray map */
 
@@ -8519,6 +8592,24 @@ ENTRY("ISQ_wbar_label_CB") ;
 }
 
 /*----------------------------------------------------------------------*/
+/* Finalize the overlay label append string [23 Dec 2011] */
+
+void ISQ_overlay_label_CB( Widget w , XtPointer fd , MCW_choose_cbs *cbs )
+{
+   MCW_imseq *seq = (MCW_imseq *)fd ;
+ENTRY("ISQ_overlay_label_CB") ;
+   if( seq->overlay_label != NULL ){
+     free(seq->overlay_label) ; seq->overlay_label = NULL ;
+   }
+   if( cbs != NULL       && cbs->reason == mcwCR_string       &&
+       cbs->cval != NULL && strcasecmp(cbs->cval,"NULL") != 0   ){
+     seq->overlay_label = strdup(cbs->cval) ;
+   }
+   ISQ_redisplay( seq , -1 , isqDR_display ) ;
+   EXRETURN ;
+}
+
+/*----------------------------------------------------------------------*/
 
 void ISQ_wbar_menu_CB( Widget w , XtPointer client_data ,
                                   XtPointer call_data    )
@@ -8554,6 +8645,11 @@ ENTRY("ISQ_wbar_menu_CB") ;
 
    else if( w == seq->wbar_graymap_pb ){   /* 24 Oct 2003 */
      ISQ_graymap_draw( seq ) ;
+   }
+
+   else if( w == seq->wbar_labst_pb ){     /* 23 Dec 2011 */
+     MCW_choose_string( w , "Overlay Label Append String" ,
+                            seq->overlay_label , ISQ_overlay_label_CB , seq ) ;
    }
 
    EXRETURN ;
@@ -9884,7 +9980,7 @@ ENTRY("ISQ_rowgraph_draw") ;
 #endif
 
 #undef  THIK
-#define THIK 0.003
+#define THIK 0.004
 
       set_color_memplot( 0.8 , 0.0 , 0.2 ) ;
       set_thick_memplot( THIK ) ;
@@ -10276,7 +10372,7 @@ ENTRY("plot_image_surface") ;
                       (integer *)(&ii) ) ;
 
 #undef  THIK
-#define THIK 0.003
+#define THIK 0.004
 
       dx = 0.016 * x[nx-1] ; dy = 0.016 * y[ny-1] ; dx = MAX(dx,dy) ;
       xi = x[ix]+dx ; yi = y[ny-1-jy]+dx ; zi = z[ix+(ny-1-jy)*nx] ;
@@ -11006,7 +11102,7 @@ void ISQ_butsave_EV( Widget w , XtPointer client_data ,
 
 char * ISQ_getlabel( int nn , MCW_imseq *seq )
 {
-   char *lab=NULL ;
+   char *lab=NULL , *labadd=NULL ;
 
 ENTRY("ISQ_getlabel") ;
 
@@ -11016,6 +11112,22 @@ ENTRY("ISQ_getlabel") ;
    AFNI_CALL_VALU_3ARG( seq->getim , char *,lab ,
                         int,nn , int,isqCR_getlabel , XtPointer,seq->getaux ) ;
 #endif
+
+   /* 23 Dec 2011: stuff to append to the label */
+
+   labadd = seq->overlay_label ;
+
+   if( labadd == NULL || *labadd == '\0' )
+     labadd = getenv("AFNI_IMAGE_LABEL_STRING") ;
+
+   if( labadd != NULL && *labadd != '\0' ){
+     if( lab == NULL ) lab = strdup(labadd) ;
+     else {
+       lab = (char *)realloc(lab,sizeof(char)*(strlen(lab)+strlen(labadd)+4)) ;
+       strcat(lab,labadd) ;
+     }
+   }
+
    RETURN(lab) ;
 }
 
@@ -11862,6 +11974,37 @@ ENTRY("ISQ_snapsave") ;
 }
 
 /*----------------------------------------------------------------------------*/
+/*! Like ISQ_snapsave, but don't store the image, return it instead.
+     - ww, hh = width and height of image
+     - if(hh < 0) ==> flip image vertically (e.g., from glReadPixels)
+     - pix = pointer to 3*ww*hh bytes of RGB data
+------------------------------------------------------------------------------*/
+MRI_IMAGE * ISQ_snap_to_mri_image( int ww , int hh , byte *pix  )
+{
+   MRI_IMAGE *tim ;
+   byte *qix ;
+   int ii , jj , flip=0 ;
+
+   ENTRY("ISQ_snap_to_mri_image") ;
+
+   if( ww < 2 || pix == NULL ) EXRETURN ;
+   if( hh < 0 ){ hh = -hh ; flip = 1 ; }
+   if( hh < 2 ) EXRETURN ;
+
+   tim = mri_new( ww,hh, MRI_rgb ) ; qix = MRI_RGB_PTR(tim) ;
+
+   if( flip ){                    /* flipper, flipper, faster than lightning */
+     for( jj=0 ; jj < hh ; jj++ )
+       memcpy( qix+3*ww*(hh-jj-1) , pix+3*ww*jj , 3*ww ) ;
+   } else {                                                   /* simple copy */
+     memcpy( qix , pix , 3*ww*hh ) ;
+   }
+
+   RETURN(tim) ;
+}
+
+
+/*----------------------------------------------------------------------------*/
 
 void ISQ_pen_bbox_CB( Widget w, XtPointer client_data, XtPointer call_data )
 {
@@ -12331,8 +12474,11 @@ ENTRY("ISQ_handle_keypress") ;
 
      case '3':
      case '#':{
-       int rr = (key == '#') ? RENDER_CHECK_UO : RENDER_CHECK_OU ;
-       if( seq->render_mode == rr ) rr = 0 ;
+       int rr = seq->render_mode ;
+
+            if( key == '3'             ) rr = 0 ;
+       else if( rr  == RENDER_CHECK_OU ) rr = RENDER_CHECK_UO ;
+       else                              rr = RENDER_CHECK_OU ;
        seq->render_mode = rr ;
        ISQ_redisplay( seq , -1 , isqDR_display ) ;
        ISQ_draw_winfo( seq ) ;

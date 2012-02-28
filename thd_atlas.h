@@ -1,3 +1,6 @@
+#ifndef _THD_ATLAS_H_
+#define _THD_ATLAS_H_
+
 #include "thd_ttatlas_query.h"
 #undef DEBUG_SPACES
 /* continuous colormap */
@@ -17,12 +20,10 @@
 #define MAXINT 65535
 
 
-
-
-
 void free_atlas_point_list(ATLAS_POINT_LIST *apl);
 void print_atlas_point_list(ATLAS_POINT_LIST *apl);
 ATLAS_POINT_LIST *dset_niml_to_atlas_list(THD_3dim_dataset *dset);
+ATLAS_POINT_LIST *label_table_to_atlas_point_list(Dtable *dtbl);
 int whereami_9yards( ATLAS_COORD ac, ATLAS_QUERY **wamip, 
                      ATLAS_LIST *atlas_alist);
 void init_custom_atlas(void);
@@ -45,13 +46,19 @@ int   init_space_structs(ATLAS_XFORM_LIST **atlas_xfl,
    ATLAS_LIST **atlas_alist,
    ATLAS_SPACE_LIST **atlas_spaces,
    ATLAS_TEMPLATE_LIST **atlas_templates);
-int read_space_niml(NI_stream space_niml, ATLAS_XFORM_LIST *atlas_xfl,
+int read_space_niml_file(char *fname, ATLAS_XFORM_LIST *atlas_xfl,
    ATLAS_LIST *atlas_alist,
    ATLAS_SPACE_LIST *atlas_spaces,
-   ATLAS_TEMPLATE_LIST *atlas_template);
+   ATLAS_TEMPLATE_LIST *atlas_template, THD_string_array *sar);
+int add_atlas_nel(NI_element *nel, ATLAS_XFORM_LIST *atlas_xfl,
+   ATLAS_LIST *atlas_alist,
+   ATLAS_SPACE_LIST *atlas_spaces,
+   ATLAS_TEMPLATE_LIST *atlas_templates,
+   THD_string_array *sar,
+   char *parentdir);
 int atlas_read_xform(NI_element *nel, ATLAS_XFORM *atlas_xf);
 int atlas_read_template(NI_element *nel, ATLAS_TEMPLATE *atlas_tpl);
-int atlas_read_atlas(NI_element *nel, ATLAS *atlas);
+int atlas_read_atlas(NI_element *nel, ATLAS *atlas, char *pd);
 int atlas_read_atlas_space(NI_element *nel, ATLAS_SPACE *at_space);
 int make_space_neighborhood(ATLAS_SPACE_LIST *at_spl, ATLAS_XFORM_LIST *atlas_xfl);
 ATLAS_XFORM *get_xform_neighbor(ATLAS_XFORM_LIST *atlas_xfl, ATLAS_SPACE *at_space, 
@@ -80,11 +87,18 @@ void free_template_list(ATLAS_TEMPLATE_LIST *xtl);
 void free_template(ATLAS_TEMPLATE *xt);
 void free_atlas_list(ATLAS_LIST *xal);
 void free_atlas(ATLAS *xa);
+int is_identity_xform_chain(char *src, char *dest);
+int is_identity_xform_list(ATLAS_XFORM_LIST *xfl, int combine);
+void print_xform_chain(char *src, char *dest);
 void print_xform_list(ATLAS_XFORM_LIST *xfl);
 void print_space_list(ATLAS_SPACE_LIST *xsl);
 void print_atlas_list(ATLAS_LIST *xal);
+void print_atlas_table(ATLAS_LIST *xal);
 void print_atlas(ATLAS *xa, int level) ;
 void print_atlas_comment(ATLAS *xa) ;
+void print_atlas_type(ATLAS *xa) ;
+void print_atlas_orient(ATLAS *xa) ;
+void print_point_lists(ATLAS_LIST *xal);
 void print_template_list(ATLAS_TEMPLATE_LIST *xtl);
 void print_xform(ATLAS_XFORM *xf);
 void print_all_xforms(ATLAS_XFORM_LIST *xfl);
@@ -107,6 +121,7 @@ int invert_xform(ATLAS_XFORM *xf);
 int invert_affine(ATLAS_XFORM *xf);
 int invert_12piece(ATLAS_XFORM *xf);
 int invert_2piece(ATLAS_XFORM *xf);
+int invert_brett(ATLAS_XFORM *xf);
 
 ATLAS_XFORM *identity_xform(void);
 
@@ -128,18 +143,10 @@ int apply_xform_brett_mni2tt(float x, float y, float z, \
 NI_element *NI_find_next_element(NI_stream ns, char *name);
 
 void AFNI_atlas_list_to_niml(void);
-void atlas_list_to_niml(ATLAS_POINT_LIST *atp, char *atlas_file,
-             int n_regions);
-/*static int write_niml_string(char *nimlstring, NI_stream ns);*/
+void atlas_list_to_niml(ATLAS_POINT_LIST *atp, char *atlas_file);
 NI_element *atlas_point_to_niml_element(ATLAS_POINT *at_pt);
 char *atlas_point_to_niml_string(ATLAS_POINT *at_pt);
-static void niml_to_atlas_list(ATLAS_POINT_LIST *atp, char *atlas_file);
-static void adjust_atlas_point_list(ATLAS_POINT_LIST *atp, char *match_str,
-            float addval);
-
-/* static void niml_string_to_atlas_point(char *niml_string, ATLAS_POINT *at_pt);
- */
-static ATLAS_POINT_LIST *AFNI_atlas_list_to_atlas_point_list(
-        ATLAS_POINT *afni_at_pts, int npts);
 int genx_load_atlas_dset(ATLAS *atlas);
 int atlas_dup_atlas(ATLAS *srcatlas, ATLAS *destatlas);
+
+#endif

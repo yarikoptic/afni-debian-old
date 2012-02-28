@@ -451,11 +451,13 @@ ENTRY("mri_read_dicom") ;
          ( epos[E_ID_IMAGE_TYPE] && strstr(epos[E_ID_IMAGE_TYPE],"MOSAIC") ) )
        && str_sexinfo                               != NULL   ){
 
-     sexi_start = strstr(str_sexinfo, "### ASCCONV BEGIN ###");
+     /* newer DICOM images have extra garbage between BEGIN and ###, so
+      * do not look farther than BEGIN (or END)    31 Jan, 2012 [rickr] */
+     sexi_start = strstr(str_sexinfo, "### ASCCONV BEGIN");
      if(sexi_start != NULL) {
         /* search for end after start - drg,fredtam 23 Mar 2007 */
-        sexi_start2 = strstr(sexi_start+21, "### ASCCONV BEGIN ###");
-        sexi_end = strstr(sexi_start, "### ASCCONV END ###");
+        sexi_start2 = strstr(sexi_start+21, "### ASCCONV BEGIN");
+        sexi_end = strstr(sexi_start, "### ASCCONV END");
         if (sexi_end != NULL) {
            char *sexi_tmp;
            int sexi_size;
@@ -564,9 +566,17 @@ ENTRY("mri_read_dicom") ;
 
    /* dx,dy first */
 
+   /* Pixel Spacing is defined as the distance between rows and columns,
+    * meaning (akin to reading ny, nx) it is read as dy, dx.  It seems that
+    * not too many people use non-square voxels, though some in D Leopold's
+    * lab do.
+    * see medical.nema.org/DICOM/CP/CPack-36_DOC/cp626_lb.doc
+    *     nipy.sourceforge.net/nibabel/dicom/dicom_orientation.html
+    *     www.cmake.org/Wiki/Proposals:Orientation
+    *                                                   11 Jan 2012 [rickr] */
    if( epos[E_PIXEL_SPACING] != NULL ){
      ddd = strstr(epos[E_PIXEL_SPACING],"//") ;
-     if( ddd != NULL ) sscanf( ddd+2 , "%f\\%f" , &dx , &dy ) ;
+     if( ddd != NULL ) sscanf( ddd+2 , "%f\\%f" , &dy , &dx ) ; /* switched */
      if( dy == 0.0 && dx > 0.0 ) dy = dx ;
      if(g_info.verb>2) fprintf(stderr,"-- DICOM PSP dx, dy = %f, %f\n", dx, dy);
    }
@@ -1251,7 +1261,10 @@ ENTRY("mri_read_dicom") ;
               "   MRILIB_offsets %f, %f, %f\n   g_image_posn %f, %f, %f\n",
               MRILIB_orients, MRILIB_tr,
               MRILIB_xoff, MRILIB_yoff, MRILIB_zoff,
-              g_image_posn[0], g_image_posn[1], g_image_posn[2]); 
+              g_image_posn[0], g_image_posn[1], g_image_posn[2]);
+
+    for( ii=0 ; ii < IMARR_COUNT(imar) ; ii++ )    /* 14 Nov 2011 */
+      mri_add_name(fname,IMARR_SUBIM(imar,ii)) ;
 
    free(ppp); RETURN( imar );
 }
@@ -1479,10 +1492,10 @@ ENTRY("mri_imcount_dicom") ;
      /* KRH 25 Jul 2003 if start and end markers are present for
       * Siemens extra info, cut string down to those boundaries */
 
-     sexi_start = strstr(str_sexinfo, "### ASCCONV BEGIN ###");
+     sexi_start = strstr(str_sexinfo, "### ASCCONV BEGIN");
      if(sexi_start != NULL) {  /* search for end after start - drg,fredtam 23 Mar 2007 */
-        sexi_start2 = strstr(sexi_start+21, "### ASCCONV BEGIN ###");
-        sexi_end = strstr(sexi_start, "### ASCCONV END ###");
+        sexi_start2 = strstr(sexi_start+21, "### ASCCONV BEGIN");
+        sexi_end = strstr(sexi_start, "### ASCCONV END");
         if(g_info.verb > 3)
            fprintf(stderr, "sexi_start %d sexi_start2 %d sexi_end %d\n",
                   PTOI(sexi_start), PTOI(sexi_start2),PTOI(sexi_end) );
@@ -1554,7 +1567,7 @@ static int get_posns_from_elist(char *plist[], char *elist[], char *text,
 {
    static int check_env = 1;
    int    ee, nset=0;
-   char * cp;
+   char * cp, etemp[128] ;
 
    ENTRY("get_posns_from_elist");
 
@@ -1568,7 +1581,10 @@ static int get_posns_from_elist(char *plist[], char *elist[], char *text,
    }
 
    for( ee=0 ; ee < nume ; ee++ ) {
-      plist[ee] = strstr(text,elist[ee]) ;
+      strcpy(etemp,elist[ee]) ;  /* 15 Nov 2011 - erase comma */
+      if( etemp[4] == ',' ) etemp[4] = ' ' ;
+
+      plist[ee] = strstr(text,etemp) ;
       if( plist[ee] ) nset++;
 
       if( g_info.verb > 4 ) {
@@ -1577,7 +1593,7 @@ static int get_posns_from_elist(char *plist[], char *elist[], char *text,
       }
 
       if( use_last_elem && plist[ee] ) {
-         while( (cp = strstr(plist[ee]+1, elist[ee])) != NULL ) {
+         while( (cp = strstr(plist[ee]+1, etemp)) != NULL ) {
             plist[ee] = cp ;
             if(g_info.verb>4) fprintf(stderr,".. updating %s...\n",elist[ee]);
          }
@@ -1747,6 +1763,7 @@ static void get_siemens_extra_info( char *str , Siemens_extra_info *mi )
    return ;
 }
 
+/*----------------------------------------------------------------------------*/
 /* determine if slice order is reversed in Siemens mosaic files */
 static int
 flip_slices_mosaic (Siemens_extra_info *mi, int kor)
@@ -1779,6 +1796,7 @@ flip_slices_mosaic (Siemens_extra_info *mi, int kor)
 }
 #endif  /* moved to mri_process_siemens.c */
 
+/*----------------------------------------------------------------------------*/
 # if 0  /* moved to mri_process_siemens.c       21 Dec 2010 [rickr] */
 /* copy data from mosaic input to image array */
 static int
@@ -1924,7 +1942,7 @@ int mri_possibly_dicom( char *fname )
    }
 }
 
-
+/*----------------------------------------------------------------------------*/
 /* clear oblique information structure */
 static void
 Clear_obl_info(oblique_info *obl_info)
@@ -1957,6 +1975,7 @@ Clear_obl_info(oblique_info *obl_info)
 /*         memset(&obl_info->Tr_dicom[0][0], 0, 16*sizeof(float)); */
 }
 
+/*----------------------------------------------------------------------------*/
 /* fill oblique information structure */
 static void
 Fill_obl_info(oblique_info *obl_info, char **epos, Siemens_extra_info *siem)
@@ -2078,6 +2097,7 @@ Fill_obl_info(oblique_info *obl_info, char **epos, Siemens_extra_info *siem)
 
 }
 
+/*----------------------------------------------------------------------------*/
 /* check if data is oblique by using the vectors from the ImageOrientation field */
 static int CheckObliquity(float xc1, float xc2, float xc3, float yc1, float yc2, float yc3)
 {
@@ -2094,6 +2114,7 @@ static int CheckObliquity(float xc1, float xc2, float xc3, float yc1, float yc2,
    return(oblique);
 }
 
+/*----------------------------------------------------------------------------*/
 /* mod -16 May 2007 */
 /* compute Tr transformation matrix for oblique data */
 /* 16 element float array */
@@ -2203,7 +2224,7 @@ static float *ComputeObliquity(oblique_info *obl_info)
    /* will rely on ImagePosition method for now*/
    /*  Siemens mosaic with limited slice information - rely on ImagePosition*/
    /* compute central mosaic point - in funny way */
-   
+
    /* get center of mass, starting from center of corner voxel and shift by */
    /*    (N-1)*vox_dim/2 in each of the 3 directions                        */
 
@@ -2213,7 +2234,7 @@ static float *ComputeObliquity(oblique_info *obl_info)
    offsetyvec = SCALE_FVEC3(dc2, ((obl_info->ny-1)/2.0));
 
    offsetzvec = SCALE_FVEC3(dc3, ((obl_info->mos_nslice - 1.0)*fac/2.0));
-   if( obl_info->flip_slices ) 
+   if( obl_info->flip_slices )
       offsetzvec = SCALE_FVEC3(offsetzvec, -1.0);
 
    Cm = ADD_FVEC3(obl_info->dfpos1, offsetxvec);
@@ -2280,7 +2301,7 @@ static float *ComputeObliquity(oblique_info *obl_info)
       else
          INFO_message("Slice based center matches mosaic center - good!\n");
    }
-   
+
    if( g_info.verb > 2 ) {
       DUMP_FVEC3("Mosaic Center", Cm);
       DUMP_FVEC3("Origin Coordinates", Orgin);
@@ -2333,12 +2354,14 @@ DUMP_FVEC3("vec4", vec4);
 
 }
 
+/*----------------------------------------------------------------------------*/
 /* externally available function to reset oblique info */
 void mri_read_dicom_reset_obliquity()
 {
    Clear_obl_info(&obl_info);
 }
 
+/*----------------------------------------------------------------------------*/
 /* externally available function to compute oblique transformation */
 /* and store resulting matrix in 16 element float array */
 void mri_read_dicom_get_obliquity(float *Tr)
@@ -2359,7 +2382,7 @@ void mri_read_dicom_get_obliquity(float *Tr)
    return;
 }
 
-
+/*----------------------------------------------------------------------------*/
 /* externally available function to set origin and orientation from obliquity */
 /* transformation matrix */
 void
@@ -2418,7 +2441,9 @@ Obliquity_to_coords(THD_3dim_dataset *tdset)
  /*     daxes->xxdel    =   user_inputs.xsize ;
    daxes->yydel    =   user_inputs.ysize ;*/
 
- }
+}
+
+/*----------------------------------------------------------------------------*/
 
 static int init_dicom_globals(dicom_globals_t * info)
 {
@@ -2441,3 +2466,62 @@ static int init_dicom_globals(dicom_globals_t * info)
    return 0;
 }
 
+/*----------------------------------------------------------------------------*/
+/* Get some header info from a DICOM file [15 Nov 2011 - RWCox] */
+
+char * mri_dicom_hdrinfo( char *fname , int natt , char **att , int dolast )
+{
+   char *strout=NULL , *ppp , **epos , *ddd , sss[256] ;
+   int aa ;
+
+ENTRY("mri_dicom_hdrinfo") ;
+
+   if( fname == NULL || (natt > 0 && att == NULL) ) RETURN(NULL) ;
+
+   if( ! g_info.init ) init_dicom_globals(&g_info);
+
+   if( !mri_possibly_dicom(fname) ){                /* 07 May 2003 */
+     if( g_info.verb > 1 )
+       ERROR_message("file %s is not possibly DICOM",fname) ;
+     RETURN(NULL) ;
+   }
+
+   /*-- extract header info from file into a string --*/
+
+   mri_dicom_nohex(1) ;              /* don't print ints in hex mode */
+   mri_dicom_noname(1) ;             /* don't print names, just tags */
+   ppp = mri_dicom_header( fname ) ; /* print header to malloc()-ed string */
+   if( ppp == NULL ){                /* didn't work; not a DICOM file? */
+     if( g_info.verb > 1 )
+       ERROR_message("file %s is not interpretable as DICOM",fname) ;
+     RETURN(NULL) ;
+   }
+
+   /*-- initialize output --*/
+
+   if( !dolast || natt <= 0 ) strout = THD_zzprintf(strout,"%s",fname) ;
+
+   /*-- simple case, probably never used --*/
+
+   if( natt <= 0 ){ free(ppp) ; RETURN(strout) ; }
+
+   /* find positions in header of elements we care about */
+
+   epos = (char **)calloc( sizeof(char *) , natt ) ;
+   get_posns_from_elist( epos, att, ppp, natt ) ;
+
+   /*-- scan and copy output --*/
+
+   for( aa=0 ; aa < natt ; aa++ ){
+     strcpy(sss,"null") ;
+     if( epos[aa] != NULL ){
+       ddd = strstr(epos[aa],"//") ;
+       if( ddd != NULL ) sscanf(ddd+2,"%254s",sss) ;
+     }
+     if( dolast && aa == 0 ) strout = THD_zzprintf(strout,"%s" ,sss) ;
+     else                    strout = THD_zzprintf(strout," %s",sss) ;
+   }
+   if( dolast ) strout = THD_zzprintf(strout," %s",fname) ;
+
+   free(epos) ; free(ppp) ; RETURN(strout) ;
+}

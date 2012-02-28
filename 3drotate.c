@@ -31,13 +31,13 @@ int main( int argc , char * argv[] )
    char * new_prefix = "rota" , * cpt ;
    float dx=0 , dy=0 , dz=0 ;
    int   ax1=0,ax2=1,ax3=2 , adx,ady,adz ;
-   char  cdx,cdy,cdz ;
+   char  cdx='\0',cdy='\0',cdz='\0' ;
    float th1=0.0,th2=0.0,th3=0.0 ;
    int iopt , nvox , rotarg=-1 , dcode=-1 , ival,nval , ihand ;
    float * fvol ;
-   double cputim ;
+   double cputim=0.0 ;
    int clipit=1 ;  /* 11 Apr 2000 and 16 Apr 2002 */
-   float cbot,ctop ;
+   float cbot=0.0,ctop=0.0 ;
 
    int matvec=0 ;    /* 19 July 2000 */
    THD_dmat33 rmat , pp,ppt ;
@@ -60,7 +60,7 @@ int main( int argc , char * argv[] )
    /*-------------------------------*/
 
    LOAD_DIAG_DMAT(rmat,1.0,1.0,1.0) ;
-
+   memset(&tvec, 0, sizeof(THD_dfvec3));
    /*-- read command line arguments --*/
 
    if( argc < 2 || strncmp(argv[1],"-help",4) == 0 ){
@@ -303,6 +303,7 @@ int main( int argc , char * argv[] )
          rotpar_dset = THD_open_one_dataset( argv[++iopt] ) ;
          if( rotpar_dset == NULL )
             ERREX("*** Can't open -rotparent dataset!\n") ;
+         THD_make_cardinal(rotpar_dset); /* deoblique   21 Oct, 2011 [rickr] */
 
          atr = THD_find_float_atr( rotpar_dset->dblk , "VOLREG_MATVEC_000000" ) ;
          if( atr == NULL || atr->nfl < 12 )
@@ -319,6 +320,7 @@ int main( int argc , char * argv[] )
          gridpar_dset = THD_open_one_dataset( argv[++iopt] ) ;
          if( gridpar_dset == NULL )
             ERREX("*** Can't open -gridparent dataset!\n") ;
+         THD_make_cardinal(gridpar_dset); /* deoblique   21 Oct, 2011 [rickr] */
 
          iopt++ ; continue ;
       }
@@ -344,6 +346,7 @@ int main( int argc , char * argv[] )
 
             mvset = THD_open_dataset( argv[++iopt] ) ;
             if( mvset == NULL ) ERREX("*** Can't read -matvec_dset dataset!") ;
+            THD_make_cardinal(mvset); /* deoblique   21 Oct, 2011 [rickr] */
             atr = THD_find_float_atr( mvset->dblk , "TAGALIGN_MATVEC" ) ;
             if( atr == NULL || atr->nfl < 12 )
               ERREX("*** -matvec_dset doesn't have matrix+vector in .HEAD!") ;
@@ -547,6 +550,7 @@ int main( int argc , char * argv[] )
       if( dset == NULL ){
          fprintf(stderr,"*** Cannot open dataset %s!\n",argv[iopt]); exit(1);
       }
+      THD_make_cardinal(dset); /* deoblique   21 Oct, 2011 [rickr] */
    } else {
       dset = EDIT_empty_copy(NULL) ;  /* 21 Nov 2000: need a fake dataset */
       if( !doorigin )
@@ -738,7 +742,7 @@ fprintf(stderr,"ax1=%d ax2=%d ax3=%d\n",ax1,ax2,ax3) ;
          int npad2 = (nz_gp - nz_ds) - npad1 ;
          int add_I=0, add_S=0, add_A=0, add_P=0, add_L=0, add_R=0 ;
          THD_3dim_dataset * pset ;
-         char *sp1,*sp2 ;
+         char *sp1=NULL,*sp2=NULL ;
 
          /* where to add slices? and how many? */
 
@@ -1100,11 +1104,11 @@ static void rotate_stdin_points( THD_dfvec3 xyzorg, THD_dmat33 rmat,
 
    ll = ld = 0 ;
    while(1){
-      ll++ ;                               /* line count */
-      cp = fgets( linbuf , NBUF , fpin ) ; /* read the line */
-      if( cp == NULL ) break ;             /* end of file => end of loop */
+      ll++ ;                                    /* line count */
+      cp = afni_fgets( linbuf , NBUF , fpin ) ; /* read the line */
+      if( cp == NULL ) break ;                  /* end of file => end of loop */
       kk = strlen(linbuf) ;
-      if( kk == 0 ) continue ;             /* empty line => get next line */
+      if( kk == 0 ) continue ;                  /* empty line => get next line */
 
       /* find 1st nonblank */
 

@@ -650,7 +650,7 @@ printf("warp_std_hrs AFTER:") ; DUMP_LMAP(warp_std_hrs->rig_bod.warp) ;
 void THD_order_session( THD_session *sess )
 {
    THD_3dim_dataset *qset[THD_MAX_SESSION_SIZE][LAST_VIEW_TYPE+1] ;
-   THD_3dim_dataset *dset ;
+   THD_3dim_dataset *dset=NULL ;
    int iview , ids , nds ;
 
 ENTRY("THD_order_session") ;
@@ -679,8 +679,16 @@ ENTRY("THD_order_session") ;
      for( iview=0 ; iview <= LAST_VIEW_TYPE ; iview++ ){
        dset = GET_SESSION_DSET(sess, ids, iview);
 /*     dset = sess->dsset_xform_table[ids][iview] ;*/
-       if( dset != NULL && ISFUNC(dset) ) break ;
+       /* if( dset != NULL && ISFUNC(dset) ) break ; */
+       if( dset ) break ;
      }
+
+     /* might be ANAT in one view and FUNC in another (consider qsort()?)
+      *                                        17 Nov 2011 [rickr, dglen] */
+     if( ! dset )            continue;
+     else if( ISANAT(dset) ) continue;   /* already found above */
+     /* else, add ... */
+     
      if( iview <= LAST_VIEW_TYPE ){
        for( iview=0 ; iview <= LAST_VIEW_TYPE ; iview++ )
           qset[nds][iview] = GET_SESSION_DSET(sess, ids, iview);

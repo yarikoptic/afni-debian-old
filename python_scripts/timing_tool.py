@@ -211,6 +211,20 @@ examples:
                 -local_to_global global.1D                      \\
                 -run_len 200 200 200
 
+   10. Display within-TR statistics of stimulus timing files, to show when
+       stimuli occur within TRs.  The -tr option must be specified.
+
+       a. one file: show offset statistics (using -show_tr_stats)
+
+             timing_tool.py -timing stim01_houses.txt -tr 2.0 -show_tr_stats
+
+       b. (one or) many files (use -multi_timing)
+
+             timing_tool.py -multi_timing stim*.txt -tr 2.0 -show_tr_stats
+
+       c. only warn about potential problems (use -warn_tr_stats)
+
+             timing_tool.py -multi_timing stim*.txt -tr 2.0 -warn_tr_stats
 
 --------------------------------------------------------------------------
 Notes:
@@ -449,6 +463,30 @@ action options (apply to single timing element, only):
         terminal.  If the user is making multiple modifications to the timing
         data, they may wish to display the updated timing after each step.
 
+   -show_tr_stats               : display within-TR statistics of stimuli
+
+        This displays the mean, max and stdev of stimulus times modulo the TR,
+        both in seconds and as fractions of the TR.
+
+            See '-warn_tr_stats' for more details.
+
+   -warn_tr_stats               : display within-TR stats only for warnings
+
+        This is akin to -show_tr_stats, but output is only displayed if there
+        might be a warning based on the timing.
+
+        Warnings occur when the minimum fraction is positive and the maximum
+        fraction is small (less than -min_frac, 0.3).  If such warnings are
+        encountered, particularly in the case of TENT basis functions used in
+        the linear regression, they can affect the X-matrix, essentially
+        scaling beta #0 by the reciprocal of the fraction (noise dependent).
+
+        In such a case the stimuli are almost TR-locked, and the user might be
+        better off making them exactly TR-locked (by creating new timing files
+        using "timing_tool.py -round_times").
+
+            See also '-show_tr_stats', '-min_frac' and '-round_times'.
+
    -sort                        : sort the times, per row (run)
 
         This will cause each row (run) of the main timing element to be
@@ -590,10 +628,14 @@ general options:
 
         e.g. -min_frac 0.1
 
-        This option applies to the -timing_to_1D action, above.  When a random
-        timing stimulus is converted to part of a 0/1 1D file, if the stimulus
-        occupies at least FRAC of a TR, then that TR gets a 1 (meaning it is 
-        "on"), else it gets a 0 ("off").
+        This option applies to either -timing_to_1D action or -warn_tr_stats.
+
+        For -warn_tr_stats (or -show), if the maximum tr fraction is below this
+        limit, TRs are considered to be approximately TR-locked.
+
+        For -timing_to_1D, when a random timing stimulus is converted to part
+        of a 0/1 1D file, if the stimulus occupies at least FRAC of a TR, then
+        that TR gets a 1 (meaning it is "on"), else it gets a 0 ("off").
 
         FRAC is required to be within [0,1], though clearly 0 is not very
         useful.  Also, 1 is not recommended unless that TR can be stored
@@ -695,9 +737,15 @@ g_history = """
         - use lib_textdata.py for reading timing files
         - allow empty files as valid (for C Deveney)
    1.14 May 25, 2011 - added -global_to_local and -local_to_global (for G Chen)
+   2.00 Oct 25, 2011 - process married files with current operations
+        1. AfniMarriedTiming inherits from AfniData (instead of local copies)
+        2. add all AfniTiming methods to AfniMarriedTiming (as married timing)
+        3. rename AfniMarriedTiming back to AfniTiming (but now married)
+   2.01 Oct 28, 2011 - allow use of -show_isi_stats w/o stim duration
+   2.02 Oct 31, 2011 - added -show_tr_stats and -warn_tr_stats options
 """
 
-g_version = "timing_tool.py version 1.14, May 25, 2011"
+g_version = "timing_tool.py version 2.02, Oct 31, 2011"
 
 
 class ATInterface:
@@ -722,7 +770,7 @@ class ATInterface:
       self.timing          = None       # main timing element
       self.fname           = 'no file selected'
       self.all_rest_file   = ''         # for -write_all_rest_times
-      self.stim_dur        = 0 
+      self.stim_dur        = -1         # apply on read
 
       # user options - multi var
       self.m_timing        = []
@@ -770,12 +818,12 @@ class ATInterface:
 
       sdl = len(self.m_stim_dur)
       if sdl == 0:
-         sdurs = [0 for ind in range(len(flist))]
+         sdurs = [-1 for ind in range(len(flist))]
       elif sdl > 1 and sdl != len(flist):
          print '** length of stim times does not match # files (%d, %d)' % \
                (sdl, len(flist))
          # set all durations to 0
-         sdurs = [0 for ind in range(len(flist))]
+         sdurs = [-1 for ind in range(len(flist))]
       elif sdl == 1:
          # duplicate duration for all stimuli
          sdurs = [self.m_stim_dur[0] for ind in range(len(flist))]
@@ -784,13 +832,17 @@ class ATInterface:
          sdurs = self.m_stim_dur
 
       rdlist = []
+      errs = 0
       for ind in range(len(flist)):
          name = flist[ind]
          timing = LT.AfniTiming(name, dur=sdurs[ind], verb=self.verb)
          if not timing.ready:
-            print "** (multi) failed to read timing from '%s'" % name
-            return 1
+            print "** (multi) failed to read timing from '%s'\n" % name
+            errs += 1
+            continue
          rdlist.append(timing)
+
+      if errs: return 1
 
       # success, so nuke and replace the old stuff
 
@@ -812,12 +864,14 @@ class ATInterface:
    def set_stim_dur(self, dur):
       """apply the stim duration to the timing element"""
 
-      if type(dur) != type(3.14):
+      if type(dur) != float:
          print "** set_stim_dur: float required, have '%s'" % type(dur)
          return 1
 
+      if dur < 0: return 0
+
       self.stim_dur = dur
-      if self.timing: self.timing.dur = dur
+      if self.timing: self.timing.init_durations(dur)
 
       if self.verb > 2: print '++ applying stim dur: %f' % dur
 
@@ -854,7 +908,7 @@ class ATInterface:
       if self.verb > 2: print '++ applying multi stim durs: %s' % sdurs
 
       for ind in range(stl):
-         self.m_timing[ind].dur = sdurs[ind]
+         self.m_timing[ind].init_durations(sdurs[ind])
 
    def show_multi(self):
       print '==================== multi-timing list ====================\n' 
@@ -962,6 +1016,10 @@ class ATInterface:
                          helpstr='perform operations per run')
       self.valid_opts.add_opt('-run_len', -1, [], 
                          helpstr='specify the lengths of each run (seconds)')
+      self.valid_opts.add_opt('-show_tr_stats', 0, [], 
+                         helpstr='show fractional TR stats timing files')
+      self.valid_opts.add_opt('-warn_tr_stats', 0, [], 
+                         helpstr='warn about bad fractional TR stats')
       self.valid_opts.add_opt('-tr', 1, [], 
                          helpstr='specify output timing resolution (seconds)')
       self.valid_opts.add_opt('-verb', 1, [], 
@@ -1154,10 +1212,10 @@ class ATInterface:
             val, err = uopts.get_string_opt('', opt=opt)
             if val != None and err: return 1
 
-            newrd = LT.AfniTiming(val,verb=self.verb)
+            newrd = LT.AfniTiming(val,dur=self.stim_dur,verb=self.verb)
             if not newrd.ready: return 1
 
-            self.timing.add_rows(newrd)
+            if self.timing.add_rows(newrd): return 1
 
          elif opt.name == '-extend':
             if not self.timing:
@@ -1166,10 +1224,10 @@ class ATInterface:
             val, err = uopts.get_string_opt('', opt=opt)
             if val != None and err: return 1
 
-            newrd = LT.AfniTiming(val,verb=self.verb)
+            newrd = LT.AfniTiming(val,dur=self.stim_dur,verb=self.verb)
             if not newrd.ready: return 1
 
-            self.timing.extend_rows(newrd)
+            if self.timing.extend_rows(newrd): return 1
 
          elif opt.name == '-partition':
             if not self.timing:
@@ -1186,7 +1244,7 @@ class ATInterface:
                return 1
             val, err = uopts.get_type_opt(float, opt=opt)
             if val != None and err: return 1
-            self.timing.add_val(val)
+            if self.timing.add_val(val): return 1
 
          elif opt.name == '-scale_data':
             if not self.timing:
@@ -1194,7 +1252,7 @@ class ATInterface:
                return 1
             val, err = uopts.get_type_opt(float, opt=opt)
             if val != None and err: return 1
-            self.timing.scale_val(val)
+            if self.timing.scale_val(val): return 1
 
          elif opt.name == '-shift_to_run_offset':
             if not self.timing:
@@ -1202,7 +1260,7 @@ class ATInterface:
                return 1
             val, err = uopts.get_type_opt(float, opt=opt)
             if val != None and err: return 1
-            self.timing.shift_to_offset(val)
+            if self.timing.shift_to_offset(val): return 1
 
          elif opt.name == '-round_times':
             if not self.timing:
@@ -1213,7 +1271,7 @@ class ATInterface:
                return 1
             val, err = uopts.get_type_opt(float, opt=opt)
             if val != None and err: return 1
-            self.timing.round_times(self.tr, round_frac=val)
+            if self.timing.round_times(self.tr, round_frac=val): return 1
 
          elif opt.name == '-truncate_times':
             if not self.timing:
@@ -1222,7 +1280,7 @@ class ATInterface:
             if self.tr <= 0.0:
                print "** '%s' requires -tr" % opt.name
                return 1
-            self.timing.round_times(self.tr)
+            if self.timing.round_times(self.tr): return 1
 
          elif opt.name == '-sort':
             if not self.timing:
@@ -1235,7 +1293,7 @@ class ATInterface:
                print "** '%s' requires -timing" % opt.name
                return 1
             if self.verb > 0:
-               print '++ timing (%d runs)\n' % len(self.timing.data)
+               print '# ++ timing (%d runs)\n' % len(self.timing.data)
             print UTIL.make_timing_data_string(self.timing.data,
                           nplaces=self.nplaces, verb=self.verb)
 
@@ -1243,13 +1301,31 @@ class ATInterface:
             if not self.timing:
                print "** '%s' requires -timing" % opt.name
                return 1
-            self.show_isi_stats()
+            if self.show_isi_stats(): return 1
 
          elif opt.name == '-multi_show_isi_stats':
             if len(self.m_timing) < 1:
                print "** '%s' requires -multi_timing" % opt.name
                return 1
-            self.multi_show_isi_stats()
+            if self.multi_show_isi_stats(): return 1
+
+         elif opt.name == '-show_tr_stats':
+            if not self.timing and len(self.m_timing) == 0:
+               print "** '%s' requires -timing or -multi_timing" % opt.name
+               return 1
+            if self.tr <= 0.0:
+               print "** '%s' requires -tr" % opt.name
+               return 1
+            if self.show_tr_stats(): return 1
+
+         elif opt.name == '-warn_tr_stats':
+            if not self.timing and len(self.m_timing) == 0:
+               print "** '%s' requires -timing or -multi_timing" % opt.name
+               return 1
+            if self.tr <= 0.0:
+               print "** '%s' requires -tr" % opt.name
+               return 1
+            if self.show_tr_stats(warn=1): return 1
 
          elif opt.name == '-timing_to_1D':
             if not self.timing:
@@ -1281,7 +1357,7 @@ class ATInterface:
             if not self.timing:
                print "** '%s' requires -timing" % opt.name
                return 1
-            self.timing.transpose()
+            if self.timing.transpose(): return 1
 
          elif opt.name == '-show_timing_ele':
             if not self.timing:
@@ -1333,11 +1409,6 @@ class ATInterface:
          print '** multi_timing_to_events: missing filename'
          errs += 1
 
-      for dur in self.m_stim_dur:
-         if dur <= 0:
-            print '** error: -stim_dur must be positive'
-            errs += 1
-
       if self.tr <= 0.0:
          print '** error: -tr must be positive'
          errs += 1
@@ -1354,10 +1425,8 @@ class ATInterface:
 
       amtlist = []
       for index, timing in enumerate(self.m_timing):
-         amt = LT.AfniMarriedTiming(from_at=1, at=timing)
-         if not amt: return 1
-         errstr, result = amt.timing_to_1D(self.run_len, self.tr, self.min_frac,
-                                           self.per_run)
+         errstr, result = timing.timing_to_1D(self.run_len, self.tr,
+                                              self.min_frac, self.per_run)
          if errstr:
             print errstr
             return 1
@@ -1489,10 +1558,6 @@ class ATInterface:
          print '** write_timing_as_1D: missing filename'
          return 1
 
-      if self.stim_dur <= 0:
-         print '** error: -stim_dur must be positive'
-         return 1
-
       if self.tr <= 0.0:
          print '** error: -tr must be positive'
          return 1
@@ -1505,11 +1570,8 @@ class ATInterface:
          print '** error: -min_frac must be in (0.0, 1.0]'
          return 1
 
-      amt = LT.AfniMarriedTiming(from_at=1, at=self.timing)
-      if not amt: return 1
-
-      errstr, result = amt.timing_to_1D(self.run_len, self.tr, self.min_frac,
-                                        self.per_run)
+      errstr, result = self.timing.timing_to_1D(self.run_len, self.tr,
+                                                self.min_frac, self.per_run)
       if errstr:
          print errstr
          return 1
@@ -1549,12 +1611,11 @@ class ATInterface:
          print '** no timing, cannot show stats'
          return 1
 
-      amt = LT.AfniMarriedTiming(from_at=1, at=self.timing)
-
-      rv = amt.show_isi_stats(mesg='single element', run_len=self.run_len,
-                              tr=self.tr, rest_file=self.all_rest_file)
+      rv = self.timing.show_isi_stats(mesg='single element',
+              run_len=self.run_len, tr=self.tr, rest_file=self.all_rest_file)
       if rv and self.verb > 2:
-         amt.make_data_string(nplaces=self.nplaces,mesg='SHOW ISI FAILURE')
+         self.timing.make_data_string(nplaces=self.nplaces,
+                                      mesg='SHOW ISI FAILURE')
 
       return 0
 
@@ -1563,12 +1624,11 @@ class ATInterface:
          print '** no multi-timing, cannot show stats'
          return 1
 
-      amt = LT.AfniMarriedTiming(from_at=1, at=self.m_timing[0])
+      amt = self.m_timing[0].copy()
 
       nele = len(self.m_timing)
       for ind in range(1, nele):
-         newamt = LT.AfniMarriedTiming(from_at=1, at=self.m_timing[ind])
-         amt.extend_rows(newamt)
+         amt.extend_rows(self.m_timing[ind])
 
       if self.verb > 2: amt.show('final AMT')
 
@@ -1576,6 +1636,33 @@ class ATInterface:
                               tr=self.tr, rest_file=self.all_rest_file)
       if rv and self.verb > 2:
          print amt.make_data_string(nplaces=self.nplaces,mesg='ISI FAILURE')
+
+      return 0
+
+   def show_tr_stats(self, warn=0):
+      """show results from get_TR_offset_stats()
+            if warn, only output warnings (where max is below min_frac)
+      """
+
+      if self.min_frac >= 0 and self.min_frac < 1: frac = self.min_frac
+      else:                                        frac = 0.3
+
+      if not self.timing and len(self.m_timing) == 0:
+         print '** no timing, cannot show stats'
+         return 1
+
+      if self.tr <= 0.0:
+         print "** show_tr_stats requires -tr"
+         return 1
+
+      # either way, process as a list
+      tlist = self.m_timing
+      if len(tlist) == 0: tlist = [self.timing]
+
+      for timing in tlist:
+         rv, rstr = timing.get_TR_offset_stats_str(self.tr, mesg=timing.fname,
+                                                   wlimit=frac)
+         if rv or not warn: print rstr
 
       return 0
 

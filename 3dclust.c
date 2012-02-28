@@ -58,6 +58,7 @@ voxels per original voxel
 /*-- 29 Nov 2001: RWCox adds the -prefix option --*/
 /*-- 30 Apr 2002: RWCox adds the -mni option --*/
 /*-- 21 Jul 2005: P Christidis modified -help menu --*/
+/*-- 26 Aug 2011: RWCox adds the -savemask option --*/
 
 /*---------------------------------------------------------------------------*/
 #include <stdio.h>
@@ -79,11 +80,14 @@ static int CL_verbose = 0 ; /* RWC 01 Nov 1999 */
 static int CL_quiet = 0;   /* MSB 02 Dec 1999 */
 
 static char * CL_prefix = NULL ; /* 29 Nov 2001 -- RWCox */
+static char * CL_savemask = NULL ; /* 26 Aug 2011 */
 
 static int    CL_do_mni = 0 ;    /* 30 Apr 2002 -- RWCox */
 
-static int    CL_1Dform = 1 ;    /* 02 Mar 2006 -- Zaid (it's hopeless) 
+static int    CL_1Dform = 1 ;    /* 02 Mar 2006 -- Zaid (it's hopeless)
                        Changed to '1' 23 Mar 2007 -- Said (still hopeless)*/
+
+static int    no_inmask = 1 ;    /* 02 Aug 2011 */
 
 /**-- RWCox: July 1997
       Report directions based on AFNI_ORIENT environment --**/
@@ -111,7 +115,7 @@ int main( int argc , char * argv[] )
           xxmax,yymax,zzmax, mmmax  , msmax ,
           RLmax, RLmin, APmax, APmin, ISmax, ISmin;
    double xxsum,yysum,zzsum,mmsum , volsum , mssum ;
-   double mean, sem, sqsum, glmmsum, glsqsum, glmssum, 
+   double mean, sem, sqsum, glmmsum, glsqsum, glmssum,
           glmean, glxxsum, glyysum, glzzsum;
    MCW_cluster_array * clar , * clbig ;
    MCW_cluster       * cl ;
@@ -122,6 +126,9 @@ int main( int argc , char * argv[] )
    float dxf,dyf,dzf ;                  /* 24 Jan 2001: for -dxyz=1 option */
    int do_mni ;                         /* 30 Apr 2002 */
    char c1d[2] = {""}, c1dn[2] = {""};
+   byte *mask=NULL ; int nmask=0 ;      /* 02 Aug 2011 */
+   
+   mainENTRY("3dclust"); machdep();
    
    if( argc < 4 || strncmp(argv[1],"-help",4) == 0 ){
       printf ("\n\n");
@@ -209,7 +216,7 @@ int main( int argc , char * argv[] )
   "                 information on cluster locations.                      \n"
   "                 See whereami -help for more info.                      \n"
   "* -no_1Dformat=> Do not write output in 1D format.                      \n"
-  "                                                                        \n"   
+  "                                                                        \n"
   "* -quiet      => Suppress all non-essential output                      \n"
   "                                                                        \n"
   "* -mni        => If the input dataset is in +tlrc coordinates, this     \n"
@@ -239,13 +246,33 @@ int main( int argc , char * argv[] )
   "                                                                        \n"
   "           N.B.:  'Clusters' formed this way may well have components   \n"
   "                   that are widely separated!                           \n"
+  "\n"
+  "* -inmask  =>    If 3dClustSim put an internal attribute into the       \n"
+  "                 input dataset that describes a mask, 3dclust will      \n"
+  "                 use this mask to eliminate voxels before clustering,   \n"
+  "                 if you give this option.  '-inmask' is how the AFNI    \n"
+  "                 AFNI Clusterize GUI works by default.                  \n"
+  "                   [If there is no internal mask in the dataset]        \n"
+  "                   [header, then '-inmask' doesn't do anything.]        \n"
+  "\n"
+  "           N.B.: The usual way for 3dClustSim to have put this internal \n"
+  "                 mask into a functional dataset is via afni_proc.py.    \n"
   "                                                                        \n"
   "* -prefix ppp => Write a new dataset that is a copy of the              \n"
   "                 input, but with all voxels not in a cluster            \n"
   "                 set to zero; the new dataset's prefix is 'ppp'         \n"
   "                                                                        \n"
   "           N.B.:  Use of the -prefix option only affects the            \n"
-  "                  first input dataset                                   \n"
+  "                  first input dataset.                                  \n"
+  "\n"
+  "* -savemask q => Write a new dataset that is an ordered mask, such      \n"
+  "                 that the largest cluster is labeled '1', the next      \n"
+  "                 largest '2' and so forth.  Should be the same as       \n"
+  "                 '3dmerge -1clust_order' or Clusterize 'SaveMsk'.       \n"
+  "\n"
+  "----------------------------------------------------------------------- \n"
+  " N.B.: 'N.B.' is short for 'Nota Bene', Latin for 'Note Well';          \n"
+  "       also see http://en.wikipedia.org/wiki/Nota_bene                  \n"
   "----------------------------------------------------------------------- \n"
   "                                                                        \n"
   "E.g., 3dclust -1clip 0.3  5  3000 func+orig'[1]'                        \n"
@@ -336,7 +363,7 @@ int main( int argc , char * argv[] )
    THD_coorder_fill( my_getenv("AFNI_ORIENT") , &CL_cord ) ; /* July 1997 */
    CL_read_opts( argc , argv ) ;
    nopt = CL_nopt ;
-   
+
    if (CL_1Dform) {
       sprintf(c1d, "#");
       sprintf(c1dn, " ");
@@ -384,24 +411,69 @@ int main( int argc , char * argv[] )
 
    dset = NULL ;
    for( iarg=nopt ; iarg < argc ; iarg++ ){
-      if( dset != NULL ) THD_delete_3dim_dataset( dset , False ) ; /* flush old   */
-      dset = THD_open_dataset( argv[iarg] ) ;                      /* open new    */
-      if( dset == NULL ){                                          /* failed?     */
-         fprintf(stderr,"** Warning: skipping dataset %s\n",argv[iarg]) ;
+      if( dset != NULL ) THD_delete_3dim_dataset(dset,False) ;   /* flush old */
+
+      dset = THD_open_dataset( argv[iarg] ) ;                     /* open new */
+
+      if( dset == NULL ){                                          /* failed? */
+         ERROR_message("Can't open dataset %s -- skipping it",argv[iarg]) ;
          continue ;
       }
       if( DSET_NUM_TIMES(dset) > 1 &&
-          ( CL_edopt.iv_fim < 0 || CL_edopt.iv_thr < 0 ) ){      /* no time     */
-
-         fprintf(stderr,                                           /* dependence! */
-                 "** Cannot use time-dependent dataset %s\n",argv[iarg]) ;
+          ( CL_edopt.iv_fim < 0 || CL_edopt.iv_thr < 0 ) ){        /* no time */
+         ERROR_message(                                        /* dependence! */
+                 "Cannot use time-dependent dataset %s",argv[iarg]) ;
          continue ;
       }
-      THD_force_malloc_type( dset->dblk , DATABLOCK_MEM_MALLOC ) ; /* don't mmap  */
+
+      THD_force_malloc_type( dset->dblk , DATABLOCK_MEM_MALLOC ) ;    /* mmap */
       if( CL_verbose )
-         fprintf(stderr,"+++ Loading dataset %s\n",argv[iarg]) ;
-      DSET_load(dset); CHECK_LOAD_ERROR(dset);                     /* read in     */
-      EDIT_one_dataset( dset , &CL_edopt ) ;                       /* editing?    */
+         INFO_message("Loading dataset %s",argv[iarg]) ;
+      DSET_load(dset); CHECK_LOAD_ERROR(dset);                     /* read in */
+      EDIT_one_dataset( dset , &CL_edopt ) ;                      /* editing? */
+
+      /*  search for ASCII mask string [02 Aug 2011] */
+      /*  results:  nmask == 0                ==> no mask found at all
+                    mask  != NULL             ==> this is the mask
+                    nmask > 0 && mask == NULL ==> mask found but not used
+                    nmask < 0                 ==> mask found but not usable */
+
+      if( mask != NULL ){ free(mask); mask = NULL; }      /* clear mask stuff */
+      nmask = 0 ;
+
+      { ATR_string *atr = THD_find_string_atr(dset->dblk,"AFNI_CLUSTSIM_MASK") ;
+        if( atr != NULL ){                       /* mask stored as B64 string */
+          nmask = mask_b64string_nvox(atr->ch) ;            /* length of mask */
+          if( nmask != DSET_NVOX(dset) )                /* must match dataset */
+            nmask = -1 ;
+          else if( !no_inmask )
+            mask = mask_from_b64string(atr->ch,&nmask) ;
+        } else {                       /* mask name stored in NN1 NIML header */
+          atr = THD_find_string_atr(dset->dblk,"AFNI_CLUSTSIM_NN1") ;
+          if( atr != NULL ){         /* mask stored as reference to a dataset */
+            NI_element *nel = NI_read_element_fromstring(atr->ch) ;
+            char *nnn ;
+            nnn = NI_get_attribute(nel,"mask_dset_name") ;   /* dataset name? */
+            if( nnn == NULL ){
+              nnn = NI_get_attribute(nel,"mask_dset_idcode") ;  /* try idcode */
+              if( nnn != NULL ) nmask = -1 ;              /* can't use idcode */
+            } else {
+              THD_3dim_dataset *mset = THD_open_dataset(nnn) ; /* try to read */
+              if( mset != NULL ){                              /* the dataset */
+                nmask = DSET_NVOX(mset) ;
+                if( nmask != DSET_NVOX(dset) )          /* must match dataset */
+                  nmask = -1 ;
+                else if( !no_inmask )
+                  mask = THD_makemask(mset,0,1.0f,0.0f) ;
+                DSET_delete(mset) ;
+              } else {
+                nmask = -1 ;                            /* can't read dataset */
+              }
+            }
+            NI_free_element(nel) ;
+          }
+        }
+      } /* end of trying to load internal mask */
 
       /* 30 Apr 2002: check if -mni should be used here */
 
@@ -412,17 +484,23 @@ int main( int argc , char * argv[] )
       else
          ivfim  = CL_ivfim ;                                       /* 16 Sep 1999 */
 
+      /* 02 Aug 2011: mask the data, maybe */
+
+      mri_maskify( DSET_BRICK(dset,ivfim) , mask ) ;   /* does nada if mask==NULL */
+
+      /* and get a pointer to the data */
+
       vfim   = DSET_ARRAY(dset,ivfim) ;                            /* ptr to data */
       fimfac = DSET_BRICK_FACTOR(dset,ivfim) ;                     /* scl factor  */
       if( vfim == NULL ){
-         fprintf(stderr,"** Cannot access data in dataset %s\a\n",argv[iarg]) ;
-         continue ;
+        ERROR_message("Cannot access data in dataset %s",argv[iarg]) ;
+        continue ;
       }
 
       if( !AFNI_GOOD_FUNC_DTYPE( DSET_BRICK_TYPE(dset,ivfim) ) ||
           DSET_BRICK_TYPE(dset,ivfim) == MRI_rgb                 ){
 
-         fprintf(stderr,"** Illegal datum type in dataset %s\a\n",argv[iarg]) ;
+         ERROR_message("Illegal datum type in dataset %s",argv[iarg]) ;
          continue ;
       }
 
@@ -453,14 +531,14 @@ int main( int argc , char * argv[] )
              "%s[Single voxel volume = %.1f (microliters) ]\n"
              "%s[Voxel datum type    = %s ]\n"
              "%s[Voxel dimensions    = %.3f mm X %.3f mm X %.3f mm ]\n"
-             "%s[Coordinates Order   = %s ]\n", 
-              c1d, 
+             "%s[Coordinates Order   = %s ]\n",
+              c1d,
               c1d, argv[iarg] , do_mni ? "[MNI coords]" : "" ,  /* 30 Apr 2002 */
 #if 0
-              c1d, dset->self_name , 
+              c1d, dset->self_name ,
               c1d, dset->label1 ,
 #endif
-              c1d, rmm , ptmin*dx*dy*dz , 
+              c1d, rmm , ptmin*dx*dy*dz ,
               c1d,  dx*dy*dz ,
               c1d, MRI_TYPE_name[ DSET_BRICK_TYPE(dset,ivfim) ] ,
               c1d, dx,dy,dz,
@@ -469,6 +547,13 @@ int main( int argc , char * argv[] )
              if( CL_edopt.fake_dxyz )  /* 24 Jan 2001 */
                printf("%s[Fake voxel dimen    = %.3f mm X %.3f mm X %.3f mm ]\n",
                       c1d, dxf,dyf,dzf) ;
+
+            if( nmask > 0 && mask != NULL )                  /* 02 Aug 2011 */
+              printf("%s[Using internal mask]\n",c1d) ;
+            else if( nmask > 0 )
+              printf("%s[Skipping internal mask]\n",c1d) ;
+            else if( nmask < 0 )
+              printf("%s[Un-usable internal mask]\n",c1d) ;  /* should not happen */
 
             if (CL_noabs)                                   /* BDW  19 Jan 1999 */
               printf ("%sMean and SEM based on Signed voxel intensities: \n%s\n", c1d, c1d);
@@ -506,8 +591,9 @@ int main( int argc , char * argv[] )
       } /* end of report header */
 
       /*-- actually find the clusters in the dataset */
+
       clar = NIH_find_clusters( nx,ny,nz , dxf,dyf,dzf ,
-                                DSET_BRICK_TYPE(dset,ivfim) , vfim , rmm , 
+                                DSET_BRICK_TYPE(dset,ivfim) , vfim , rmm ,
                                 CL_edopt.isomode ) ;
 
       /*-- don't need dataset data any more --*/
@@ -540,113 +626,124 @@ int main( int argc , char * argv[] )
 
       /** end of June 1995 addition **/
 
-      /*-- 29 Nov 2001: write out an edited dataset? --*/
+      /** sort clusters by size, to make a nice report **/
 
-      if( CL_prefix != NULL ){
+      if( clar->num_clu < 3333 ){
+         SORT_CLARR(clar) ;
+      } else if( CL_summarize != 1 ){
+         printf("%s** TOO MANY CLUSTERS TO SORT BY VOLUME ***\n", c1d) ;
+      }
+
+      /*-- 29 Nov 2001: write out an edited dataset? --*/
+      if( CL_prefix != NULL || CL_savemask != NULL ){
+
         if (iarg == nopt) {
-           int qv ; byte *mmm ;
+           int qv ; short *mmm=NULL  ;
 
            /* make a mask of voxels to keep */
 
-           mmm = (byte *) calloc(sizeof(byte),nxyz) ;
+           mmm = (short *) calloc(sizeof(short),nxyz) ;
            for( iclu=0 ; iclu < clar->num_clu ; iclu++ ){
              cl = clar->clar[iclu] ; if( cl == NULL ) continue ;
              for( ipt=0 ; ipt < cl->num_pt ; ipt++ ){
                ii = cl->i[ipt] ; jj = cl->j[ipt] ; kk = cl->k[ipt] ;
-               mmm[ii+jj*nx+kk*nxy] = 1 ;
+               mmm[ii+jj*nx+kk*nxy] = (short)(iclu+1) ;
              }
            }
 
-           DSET_load( dset ) ;             /* reload data from disk */
+           if( CL_prefix != NULL ){
+             DSET_load( dset ) ;             /* reload data from disk */
+             PREP_LOADED_DSET_4_REWRITE(dset, CL_prefix); /* ZSS Dec 2011 */
 
-           /* needs a new ID, but after loading     30 May 2006 [rickr] */
-           dset->idcode = MCW_new_idcode() ; 
+             tross_Make_History( "3dclust" , argc , argv , dset ) ;
 
-           EDIT_dset_items( dset ,         /* rename dataset internally */
-                              ADN_prefix , CL_prefix ,
-                            ADN_none ) ;
+             /* mask out each sub-brick */
 
-           tross_Make_History( "3dclust" , argc , argv , dset ) ;
+             for( qv=0 ; qv < DSET_NVALS(dset) ; qv++ ){
 
-           /* mask out each sub-brick */
+                switch( DSET_BRICK_TYPE(dset,qv) ){
 
-           for( qv=0 ; qv < DSET_NVALS(dset) ; qv++ ){
+                  case MRI_short:{
+                    short *bar = (short *) DSET_ARRAY(dset,qv) ;
+                    for( ii=0 ; ii < nxyz ; ii++ )
+                      if( mmm[ii] == 0 ) bar[ii] = 0 ;
+                  }
+                  break ;
 
-              switch( DSET_BRICK_TYPE(dset,qv) ){
+                  case MRI_byte:{
+                    byte *bar = (byte *) DSET_ARRAY(dset,qv) ;
+                    for( ii=0 ; ii < nxyz ; ii++ )
+                      if( mmm[ii] == 0 ) bar[ii] = 0 ;
+                  }
+                  break ;
+  
+                  case MRI_int:{
+                    int *bar = (int *) DSET_ARRAY(dset,qv) ;
+                    for( ii=0 ; ii < nxyz ; ii++ )
+                      if( mmm[ii] == 0 ) bar[ii] = 0 ;
+                  }
+                  break ;
+  
+                  case MRI_float:{
+                    float *bar = (float *) DSET_ARRAY(dset,qv) ;
+                    for( ii=0 ; ii < nxyz ; ii++ )
+                      if( mmm[ii] == 0 ) bar[ii] = 0.0 ;
+                  }
+                  break ;
+  
+                  case MRI_double:{
+                    double *bar = (double *) DSET_ARRAY(dset,qv) ;
+                    for( ii=0 ; ii < nxyz ; ii++ )
+                      if( mmm[ii] == 0 ) bar[ii] = 0.0 ;
+                  }
+                  break ;
+  
+                  case MRI_complex:{
+                    complex *bar = (complex *) DSET_ARRAY(dset,qv) ;
+                    for( ii=0 ; ii < nxyz ; ii++ )
+                      if( mmm[ii] == 0 ) bar[ii].r = bar[ii].i = 0.0 ;
+                  }
+                  break ;
+  
+                  case MRI_rgb:{
+                    byte *bar = (byte *) DSET_ARRAY(dset,qv) ;
+                    for( ii=0 ; ii < nxyz ; ii++ )
+                      if( mmm[ii] == 0 ) bar[3*ii] = bar[3*ii+1] = bar[3*ii+2] = 0 ;
+                  }
+                  break ;
+               } /* end of switch over sub-brick type */
+             } /* end of loop over sub-bricks */
 
-                case MRI_short:{
-                  short *bar = (short *) DSET_ARRAY(dset,qv) ;
-                  for( ii=0 ; ii < nxyz ; ii++ )
-                    if( mmm[ii] == 0 ) bar[ii] = 0 ;
-                }
-                break ;
+             /* write dataset out */
 
-                case MRI_byte:{
-                  byte *bar = (byte *) DSET_ARRAY(dset,qv) ;
-                  for( ii=0 ; ii < nxyz ; ii++ )
-                    if( mmm[ii] == 0 ) bar[ii] = 0 ;
-                }
-                break ;
+             DSET_write(dset) ; WROTE_DSET(dset) ; PURGE_DSET(dset) ;
+          }
 
-                case MRI_int:{
-                  int *bar = (int *) DSET_ARRAY(dset,qv) ;
-                  for( ii=0 ; ii < nxyz ; ii++ )
-                    if( mmm[ii] == 0 ) bar[ii] = 0 ;
-                }
-                break ;
+          if( CL_savemask != NULL ){  /* 26 Aug 2011 */
+            THD_3dim_dataset *qset ;
+            qset = EDIT_empty_copy(dset) ;
+            EDIT_dset_items( qset ,
+                               ADN_prefix , CL_savemask ,
+                               ADN_nvals  , 1 ,
+                             ADN_none ) ;
+            EDIT_substitute_brick(qset,0,MRI_short,mmm) ; mmm = NULL ;
+            tross_Make_History( "3dclust" , argc , argv , dset ) ;
+            DSET_write(qset) ; WROTE_DSET(qset) ; DSET_delete(qset) ;
+          }
 
-                case MRI_float:{
-                  float *bar = (float *) DSET_ARRAY(dset,qv) ;
-                  for( ii=0 ; ii < nxyz ; ii++ )
-                    if( mmm[ii] == 0 ) bar[ii] = 0.0 ;
-                }
-                break ;
+          if( mmm != NULL ) free(mmm) ;
 
-                case MRI_double:{
-                  double *bar = (double *) DSET_ARRAY(dset,qv) ;
-                  for( ii=0 ; ii < nxyz ; ii++ )
-                    if( mmm[ii] == 0 ) bar[ii] = 0.0 ;
-                }
-                break ;
-
-                case MRI_complex:{
-                  complex *bar = (complex *) DSET_ARRAY(dset,qv) ;
-                  for( ii=0 ; ii < nxyz ; ii++ )
-                    if( mmm[ii] == 0 ) bar[ii].r = bar[ii].i = 0.0 ;
-                }
-                break ;
-
-                case MRI_rgb:{
-                  byte *bar = (byte *) DSET_ARRAY(dset,qv) ;
-                  for( ii=0 ; ii < nxyz ; ii++ )
-                    if( mmm[ii] == 0 ) bar[3*ii] = bar[3*ii+1] = bar[3*ii+2] = 0 ;
-                }
-                break ;
-             } /* end of switch over sub-brick type */
-           } /* end of loop over sub-bricks */
-
-           /* write dataset out */
-
-           DSET_write(dset) ;
-           fprintf(stderr,"++ Wrote dataset %s\n",DSET_BRIKNAME(dset)) ;
-           PURGE_DSET(dset) ; free(mmm) ;
-         } else {
-            WARNING_message(  
+         } else {             /** Bad news **/
+            WARNING_message(
                "Output volume not written for input %s . You either \n"
             "have bad datasets on the command line (check output warnings),\n"
             "or multiple valid datasets as input. In the latter case, \n"
             "-prefix does not work.\n",
                               DSET_BRIKNAME(dset));
          }
-      }
 
-      /** sort clusters by size, to make a nice report **/
+      } /* end of saving a dataset */
 
-      if( clar->num_clu < 1000 ){
-         SORT_CLARR(clar) ;
-      } else if( CL_summarize != 1 ){
-         printf("%s** TOO MANY CLUSTERS TO SORT BY VOLUME ***\n", c1d) ;
-      }
       ndet = 0 ;
 
       vol_total = nvox_total = 0 ;
@@ -830,7 +927,7 @@ void CL_read_opts( int argc , char * argv[] )
          continue ;
       }
 
-      #if 0 /* These two are now captured in EDIT_check_argv, 
+#if 0 /* These two are now captured in EDIT_check_argv,
                remove this block next time you see it.      ZSS March 2010 */
       /**** 30 Apr 2002: -isovalue and -isomerge ****/
       if( strcmp(argv[nopt],"-isovalue") == 0 ){
@@ -842,8 +939,15 @@ void CL_read_opts( int argc , char * argv[] )
          CL_isomode = ISOMERGE_MODE ;
          nopt++ ; continue ;
       }
-      #endif
-      
+#endif
+
+      if( strcmp(argv[nopt],"-no_inmask") == 0 ){  /* 02 Aug 2011 */
+        no_inmask = 1 ; nopt++ ; continue ;
+      }
+      if( strcmp(argv[nopt],"-inmask") == 0 ){
+        no_inmask = 0 ; nopt++ ; continue ;
+      }
+
       /**** 30 Apr 2002: -mni ****/
 
       if( strcmp(argv[nopt],"-mni") == 0 ){
@@ -860,6 +964,19 @@ void CL_read_opts( int argc , char * argv[] )
          CL_prefix = argv[nopt] ;
          if( !THD_filename_ok(CL_prefix) ){
             fprintf(stderr,"-prefix string is illegal: %s\n",CL_prefix); exit(1);
+         }
+         nopt++ ; continue ;
+      }
+
+      /**** 26 Aug 2011: -savemask ****/
+
+      if( strcmp(argv[nopt],"-savemask") == 0 ){
+         if( ++nopt >= argc ){
+            fprintf(stderr,"need an argument after -savemask!\n") ; exit(1) ;
+         }
+         CL_savemask = argv[nopt] ;
+         if( !THD_filename_ok(CL_savemask) ){
+            fprintf(stderr,"-savemask string is illegal: %s\n",CL_savemask); exit(1);
          }
          nopt++ ; continue ;
       }
@@ -921,7 +1038,7 @@ void CL_read_opts( int argc , char * argv[] )
          CL_1Dform = 0 ;
          nopt++ ; continue ;
       }
-      
+
       /**** -orient code ****/
 
       if( strncmp(argv[nopt],"-orient",5) == 0 ){
@@ -939,6 +1056,7 @@ void CL_read_opts( int argc , char * argv[] )
       /**** unknown switch ****/
 
       fprintf(stderr,"** Unrecognized option %s\a\n",argv[nopt]) ;
+      suggest_best_prog_option(argv[0], argv[nopt]);
       exit(1) ;
 
    }  /* end of loop over options */

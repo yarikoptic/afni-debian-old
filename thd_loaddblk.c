@@ -35,13 +35,14 @@ int THD_datum_constant( THD_datablock *blk )
 
 /*---------------------------------------------------------------*/
 /*! Return a float representation of a given voxel. [15 Sep 2004]
------------------------------------------------------------------*/
+*//*-------------------------------------------------------------*/
 
 float THD_get_voxel( THD_3dim_dataset *dset , int ijk , int ival )
 {
    void *ar ;
    float val , fac ;
 
+   if( !ISVALID_DSET(dset) )                  return 0.0f ;
    if( ival < 0 || ival >= DSET_NVALS(dset) ) return 0.0f ;
    if( ijk < 0  || ijk  >= DSET_NVOX(dset)  ) return 0.0f ;
 
@@ -66,7 +67,7 @@ float THD_get_voxel( THD_3dim_dataset *dset , int ijk , int ival )
 
      case MRI_complex:{
        complex c = (((complex *)ar)[ijk]) ;
-       val = sqrt(c.r*c.r+c.i*c.i) ;
+       val = sqrtf(c.r*c.r+c.i*c.i) ;
        break ;
      }
 
@@ -87,6 +88,23 @@ float THD_get_voxel( THD_3dim_dataset *dset , int ijk , int ival )
    fac = DSET_BRICK_FACTOR(dset,ival) ;
    if( fac > 0.0f ) val *= fac ;
    return val ;
+}
+
+/*----------------------------------------------------------------------------*/
+
+float THD_get_voxel_dicom( THD_3dim_dataset *dset, float x,float y,float z, int ival )
+{
+   THD_fvec3 vv , uu ; THD_ivec3 ii ; int ijk ;
+
+   if( !ISVALID_DSET(dset) )                  return 0.0f ;
+   if( ival < 0 || ival >= DSET_NVALS(dset) ) return 0.0f ;
+
+   LOAD_FVEC3( vv , x,y,z ) ;
+   uu = THD_dicomm_to_3dmm( dset , vv ) ;
+   ii = THD_3dmm_to_3dind_no_wod( dset , uu ) ;
+   ijk = DSET_ixyz_to_index(dset,ii.ijk[0],ii.ijk[1],ii.ijk[2]) ;
+
+   return THD_get_voxel( dset , ijk , ival ) ;
 }
 
 /*---------------------------------------------------------------
@@ -124,7 +142,6 @@ ENTRY("THD_load_datablock") ; /* 29 Aug 2001 */
    if( ! ISVALID_DATABLOCK(blk) || blk->brick == NULL ){
      STATUS("Illegal inputs"); RETURN( False );
    }
-
    ii = THD_count_databricks( blk ) ;
    if( ii == blk->nvals ) RETURN( True );   /* already loaded! */
 
@@ -765,7 +782,9 @@ fprintf(stderr,"VOL[%d]: id=%d\n",ibr,id) ;
    /* 30 July 1999: check float sub-brick for errors? */
    /* 14 Sep  1999: also check complex sub-bricks!    */
 
-   if( floatscan ){
+   if( floatscan  &&
+      (( DBLK_BRICK_TYPE(blk,0) == MRI_float )  ||
+       ( DBLK_BRICK_TYPE(blk,0) == MRI_complex ))){
       int nerr=0 ;
       STATUS("float scanning") ;
       if( verb ) fprintf(stderr,".float scan") ;
@@ -801,7 +820,7 @@ fprintf(stderr,"master_bot=%g master_top=%g\n",blk->master_bot,blk->master_top) 
 /*----------------------------------------------------------------------------*/
 /*! Allocate memory for the volumes in a datablock -- 02 May 2003.
     Return value is 1 if OK, 0 if not.
-------------------------------------------------------------------------------*/
+*//*--------------------------------------------------------------------------*/
 
 int THD_alloc_datablock( THD_datablock *blk )
 {
@@ -945,7 +964,7 @@ ENTRY("THD_alloc_datablock") ;
 
 /*----------------------------------------------------------------------------*/
 /*! Fill up a dataset with zero-ed out sub-bricks, if needed.
-------------------------------------------------------------------------------*/
+*//*--------------------------------------------------------------------------*/
 
 void THD_zerofill_dataset( THD_3dim_dataset *dset )
 {
@@ -970,7 +989,7 @@ ENTRY("THD_zerofill_dataset") ;
     (from THD_load_datablock())
 
     return 0 on success
-------------------------------------------------------------------------------*/
+*//*--------------------------------------------------------------------------*/
 int THD_apply_master_subrange( THD_datablock * blk )
 {
    THD_diskptr * dkptr ;
@@ -1059,20 +1078,50 @@ fprintf(stderr,"mbot=%d mtop=%d\n",(int)mbot,(int)mtop) ;
 
 /*----------------------------------------------------------------------*/
 /*! Set dx,dy,dz fields for MRI_IMAGEs in a dataset.
-------------------------------------------------------------------------*/
+    [19 Dec 2011] Also patch the dataset grid spacing if it is 0.
+*//*--------------------------------------------------------------------*/
 
 void THD_patch_brickim( THD_3dim_dataset *dset )
 {
-   float dx,dy,dz ;
-   int iv , nvals ;
+   float dx,dy,dz , dm ;
+   int iv , nvals , nfix=0 ;
+   static char *cfix[8] = { NULL ,
+                            "x-axis" , "y-axis"      , "x- & y-axes" ,
+                            "z-axis" , "x- & z-axes" , "y- & z-axes" ,
+                            "x- & y- & z-axes" } ;
+   static char **idstr=NULL ; static int nidstr=0 ;  /* no repeating */
 
-ENTRY("THD_patch_dxyz") ;
+ENTRY("THD_patch_brickim") ;
 
    if( !ISVALID_DSET(dset) ) EXRETURN ;
 
-   dx = fabs(DSET_DX(dset)) ; if( dx == 0.0f ) dx = 1.0f ;
-   dy = fabs(DSET_DY(dset)) ; if( dy == 0.0f ) dy = 1.0f ;
-   dz = fabs(DSET_DZ(dset)) ; if( dz == 0.0f ) dz = 1.0f ;
+   dx = fabsf(DSET_DX(dset)) ;  /* unsigned grid spacings */
+   dy = fabsf(DSET_DY(dset)) ;
+   dz = fabsf(DSET_DZ(dset)) ;
+
+   /* check to see if any axis spacing was 0; if so, spackle over it */
+
+   dm = dx + dy + dz ;
+   dm = (dm == 0.0f) ? 1.0f : dm*0.5f ;
+
+   if( dx == 0.0f ){ dx = dset->daxes->xxdel = dm ; nfix += 1 ; }
+   if( dy == 0.0f ){ dy = dset->daxes->yydel = dm ; nfix += 2 ; }
+   if( dz == 0.0f ){ dz = dset->daxes->zzdel = dm ; nfix += 4 ; }
+
+   if( nfix > 0 ){                         /* have to patch at least one axis */
+     int ii ;
+     for( ii=0 ; ii < nidstr ; ii++ )    /* see if we did this dataset before */
+       if( strcmp(DSET_IDCODE_STR(dset),idstr[ii]) == 0 ) break ;
+     if( ii == nidstr ){                     /* this is a new dataset (to us) */
+       if( nidstr == 0 ) fprintf(stderr,"\n") ;
+       WARNING_message("Dataset %s : patched zero grid spacing along %s to %g",
+                       THD_trailname(DSET_HEADNAME(dset),0) , cfix[nfix] , dm ) ;
+       idstr = (char **)realloc(idstr,sizeof(char *)*(nidstr+1)) ;
+       idstr[nidstr++] = strdup(DSET_IDCODE_STR(dset)) ; /* remember the past */
+     }
+   }
+
+   /* fix the sub-brick (MRI_IMAGE) headers */
 
    nvals = DSET_NVALS(dset) ;
    for( iv=0 ; iv < nvals ; iv++ ){

@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <string.h>
 #include <afni_environ.h>
 
 /*************************************************************************/
@@ -22,6 +23,7 @@ static PORTS PL;
 
 static int user_np = -1;
 static int reinit = 1;
+static char *user_pif = NULL;
 
 void set_ports_list_reinit (void) { reinit = 1; }
 
@@ -90,6 +92,25 @@ char *get_np_help() {
    return(NP_HELP);
 }
 
+int set_user_pif(char *s) {
+   if (user_pif) {
+      free(user_pif); 
+   }
+   user_pif = NULL;
+   if (s) {
+      user_pif = strdup(s);
+   }
+   return(1);
+}
+
+char *get_user_pif(void) {
+   return(user_pif);
+}
+
+int npb_to_np(int v) {
+   return(1024+v*get_num_ports());
+}
+
 int set_user_np_bloc(int v) {
    if (v > get_max_port_bloc()) {
       ERROR_message(
@@ -97,8 +118,7 @@ int set_user_np_bloc(int v) {
          get_max_port_bloc());
       return(0);
    }
-   v = 1024+v*get_num_ports();
-   
+   v = npb_to_np(v);
    return(set_user_np(v));
 }
 
@@ -438,4 +458,37 @@ void show_ports_list(void) {
                ip, PL.port_id[ip].name, PL.port_id[ip].port);
    }
    return;
+}
+
+/* 
+   Check if all ports in block are listenable 
+*/
+int is_npb_available(int npb) 
+{
+   int npm=0, sd = 1;
+   int np = 0;
+   
+   np = npb_to_np(npb);
+   npm = np+get_num_ports();
+   set_tcp_listen_mute(1);
+   sd = 1;
+   while (np < npm && (sd = tcp_listen(np)) >= 0) {
+      shutdown(sd,2); close(sd); /* same as CLOSEDOWN macro in niml_stream*/
+      ++np; 
+   }
+   set_tcp_listen_mute(0);
+   if (np < npm) return(0);
+   return(1);
+}
+
+/* find a block of ports that is useable */
+int get_available_npb(void) 
+{
+   int k = 0;
+   
+   while (k<get_max_port_bloc()) {
+      if (is_npb_available(k)) return(k);
+      ++k;
+   }
+   return(-1);
 }

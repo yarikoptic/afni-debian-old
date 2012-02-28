@@ -2,15 +2,13 @@ print("#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 print("          ================== Welcome to 1dGC.R ==================          ")
 print("AFNI Vector (or Multivariate) Auto-Regressive (VAR or MAR) Modeling Package!")
 print("#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
-print("Version 1.2.0,  Apr. 5, 2011")
+print("Version 1.2.2,  Jan. 19, 2012")
 print("Author: Gang Chen (gangchen@mail.nih.gov)")
 print("Website: http://afni.nimh.nih.gov/sscc/gangc/VAR.html")
 print("SSCC/NIMH, National Institutes of Health, Bethesda MD 20892")
 print("#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
 
 libLoad <- function(myLib) {
-   sucLoad <- FALSEplotNet(surviveR, selfLoop, surviveR*edgeScaleG, arrowScaleG, 3-sign(surviveR), "Network of Group2-Group1")
-
    sucCheck <- FALSE
    try(sucLoad <- library(myLib, character.only = TRUE, logical.return = TRUE))
    if (sucLoad) {print(sprintf("Package %s successfully loaded!", myLib)); sucCheck <- TRUE} else {
@@ -394,9 +392,9 @@ print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
 
 print("################################################################")
 print("Please consider citing the following if this program is useful for you:")
-cat("\n\tGang Chen, J. Paul Hamilton, Moriah E. Thomason, Ian H. Gotlib, Ziad S. Saad\n")
-cat("\tRobert W. Cox, Granger causality via vector auto-regression tuned for\n")
-cat("\tFMRI data analysis. ISMRM 17th Scientific Meeting, Hawaii, 2009.\n\n")
+cat("\n\tChen et al., Vector autoregression, structural equation modeling, and\n")
+cat("\ttheir synthesis in neuroimaging data analysis, Comput. Biol. Med. (2011),\n")
+cat("\tVolume 41, Issue 12, 1142-1155.\n\n")
 print("################################################################")
 
 print("Use CNTL-C on Unix or ESC on GUI version of R to stop at any moment.")

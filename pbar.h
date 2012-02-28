@@ -29,10 +29,11 @@
 extern "C" {                    /* care of Greg Balls    7 Aug 2006 [rickr] */
 #endif
 
-void PBAR_click_CB( Widget , XtPointer , XtPointer ) ;
-void PBAR_set_CB( Widget , XtPointer , MCW_choose_cbs * ) ;
-void PBAR_resize_CB( Widget , XtPointer , XtPointer ) ;
-void PBAR_labelize( float , char * ) ;
+void PBAR_click_CB   ( Widget , XtPointer , XtPointer ) ;
+void PBAR_setcolor_CB( Widget , XtPointer , MCW_choose_cbs * ) ;
+void PBAR_setonoff_CB( Widget , XtPointer , MCW_choose_cbs * ) ;  /* 10 Feb 2012 */
+void PBAR_resize_CB  ( Widget , XtPointer , XtPointer ) ;
+void PBAR_labelize   ( float , char * ) ;
 
 #define check_width 8
 #define check_height 8
@@ -50,7 +51,7 @@ static Pixmap check_pixmap = XmUNSPECIFIED_PIXMAP ;
 
 #define PANE_MAXMODE     2
 
-#define NPANE_NOSASH    21  /* doesn't work well */
+#define NPANE_NOSASH    21  /* doesn't work well, so this disables the no-sash feature */
 #define SASH_HYES        5
 #define SASH_HNO         1
 
@@ -58,6 +59,8 @@ static Pixmap check_pixmap = XmUNSPECIFIED_PIXMAP ;
 
 #define pbCR_COLOR       (1<<0)
 #define pbCR_VALUE       (1<<1)
+
+#define PBAR_BIGTHREE_MASK  1
 
 
 typedef struct {
@@ -80,7 +83,7 @@ typedef struct {
   XtPointer parent ;
 
   int    bigmode , bigset ;     /* 30 Jan 2003 */
-  float  bigtop , bigbot ;
+  float  bigtop , bigbot , bigmax ;
   rgbyte bigcolor[NPANE_BIG] ;
   char  *bigname ;              /* 22 Oct 2003 */
   XImage *bigxim ;
@@ -88,12 +91,16 @@ typedef struct {
   float  bigfac ;               /* 11 Feb 2003 */
   int    bigflip ;              /* 07 Feb 2004 */
   int    bigrota ;              /* 07 Feb 2004 */
+  int    big30, big32 , big31 ; /* Feb 2012 */
+  int    bigh0, bigh1 , bigh2 ; /* Feb 2012 */
+  int    ignore_resize ;        /* Feb 2012 */
+  int    dont_alter_bigmax ;    /* Feb 2012 */
 
-  Widget big_menu , big_label , big_choose_pb ;
+  Widget big_menu, big_label, big_choose_pb, big_scaleup_pb, big_scaledn_pb ;
 } MCW_pbar ;
 
 MCW_pbar * new_MCW_pbar( Widget , MCW_DC * ,
-                         int,int , float,float , gen_func * , XtPointer ) ;
+                         int,int, float,float, gen_func *, XtPointer, int ) ;
 
 void alter_MCW_pbar( MCW_pbar * , int , float * ) ;
 void update_MCW_pbar( MCW_pbar * ) ;
@@ -122,10 +129,6 @@ extern int AFNI_set_func_range_nval( XtPointer *vp_im3d, float val);
                                                             /* 15 Feb 2010 */
 
 extern int AFNI_set_dset_pbar(XtPointer *vp_im3d);          /* 26 Feb 2010 ZSS */
-extern int AFNI_get_dset_val_label(THD_3dim_dataset *dset,  /* 26 Feb 2010 ZSS */
-                                    double val, char *str);
-extern int AFNI_get_dset_label_val(THD_3dim_dataset *dset, 
-                                    double *val, char *str);/* 02 Nov 2010 ZSS */
 
 #ifdef  __cplusplus
 }

@@ -72,7 +72,7 @@ int main( int argc , char *argv[] )
    }
 
    mainENTRY("3dTCorrelate main"); machdep(); AFNI_logger("3dTcorrelate",argc,argv);
-   PRINT_VERSION("3dTcorrelate") ;
+   PRINT_VERSION("3dTcorrelate") ; THD_check_AFNI_version("3dTcorrelate") ;
 
    /*-- option processing --*/
 
@@ -128,7 +128,7 @@ int main( int argc , char *argv[] )
          char *cpt ;
          int val = strtod(argv[++nopt],&cpt) ;
          if( *cpt != '\0' || val < -1 || val > 3 ){
-            fprintf(stderr,"** Illegal value after -polort!\n");exit(1);
+            fprintf(stderr,"** Illegal value '%s' after -polort!",argv[nopt]);exit(1);
          }
          polort = val ; nopt++ ; continue ;
       }

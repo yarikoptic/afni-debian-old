@@ -95,6 +95,11 @@ static char *env_fixed[] = {
 
 #define NUM_env_fixed (sizeof(env_fixed)/sizeof(char *))
 
+/*-------------------------------------------------------------------------*/
+
+char *angle_strings[] = { "120" , "180" , "240" , "300" , "360" } ;
+#define NUM_angle_strings (sizeof(angle_strings)/sizeof(char *)) /* 08 Nov 2011 */
+
 /*--------------------- strings for Cooordinate format --------------------*/
 
 #define NUM_cord_strings 50
@@ -110,7 +115,9 @@ static char *cord_strings[NUM_cord_strings] = {
 } ;
 
 static void ENV_coorder( char * ) ;
+static void ENV_angle_string( char * ) ;
 static void ENV_globalrange( char * ) ;
+static void ENV_thresh_lock( char * ) ;
 static void ENV_compressor( char * ) ;
 static void ENV_leftisleft( char * ) ;
 static void ENV_marksquality( char * ) ;
@@ -119,7 +126,9 @@ static void ENV_cwd( char * ) ;           /* 22 Feb 2001 */
 static void ENV_redraw_titles( char * );  /* 21 Dec 2004 */
 static void ENV_redisplay( char * );      /* 21 Mar 2005 */
 static void ENV_setjpegquality(char *);   /* 11 May 2006 */
-
+static void ENV_wami_maxrad(char *vname); /* 27 Jun 2011 */
+static void ENV_wami_maxfind(char *vname); /* 27 Jun 2011 */
+static void ENV_atlas_reset(char *atlas); /* 05 Jul 2011 */
 #ifdef USE_SESSTRAIL
 static void ENV_sesstrail( char * ) ;
 #endif
@@ -398,7 +407,7 @@ PLUGIN_interface * ENV_init(void)
 
    ENV_add_string( "AFNI_THRESH_LOCK" ,                           /* 06 Feb 2004 */
                    "Lock Threshold slider values together?" ,
-                   NUM_threshlock_list , threshlock_list , NULL  ) ;
+                   NUM_threshlock_list , threshlock_list , ENV_thresh_lock  ) ;
 
    ENV_add_string( "AFNI_GRAPH_CX2R" ,                            /* 18 Apr 2011 */
                    "Graph display of complex time series" ,
@@ -530,6 +539,31 @@ PLUGIN_interface * ENV_init(void)
                    0,NULL , NULL ) ;
    ENV_add_string( "AFNI_ORT_COLORS" ,
                    "Colors for the FIM Ort in AFNI Graph viewer" ,
+                   0,NULL , NULL ) ;
+
+   /* 27 Jun 2011 [DRG] */
+   ENV_add_numeric( "AFNI_WHEREAMI_DEC_PLACES" ,
+                    "Number of decimal places for whereami output" ,
+                    0,4,0,0 , NULL ) ;
+   ENV_add_numeric( "AFNI_WHEREAMI_MAX_FIND" ,
+                    "Maximum limit for structures from an atlas for whereami output" ,
+                    1,50,0,9 , ENV_wami_maxfind ) ;
+   ENV_add_string( "AFNI_WHEREAMI_MAX_RAD" ,
+                "Maximum radius for structures from an atlas for whereami output" ,
+                 0, NULL, ENV_wami_maxrad ) ;
+   /* 01 Jul 2011 [DRG] */
+   ENV_add_string( "AFNI_ATLAS_COLORS" ,
+          "Atlas to use in Atlas colors, Draw Dataset,  Go to atlas location" ,
+                 0, NULL, ENV_atlas_reset ) ;
+
+   /* 08 Nov 2011 [RWC] */
+   ENV_add_string( "AFNI_IMAGE_COLORANGLE" ,
+                   "Image view color scale angle" ,
+                   NUM_angle_strings,angle_strings , ENV_angle_string ) ;
+
+   /* 23 Dec 2011 [RWC] */
+   ENV_add_string( "AFNI_IMAGE_LABEL_STRING" ,
+                   "Extra string for image view overlay labels" ,
                    0,NULL , NULL ) ;
 
    /*--------- Sort list of variables [21 Feb 2007]  -----------*/
@@ -848,6 +882,14 @@ static void ENV_globalrange( char *vname )
 
 /*-----------------------------------------------------------------------*/
 
+static void ENV_thresh_lock( char *vname )
+{
+   /* initialize viewers with new env value */
+   AFNI_set_all_thrlock_bboxes(NULL, -1);
+   return;  
+}
+/*-----------------------------------------------------------------------*/
+
 static void ENV_coorder( char *vname )
 {
    char *str = getenv(vname) ;
@@ -855,6 +897,24 @@ static void ENV_coorder( char *vname )
    MCW_strncpy(GLOBAL_argopt.orient_code,str,4) ;
    THD_coorder_fill( GLOBAL_argopt.orient_code , &GLOBAL_library.cord ) ;
    PLUTO_force_redisplay() ;
+}
+
+/*-----------------------------------------------------------------------*/
+
+static void ENV_angle_string( char *vname )  /* 08 Nov 2011 */
+{
+   int ii ; Three_D_View *im3d ; MCW_DC *dc = NULL ;
+
+   for( ii=0 ; ii < MAX_CONTROLLERS ; ii++ ){
+      im3d = GLOBAL_library.controllers[ii] ;
+      if( IM3D_OPEN(im3d) && im3d->dc != dc ){
+        if( dc == NULL ) dc = im3d->dc ;
+        DC_init_im_col(dc) ;
+        if( dc->use_xcol_im ) DC_set_image_colors(dc) ;
+      }
+   }
+
+   PLUTO_force_rebar() ; PLUTO_force_redisplay() ;
 }
 
 /*-----------------------------------------------------------------------*/
@@ -987,4 +1047,35 @@ static void ENV_setjpegquality(char *vname)
 {
    ISQ_setup_ppmto_filters();
 }
+
+static void ENV_wami_maxrad(char *vname)
+{
+   float maxrad;
+
+   char *str = getenv(vname) ;
+   if(!str) return;
+   maxrad = strtod(str, NULL);
+   if(maxrad<=0.0) return;
+   Set_Whereami_Max_Rad(maxrad);
+}
+
+static void ENV_wami_maxfind(char *vname)
+{
+   int maxfind;
+
+   char *str = getenv(vname) ;
+   if(!str) return;
+   maxfind = atoi(str);
+   if(maxfind<=0) return;
+   Set_Whereami_Max_Find(maxfind);
+}
+
+static void ENV_atlas_reset(char *atlas)
+{
+   TTRR_resetup();
+   reset_atlas_ovdset();
+   return ;
+}
+
 #endif
+/* endif above is for if plugins are compiled - "#else" near top of file*/

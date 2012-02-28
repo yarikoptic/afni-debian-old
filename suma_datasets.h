@@ -115,6 +115,8 @@ typedef struct {
 #define NOPE 0
 #define YUP 1
 
+typedef enum { SUMA_SIDE_ERROR=-1, SUMA_NO_SIDE, SUMA_LR, SUMA_LEFT, SUMA_RIGHT } SUMA_SO_SIDE; 
+
 typedef enum { SUMA_NO_NUM_UNITS = 0, 
                SUMA_MM_UNITS,
                SUMA_P_VALUE_UNITS,
@@ -200,12 +202,21 @@ typedef struct {
    char *FileName;
    char *FileName_NoExt;
    char *FullName;
+   char *FullName_NoSel;
    char *Ext;
+   char *Prefix;
+   char *View;
+   char *TypeExt;
+   char *StorageModeName;
+   int   StorageMode;
    char *NodeSelect;
    char *ColSelect;
    char *RowSelect;
    char *RangeSelect;
    int only_index;
+   int OnDisk;
+   char *HeadName;
+   char *BrikName;
 }SUMA_PARSED_NAME;
 
 
@@ -303,7 +314,10 @@ typedef enum {
    SUMA_NODE_XCORR,      /*!< Cross Correlation Coefficient */
    SUMA_NODE_ZSCORE,      /*!< Zscore */
    SUMA_NODE_VFR,       /* Visual Field Ration */
-   SUMA_NODE_PHASE     /* Phase of some sort */ 
+   SUMA_NODE_PHASE,     /* Phase of some sort */
+   SUMA_NODE_AREA,      /* Area associated with node*/
+   SUMA_NODE_VOLUME,    /* Volume associated with node */
+   SUMA_NODE_THICKNESS  /* Thickness (distance between isotopic nodes) */
 }  SUMA_COL_TYPE; /*!<  Column types.
                         When you add a new element, you need to modify
                         SUMA_AddColAttr
@@ -338,6 +352,7 @@ typedef struct {
                            see SUMA_ROI_DRAWING_TYPE*/
    char *idcode_str;
    char *Parent_idcode_str;
+   int Parent_side;
    char *Label;
    char *ColPlaneName;
    float FillColor[4];  /*!< RGB fill color */
@@ -673,6 +688,16 @@ typedef struct {
    #define SDSET_NODEINDFILLED(dset) dset->inel->vec_filled
    #define SDSET_NODE_INDEX_COL(dset) ( (!dset || !dset->inel || !dset->inel->vec) ? NULL:(int*)(dset->inel->vec[0]) )
 #endif
+
+#define DSET_MAX_NODE_INDEX(dset, MM) {\
+   double r[2]; int loc[2];   \
+   if (!SUMA_GetDsetNodeIndexColRange( dset, r, loc, 1)) {  \
+      MM = -1; \
+   } else { \
+      MM = (int)r[1];   \
+   }  \
+}
+
 /*!
    \brief Macros to access commonly used colorplane parameters
    DO NOT USE COLP_NODEDEF macro inside a loop where the returned
@@ -893,11 +918,32 @@ If you want to have some index before the entries, use SUMA_WRITE_IND_ARRAY_1D*/
    FILE * m_fp=NULL;\
    m_fp = (name) ? fopen((name),"w"): fopen("yougavemenoname","w");  \
    if (m_fp) { \
-      fprintf(m_fp,"# Output from %s, %d values (%d per line).", FuncName, Nel, m);  \
-      for (m_kkk=0; m_kkk<Nel; ++m_kkk) { if (!(m_kkk % m)) fprintf(m_fp,"\n"); fprintf(m_fp,"%d   ", (int)v[m_kkk]); }\
+      fprintf(m_fp,"# Output from %s, %d values (%d per line).", \
+                     FuncName, Nel, m);  \
+      for (m_kkk=0; m_kkk<Nel; ++m_kkk) { \
+         if (!(m_kkk % m)) fprintf(m_fp,"\n"); \
+         fprintf(m_fp,"%d   ", (int)v[m_kkk]); }\
       fclose(m_fp); \
    }  \
 }
+#define SUMA_WRITE_INT_ARRAY_AND_FLAG_1D(v,Nel,m,name,flg){  \
+   int m_kkk; \
+   FILE * m_fp=NULL;\
+   m_fp = (name) ? fopen((name),"w"): fopen("yougavemenoname","w");  \
+   if (m_fp) { \
+      fprintf(m_fp,"# Output from %s, %d values (%d per line).", \
+                     FuncName, Nel, m);  \
+      for (m_kkk=0; m_kkk<Nel; ++m_kkk) { \
+         if (!(m_kkk % m)) {  \
+            if (m_kkk) fprintf(m_fp,"%d   ", flg); \
+            fprintf(m_fp,"\n"); \
+         }  \
+         fprintf(m_fp,"%d   ", (int)v[m_kkk]); }\
+         fprintf(m_fp,"%d   ", flg); \
+      fclose(m_fp); \
+   }  \
+}
+
 /* Just like SUMA_WRITE_ARRAY_1D but ind contains indices
 to add at the beginning of each line.
 If ind is NULL, then the index will be the line number.
@@ -1237,6 +1283,22 @@ If ind is NULL, then the index will be the line number.
    }  \
 }
 
+/*!
+   A typical check on the output status of a selected prefix for
+   surface datasets
+*/
+#define SUMA_CHECK_OUTPUT_SDSET_STATUS(Opref, InName, oform, pre, app, exists) {\
+   char *ooo = SUMA_OutputDsetFileStatus(Opref, InName, \
+                                          &(oform), pre, app, &(exists)); \
+   if (exists && !THD_ok_overwrite()) {   \
+      SUMA_S_Errv("Output file %s already exists.\n"  \
+                  "Pick another prefix or add -overwrite\n", ooo);   \
+      exit(1); \
+   }  \
+   if (ooo) SUMA_free(ooo); ooo=NULL;\
+}
+   
+
 #define SUMA_MAX_OPEN_DX_FIELD_COMPONENTS 500
 #define SUMA_MAX_OPEN_DX_FIELD_ATTRIBUTES 500
 #define SUMA_MAX_OPEN_DX_OBJECTS  500
@@ -1286,6 +1348,7 @@ NI_element *SUMA_FindDsetAttributeElement(SUMA_DSET *dset, char *attname);
 NI_element *SUMA_FindNgrAttributeElement(NI_group *ngr, char *attname);
 NI_element *SUMA_FindNgrDataElement(NI_group *ngr, char *nelname, char *typename);
 float SUMA_LatestVersionNumber(void);
+int SUMA_IcoNums(int depth, byte bin, char what);
 char * SUMA_Dset_Type_Name (SUMA_DSET_TYPE tp);
 SUMA_DSET_TYPE SUMA_Dset_Type (char *Name);
 char * SUMA_Col_Type_Name (SUMA_COL_TYPE tp);
@@ -1337,6 +1400,7 @@ NI_element * SUMA_NewNel (SUMA_DSET_TYPE dtp, char* MeshParent_idcode,
                           char * geometry_parent_idcode, int N_el, 
                           char *name, char *thisidcode);
 SUMA_DSET_FORMAT SUMA_Dset_Format (char *Name);
+long SUMA_sdset_dnel_size(SUMA_DSET *dset);
 char * SUMA_Dset_Format_Name (SUMA_DSET_FORMAT fr);
 char *SUMA_HistString (char *CallingFunc, int N_arg, char **arg, char *sold);
 char * SUMA_GetNgrHist(NI_group *ngr);
@@ -1430,6 +1494,9 @@ int SUMA_is_VFR_dset(SUMA_DSET *dset);
 NI_group *SUMA_NICmapToNICmap(NI_group *NIcmap);
 int * SUMA_UniqueValuesInLabelDset(SUMA_DSET *dset, int *N_unq);
 int SUMA_is_AllConsistentNumeric_dset(SUMA_DSET *dset, SUMA_VARTYPE *vtpp);
+int SUMA_GetConsistentColType_dset(SUMA_DSET *dset);
+int SUMA_is_AllConsistentColType_dset(SUMA_DSET *dset, SUMA_COL_TYPE ctpi); 
+int SUMA_is_AllConsistentCastType_dset(SUMA_DSET *dset, int typecast);
 int SUMA_is_AllNumeric_ngr(NI_group *ngr) ;
 int SUMA_is_AllNumeric_nel(NI_element *nel);
 int SUMA_is_TimeSeries_dset(SUMA_DSET *dset, double *TRp);
@@ -1439,6 +1506,7 @@ SUMA_Boolean SUMA_NewDsetID2 (SUMA_DSET *dset, char *str);
 char *SUMA_DsetColStringAttrCopy(SUMA_DSET *dset, int i, 
                                  int addcolnum, char *attrname);
 char *SUMA_DsetColLabelCopy(SUMA_DSET *dset, int i, int addcolnum);
+int SUMA_FindDsetColLabeled(SUMA_DSET *dset, char *label);
 char **SUMA_AllDsetColLabels(SUMA_DSET *dset);
 char **SUMA_FreeAllDsetColLabels(char **);
 char *SUMA_ColLabelCopy(NI_element *nel, int i, int addcolnum);
@@ -1539,19 +1607,37 @@ void SUMA_ParseInput_basics_ns (char *argv[], int argc);
 int SUMA_ParseInput_basics_eng (char *argv[], int argc); 
 void WorkErrLog_ns(void);
 SUMA_FileName SUMA_StripPath (char *FileName);
+SUMA_DSET_FORMAT SUMA_FormatFromFormString(char *arg);
 SUMA_PARSED_NAME * SUMA_ParseFname (char *FileName, char *cwd);
+SUMA_PARSED_NAME * SUMA_ModifyParsedName (SUMA_PARSED_NAME *pn, 
+                                          char *what, char *val);
+char * SUMA_ModifyName(char *name, char *what, char *val, char *cwd);
+SUMA_PARSED_NAME * SUMA_ParseModifyName(char *name, 
+                                        char *what, char *val, char *cwd);
 char *SUMA_Extension(char *filename, char *ext, SUMA_Boolean Remove);
 SUMA_DSET_FORMAT SUMA_GuessFormatFromExtension(char *Name, char *fallbackname);
 const char *SUMA_ExtensionOfDsetFormat (SUMA_DSET_FORMAT form);
 SUMA_Boolean SUMA_isExtension(char *filename, char *ext);
 char * SUMA_CropExtension(char *filename, char *ext);
 void *SUMA_Free_Parsed_Name(SUMA_PARSED_NAME *Test);
+char *SUMA_OutputDsetFileStatus(char *prefix, char *inname, 
+                            SUMA_DSET_FORMAT *oform, 
+                            char *pre, char *app, int *exists);
 char *SUMA_FnameGet(char *Fname, char *sel, char *cwd);
 int SUMA_NumStringUnits (char *s, int marktip); 
 int SUMA_StringToNum (char *s, void *vv, int N, int p);
+int SUMA_StringToNumSide (char *s, void *vv, int N, int p, int *sd);
 int SUMA_isNumString (char *s, void *p);
 int SUMA_CleanNumString (char *s, void *p);
+int SUMA_CleanNumStringSide (char *s, void *p);
 char *SUMA_copy_string(char *buf);
+char *SUMA_copy_quoted( char *s, char *eop, 
+                        char q1, char q2, int deblank,
+                        int withquotes, int *is_closed );
+char *args_in_quotes(char **argv, int *kar, int N_argv, char *opq, 
+                     char *cloq, int clearused);
+char *args_in_niml_quotes(char **argv, int *kar, int N_argv, int clearused);
+char *args_in_simple_quotes(char **argv, int *kar, int N_argv, int clearused);
 char * SUMA_append_string(char *s1, char *s2);
 char * SUMA_append_replace_string(  char *s1, char *s2, 
                                     char *Spc, int whichTofree);
@@ -1620,6 +1706,7 @@ char *SUMA_isEnv(char *env, char *sval);
 float SUMA_floatEnv(char *env, float defval);
 ENV_SPEC SUMA_envlistelement(int i);
 char * SUMA_EnvVal(char *env);
+int SUMA_EnvEquals(char *env, char *sval, byte ci, char *sep);
  
 /*********************** END Miscellaneous support functions **************************** */
 
@@ -1634,6 +1721,7 @@ int afni_write_gifti_surf( NI_group *aSO, char * fname,
 
 
 /******** END functions for surface structure  ******************** */
-
-
+int SUMA_init_GISET_setup(NI_stream nsg , NI_element *nel, GICOR_setup *giset);
+int SUMA_PopulateDsetsFromGICORnel(NI_element *nel, GICOR_setup *giset, 
+                                   SUMA_DSET **sdsetv);
 #endif

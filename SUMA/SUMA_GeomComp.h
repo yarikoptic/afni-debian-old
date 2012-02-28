@@ -63,7 +63,7 @@ int SUMA_VoxelNeighbors (int ijk, int ni, int nj, int nk, SUMA_VOX_NEIGHB_TYPES 
 byte *SUMA_FillToVoxelMask(byte *ijkmask, int ijkseed, int ni, int nj, int nk, int *N_in, byte *usethisisin); 
 SUMA_Boolean SUMA_VoxelsInBox(int *voxelsijk, int *N_in, float *c1, float *c2);
 SUMA_SurfaceObject *SUMA_Patch2Surf(float *NodeList, int N_NodeList, int *PatchFaces, int N_PatchFaces, int PatchDim);
-SUMA_PATCH * SUMA_getPatch (  int *NodesSelected, int N_Nodes, 
+SUMA_PATCH * SUMA_getPatch (  int *NodesSelected, int N_Nodes, int MaxNodeMax,
                               int *Full_FaceSetList, int N_Full_FaceSetList, 
                               SUMA_MEMBER_FACE_SETS *Memb, int MinHits,
                               int FixBowTie, int verb);
@@ -228,6 +228,8 @@ int SUMA_flip_orient(int xxorient);
 int SUMA_ok_orstring (char *orstr);
 SUMA_Boolean SUMA_orstring_to_orcode (char *orstr, int *orient);
 int SUMA_Subdivide_Mesh(float **NodeListp, int *N_Node, int **FaceSetListp, int *N_FaceSet, float maxarea);
+SUMA_Boolean SUMA_FlipTriangles (int *FaceSetList,int N_FaceSet);
+SUMA_Boolean SUMA_FlipSOTriangles(SUMA_SurfaceObject *SO);
 int SUMA_OrientTriangles (float *NodeList, int N_Node, int *FaceSetList, int N_FaceSet, int orient, int Force);
 SUMA_Boolean SUMA_Offset_Smooth_dset( SUMA_SurfaceObject *SO, 
                                           float FWHM, float OffsetLim, 
@@ -269,6 +271,7 @@ DList *SUMA_SliceAlongPlane(SUMA_SurfaceObject *SO, float *Eq, float step);
 SUMA_DSET *SUMA_RandomDset(int N_Node, int nc, unsigned int seed, float scale, byte norm); 
 
 SUMA_Boolean SUMA_FillRandXform(double xform[][4], int seed, int type); 
+SUMA_Boolean SUMA_FillScaleXform(double xform[][4], double sc[3]);
 
 float *SUMA_Project_Coords_PCA (float *xyz, int N_xyz, int iref, 
                                 int compnum, int rotate);

@@ -16,7 +16,7 @@ char * get_surf_param(char *sname, char *parname)
       return(out);
    }
 
-   out = fgets(buf, sizeof(buf), output);
+   out = afni_fgets(buf, sizeof(buf), output);
    pclose(output);
 
    if (0) {
@@ -29,37 +29,20 @@ char * get_surf_param(char *sname, char *parname)
 }
 
 /*--------------------------------------------------------------------------*/
-
-int main( int argc , char * argv[] )
+void usage_3dSetupGroupInCorr(int detail) 
 {
-   THD_3dim_dataset **inset ; int ndset,ids ;
-   char *prefix      = "Group"           ;
-   char *suffix_head = ".grpincorr.niml" ;
-   char *suffix_data = ".grpincorr.data" ;
-   char *hfname , *dfname ;
-   char atrib[2048] , *buf , *gstr ;
-   byte *mask=NULL ;
-   int mask_nx=0,mask_ny=0,mask_nz=0,nmask=0 , nx=0,ny=0,nz=0,nvox=0 ;
-   NI_element *nel ;
-   int nvec , *nvals , *ivec=NULL , iv,kk,nvv , nopt , do_delete=0 ;
-   float *fac , *fv , val,top ;
-   NI_float_array *facar ; NI_int_array *nvar ;
-   short *sv=NULL; sbyte *bv=NULL ; MRI_vectim *mv ; FILE *fp ; long long fsize ;
-   int atim,btim,ctim ;
-   int LRpairs = 0, Ns[2]={-1,-1}, Nv[2]={-1,-1}, Nm[2]={0, 0};
-   int do_byte = 1 ;
-   char **dset_labels=NULL ; int ndset_labels=0 ;  /* 14 May 2010 */
-   char  *dset_labels_all  ; int len_all=0 ;
-   char *cmdline ;                                 /* 26 May 2010 */
-
-   /*-- help? --*/
-
-   if( argc < 2 || strcmp(argv[1],"-help") == 0 ){
-     printf(
+        printf(
  "Usage: 3dSetupGroupInCorr [options] dataset dataset ...\n"
  "\n"
  "This program is used to pre-process a collection of AFNI\n"
  "3D+time datasets for use with Group InstaCorr (3dGroupInCorr).\n"
+ "\n"
+ "* By itself, this program just collects all its input datasets\n"
+ "  together for convenient processing later.  Pre-processing\n"
+ "  (e.g., detrending, bandpassing, despiking) must be done BEFORE\n"
+ "  running 3dSetupGroupInCorr -- for example, with 3dBandpass.\n"
+ "  The actual calculations of group t-tests of correlations is\n"
+ "  done AFTER running 3dSetupGroupInCorr, in program 3dGroupInCorr.\n"
  "\n"
  "* All the datasets input here will be treated as one sample\n"
  "  for the t-test performed in 3dGroupInCorr.  If you are going\n"
@@ -242,15 +225,46 @@ int main( int argc , char * argv[] )
  "* With encouragement from MMK.\n"
  "\n"
      ) ;
-     PRINT_COMPILE_DATE ; exit(0) ;
-   }
+     PRINT_COMPILE_DATE ; 
+   return;
+}
+
+/*--------------------------------------------------------------------------*/
+
+int main( int argc , char * argv[] )
+{
+   THD_3dim_dataset **inset ; int ndset,ids ;
+   char *prefix      = "Group"           ;
+   char *suffix_head = ".grpincorr.niml" ;
+   char *suffix_data = ".grpincorr.data" ;
+   char *hfname , *dfname ;
+   char atrib[2048] , *buf , *gstr ;
+   byte *mask=NULL ;
+   int mask_nx=0,mask_ny=0,mask_nz=0,nmask=0 , nx=0,ny=0,nz=0,nvox=0 ;
+   NI_element *nel ;
+   int nvec , *nvals , *ivec=NULL , iv,kk,nvv , nopt , do_delete=0 ;
+   float *fac , *fv , val,top ;
+   NI_float_array *facar ; NI_int_array *nvar ;
+   short *sv=NULL; sbyte *bv=NULL ; MRI_vectim *mv ; FILE *fp ; long long fsize ;
+   int atim,btim,ctim ;
+   int LRpairs = 0, Ns[2]={-1,-1}, Nv[2]={-1,-1}, Nm[2]={0, 0};
+   int do_byte = 1 ;
+   char **dset_labels=NULL ; int ndset_labels=0 ;  /* 14 May 2010 */
+   char  *dset_labels_all  ; int len_all=0 ;
+   char *cmdline ;                                 /* 26 May 2010 */
 
    mainENTRY("3dSetupGroupInCorr"); machdep();
    AFNI_logger("3dSetupGroupInCorr",argc,argv);
    PRINT_VERSION("3dSetupGroupInCorr"); AUTHOR("RW Cox");
+   THD_check_AFNI_version("3dSetupGroupInCorr") ;
 
    nopt = 1 ;
    while( nopt < argc && argv[nopt][0] == '-' ){
+      if( strcmp(argv[nopt],"-help") == 0 ||
+          strcmp(argv[nopt],"-h") == 0 ){
+         usage_3dSetupGroupInCorr(strlen(argv[nopt]) > 3 ? 2:1);
+         exit(0) ;
+      }
 
      if( strncmp(argv[nopt],"-labels",6) == 0 ){  /* 14 May 2010 */
        char *sf ; NI_str_array *sar ;
@@ -326,7 +340,17 @@ int main( int argc , char * argv[] )
 
        nopt++ ; continue ;
      }
-     ERROR_exit("Unknown option: '%s'",argv[nopt]) ;
+     ERROR_message("Unknown option: '%s'",argv[nopt]) ;
+     suggest_best_prog_option(argv[0], argv[nopt]);
+     exit(1);
+   }
+
+   /*-- help? --*/
+
+   if( argc < 2){
+      ERROR_message("Too few options");
+      usage_3dSetupGroupInCorr(0);
+      exit(1) ;
    }
 
    if (LRpairs && mask) {

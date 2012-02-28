@@ -59,6 +59,7 @@ int SUMA_iswordsame_ci (const char *sbig,const char *ssub);
 int SUMA_iswordsame (const char *sbig,const char *ssub);
 float SUMA_etime (struct  timeval  *t, int Report);
 int SUMA_etime2(char *name, char *str, char *strloc);
+char *SUMA_time_stamp(void);
 byte * SUMA_isinpoly(float *P, float *NodeList, int *FaceSetList, int N_FaceSet, int FaceSetDim, int *dims, int *N_in, byte *usethis, byte *mask);
 SUMA_ISINBOX SUMA_isinbox (float * NodeList, int nr, float *S_cent , float *S_dim , int BoundIn);
 SUMA_Boolean SUMA_Free_IsInBox (SUMA_ISINBOX *IB);
@@ -68,6 +69,15 @@ int SUMA_nodesinsphere2 (float *XYZ, int nr, float *S_cent , float S_dim , int *
 int SUMA_nodesinbox2 (float *XYZ, int nr, float *S_cent , float *S_dim , int *nodesin, float *dinsq);
 float **SUMA_Point_At_Distance(float *U, float *P1, float d);
 double **SUMA_dPoint_At_Distance(double *U, double *P1, double d);
+int SUMA_Point_To_Triangle_Distance (float *Points, int N_points, 
+                                     float *P0, float *P1, float *P2,int itri,
+                                     float *tnorm,
+                                     float **distp, int **closestp, byte **sgnp);
+SUMA_Boolean SUMA_Shortest_Point_To_Triangles_Distance(
+         float *Points, int N_points, 
+         float *NodeList, int *FaceSetList, int N_FaceSet,
+         float *FaceNormList,
+         float **distp, int **closestp, byte **sgnp);
 SUMA_Boolean SUMA_Point_To_Line_Distance (float *NodeList, int N_points, float *P1, float *P2, float *d2, float *d2min, int *i2min);
 SUMA_Boolean SUMA_Point_To_Point_Distance (float *NodeList, int N_points, float *P1, float *d2, float *d2min, int *i2min);
 int *SUMA_z_dqsort (int *x , int nx );

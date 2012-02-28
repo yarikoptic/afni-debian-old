@@ -242,7 +242,9 @@ ENTRY("new_MCW_grapher") ;
    SAVEUNDERIZE(XtParent(grapher->but3_menu)) ; /* 27 Feb 2001 */
 
    VISIBILIZE_WHEN_MAPPED(grapher->but3_menu) ;
+#if 0
    if( !AFNI_yesenv("AFNI_DISABLE_TEAROFF") ) TEAROFFIZE(grapher->but3_menu) ;
+#endif
 
    grapher->but3_label =
       XtVaCreateManagedWidget(
@@ -357,7 +359,9 @@ ENTRY("new_MCW_grapher") ;
    grapher->opt_menu = XmCreatePulldownMenu( mb_tmp , "menu" , NULL,0 ) ;
 
    VISIBILIZE_WHEN_MAPPED(grapher->opt_menu) ;  /* 27 Sep 2000 */
+#if 0
    if( !AFNI_yesenv("AFNI_DISABLE_TEAROFF") ) TEAROFFIZE(grapher->opt_menu) ;
+#endif
 
    grapher->opt_cbut =
          XtVaCreateManagedWidget(
@@ -1361,7 +1365,7 @@ ENTRY("GRA_redraw_overlay") ;
      xxx = MIN (xxx , jj+grapher->nncen) ;     /* to plot */
      for( ii=jj ; ii < xxx ; ii++ )
        GRA_draw_circle( grapher , grapher->cen_line[ii-jj].x ,
-                                  grapher->cen_line[ii-jj].y-boff , 4 ) ; 
+                                  grapher->cen_line[ii-jj].y-boff , 4 ) ;
    }
 
    /* 22 July 1996:
@@ -2381,7 +2385,7 @@ STATUS("starting time series graph loop") ;
                 char *lab = GRA_getlabel(grapher,pbot+i) ;
                 if( ecode == 'M' || ecode == 'Z' )
                   fd_txt_upwards(grapher,xb+labx,aybas-3,lab) ;
-                else 
+                else
                   fd_txt_upwards(grapher,xb+labx,a_line[i].y-3-BOXOFF,lab) ;
               }
             }
@@ -3078,21 +3082,25 @@ STATUS("button press") ;
          bx = event->x ; by = event->y ; but_state = event->state ;
          MCW_discard_events( w , ButtonPressMask ) ;
 
-         /* Button 1 in pixmap logo = toggle on or off */
+         /* Button 1 in pixmap logo = toggle on or off  */
+         /* Button 3 in pixmap logo = raise up the dead */
 
-         if( but == Button1                                &&
-             grapher->glogo_pixmap != XmUNSPECIFIED_PIXMAP &&
-             bx < grapher->glogo_width                     &&
-             grapher->fHIGH - by < grapher->glogo_height     ){
+         if( grapher->glogo_pixmap != XmUNSPECIFIED_PIXMAP &&
+             bx                    < grapher->glogo_width  &&
+             grapher->fHIGH - by   < grapher->glogo_height   ){
 
-            show_grapher_pixmap = ! show_grapher_pixmap ;
-
-            if( XtIsManaged(grapher->option_rowcol) )     /* 04 Nov 1996 */
-              XtUnmanageChild(grapher->option_rowcol) ;
-            else
-              XtManageChild(grapher->option_rowcol) ;
-
-            redraw_graph( grapher , 0 )  ;
+            if( but == Button1 ){
+              show_grapher_pixmap = ! show_grapher_pixmap ;
+              if( XtIsManaged(grapher->option_rowcol) )     /* 04 Nov 1996 */
+                XtUnmanageChild(grapher->option_rowcol) ;
+              else
+                XtManageChild(grapher->option_rowcol) ;
+              redraw_graph( grapher , 0 )  ;
+            } else if( but == Button3 ){       /* 17 Jun 2011 */
+               GRA_cbs cbs ;
+               cbs.reason = graCR_raiseupthedead ;
+               CALL_sendback( grapher , cbs ) ;
+            }
             break ; /* break out of ButtonPress case */
          }
 
@@ -5413,8 +5421,9 @@ ENTRY("AFNI_new_fim_menu") ;
    fmenu->fim_menu = XmCreatePulldownMenu( parent , "menu" , NULL,0 ) ;
 
    VISIBILIZE_WHEN_MAPPED(fmenu->fim_menu) ;  /* 27 Sep 2000 */
-
+#if 0
    if( !AFNI_yesenv("AFNI_DISABLE_TEAROFF") ) TEAROFFIZE(fmenu->fim_menu) ;
+#endif
 
    fmenu->fim_cbut =
          XtVaCreateManagedWidget(

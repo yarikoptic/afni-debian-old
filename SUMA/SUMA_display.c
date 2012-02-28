@@ -1025,9 +1025,14 @@ void SUMA_SaveVisualState(char *fname, void *csvp )
    }
    
    /* Save the relevant parameters */
-   SUMA_FV2S_ATTR(nel, "currentQuat", csv->GVS[csv->StdView].currentQuat, 4, feyl); if (feyl) { SUMA_RETURNe; }
-   SUMA_FV2S_ATTR(nel, "translateVec", csv->GVS[csv->StdView].translateVec, 2, feyl); if (feyl) { SUMA_RETURNe; }
-   SUMA_FV2S_ATTR(nel, "clear_color", csv->clear_color, 4, feyl); if (feyl) { SUMA_RETURNe; }
+   SUMA_FV2S_ATTR(nel, "currentQuat", 
+                  csv->GVS[csv->StdView].currentQuat, 4, feyl); 
+      if (feyl) { SUMA_RETURNe; }
+   SUMA_FV2S_ATTR(nel, "translateVec", 
+                  csv->GVS[csv->StdView].translateVec, 2, feyl); 
+      if (feyl) { SUMA_RETURNe; }
+   SUMA_FV2S_ATTR(nel, "clear_color", csv->clear_color, 4, feyl); 
+      if (feyl) { SUMA_RETURNe; }
    sprintf(stmp, "%f", csv->FOV[csv->iState]);
    NI_set_attribute (nel, "FOV", stmp);
    sprintf(stmp, "%f", csv->Aspect);
@@ -1221,7 +1226,6 @@ int SUMA_ApplyVisualState(NI_element *nel, SUMA_SurfaceViewer *csv)
    This call will also generate a SUMA_resize call */
    SUMA_WidgetResize (csv->X->TOPLEVEL , csv->WindWidth, csv->WindHeight); 
 
-   
    SUMA_RETURN(1);   
    
 }
@@ -1309,6 +1313,69 @@ GLenum SUMA_index_to_clip_plane(int iplane)
          break;
    }
 }
+
+int SUMA_SnapToDisk(SUMA_SurfaceViewer *csv, int verb) 
+{
+   static char FuncName[]={"SUMA_SnapToDisk"};
+   MRI_IMAGE *tim=NULL;
+   GLvoid *pixels=NULL;
+   static char fname[512];
+   int holdrdc = 0;
+   
+   SUMA_ENTRY;
+   
+   if (!csv) SUMA_RETURN(0);
+   
+   holdrdc = csv->rdc;
+   #if 0  /* problem should be fixed by SUMA_grabRenderedPixels
+                              Throw section out if no new problems arise.
+                              Search for KILL_DOUBLE_RENDERING to locate
+                              other chunks for removal 
+                                       ZSS Feb 2012 */
+      glFinish();
+      glXWaitX();
+      #ifdef DARWIN
+         csv->rdc = SUMA_RDC_X_EXPOSE; /* any thing that avoids a record
+                                         operation ... */
+         SUMA_handleRedisplay((XtPointer)csv->X->GLXAREA);
+         csv->rdc=holdrdc;
+      #endif
+   #endif
+   glXWaitX();
+   pixels = SUMA_grabRenderedPixels(csv, 1, csv->X->WIDTH, csv->X->HEIGHT);
+   if (pixels) {
+      if (!(tim = ISQ_snap_to_mri_image (csv->X->WIDTH, -csv->X->HEIGHT, 
+                         (unsigned char *)pixels ))) {
+         SUMA_S_Err("Failed to get image");                  
+      } else {
+         SUMA_VALIDATE_RECORD_PATH(SUMAg_CF->autorecord);
+         if (!strcasecmp(SUMAg_CF->autorecord->Ext,".jpg") ||
+             !strcasecmp(SUMAg_CF->autorecord->Ext,".ppm") ||
+             !strcasecmp(SUMAg_CF->autorecord->Ext,".1D") ){
+               snprintf(fname,510*sizeof(char),
+                        "%s/%s.%c.%s%s", 
+                        SUMAg_CF->autorecord->Path, 
+                        SUMAg_CF->autorecord->FileName_NoExt,
+                        SUMA_SV_CHAR(csv),
+                        SUMA_time_stamp(),
+                        SUMAg_CF->autorecord->Ext); 
+         } else {
+               snprintf(fname,510*sizeof(char),
+                        "%s/%s.%c.%s%s", 
+                        SUMAg_CF->autorecord->Path, 
+                        SUMAg_CF->autorecord->FileName,
+                        SUMA_SV_CHAR(csv),
+                        SUMA_time_stamp(),
+                        ".jpg"); 
+         }
+         mri_write(fname,tim); mri_free(tim); tim=NULL; 
+         if (verb) SUMA_S_Notev("Wrote image to %s\n",fname);
+      } 
+      SUMA_free(pixels);
+   }
+   SUMA_RETURN(1);
+}
+
 void SUMA_display(SUMA_SurfaceViewer *csv, SUMA_DO *dov)
 {   
    int i;
@@ -1621,7 +1688,7 @@ void SUMA_display(SUMA_SurfaceViewer *csv, SUMA_DO *dov)
    it does not care about depth tests which could be a problem when doing
    texture volumes*/
    if (csv->ShowCrossHair) {
-      /*fprintf(SUMA_STDOUT,"Showing Cross Hair \n");*/
+      SUMA_LH("Showing Cross Hair");
       if (!SUMA_DrawCrossHair (csv)) {
          fprintf(stderr,"display error: Failed to Create Cross Hair\n");
       }
@@ -1659,59 +1726,80 @@ void SUMA_display(SUMA_SurfaceViewer *csv, SUMA_DO *dov)
       fprintf (SUMA_STDOUT,
                "%s: Flushing or swapping ...\n", FuncName);
    SUMA_HOLD_IT;
-   if (csv->X->DOUBLEBUFFER)
-    glXSwapBuffers(csv->X->DPY, XtWindow(csv->X->GLXAREA));
-   else
-    glFlush();
+   
+   SUMA_GLX_BUF_SWAP(csv);
 
   /* Avoid indirect rendering latency from queuing. */
   if (!glXIsDirect(csv->X->DPY, csv->X->GLXCONTEXT))
     glFinish();
    
-  /* if recording, take a snap */
-  if (csv->Record) {
+  /*  if recording, take a snap 
+      Note that the buffer swap has been done, it might have
+      been better to snap before then.
+      This way I could have used SUMA_grabPixels
+      instead of SUMA_grabRenderedPixels. 
+      Consider this in the future. ZSS Feb 2012*/
+  if (csv->Record == 1) {
       if (csv->rdc < SUMA_RDC_X_START || csv->rdc > SUMA_RDC_X_END) {
-         /*
-         Combination below helps partial coverage 
-         problem under linux when recording.
-         But it does not fix the coverage problem 
-         entirely.
-         
-         SUMA_S_Note("Raising the dead");
-         XtPopup (csv->X->TOPLEVEL, XtGrabExclusive);
-         XRaiseWindow(XtDisplay(csv->X->TOPLEVEL), XtWindow(csv->X->TOPLEVEL));
-       */  
-         glFinish();
-         glXWaitX();
-      #ifdef DARWIN
-         
-         { GLvoid *pixels;
-           int holdrdc = csv->rdc;
-           /* see justification for this SUMA_handleRedisplay in function
-               SUMA_R_Key(). You need to change rdc to avoid getting into
-               recorder when SUMA_handleRedisplay ends up calling this
-               function again. */
-           csv->rdc = SUMA_RDC_X_EXPOSE; /* any thing that avoids a record
-                                            operation ... */
-           SUMA_handleRedisplay((XtPointer)csv->X->GLXAREA);
-           csv->rdc=holdrdc;
-           pixels = SUMA_grabPixels(1, csv->X->WIDTH, csv->X->HEIGHT);
-           if (pixels) {
-             ISQ_snapsave( csv->X->WIDTH, -csv->X->HEIGHT,
+         if (0) {/* problem should be fixed by SUMA_grabRenderedPixels
+                              Throw section out if no new problems arise.
+                              Search for KILL_DOUBLE_RENDERING to locate
+                              other chunks for removal 
+                                       ZSS Feb 2012 */
+           /*
+            Combination below helps partial coverage 
+            problem under linux when recording.
+            But it does not fix the coverage problem 
+            entirely.
+
+            SUMA_S_Note("Raising the dead");
+            XtPopup (csv->X->TOPLEVEL, XtGrabExclusive);
+            XRaiseWindow(XtDisplay(csv->X->TOPLEVEL), 
+                        XtWindow(csv->X->TOPLEVEL));
+          */  
+            glFinish();
+            glXWaitX();
+         #ifdef DARWIN
+
+            { GLvoid *pixels;
+              int holdrdc = csv->rdc;
+              /* see justification for this SUMA_handleRedisplay in function
+                  SUMA_R_Key(). You need to change rdc to avoid getting into
+                  recorder when SUMA_handleRedisplay ends up calling this
+                  function again. */
+              csv->rdc = SUMA_RDC_X_EXPOSE; /* any thing that avoids a record
+                                               operation ... */
+              SUMA_handleRedisplay((XtPointer)csv->X->GLXAREA);
+              csv->rdc=holdrdc;
+              pixels = SUMA_grabPixels(1, csv->X->WIDTH, csv->X->HEIGHT);
+              if (pixels) {
+                ISQ_snapsave( csv->X->WIDTH, -csv->X->HEIGHT,
+                              (unsigned char *)pixels, csv->X->GLXAREA );
+                SUMA_free(pixels);
+              }
+            }
+         #else
+            ISQ_snapshot ( csv->X->GLXAREA );
+         #endif
+         } else { /* better approach after fixing buffer swaping bug Feb 2012*/
+            GLvoid *pixels=NULL;
+            pixels = SUMA_grabRenderedPixels(csv, 1, 
+                                          csv->X->WIDTH, csv->X->HEIGHT);
+            if (pixels) {
+              ISQ_snapsave( csv->X->WIDTH, -csv->X->HEIGHT,
                            (unsigned char *)pixels, csv->X->GLXAREA );
-             SUMA_free(pixels);
-           }
+              SUMA_free(pixels);
+            }
          }
-      #else
-         ISQ_snapshot ( csv->X->GLXAREA );
-      #endif
+      }
+  } else if (csv->Record == 2) {
+      if (csv->rdc < SUMA_RDC_X_START || csv->rdc > SUMA_RDC_X_END) {
+         SUMA_SnapToDisk(csv,0);
       }
   }
-  
   /* reset rdc, if it is the last thing you'll ever do */
   csv->rdc = SUMA_RDC_NOT_SET;
-  
-   SUMA_RETURNe;
+  SUMA_RETURNe;
 }
 
 void
@@ -2346,6 +2434,10 @@ SUMA_MenuItem Help_menu[] = {
       'I', NULL, NULL, \
       SUMA_cb_helpIO_notify, (XtPointer) SW_HelpIONotify, NULL},
       
+   {  "Echo Keypresses", &xmToggleButtonWidgetClass, \
+      'K', NULL, NULL, \
+      SUMA_cb_helpEchoKeyPress, (XtPointer) SW_HelpEchoKeyPress, NULL},
+      
    {  "MemTrace", &xmToggleButtonWidgetClass, \
       'M', NULL, NULL, \
       SUMA_cb_helpMemTrace, (XtPointer) SW_HelpMemTrace, NULL},
@@ -2398,26 +2490,26 @@ SUMA_MenuItem DsetViewMode_Menu[] = {
 };
 
 SUMA_MenuItem DrawROI_SaveMode_Menu[]= {
-   {  "1D", &xmPushButtonWidgetClass, 
-      '\0', NULL, NULL, 
-      SUMA_cb_SetDrawROI_SaveMode, (XtPointer) SW_DrawROI_SaveMode1D, NULL},
-   
    {  "NIML", &xmPushButtonWidgetClass, 
       '\0', NULL, NULL, 
       SUMA_cb_SetDrawROI_SaveMode, (XtPointer) SW_DrawROI_SaveModeNIML, NULL},
+   
+   {  "1D", &xmPushButtonWidgetClass, 
+      '\0', NULL, NULL, 
+      SUMA_cb_SetDrawROI_SaveMode, (XtPointer) SW_DrawROI_SaveMode1D, NULL},
    
    {NULL},
 };
 
 SUMA_MenuItem DrawROI_SaveWhat_Menu[]= {
-   {  "This", &xmPushButtonWidgetClass, 
-      '\0', NULL, NULL, 
-      SUMA_cb_SetDrawROI_SaveWhat, (XtPointer) SW_DrawROI_SaveWhatThis, NULL},
-   
    {  "All", &xmPushButtonWidgetClass, 
       '\0', NULL, NULL, 
       SUMA_cb_SetDrawROI_SaveWhat, (XtPointer) SW_DrawROI_SaveWhatRelated, NULL},
          
+   {  "This", &xmPushButtonWidgetClass, 
+      '\0', NULL, NULL, 
+      SUMA_cb_SetDrawROI_SaveWhat, (XtPointer) SW_DrawROI_SaveWhatThis, NULL},
+   
    {NULL},
 };
 
@@ -2486,9 +2578,9 @@ SUMA_Boolean SUMA_X_SurfaceViewer_Create (void)
    static int CallNum = 0;
    int ic = 0, icr=0;
    char *vargv[1]={ "[A] SUMA" };
-   int cargc = 1;
+   int cargc = 1, repos[5]={0,0,0,0,0};
    SUMA_Boolean NewCreation = NOPE, Found=NOPE, Inherit = NOPE;
-   char slabel[20]="\0"; 
+   char slabel[20]="\0", *eee=NULL; 
    SUMA_Boolean LocalHead = NOPE;
        
    SUMA_ENTRY;
@@ -2508,6 +2600,28 @@ SUMA_Boolean SUMA_X_SurfaceViewer_Create (void)
                            topLevelShellWidgetClass, NULL, 0); 
       SUMAg_SVv[ic].X->DPY = XtDisplay(SUMAg_SVv[ic].X->TOPLEVEL);
       
+      if (!ic && (eee=SUMA_EnvVal("SUMA_Position_Original")) 
+              && strcmp(eee, "TopLeft")) {
+         int nv=0;
+         double dv[6];
+         if (SUMA_EnvEquals("SUMA_Position_Original", "RightOffset",1,NULL)){
+            repos[0]=2; repos[1]=437; repos[2]=44;
+         } else if ((nv = SUMA_StringToNum(eee,
+                                     (void *)dv, 4, 2))==2 || nv == 4) {
+            if (nv == 2) {
+               repos[0]=2; repos[1]=(int)dv[0]; repos[2]=(int)dv[1];
+            } else if (nv == 4) {
+               repos[0]=4; repos[1]=(int)dv[0]; repos[2]=(int)dv[1];
+                           repos[3]=(int)dv[2]; repos[4]=(int)dv[3];
+            } 
+         } else {
+            SUMA_S_Warnv(
+               "Ignored ill formatted env 'SUMA_Position_Original=%s'\n",
+                  eee);
+         }
+         if (repos[1] < 0) repos[1] = 0;
+         if (repos[2] < 0) repos[2] = 0;
+      }
       /* catch some warnings that are not important */
       XtAppSetWarningHandler(SUMAg_CF->X->App,SUMA_XtWarn_handler) ;
       
@@ -2644,7 +2758,8 @@ SUMA_Boolean SUMA_X_SurfaceViewer_Create (void)
 
          XmToggleButtonSetState (SUMAg_SVv[ic].X->HelpMenu[SW_HelpIONotify], 
             SUMAg_CF->InOut_Notify, NOPE);
-         
+      XmToggleButtonSetState (SUMAg_SVv[ic].X->HelpMenu[SW_HelpEchoKeyPress], 
+            SUMAg_CF->Echo_KeyPress, NOPE);
  
          
         SUMAg_SVv[ic].X->CMAP = SUMA_getShareableColormap(&(SUMAg_SVv[ic]));
@@ -2713,6 +2828,28 @@ SUMA_Boolean SUMA_X_SurfaceViewer_Create (void)
       }
       /* keep track of count */
       SUMAg_N_SVv += 1;
+      
+      /* initial repositioning, just for 1st creation */
+      switch (repos[0]) {
+         case 4:
+            XtVaSetValues (SUMAg_SVv[ic].X->TOPLEVEL, 
+               XmNx, (Position)(repos[1]),
+               XmNy, (Position)(repos[2]),
+               XmNwidth, (repos[3]),
+               XmNheight, (repos[4]),
+               NULL);
+            break;
+         case 2:
+            XtVaSetValues (SUMAg_SVv[ic].X->TOPLEVEL, 
+               XmNx, (Position)(repos[1]),
+               XmNy, (Position)(repos[2]),
+               NULL);
+            break;
+         default:
+            break;
+      }
+
+      
       /* position window next to the previous one open */
       {
          Found = NOPE;
@@ -2978,46 +3115,7 @@ void SUMA_ButtClose_pushed (Widget w, XtPointer cd1, XtPointer cd2)
          /* remove Redisplay workprocess*/
          SUMA_remove_workproc2( SUMA_handleRedisplay, SUMAg_SVv[ic].X->GLXAREA );
          
-         #if 0
-         /* switch context: a likely futile attempt to rid myself 
-         of stupid errors on 10.6 ! 
-         DOES NOTHING ! */
-         isv = 0;
-         while (isv < SUMAg_N_SVv) {
-            if (  SUMAg_SVv[isv].X->TOPLEVEL && 
-                  SUMAg_SVv[isv].X->GLXAREA && 
-                  XtIsRealized(SUMAg_SVv[isv].X->GLXAREA) &&
-                  isv != ic) {
-               glXWaitGL();   
-               glXWaitX();
-               glFinish();
-               SUMA_LHv("Switching context to viewer %d\n",  isv);
-               if (!glXMakeCurrent( XtDisplay(SUMAg_SVv[isv].X->GLXAREA), 
-                        XtWindow(SUMAg_SVv[isv].X->GLXAREA),  
-                        SUMAg_SVv[isv].X->GLXCONTEXT)) {
-                  SUMA_S_Err("Misericorde!");
-                  SUMA_RETURNe;
-               }
-               glFinish();
-            }
-            ++isv;
-         }
-         #endif
-         
-         #if DO_FLUSH    /* Going in causes crashing on OS X 10.5, 
-                              at least on eomer...*/
-         SUMA_LH("Flushing meadows");
-         /* flush display */
-         if (SUMAg_SVv[ic].X->DOUBLEBUFFER) {
-             glXSwapBuffers(SUMAg_SVv[ic].X->DPY,  
-                            XtWindow(SUMAg_SVv[ic].X->GLXAREA));
-         } else {
-            glFlush();
-         }
-         #else
-         /* Not sure I need to do anything here ...*/
-         #endif
-         
+                  
          /* done cleaning up, deal with windows ... */
          
          /** 
@@ -3213,7 +3311,8 @@ void SUMA_SetcSV (Widget w, XtPointer clientData, XEvent * event, Boolean * cont
    SUMA_RETURNe;
 }
 
-void SUMA_unSetcSV (Widget w, XtPointer clientData, XEvent * event, Boolean * cont)
+void SUMA_unSetcSV (Widget w, XtPointer clientData, 
+                     XEvent * event, Boolean * cont)
 {
    static char FuncName[]={"SUMA_unSetcSV"};
    
@@ -3238,8 +3337,10 @@ void SUMA_unSetcSV (Widget w, XtPointer clientData, XEvent * event, Boolean * co
  
 */
 
+
 int
-SUMA_generateEPS(char *filename, int inColor, unsigned int width, unsigned int height)
+SUMA_generateEPS( char *filename, int inColor, 
+                  unsigned int width, unsigned int height)
 {
    FILE *fp;
    GLvoid *pixels;
@@ -3312,8 +3413,19 @@ SUMA_generateEPS(char *filename, int inColor, unsigned int width, unsigned int h
    SUMA_RETURN (0);
 }
 
-GLvoid *
-SUMA_grabPixels(int inColor, unsigned int width, unsigned int height)
+GLvoid *SUMA_grabRenderedPixels(SUMA_SurfaceViewer *sv, int inColor, 
+                        unsigned int width, unsigned int height)
+{
+   GLvoid *buffer=NULL;
+   if (!sv || !sv->X) return(buffer);
+   SUMA_GLX_BUF_SWAP(sv); /* return to last rendered buffer */
+   buffer = SUMA_grabPixels(inColor, width, height);
+   SUMA_GLX_BUF_SWAP(sv);  /* return to current buffer */
+   return(buffer);
+}
+
+GLvoid *SUMA_grabPixels(int inColor, 
+                        unsigned int width, unsigned int height)
 {
    GLvoid *buffer;
    GLint swapbytes, lsbfirst, rowlength;
@@ -3324,6 +3436,7 @@ SUMA_grabPixels(int inColor, unsigned int width, unsigned int height)
 
    SUMA_ENTRY;
    
+            
    if (inColor) {
     format = GL_RGB;
     size = width * height * 3;
@@ -3336,6 +3449,7 @@ SUMA_grabPixels(int inColor, unsigned int width, unsigned int height)
    if (buffer == NULL)
     SUMA_RETURN (buffer);
 
+   
    /* Save current modes. */
    glGetIntegerv(GL_PACK_SWAP_BYTES, &swapbytes);
    glGetIntegerv(GL_PACK_LSB_FIRST, &lsbfirst);
@@ -3365,6 +3479,8 @@ SUMA_grabPixels(int inColor, unsigned int width, unsigned int height)
    glPixelStorei(GL_PACK_SKIP_ROWS, skiprows);
    glPixelStorei(GL_PACK_SKIP_PIXELS, skippixels);
    glPixelStorei(GL_PACK_ALIGNMENT, alignment);
+   
+   
    SUMA_RETURN (buffer);
 }
  
@@ -4019,10 +4135,7 @@ SUMA_Boolean SUMA_DrawWindowLine(SUMA_SurfaceViewer *sv,
          glEnd();
          glMaterialfv(GL_FRONT, GL_EMISSION, NoColor);
          glPopMatrix();   
-         if (sv->X->DOUBLEBUFFER)
-             glXSwapBuffers(sv->X->DPY, XtWindow(sv->X->GLXAREA));
-          else
-            glFlush();         
+         SUMA_GLX_BUF_SWAP(sv);
          break;
       default:
          break;
@@ -4185,6 +4298,7 @@ void SUMA_cb_helpIO_notify(Widget w, XtPointer data, XtPointer callData)
     
    SUMA_RETURNe; 
 }
+
 void SUMA_setIO_notify(int val)
 {
    static char FuncName[] = {"SUMA_setIO_notify"};
@@ -4210,6 +4324,63 @@ void SUMA_setIO_notify(int val)
    
    SUMA_RETURNe;
 }
+
+/*!
+ function to echo key presses that reach SUMA
+ - expects nothing
+*/  
+void SUMA_cb_helpEchoKeyPress(Widget w, XtPointer data, XtPointer callData)
+{
+   static char FuncName[] = {"SUMA_cb_helpEchoKeyPress"};
+   int ii;
+   
+   SUMA_ENTRY;
+   
+   SUMA_ECHO_KEYPRESS_TOGGLE;
+   
+   /* must update the state of toggle buttons in otherviewers */
+   for (ii=0; ii<SUMAg_N_SVv; ++ii) {
+      if (!SUMAg_SVv[ii].isShaded && SUMAg_SVv[ii].X->TOPLEVEL) {
+         /* you must check for both conditions because by default 
+         all viewers are initialized to isShaded = NOPE, 
+         even before they are ever opened */
+         if (w != SUMAg_SVv[ii].X->HelpMenu[SW_HelpEchoKeyPress]) {
+       XmToggleButtonSetState (SUMAg_SVv[ii].X->HelpMenu[SW_HelpEchoKeyPress], 
+               SUMAg_CF->Echo_KeyPress, NOPE);
+         }
+      }
+   }
+   
+    
+   SUMA_RETURNe; 
+}
+
+void SUMA_setEcho_KeyPress(int val)
+{
+   static char FuncName[] = {"SUMA_setEcho_KeyPress"};
+   int ii;
+   
+   SUMA_ENTRY;
+   
+   if (val) {SUMA_ECHO_KEYPRESS_ON;}
+   else { SUMA_ECHO_KEYPRESS_OFF;} 
+   
+   /* must update the state of toggle buttons in otherviewers */
+   for (ii=0; ii<SUMAg_N_SVv; ++ii) {
+      if (!SUMAg_SVv[ii].isShaded && SUMAg_SVv[ii].X->TOPLEVEL) {
+         /* you must check for both conditions because by default 
+         all viewers are initialized to isShaded = NOPE, 
+         even before they are ever opened */
+         {
+      XmToggleButtonSetState (SUMAg_SVv[ii].X->HelpMenu[SW_HelpEchoKeyPress], 
+               SUMAg_CF->Echo_KeyPress, NOPE);
+         }
+      }
+   }
+   
+   SUMA_RETURNe;
+}
+
 /*!
  function to toggle the Memtrace debugging flag
  - expects nothing
@@ -4496,7 +4667,8 @@ void SUMA_cb_viewViewerCont(Widget w, XtPointer data, XtPointer callData)
 
 
 /*!<
- the function expects the index of widget into sv->X->ViewMenu in data */
+ the function expects the index of widget into sv->X->ViewMenu in data 
+*/
 void SUMA_cb_toggle_crosshair(Widget w, XtPointer data, XtPointer callData)
 {
    static char FuncName[] = {"SUMA_cb_toggle_crosshair"};
@@ -4511,7 +4683,8 @@ void SUMA_cb_toggle_crosshair(Widget w, XtPointer data, XtPointer callData)
    sv = &SUMAg_SVv[isv];
       
    if (!list) list = SUMA_CreateList();
-   SUMA_REGISTER_HEAD_COMMAND_NO_DATA(list, SE_ToggleCrossHair, SES_SumaWidget, sv);
+   SUMA_REGISTER_HEAD_COMMAND_NO_DATA(list, SE_ToggleCrossHair, 
+                                       SES_SumaWidget, sv);
    SUMA_REGISTER_HEAD_COMMAND_NO_DATA(list, SE_Redisplay, SES_SumaWidget, sv);
 
    if (!SUMA_Engine (&list)) {
@@ -4535,7 +4708,8 @@ void SUMA_cb_toggle_node_in_focus(Widget w, XtPointer data, XtPointer callData)
    sv = &SUMAg_SVv[isv];
       
    if (!list) list = SUMA_CreateList();
-   SUMA_REGISTER_HEAD_COMMAND_NO_DATA(list, SE_ToggleShowSelectedNode, SES_SumaWidget, sv);
+   SUMA_REGISTER_HEAD_COMMAND_NO_DATA(list, SE_ToggleShowSelectedNode, 
+                                       SES_SumaWidget, sv);
    SUMA_REGISTER_HEAD_COMMAND_NO_DATA(list, SE_Redisplay, SES_SumaWidget, sv);
 
    if (!SUMA_Engine (&list)) {
@@ -4545,7 +4719,8 @@ void SUMA_cb_toggle_node_in_focus(Widget w, XtPointer data, XtPointer callData)
    SUMA_RETURNe;
 }
 
-void SUMA_cb_toggle_selected_faceset(Widget w, XtPointer data, XtPointer callData)
+void SUMA_cb_toggle_selected_faceset(Widget w, XtPointer data, 
+                                     XtPointer callData)
 {
    static char FuncName[] = {"SUMA_cb_toggle_selected_faceset"};
    int isv, widtype;
@@ -4559,14 +4734,14 @@ void SUMA_cb_toggle_selected_faceset(Widget w, XtPointer data, XtPointer callDat
    sv = &SUMAg_SVv[isv];
       
    if (!list) list = SUMA_CreateList();
-   SUMA_REGISTER_HEAD_COMMAND_NO_DATA(list, SE_ToggleShowSelectedFaceSet, SES_SumaWidget, sv);
+   SUMA_REGISTER_HEAD_COMMAND_NO_DATA(list, SE_ToggleShowSelectedFaceSet, 
+                                      SES_SumaWidget, sv);
    SUMA_REGISTER_HEAD_COMMAND_NO_DATA(list, SE_Redisplay, SES_SumaWidget, sv);
 
    if (!SUMA_Engine (&list)) {
       fprintf(stderr,"Error %s: Failed SUMA_Engine\n", FuncName);
    }
 
-   
    SUMA_RETURNe;
 }         
 
@@ -7715,7 +7890,7 @@ void SUMA_cb_ColPlaneShow_toggled ( Widget w, XtPointer data,
    SUMA_UpdateColPlaneShellAsNeeded(SO); /* update other open ColPlaneShells */
 
    SUMA_RemixRedisplay(SO);
-   SUMA_UpdateNodeLblField(SO);
+   SUMA_UpdateNodeLblField(NULL,SO);
    
    SUMA_RETURNe;
    #endif
@@ -7761,7 +7936,8 @@ int SUMA_ColPlaneShowOneFore_Set (SUMA_SurfaceObject *SO, SUMA_Boolean state)
    if (!SO->SurfCont->TopLevelShell) SUMA_RETURN(0);
    
    SO->SurfCont->ShowCurForeOnly = state;
-   XmToggleButtonSetState (SO->SurfCont->ColPlaneShowOneFore_tb, SO->SurfCont->ShowCurForeOnly, NOPE);   
+   XmToggleButtonSetState (SO->SurfCont->ColPlaneShowOneFore_tb, 
+                           SO->SurfCont->ShowCurForeOnly, NOPE);   
    
    SUMA_UpdateColPlaneShellAsNeeded(SO); /* update other open ColPlaneShells */
 
@@ -9297,7 +9473,8 @@ void SUMA_cb_moreSumaInfo (Widget w, XtPointer client_data, XtPointer callData)
    
    /* check to see if window is already open, if it is, just raise it */
    if (SUMAg_CF->X->SumaCont->SumaInfo_TextShell) {
-      XRaiseWindow (SUMAg_CF->X->DPY_controller1, XtWindow(SUMAg_CF->X->SumaCont->SumaInfo_TextShell->toplevel));
+      XRaiseWindow (SUMAg_CF->X->DPY_controller1, 
+                  XtWindow(SUMAg_CF->X->SumaCont->SumaInfo_TextShell->toplevel));
       SUMA_RETURNe;
    }
    
@@ -9308,13 +9485,15 @@ void SUMA_cb_moreSumaInfo (Widget w, XtPointer client_data, XtPointer callData)
       TextShell =  SUMA_CreateTextShellStruct (SUMA_SumaInfo_open, NULL, 
                                                SUMA_SumaInfo_destroyed, NULL);
       if (!TextShell) {
-         fprintf (SUMA_STDERR, "Error %s: Failed in SUMA_CreateTextShellStruct.\n", FuncName);
+         fprintf (SUMA_STDERR, 
+                  "Error %s: Failed in SUMA_CreateTextShellStruct.\n", FuncName);
          SUMA_RETURNe;
       }
-      SUMAg_CF->X->SumaCont->SumaInfo_TextShell = SUMA_CreateTextShell(s, "SUMA", TextShell);
+      SUMAg_CF->X->SumaCont->SumaInfo_TextShell = 
+                        SUMA_CreateTextShell(s, "SUMA", TextShell);
       SUMA_free(s);
    }else {
-      fprintf (SUMA_STDERR, "Error %s: Failed in SUMA_CommonFieldsInfo.\n", FuncName);
+      SUMA_S_Err("Failed in SUMA_CommonFieldsInfo.");
    }   
 
     
@@ -9437,6 +9616,139 @@ void SUMA_SurfInfo_destroyed (void *p)
    SUMA_RETURNe;
 }
 
+#define NO_SPACE(str) {\
+   int m_i; \
+   for (m_i=0; str[m_i]!='\0';++m_i) { \
+      if (isspace(str[m_i])) { str[m_i]='_'; } \
+   }  \
+}
+ 
+char * SUMA_WriteStringToFile(char *fname, char *s, int over, int view) 
+{
+   static char FuncName[]={"SUMA_WriteStringToFile"};
+   FILE *fout=NULL;
+   char *fused=NULL, *viewer=NULL;
+   int i=0;
+   char sbuf[128], cmd[256];
+   
+   SUMA_ENTRY;
+   
+   if (!fname) fname = FuncName;
+   if (!s) SUMA_RETURN(NULL);
+   
+   fused = SUMA_copy_string(fname);NO_SPACE(fused);
+   if (!over) {
+      i = 0;
+      while (i < 10000 && SUMA_filexists(fused)) {
+         SUMA_free(fused);fused = NULL;
+         sprintf(sbuf,".%03d", i);
+         fused = SUMA_append_replace_string(fname,sbuf,"", 0); NO_SPACE(fused);
+         
+         ++i;
+      }
+      if (i >= 10000) {
+         SUMA_S_Errv("Cannot find available name for %s\n"
+                     "I am giving up.\n", fname);
+         SUMA_free(fused); fused = NULL;
+         SUMA_RETURN(NULL);
+      }
+   }  
+   
+   if ((fout = fopen(fused,"w"))) {
+      fprintf(fout,"%s", s);
+      fclose(fout);
+   } else {
+      SUMA_S_Errv("Failed to write to %s.\n", fused);
+      SUMA_free(fused);
+      SUMA_RETURN(NULL);
+   }
+   
+   if (view) {
+      if (!(viewer = GetAfniTextEditor())) {
+         SUMA_S_Err("No GUI editor defined, and guessing game failed.\n"
+              "Set AFNI_GUI_EDITOR in your .afnirc for this option to work.\n"); 
+         SUMA_free(fused);
+         SUMA_RETURN(NULL);
+      }
+      snprintf(cmd,250*sizeof(char),"%s %s &", viewer, fused);
+      system(cmd);
+   }
+   
+   SUMA_RETURN(fused);
+}
+
+/*!
+   View text content of shell in editor  
+*/
+void SUMA_ViewTextShellInEditor(Widget w, XtPointer ud, XtPointer cd) 
+{
+   static char FuncName[] = {"SUMA_ViewTextShellInEditor"};
+   SUMA_CREATE_TEXT_SHELL_STRUCT *TextShell=NULL;
+   char *string=NULL, *fused=NULL;
+   char sbuf[128];
+   
+   SUMA_ENTRY;
+   
+   if (!GetAfniTextEditor()) {
+      SUMA_SLP_Err("No GUI editor defined, and guessing game failed.\n"
+              "Set AFNI_GUI_EDITOR in your .afnirc for this option to work.");
+      SUMA_RETURNe;
+   }
+   TextShell = (SUMA_CREATE_TEXT_SHELL_STRUCT *)ud;
+   
+   if (!(string = XmTextGetString (TextShell->text_w)) || !*string) {
+      SUMA_SLP_Warn("Nothing to save");
+      SUMA_RETURNe;
+   }
+   
+   snprintf(sbuf, 120*sizeof(char),"/tmp/VTSIE.%s.txt",TextShell->title);
+   if (!(fused = SUMA_WriteStringToFile(sbuf, string, 0, 1))) {
+      SUMA_SLP_Err("Failed to write text.");
+   } else {
+      SUMA_free(fused); fused=NULL;
+   }
+   
+   XtFree(string); string=NULL;
+
+   SUMA_RETURNe;
+}
+
+/*!
+   Save text content of shell to a file 
+*/
+void SUMA_SaveTextShell(Widget w, XtPointer ud, XtPointer cd) 
+{
+   static char FuncName[] = {"SUMA_SaveTextShell"};
+   SUMA_CREATE_TEXT_SHELL_STRUCT *TextShell=NULL;
+   char *string=NULL, *fused=NULL;
+   char sbuf[128];
+   
+   SUMA_ENTRY;
+   
+   TextShell = (SUMA_CREATE_TEXT_SHELL_STRUCT *)ud;
+   
+   if (!(string = XmTextGetString (TextShell->text_w)) || !*string) {
+      SUMA_SLP_Warn("Nothing to save");
+      SUMA_RETURNe;
+   }
+   
+   if (!(fused = SUMA_WriteStringToFile(TextShell->title, string, 0, 0))) {
+      SUMA_SLP_Err("Failed to write text.");
+   } else {
+      snprintf(sbuf,127*sizeof(char),
+                   "Wrote window content to %s", fused);
+      SUMA_free(fused); fused=NULL;
+      SUMA_SLP_Note(sbuf);
+   }
+   
+   XtFree(string); string=NULL;
+
+   SUMA_RETURNe;
+}
+
+
+
+
 /*!
    \brief calls XtDestroyWidget on to top level shell of w and frees the TextShell pointer in clientdata. 
 */
@@ -9500,6 +9812,7 @@ SUMA_CREATE_TEXT_SHELL_STRUCT * SUMA_CreateTextShellStruct (
    TextShell->DestroyCallBack = closecallback;
    TextShell->DestroyData = closedata;
    TextShell->CursorAtBottom = NOPE;
+   TextShell->title = NULL;
    
    SUMA_RETURN (TextShell);
 }  
@@ -9524,7 +9837,8 @@ SUMA_CREATE_TEXT_SHELL_STRUCT * SUMA_CreateTextShell (
                                  SUMA_CREATE_TEXT_SHELL_STRUCT *TextShell)
 {
    static char FuncName[] = {"SUMA_CreateTextShell"};
-   Widget rowcol_v, rowcol_h, close_w, form, frame, toggle_case_w;
+   Widget rowcol_v, rowcol_h, close_w, save_w, view_w, 
+          form, frame, toggle_case_w;
    int n;
    Pixel fg_pix = 0;
    Arg args[30];
@@ -9535,6 +9849,10 @@ SUMA_CREATE_TEXT_SHELL_STRUCT * SUMA_CreateTextShell (
    SUMA_Boolean LocalHead = NOPE;
    
    SUMA_ENTRY;
+
+   if (!title) title = "NO_Title";
+   if (TextShell->title) SUMA_free(TextShell->title);
+   TextShell->title = SUMA_copy_string(title);
 
    if (TextShell->OpenCallBack) { /* do the opening callback */
       SUMA_LH("Calling OpenCallBack.\n");
@@ -9582,7 +9900,22 @@ SUMA_CREATE_TEXT_SHELL_STRUCT * SUMA_CreateTextShell (
                      XmNvalueChangedCallback,
                      SUMA_cb_ToggleCaseSearch, 
                      TextShell);
-
+      save_w = XtVaCreateManagedWidget (
+                     "Save",
+                     xmPushButtonWidgetClass, 
+                     rowcol_h, NULL);
+      XtAddCallback (save_w, 
+                     XmNactivateCallback, 
+                     SUMA_SaveTextShell, 
+                     TextShell);    
+      view_w = XtVaCreateManagedWidget (
+                     "View",
+                     xmPushButtonWidgetClass, 
+                     rowcol_h, NULL);
+      XtAddCallback (view_w, 
+                     XmNactivateCallback, 
+                     SUMA_ViewTextShellInEditor, 
+                     TextShell); 
       close_w = XtVaCreateManagedWidget (
                      "Close", 
                      xmPushButtonWidgetClass, 
@@ -9654,7 +9987,7 @@ SUMA_CREATE_TEXT_SHELL_STRUCT * SUMA_CreateTextShell (
       XtPopup(TextShell->toplevel, XtGrabNone);   
 
       XtRealizeWidget (TextShell->toplevel);
-   } else { /* already created, just replace text and perhaps title 
+   } else { /* already created, just replace text and perhaps title in title bar 
                (in the future)*/
       SUMA_LH("Setting string in previously created text shell window.\n");
       if (!s) XmTextSetString (TextShell->text_w, 
@@ -10955,15 +11288,16 @@ void SUMA_PositionWindowRelative (  Widget New, Widget Ref,
                   
    \sa warnings in SUMA_CreateFileSelectionDialogStruct
 */
-SUMA_PROMPT_DIALOG_STRUCT *SUMA_CreatePromptDialogStruct (SUMA_PROMPT_MODE Mode, char *TextFieldLabel, 
-                                                         char *init_selection, 
-                                                         Widget daddy, SUMA_Boolean preserve,
-                                                         SUMA_PROMPT_BUTTONS Return_button,
-                                                         void(*SelectCallback)(char *selection, void *data), void *SelectData,
-                                                         void(*CancelCallback)(void *data), void *CancelData,
-                                                         void(*HelpCallback)(void *data), void *HelpData,
-                                                         int(*VerifyFunction)(char *selection, void *data), void *VerifyData,
-                                                         SUMA_PROMPT_DIALOG_STRUCT *oprmpt)
+SUMA_PROMPT_DIALOG_STRUCT *SUMA_CreatePromptDialogStruct (
+      SUMA_PROMPT_MODE Mode, char *TextFieldLabel, 
+      char *init_selection, 
+      Widget daddy, SUMA_Boolean preserve,
+      SUMA_PROMPT_BUTTONS Return_button,
+      void(*SelectCallback)(char *selection, void *data), void *SelectData,
+      void(*CancelCallback)(void *data), void *CancelData,
+      void(*HelpCallback)(void *data), void *HelpData,
+      int(*VerifyFunction)(char *selection, void *data), void *VerifyData,
+      SUMA_PROMPT_DIALOG_STRUCT *oprmpt)
 {
    static char FuncName[]={"SUMA_CreatePromptDialogStruct"};
    SUMA_PROMPT_DIALOG_STRUCT *prmpt=NULL;

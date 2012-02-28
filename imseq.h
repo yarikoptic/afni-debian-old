@@ -294,6 +294,7 @@ typedef struct {
 #define isqCR_force_redisplay 601 /* 22 Aug 1998 */
 #define isqCR_setindex        602 /* 26 Apr 2007 */
 #define isqCR_deltival        603 /* 23 Feb 2011 */
+#define isqCR_raiseupthedead  604 /* 17 Jun 2011 */
 
 #define COLORMAP_CHANGE(sq)                                          \
   do{ if( ISQ_REALZ((sq)) && (sq)->dc->visual_class == TrueColor ){  \
@@ -504,6 +505,7 @@ typedef struct MCW_imseq {
      MCW_bbox *wbar_plots_bbox ;        /* 20 Sep 2001 */
      MCW_arrowval *wbar_label_av ;      /* 20 Sep 2001 */
      MCW_arrowval *wbar_labsz_av ;      /* 21 Sep 2001 */
+     Widget        wbar_labst_pb ;      /* 23 Dec 2011 */
 
      Widget        zoom_sep              /* 11 Mar 2002 */;
      MCW_arrowval *zoom_val_av ;
@@ -556,6 +558,8 @@ typedef struct MCW_imseq {
      MCW_arrowval *wbar_animdup_av ;                  /* 10 Feb 2009 */
 
      int shft_ctrl_dragged ;                          /* 17 Mar 2010 */
+
+     char *overlay_label ;                            /* 23 Dec 2011 */
 } MCW_imseq ;
 
 #define RENDER_DEFAULT    0
@@ -710,6 +714,7 @@ extern void ISQ_set_rng_CB( Widget , XtPointer , MCW_choose_cbs * ) ;
 extern void ISQ_set_zcol_CB( Widget , XtPointer , MCW_choose_cbs * ) ;
 extern void ISQ_set_flat_CB( Widget , XtPointer , MCW_choose_cbs * ) ;
 extern void ISQ_set_sharp_CB( Widget , XtPointer , MCW_choose_cbs * ) ;
+extern void ISQ_overlay_label_CB( Widget , XtPointer , MCW_choose_cbs * ) ;
 
 extern void ISQ_but_disp_CB( Widget , XtPointer , XtPointer ) ;
 extern void ISQ_but_save_CB( Widget , XtPointer , XtPointer ) ;
@@ -846,6 +851,7 @@ extern void ISQ_record_button( MCW_imseq * ) ;
 extern void ISQ_record_CB( Widget,XtPointer,XtPointer ) ;
 extern void ISQ_butsave_EV( Widget, XtPointer, XEvent *, Boolean * ) ;
 extern void ISQ_butcrop_EV( Widget, XtPointer, XEvent *, Boolean * ) ;
+extern void ISQ_butdisp_EV( Widget, XtPointer, XEvent *, Boolean * ) ;
 
 extern void ISQ_record_open( MCW_imseq * ) ;
 extern void ISQ_record_update( MCW_imseq * , int ) ;
@@ -861,6 +867,7 @@ extern void ISQ_cropper( MCW_imseq *, XButtonEvent *) ; /* 17 Jun 2002 */
 
 extern void ISQ_snapshot( Widget w ) ;                 /* 18 Jun 2003 */
 extern void ISQ_snapsave( int,int, byte *, Widget ) ;  /* 03 Jul 2003 */
+extern MRI_IMAGE * ISQ_snap_to_mri_image( int  , int  , byte *); /* Dec 2011 */
 extern void ISQ_snap_agif( char * ) ;                  /* 06 Dec 2006 */
 extern void ISQ_snap_mpeg( char * ) ;
 extern void ISQ_snap_jpeg( char * ) ;

@@ -81,13 +81,15 @@ static char uDS_surf_cont[]={
 static char uDS_kill_suma[]={
                "       DriveSuma -com kill_suma\n"
 };
-void usage_DriveSuma (SUMA_GENERIC_ARGV_PARSE *ps)
+void usage_DriveSuma (SUMA_GENERIC_ARGV_PARSE *ps, int detail)
 {
       static char FuncName[]={"usage_DriveSuma"};
-      char * s = NULL, *sio=NULL, *st = NULL, *sts = NULL;
+      char * s = NULL, *sio=NULL, *st = NULL, *sts = NULL, *snido=NULL;
       int i;
       s = SUMA_help_basics();
+      snido = SUMA_NIDO_Info();
       sio  = SUMA_help_IO_Args(ps);
+
       printf ( "\n"
 "Usage: A program to drive suma from command line.\n"
 "       DriveSuma [options] -com COM1 -com COM2 ...\n"
@@ -157,6 +159,19 @@ void usage_DriveSuma (SUMA_GENERIC_ARGV_PARSE *ps)
 " o viewer_cont: Apply settings to viewer or viewer controller\n"
 "     + Optional parameters for action viewer_cont:\n"
 "       (Parameter names reflect GUI labels or key strokes.)\n"
+"        -autorecord RECORD_PREFIX: Set the autorecord prefix\n"
+"                        See 'Ctrl+r' in suma's interactive help for\n"
+"                        details.\n"
+"                    You can can use this option to make different snapshots\n"
+"                    go to different directories or filenames. For example:\n"
+"           ... \n"
+"               -com viewer_cont -autorecord left/Javier.ppm \\\n"
+"                                -key 'ctrl+left' -key 'ctrl+r' \\\n"
+"               -com viewer_cont -autorecord right/Javier.ppm \\\n"
+"                                -key 'ctrl+right' -key 'ctrl+r' \\\n"
+"           ...\n"
+"        -bkg_col R G B: Set the color of the background to R G B triplet.\n"
+"                        R G B values must be between 0 and 1\n"
 "        -load_view VIEW_FILE: Load a previously\n"
 "                              saved view file (.vvs).\n"
 "                              Same as 'File-->Load View'\n"
@@ -164,6 +179,50 @@ void usage_DriveSuma (SUMA_GENERIC_ARGV_PARSE *ps)
 "                            For detailed information on DO_FILE's format,\n"
 "                            see the section under suma's  help (ctrl+h)\n"
 "                            where the function of Ctrl+Alt+s is detailed.\n"
+"        -fixed_do NIML_DO_STRING: Load a fixed coordinate type NIML DO that \n"
+"                     is defined by the string NIML_DO_STRING.\n"
+"                     This is more convenient than specifying\n"
+"                     a simple DO in a file. For example:\n"
+"                  DriveSuma -com viewer_cont \\\n"
+"                              -fixed_do \"<T text='Hi' coord='0.5 0.2 0'/>\"\n"
+"               or the simpler:\n"
+"                  DriveSuma -com viewer_cont \\\n"
+"                              -fixed_do \"<T text='Up here' p=tlf/>\"\n"
+"                  DriveSuma -com viewer_cont \\\n"
+"                              -fixed_do \"<T text='Down there' p=bcf/>\"\n"
+"\n"
+"                     Repeated calls to -fixed_do would replace the previous\n"
+"                     object with the new one. You could specify multiple DOs\n"
+"                     by adding a qualifier string to the option -fixed_do.\n"
+"                     For example:\n"
+"                  DriveSuma -com viewer_cont \\\n"
+"                          -fixed_do1 \"<T text='Tango' coord='0.5 0.2 0'/>\"\n"
+"                  DriveSuma -com viewer_cont \\\n"
+"                          -fixed_do2 \"<T text='ognaT' coord='0.2 0.2 0'/>\"\n"
+"                  DriveSuma -com viewer_cont \\\n"
+"                          -fixed_do1 \"<T text='-X-' coord='0.5 0.2 0'/>\"\n"
+"                  DriveSuma -com viewer_cont \\\n"
+"                          -fixed_do3 \"<Tex target='FRAME' \\\n"
+"                                  filename='funstuff/face_afniman.jpg'/>\"\n"
+"\n"
+"               For more information about DOs, see NIDO section below \n"
+"               (visible with -help option) and demo script @DO.examples.\n"
+"\n"
+"        -Fixed_do NIML_DO_STRING: Same as -fixed_do, but spits out some \n"
+"                     debugging info.\n"
+"        -mobile_do NIML_DO_STRING: Mobile version of -fixed_do\n"
+"        -Mobile_do NIML_DO_STRING: Mobile version of -Fixed_do\n"
+   , uDS_show_surf, uDS_node_xyz );
+if (detail > 1) { 
+   printf(
+"\n"
+" ---------------------------------------------\n"
+" Details for %s"
+" ---------------------------------------------\n"
+"\n"
+      , snido);
+}
+   printf(
 "        -key KEY_STRING: Act as if the key press KEY_STRING\n"
 "                         was applied in the viewer.\n"
 "                         ~ Not all key presses from interactive\n"
@@ -171,7 +230,7 @@ void usage_DriveSuma (SUMA_GENERIC_ARGV_PARSE *ps)
 "                         ~ Available keys and their variants are:\n"
 "                         [, ], comma (or ','), period (or '.'), space,\n"
 "                         a, b, d, G, j, m, n, p, r, t, z, \n"
-"                         up, down, left, right, and F1 to F8.\n"
+"                         up, down, left, right, and F1 to F9.\n"
 "                         ~ Key variants are specified this way:\n"
 "                         ctrl+Up or ctrl+alt+Down etc.\n"
 "                         ~ For help on key actions consult SUMA's\n"
@@ -203,7 +262,10 @@ void usage_DriveSuma (SUMA_GENERIC_ARGV_PARSE *ps)
 "                  should use quotes with this qualifier. For example, say\n"
 "                  you want to pass 0.0 0.0 0.0 to the 'ctrl+j' key press.\n"
 "                  At the shell you would enter:\n"
-"                  DriveSuma -com viewer_cont '-key:v\"0.8 0 10.3\"' ctrl+j\n"
+"                    DriveSuma -com viewer_cont '-key:v\"0.8 0 10.3\"' ctrl+j\n"
+"                  In another example, say you want to jump to node 54 on the\n"
+"                  right hemisphere, then you would execute:\n"
+"                    DriveSuma -com viewer_cont '-key:v54R' j\n"
 "        -viewer VIEWER: Specify which viewer should be acted \n"
 "                        upon. Default is viewer 'A'. Viewers\n"
 "                        must be created first (ctrl+n) before\n"
@@ -218,6 +280,12 @@ void usage_DriveSuma (SUMA_GENERIC_ARGV_PARSE *ps)
 "                                    and -viewer_height\n"
 "        -viewer_position X Y: Set position on the screen\n"
 "        -inout_notify y/n: Turn on or off function call tracing\n"
+"        -N_foreg_smooth n: Number of foreground smoothing iterations\n"
+"                           Same as suma's interactive '8' key or what\n"
+"                           you'd set with env: SUMA_NumForeSmoothing\n"
+"        -N_final_smooth n: Number of final color smoothing iterations\n"
+"                           Same as suma's interactive '*' key or what\n"
+"                           you'd set with env: SUMA_NumForeSmoothing\n" 
 "     + Example viewer_cont (assumes all previous examples have\n"
 "       been executed and suma is still running).\n"
 "        - a series of commands that should be obvious.\n"
@@ -305,6 +373,11 @@ void usage_DriveSuma (SUMA_GENERIC_ARGV_PARSE *ps)
 "                         by BS1 factor for BR1 or higher, and linearly \n"
 "                         interpolate scaling for BR0 < values < BR1\n" 
 "       -Dim DIM: Set the dimming factor.\n"
+"       -setSUMAenv \"'ENVname=ENVvalue'\": Set an ENV in SUMA. Note that\n"
+"                      most SUMA env need to be set at SUMA's launch time. \n"
+"                      Setting the env from DriveSuma may not achieve what \n" 
+"                      you want, so consider using suma's -setenv instead.\n"
+"\n"
 "     + Example surf_cont (assumes all previous examples have\n"
 "       been executed and suma is still running).\n"
 "       - Obvious chicaneries to follow:\n"
@@ -324,11 +397,27 @@ void usage_DriveSuma (SUMA_GENERIC_ARGV_PARSE *ps)
 "                  changes in the setup but the surface is \n"
 "                  redisplayed nonetheless because of the 'd'\n"
 "                  key option.\n"
+"   Crashes: It is possible for SUMA to crash under certain combinations\n"
+"            of commands that involve opening X windows followed by\n"
+"            some command. For example, suma might crash with:\n"
+"         DriveSuma   -com viewer_cont  -viewer_size 600 600 -key 'ctrl+n'\n"
+"            Splitting such a command into two DriveSuma instances gets\n"
+"            around the problem:\n"
+"         DriveSuma   -com viewer_cont  -viewer_size 600 600 \n"
+"         DriveSuma   -com viewer_cont  -key 'ctrl+n'\n"
+"\n"
 "Options:\n"
 "--------\n"
 "   -echo_edu: Echos the entire command line (without -echo_edu)\n"
 "              for edification purposes\n"
 "   -examples: Show all the sample commands and exit\n"
+"   -help: All the help, in detail.\n"
+"       ** NOTE: You should also take a look at scripts @DO.examples and \n"
+"          @DriveSuma for examples. Suma's interactive help (ctrl+h) for\n"
+"          the kinds of controls you can have with -key option.\n"
+"   -h: -help, with slightly less detail\n"
+"   -help_nido: Show the help for NIML Displayable Objects and exit.\n"
+"               Same as suma -help_nido\n"
 "   -C_demo: execute a preset number of commands\n"
 "            which are meant to illustrate how one\n"
 "            can communicate with SUMA from one's \n"
@@ -341,9 +430,13 @@ void usage_DriveSuma (SUMA_GENERIC_ARGV_PARSE *ps)
 "%s"
 "%s"
 "\n"
-               , uDS_show_surf, uDS_node_xyz, uDS_viewer_cont, uDS_recorder_cont, uDS_surf_cont, sio,  s);
+               , uDS_viewer_cont, uDS_recorder_cont, uDS_surf_cont, 
+      (detail> 1) ? sio:"use -help for I/O detail\n",  
+      (detail> 1) ? s:"use -help for misc. help basics\n");
       SUMA_free(s); s = NULL; SUMA_free(st); st = NULL; SUMA_free(sio); sio = NULL;       
-      s = SUMA_New_Additions(0, 1); printf("%s\n", s);SUMA_free(s); s = NULL;
+      if (snido) SUMA_free(snido); snido=NULL;
+      /* s = SUMA_New_Additions(0, 1); 
+         printf("%s\n", s);SUMA_free(s); s = NULL; */
       printf("       Ziad S. Saad SSCC/NIMH/NIH saadz@mail.nih.gov     \n");
       exit(0);
 }
@@ -431,7 +524,7 @@ int SUMA_DriveSuma_ParseCommon(NI_group *ngr, int argtc, char ** argt)
 {
    static char FuncName[]={"SUMA_DriveSuma_ParseCommon"};
    int kar, N, nv, nums;
-   double dv3[3], tmpd;
+   double dv3[3], tmpd, dv12[12];
    char *stmp=NULL;
    SUMA_PARSED_NAME *fn;
    SUMA_Boolean brk = NOPE;
@@ -456,6 +549,7 @@ int SUMA_DriveSuma_ParseCommon(NI_group *ngr, int argtc, char ** argt)
                      kar, SUMA_CHECK_NULL_STR(argt[kar]));
          SUMA_RETURN(NOPE);
       }
+      
       if (!brk && (  (strcmp(argt[kar], "-label") == 0) || 
                      (strcmp(argt[kar], "-surf_label") == 0) || 
                      (strcmp(argt[kar], "-so_label") == 0)))
@@ -472,6 +566,48 @@ int SUMA_DriveSuma_ParseCommon(NI_group *ngr, int argtc, char ** argt)
             SUMA_S_Err("Two options setting different  surface labels"); 
             SUMA_RETURN(0); 
          }
+         argt[kar][0] = '\0';
+         brk = YUP;
+      }
+      
+      if (!brk && (  (strcmp(argt[kar], "-setSUMAenv") == 0) ))
+      {
+         int ienv = 0, closed = 0;
+         char attr[32]={""}, *aval=NULL;
+         if (kar+1 >= argtc)
+         {
+            fprintf (SUMA_STDERR, 
+"need a string with 'NAME = VALUE' after -setSUMAenv (obey quotes and spaces) %d %d\n", kar, argtc);
+            SUMA_RETURN(0);
+         }
+         argt[kar][0] = '\0';
+         ienv = -1;
+         do {
+            ++ienv;
+            sprintf(attr,"ENV.%d", ienv);
+         } while (NI_get_attribute(ngr,attr));
+         /* Now search for a quote before the name */
+         ++kar;
+         if (argt[kar][0] != '\'' && argt[kar][0] != '\"') {
+            SUMA_S_Errv("You must enclose env expression with ' or \" quotes\n"
+                        "Have open %s\n", argt[kar]);
+            SUMA_RETURN(0);
+         } 
+         
+         aval = SUMA_copy_quoted(argt[kar],NULL,'\0','\0', 1, 0, &closed);
+         
+         if (!aval) {
+            SUMA_S_Err("Failed to get env value");
+            SUMA_RETURN(0);
+         }
+         SUMA_LHv("Adding >>%s<< %d \n", aval, closed); 
+         if (!closed) {
+            SUMA_S_Errv("You must enclose env expression with ' or \" quotes\n"
+                        "Have unterminated %s\n", aval);
+            SUMA_RETURN(0);
+         } 
+         NI_set_attribute(ngr, attr, aval);
+         SUMA_free(aval); aval=NULL;
          argt[kar][0] = '\0';
          brk = YUP;
       }
@@ -637,6 +773,60 @@ int SUMA_DriveSuma_ParseCommon(NI_group *ngr, int argtc, char ** argt)
          brk = YUP;
       }
       
+      if (!brk && ( (strcmp(argt[kar], "-bkg_col") == 0) ) )
+      {
+         if (kar+1 >= argtc)
+         {
+            fprintf (SUMA_STDERR, "need at least 3 values after -bkg_col \n");
+            SUMA_RETURN(0);
+         }
+         
+         argt[kar][0] = '\0';
+         ++kar; N = 1; stmp = NULL; nums = 0;
+         while (  kar < argtc && 
+                  argt[kar] && 
+                  SUMA_isNumString(argt[kar],(void *)((long int)N))) {
+            stmp = SUMA_append_replace_string(stmp, argt[kar], " ", 1); ++nums;
+            argt[kar][0] = '\0'; ++kar;
+         } --kar;
+         if (!stmp || nums < 3 || nums > 4) {
+            SUMA_S_Err( "Bad format for -bkg_col option values;\n"
+                        " 3 or 4 values allowed.");
+            SUMA_RETURN(0);
+         }
+         if (nums == 3) {
+            stmp = SUMA_append_replace_string(stmp, "1.0", " ", 1); ++nums;
+         }
+         nv = SUMA_StringToNum(stmp, (void *)dv12, 12,nums);
+         if (nv < 3 || nv > 4) {
+            SUMA_S_Err("Bad range string.");
+            SUMA_RETURN(0);
+         }else {
+            /* have range, set it please */
+            SUMA_free(stmp); stmp = NULL; 
+            stmp = (char *)SUMA_malloc(sizeof(char)*nv*50);
+            sprintf(stmp,"%f , %f, %f, %f", dv12[0], dv12[1], dv12[2], dv12[3]);
+            NI_set_attribute(ngr, "bkg_col", stmp);
+            SUMA_LHv("bkg_col of %s\n", stmp);
+            SUMA_free(stmp); stmp = NULL;
+         }
+         brk = YUP;
+      }
+      
+      if (!brk && ( (strcmp(argt[kar], "-autorecord") == 0) ) )
+      {
+         if (kar+1 >= argtc)
+         {
+            fprintf (SUMA_STDERR, "need a prefix after -autorecord\n");
+            SUMA_RETURN(0);
+         }
+         
+         argt[kar][0] = '\0';
+         NI_set_attribute(ngr, "autorecord", argt[++kar]);
+         argt[kar][0] = '\0';
+         brk = YUP;
+      }
+
       if (!brk && ( (strcmp(argt[kar], "-Dsp") == 0) ) )
       {
          if (kar+1 >= argtc)
@@ -996,6 +1186,46 @@ int SUMA_DriveSuma_ParseCommon(NI_group *ngr, int argtc, char ** argt)
          brk = YUP;
       }
       
+      if (!brk && ( (strcmp(argt[kar], "-N_foreg_smooth") == 0) ) )
+      {
+         if (kar+1 >= argtc)
+         {
+            fprintf (SUMA_STDERR, "need an integer after -N_foreg_smooth \n");
+            SUMA_RETURN(0);
+         }
+         
+         argt[kar][0] = '\0';
+         ++kar; nums = (int)strtol(argt[kar], NULL,10);
+         if (nums < 0 || nums > 500) {
+            SUMA_S_Errv("Bad integer for option -N_foreg_smooth %s\n",
+                     argt[kar]);
+            SUMA_RETURN(0);
+         }
+         NI_set_attribute(ngr, "N_foreg_smooth", argt[kar]);
+         argt[kar][0] = '\0';
+         brk = YUP;
+      }
+      
+      if (!brk && ( (strcmp(argt[kar], "-N_final_smooth") == 0) ) )
+      {
+         if (kar+1 >= argtc)
+         {
+            fprintf (SUMA_STDERR, "need an integer after -N_final_smooth \n");
+            SUMA_RETURN(0);
+         }
+         
+         argt[kar][0] = '\0';
+         ++kar; nums = (int)strtol(argt[kar], NULL,10);
+         if (nums < 0 || nums > 500) {
+            SUMA_S_Errv("Bad integer for option -N_final_smooth %s\n",
+                     argt[kar]);
+            SUMA_RETURN(0);
+         }
+         NI_set_attribute(ngr, "N_final_smooth", argt[kar]);
+         argt[kar][0] = '\0';
+         brk = YUP;
+      }
+      
       if (!brk && ( (strcmp(argt[kar], "-inout_notify") == 0) ) )
       {
          if (kar+1 >= argtc)
@@ -1032,6 +1262,64 @@ int SUMA_DriveSuma_ParseCommon(NI_group *ngr, int argtc, char ** argt)
          argt[kar][0] = '\0';
          brk = YUP;
       }
+
+
+      if (!brk && ( (strncmp(argt[kar], "-fixed_do",9) == 0) ||
+                    (strncmp(argt[kar], "-Fixed_do",9) == 0) ||
+                    (strncmp(argt[kar], "-mobile_do",10) == 0) ||
+                    (strncmp(argt[kar], "-Mobile_do",10) == 0) ) )
+      {
+         char *sbuf=NULL, *qar=NULL;
+         NI_element *nel=NULL;
+         int showit=0;
+         if (argt[kar][1] == 'F' || argt[kar][1] == 'M') showit=1;
+         if (kar+1 >= argtc)
+         {
+            fprintf (SUMA_STDERR, 
+                     "need a string after -fixed_do (or -mobile_do)\n");
+            SUMA_RETURN(0);
+         }
+         qar = UNIQ_hashcode(argt[kar]);
+         if (strstr(argt[kar],"ixed_do")) {
+            sbuf = SUMA_copy_string("<nido_head coord_type = 'fixed'\n"
+                                 "default_color = '1.0 1.0 1.0'\n"
+                                 "default_font = 'he18'\n"
+                                 "idcode_str = ");
+         } else {
+            sbuf = SUMA_copy_string("<nido_head coord_type = 'mobile'\n"
+                                 "default_SO_label = 'CURRENT'\n"
+                                 "bond = 'surface'\n"
+                                 "idcode_str = ");
+         }
+         sbuf = SUMA_append_replace_string(sbuf,qar,"",1);
+         argt[kar][0] = '\0';
+         free(qar); qar=NULL;
+         sbuf = SUMA_append_replace_string(sbuf,"/>\n","\n",1);
+         ++kar;
+         if (!(qar = args_in_niml_quotes(argt, &kar, argtc, 1))) {
+            SUMA_S_Errv("Could not find niml element starting at %s\n",
+                        argt[kar]);
+         } else {
+            /* check that the new element is OK, that function reads 
+               just one element*/
+            if (!(nel=NI_read_element_fromstring(qar))) {
+               SUMA_S_Errv("Could not parse -fixed_do %s\n"
+                  "Try experimenting with niccc -s to get the syntax right.\n",
+                        argt[kar]);
+               exit(1);
+            }
+            if (showit) SUMA_ShowNel(nel);
+            if (nel) NI_free_element(nel); nel=NULL;   
+            sbuf = SUMA_append_replace_string(sbuf, qar,"",1);
+            SUMA_free(qar); qar=NULL;
+         }
+         
+         NI_set_attribute(ngr, "DO_FileName", sbuf);
+         SUMA_free(sbuf); sbuf=NULL;
+         argt[kar][0] = '\0';
+         brk = YUP;
+      }
+      
       if (!brk && ( (strcmp(argt[kar], "-anim_dup") == 0) ) )
       {
          if (kar+1 >= argtc)
@@ -1263,7 +1551,7 @@ int SUMA_DriveSuma_ParseCommon(NI_group *ngr, int argtc, char ** argt)
                   "Error %s:\n"
                   "Option %s not understood. Try -help for usage\n",
                FuncName, argt[kar]);
-			SUMA_RETURN(0);
+         SUMA_RETURN(0);
 		} else {	
 			brk = NOPE;
 			kar ++;
@@ -1296,12 +1584,19 @@ SUMA_GENERIC_PROG_OPTIONS_STRUCT *SUMA_DriveSuma_ParseInput(
 	while (kar < argc) { /* loop accross command ine options */
 		/*fprintf(stdout, "%s verbose: Parsing command line...\n", FuncName);*/
 		if (strcmp(argv[kar], "-h") == 0 || strcmp(argv[kar], "-help") == 0) {
-			 usage_DriveSuma(ps);
+			 usage_DriveSuma(ps, strlen(argv[kar]) > 3 ? 2:1);
           exit (0);
 		}
 		
 		SUMA_SKIP_COMMON_OPTIONS(brk, kar);
       
+      if (strcmp(argv[kar], "-help_nido") == 0) {
+         char *s = SUMA_NIDO_Info();
+         fprintf (SUMA_STDOUT,"%s\n", s); 
+         SUMA_free(s); s = NULL;
+         exit (0);
+      }
+
       if (!brk && (strcmp(argv[kar], "-debug") == 0))
       {
          if (kar+1 >= argc)
@@ -1339,11 +1634,14 @@ SUMA_GENERIC_PROG_OPTIONS_STRUCT *SUMA_DriveSuma_ParseInput(
             exit (1);
          }
          
-         Opt->com = (char **)SUMA_realloc(Opt->com, sizeof(char *)*(Opt->N_com+1));
+         Opt->com = (char **)SUMA_realloc(Opt->com, 
+                                 sizeof(char *)*(Opt->N_com+1));
          Opt->com[Opt->N_com] = NULL;
          ++kar;
          do { 
-            Opt->com[Opt->N_com] = SUMA_append_replace_string (Opt->com[Opt->N_com], argv[kar], " ", 1);
+            Opt->com[Opt->N_com] = 
+               SUMA_append_replace_string (Opt->com[Opt->N_com], 
+                                           argv[kar], " ", 1);
             ++kar;
             brk = NOPE;
             if ( kar >= argc ) brk = YUP;
@@ -1357,7 +1655,9 @@ SUMA_GENERIC_PROG_OPTIONS_STRUCT *SUMA_DriveSuma_ParseInput(
       
       
       if (!brk && !ps->arg_checked[kar]) {
-			fprintf (SUMA_STDERR,"Error %s:\nOption %s not understood. Try -help for usage\n", FuncName, argv[kar]);
+			SUMA_S_Errv("Option %s not valid, or requires preceding -com option\n"
+                     "Try -help for usage\n", argv[kar]);
+         suggest_best_prog_option(argv[0], argv[kar]);
 			exit (1);
 		} else {	
 			brk = NOPE;
@@ -1912,12 +2212,12 @@ int main (int argc,char *argv[])
    if (ps->cs->rps > 0) { ps->cs->nelps = (float)ps->cs->talk_suma * ps->cs->rps; }
    else { ps->cs->nelps = (float) ps->cs->talk_suma * -1.0; }
 
-   if (argc < 0) {
-      usage_DriveSuma(ps);
-      exit (1);
-   }
    
    Opt = SUMA_DriveSuma_ParseInput (argv, argc, ps);
+   if (argc < 1) {
+      SUMA_S_Err("No options, use -h or -help for usage");
+      exit (1);
+   }
 
    if (Opt->debug > 2) LocalHead = YUP;
    

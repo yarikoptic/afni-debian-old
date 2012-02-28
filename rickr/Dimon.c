@@ -66,10 +66,31 @@ static char * g_history[] =
     "        for the case of Siemens mosaic\n",
     " 3.3  Apr 25, 2011 [rickr]\n"
     "      - if Siemens timing: pass TPATTERN explicit to RT plugin\n"
+    " 3.4  Aug 30, 2011 [rickr]\n"
+    "      - update volume delta to mean dz, to accomodate truncated initial\n"
+    "        values leading to 'volume toasted' (problem noted by B Benson)\n",
+    " 3.5  Sep  6, 2011 [rickr]\n"
+    "      - added -fast: short for -sleep_init 50 -sleep_vol 50\n"
+    " 3.6  Sep  6, 2011 [rickr]\n"
+    "      - allow -save_file_list to apply even with -infile_list\n"
+    " 3.7  Jan 17, 2012 [rickr]\n"
+    "      - using -gert_create_dataset implies -GERT_Reco and -quit\n"
+    " 3.8  Jan 19, 2012 [rickr]\n",
+    "      - made -quit more agressive (never wait for new files)\n"
+    " 3.7  Jan 25, 2012 [rickr] : back out changes for 3.8 and ponder\n"
+    " 3.8  Feb  7, 2012 [rickr] : added -no_wait (more forceful than -quit)\n"
+    "      - also, suppress new glob warning\n"
+    " 3.9  Feb 14, 2012 [rickr]\n"
+    "      - if -no_wait, terminate on volume_match failure\n"
+    " 3.10 Feb 16, 2012 [rickr]\n",
+    "      - added -max_images\n"
+    "      - do not init vol search state to 2, would limit volumes to 40\n"
+    "      - include fl_start in no_wait test\n"
+    "      - look for new vol worth of images, but no volume match\n"
     "----------------------------------------------------------------------\n"
 };
 
-#define DIMON_VERSION "version 3.3 (Apr 25, 2011)"
+#define DIMON_VERSION "version 3.10 (Feb 16, 2012)"
 
 /*----------------------------------------------------------------------
  * Dimon - monitor real-time aquisition of Dicom or I-files
@@ -98,6 +119,7 @@ static char * g_history[] =
  *   examples:    Dimon -infile_pattern 's12345/i*'
  *                Dimon -help
  *                Dimon -version
+ *                Dimon -infile_prefix s12345/i -gert_create_dataset
  *                Dimon -infile_list my_files.txt -quit
  *                Dimon -infile_prefix 's12345/i' -rt -host pickle -quit
  *----------------------------------------------------------------------
@@ -186,7 +208,7 @@ static int empty_string_list   ( string_list * list, int free_mem );
 static int find_first_volume   ( vol_t * v, param_t * p, ART_comm * ac );
 static int find_fl_file_index  ( param_t * p );
 static int find_more_volumes   ( vol_t * v, param_t * p, ART_comm * ac );
-static int find_next_zoff      ( param_t * p, int start, float zoff );
+static int find_next_zoff      ( param_t * p, int start, float zoff, int nim );
 static int init_extras         ( param_t * p, ART_comm * ac );
 static int init_options        ( param_t * p, ART_comm * a, int argc,
                                  char * argv[] );
@@ -252,6 +274,8 @@ int main( int argc, char * argv[] )
     vol_t      baseV;                   /* base volume - first scanned */
     int        ret_val;
 
+    mainENTRY("Dimon");
+    
     /* validate inputs and init options structure */
     if ( (ret_val = init_options( p, ac, argc, argv )) != 0 )
         return ret_val;
@@ -286,6 +310,8 @@ static int find_first_volume( vol_t * v, param_t * p, ART_comm * ac )
     int sleep_ms = -1; /* has not been set from data yet */
     int vs_state = 0;    /* state for volume search, can reset */
     int fl_start = 0;    /* starting offset into the current flist */
+    int nslices = p->opts.num_slices;
+    int nfiles=0, total_files=0; /* from read_ge_files */
 
     if ( gD.level > 0 )                 /* status */
         fprintf( stderr, "-- scanning for first volume\n" );
@@ -293,16 +319,26 @@ static int find_first_volume( vol_t * v, param_t * p, ART_comm * ac )
     /* clear initial volume */
     memset(v, 0, sizeof(vol_t));
 
+    if ( p->opts.no_wait ) sleep_ms = 0;  /* no sleeping in this case */
+
     mri_read_dicom_reset_obliquity();   /* to be sure */
+    MCW_set_glob_whine(0);              /* quiet any glob warnings */
 
     ret_val = 0;
     while ( ret_val == 0 )
     {
-        ret_val = read_ge_files( p, fl_start, max_im_alloc );
+        nfiles = read_ge_files( p, fl_start, max_im_alloc );
+        total_files = nfiles+fl_start;
+        ret_val = nfiles;
+
+        if(gD.level>1) fprintf(stderr,"-- RGEFa: read %d files (total %d)\n",
+                               nfiles, total_files);
 
         if ( ret_val > 0 )
         {
             ret_val = volume_search( v, p, 0, 0, &fl_start, &vs_state );
+            if(gD.level>1)
+                fprintf(stderr,"-- volume search returns %d\n", ret_val);
 
             /* try to recover from a data error */
             if ( ret_val == -1 ) ret_val = 0;
@@ -310,13 +346,46 @@ static int find_first_volume( vol_t * v, param_t * p, ART_comm * ac )
             /* If we don't have a volume yet, but have used "too much" of our
              * available memory, request more, making sure there is enough for
              * a volume, despite the previous max_im_alloc limitation.  */
-            if ( (ret_val == 0) && (p->nused > (max_im_alloc / 2)) )
+            if ( (ret_val == 0) && (p->nused > (max_im_alloc / 2)) ) {
+                /* if the user has specified num_slices and after more than 5
+                   volumes worth we still have not found our first, call this
+                   a fatal error */
+                if ( nslices > 0 && max_im_alloc > 5*nslices ) {
+                    fprintf(stderr,"\n** failing to find first volume within"
+                            " first %d images\n"
+                            "   ==> terminal failure for num_slices = %d\n",
+                            nfiles, nslices);
+                    return -1;
+                }
+
                 max_im_alloc *= 2;
+            }
         }
 
-        if ( ret_val == 0 )                     /* we are not done yet */
+        /* if no volume, sleep and continue loop */
+        if ( ret_val == 0 )   /* we are not done yet */
         {
-            if ( gD.level > 0 ) fprintf( stderr, "." );   /* status    */
+            /* no_wait: if ret_val ever repeats (including start at 0), fail
+                      (might go 40, 80, 120...)          16 Feb 2012 [rickr] */
+            if ( p->opts.no_wait ) {
+                static int prev_nf = -1;
+                if ( total_files == prev_nf ) {
+                    fprintf(stderr,
+                            "\n** no_wait: no volume found in %d files\n\n",
+                            total_files);
+                    return -1;
+                }
+                prev_nf = total_files;
+            }
+
+            if ( total_files > p->opts.max_images ) {
+                fprintf(stderr,"** cannot find a volume in %d image files\n"
+                               "   (max allowable = %d, see -max_images)\n",
+                               total_files, p->opts.max_images);
+                return -1;
+            }
+
+            if ( gD.level > 0 ) fprintf( stderr, "." ); /* pacifier */
 
             /* try to update nap time (either given or computed from TR) */
             if( sleep_ms < 0 ) {
@@ -327,7 +396,7 @@ static int find_first_volume( vol_t * v, param_t * p, ART_comm * ac )
                                    p->flist ? p->flist->geh.tr : 0.0);
             }
 
-            iochan_sleep(sleep_ms);
+            if( sleep_ms > 0 ) iochan_sleep(sleep_ms);
         }
         else if ( ret_val > 0 )         /* success - we have a volume! */
         {
@@ -338,13 +407,15 @@ static int find_first_volume( vol_t * v, param_t * p, ART_comm * ac )
                 if ( gD.level > 1 )
                 {
                     idisp_vol_t( "+d first volume : ", v );
-                    idisp_param_t( "-d first vol - new params : ", p );
-                    disp_ftype("-d ftype: ", p->ftype);
+                    if ( gD.level > 2 ) {
+                        idisp_param_t( "-d first vol - new params : ", p );
+                        disp_ftype("-d ftype: ", p->ftype);
+                    }
                 }
             }
-
+    
             /* make sure there is enough memory for bad volumes */
-            if ( p->nalloc < (4 * v->nim) )
+            if ( p->nalloc < (4 * v->nim) ) 
             {
                 p->nalloc = 4 * v->nim;
                 p->flist = (finfo_t *)realloc( p->flist,
@@ -355,43 +426,41 @@ static int find_first_volume( vol_t * v, param_t * p, ART_comm * ac )
                                      "structs!\n", p->nalloc );
                     return -1;
                 }
-
-                if ( gD.level > 1 )
+    
+                if ( gD.level > 2 )
                     idisp_param_t( "++ final realloc of flist : ", p );
             }
-
+    
             /* use this volume to complete the geh.orients string */
             if ( complete_orients_str( v, p ) < 0 )
                 return -1;
-
+    
             /* use this volume to note the byte order of image data */
             if ( check_im_byte_order( &ac->byte_order, v, p ) < 0 )
                 return -1;
-
+    
             /* if wanted, verify afni link, send image info and first volume */
             if ( ac->state == ART_STATE_TO_OPEN )
                 ART_open_afni_link( ac, 5, 0, gD.level );
-
+    
             if ( ac->state == ART_STATE_TO_SEND_CTRL )
                 ART_send_control_info( ac, v, gD.level );
-
+    
             if ( ac->state == ART_STATE_IN_USE )
                 ART_send_volume( ac, v, gD.level );
-
-            if ( gD.level > 1 )
+    
+            if ( gD.level > 2 )
             {
                 ART_idisp_ART_comm( "-- first vol ", ac );
                 idisp_im_store_t( "-- first vol ", &p->im_store );
             }
         }
         else
-            return ret_val;             /* fatal error condition */
+            return ret_val; /* terminal failure */
     }
 
-    if ( ret_val > 0 )
-        return 0;
-    else
-        return ret_val;
+    if ( ret_val > 0 ) return 0;
+    else               return ret_val;
 }
 
 
@@ -412,7 +481,7 @@ static int find_more_volumes( vol_t * v0, param_t * p, ART_comm * ac )
     int   fl_index;                     /* current index into p->flist    */
     int   naps;                         /* keep track of consecutive naps */
     int   nap_time;                     /* sleep time, in milliseconds    */
-    int   prev_nim;                     /* previous number of images read */
+    int   prev_nim, prev_images=-1;     /* previous number of images read */
     int   tr_naps;                      /* naps per TR                    */
 
     if ( v0 == NULL || p == NULL )
@@ -436,12 +505,12 @@ static int find_more_volumes( vol_t * v0, param_t * p, ART_comm * ac )
     /* compute the number of naps per TR, for stalled run checks */
     tr_naps = nap_time_in_ms(p->opts.tr, v0->geh.tr) / nap_time;
 
-    if ( gD.level > 0 )                 /* status */
+    if ( gD.level > 0 )         /* status */
     {
         fprintf( stderr, "-- scanning for additional volumes...\n" );
         fprintf( stderr, "-- run %d: %d ", run, seq_num );
     }
-    if ( gD.level > 1 ) fprintf(stderr,"++ nap time = %d, tr_naps = %d\n",
+    if ( gD.level > 2 ) fprintf(stderr,"++ nap time = %d, tr_naps = %d\n",
                                 nap_time, tr_naps);
 
     /* give stats when user quits */
@@ -453,8 +522,7 @@ static int find_more_volumes( vol_t * v0, param_t * p, ART_comm * ac )
     signal( SIGTERM, hf_signal );
     signal( SIGSEGV,  hf_signal );
 
-    if ( set_volume_stats( p, &gS, v0 ) )
-        return -1;
+    if ( set_volume_stats( p, &gS, v0 ) ) return -1;
 
     while ( ! done )
     {
@@ -463,14 +531,13 @@ static int find_more_volumes( vol_t * v0, param_t * p, ART_comm * ac )
         while ( (ret_val == 1) || (ret_val == -1) )
         {
             ret_val = volume_match( v0, &vn, p, fl_index );
+            if(gD.level>2) fprintf(stderr,"-- vol match returns %d\n", ret_val);
 
-            if ( ret_val < -1 )                 /* bail out on fatal error */
-                return ret_val;
+            if ( ret_val < -1 ) return ret_val; /* bail out on fatal error */
 
             if ( (ret_val == 1) || (ret_val == -1) )
             {
-                if ( gD.level > 3 )
-                    idisp_vol_t( "-- new volume: ", &vn );
+                if ( gD.level > 3 ) idisp_vol_t( "-- new volume: ", &vn );
 
                 fl_index += vn.nim;             /* note the new position   */
                 next_im   = vn.fn_n + 1;        /* for read_ge_files()     */
@@ -491,18 +558,14 @@ static int find_more_volumes( vol_t * v0, param_t * p, ART_comm * ac )
                 else
                 {
                     seq_num++;
-
-                    if ( gD.level > 0 )
-                        fprintf( stderr, "%d ", seq_num );
+                    if ( gD.level > 0 ) fprintf( stderr, "%d ", seq_num );
                 }
 
                 vn.seq_num = seq_num;
 
-                if ( set_volume_stats( p, &gS, &vn ) )
-                    return -1;
+                if ( set_volume_stats( p, &gS, &vn ) ) return -1;
 
-                if ( complete_orients_str( &vn, p ) < 0 )
-                    return -1;
+                if ( complete_orients_str( &vn, p ) < 0 ) return -1;
 
                 if ( ac->state == ART_STATE_TO_SEND_CTRL )
                     ART_send_control_info( ac, &vn, gD.level );
@@ -514,6 +577,15 @@ static int find_more_volumes( vol_t * v0, param_t * p, ART_comm * ac )
                 naps = 0;                       /* reset on existing volume */
 
                 if( p->opts.pause > 0 ) iochan_sleep(p->opts.pause);
+
+                /* if failure, try to show something for previous volumes */
+                if ( ret_val < 0 && p->opts.no_wait ) {
+                    if ( ac->state == ART_STATE_IN_USE )
+                        ART_send_end_of_run( ac, run, seq_num, gD.level );
+
+                    show_run_stats( &gS );
+                    return 1;
+                }
             }
         }
 
@@ -524,19 +596,28 @@ static int find_more_volumes( vol_t * v0, param_t * p, ART_comm * ac )
         fl_index = 0;                   /* reset flist index                 */
         naps = 0;                       /* do not accumulate for stall check */
 
-        while ( (ret_val >= 0 ) &&      /* no fatal error, and        */
-                (ret_val < v0->nim) )   /* didn't see full volume yet */
+        if(gD.level>1) fprintf(stderr,"-- RGEFb: read %d files\n",ret_val);
+
+        /* wait while no fatal error and no full volume,
+         * also, wait if we have not processed new images (full volume error?)*/
+        while ( (ret_val >= 0 && ret_val < v0->nim ) ||
+                prev_images == next_im ) /* implies ret_val >= nim */
         {
             if ( ret_val != prev_nim )
-                naps = 0;               /* then start over */
-            else if ( naps >= tr_naps )
+                naps = 0;   /* then start over */
+            else if ( p->opts.no_wait || naps >= tr_naps )
             {
-                if ( p->opts.quit )     /* then we are outta here */
+                if ( p->opts.quit )         /* then we are outta here */
                 {
                     if ( ac->state == ART_STATE_IN_USE )
                         ART_send_end_of_run( ac, run, seq_num, gD.level );
 
                     show_run_stats( &gS );
+
+                    if ( ret_val > 0 )
+                        fprintf(stderr,"\n** have %d unprocessed image(s)\n\n",
+                                ret_val);
+
                     return 0;
                 }
 
@@ -544,6 +625,9 @@ static int find_more_volumes( vol_t * v0, param_t * p, ART_comm * ac )
                 if( check_stalled_run(run,seq_num,naps,tr_naps,nap_time ) > 0 )
                     if ( ac->state == ART_STATE_IN_USE )
                         ART_send_end_of_run( ac, run, seq_num, gD.level );
+
+                /* if we seem stalled but have enough images, try to process */
+                if ( ret_val >= v0->nim ) break;
             }
 
             prev_nim = ret_val;
@@ -551,17 +635,21 @@ static int find_more_volumes( vol_t * v0, param_t * p, ART_comm * ac )
             if ( gD.level > 0 && !(naps % tr_naps) )
                 fprintf( stderr, ". " ); /* pacifier */
 
-            iochan_sleep( nap_time );   /* wake after a couple of TRs */
+            if ( ! p->opts.no_wait )
+                iochan_sleep( nap_time );   /* wake after a couple of TRs */
             naps ++;
 
             ret_val = read_ge_files( p, next_im, p->nalloc );
+            if(gD.level>1) fprintf(stderr,"-- RGEFc: read %d files\n",ret_val);
         }
 
-        if ( ret_val < 0 )              /* aaaaagh!  panic!  wet pants! */
+        if ( ret_val < 0 )               /* aaaaagh!  panic!  wet pants! */
         {
             fprintf( stderr, "\n** failure: IFM:RGF fatal error\n" );
             return -1;
         }
+
+        prev_images = next_im;  /* this should be changing */
     }
 
     return 0;   /* success */
@@ -625,7 +713,7 @@ static int volume_search(
         bound_cnt++;
         if( bound_cnt >= MAX_SEARCH_FAILURES ) *state = 2; /* try to finish */
     }
-    else *state = 1;  /* continue mode */
+    else if ( *state < 1 ) *state = 1;  /* continue mode, but do not lose 2 */
     prev_bound = bound;
 
     rv = check_one_volume(p,start,fl_start,bound,*state, &first,&last,&delta);
@@ -667,8 +755,9 @@ static int volume_search(
 
         return 1;
     }
-    else if ( rv == 0 )
+    else if ( rv == 0 ) {
         return 0;                           /* we did not finish a volume */
+    }
     else if ( rv == -1 )
     {
         /* We have gone in the wrong direction.  This means that the
@@ -731,6 +820,8 @@ int check_one_volume(param_t *p, int start, int *fl_start, int bound, int state,
     finfo_t * fp;
     float     delta, z_orig, prev_z, dz;
     int       run0, run1, first, next, last;
+    double    zsum;
+    int       zcount;
 
     if( bound <= start )
     {
@@ -817,6 +908,11 @@ int check_one_volume(param_t *p, int start, int *fl_start, int bound, int state,
     run1   = fp->geh.uv17;
     dz     = delta;
 
+    /* also, modify detla to be an average across 'valid' dz, to prevent
+     * exacerbating a poor initial value (for B Benson)      30 Aug 2011 */
+    zsum = 0.0;
+    zcount = 0;
+
     /* scan for volume break */
     next = first + 2;                           /* next z to look at      */
     while ( (next < bound) && (fabs(dz - delta) < gD_epsilon) &&
@@ -824,11 +920,21 @@ int check_one_volume(param_t *p, int start, int *fl_start, int bound, int state,
     {
         fp++;                             /* good index so get new values */
 
+        zsum += dz;  zcount++;            /* accumulate good values */
+
         dz     = fp->geh.zoff - prev_z;
         run1   = fp->geh.uv17;
         prev_z = fp->geh.zoff;
 
         next++;
+    }
+
+    /* now modify delta to be the mean dz, not just the first  30 Aug 2011 */
+    if( zcount > 0 ) {
+        if( gD.level > 2 )
+            fprintf(stderr,"++ updating delta (%f) to mean dz (%f)\n",
+                    delta, zsum/zcount);
+        delta = zsum/zcount;
     }
 
     /* note final image in current volume -                        */
@@ -839,7 +945,7 @@ int check_one_volume(param_t *p, int start, int *fl_start, int bound, int state,
     /* set return values */
     *r_first = first;
     *r_last  = last;
-    *r_delta = delta;
+    *r_delta = delta;  /* was just delta  30 Aug 2011 */
 
     if( gD.level > 1 )
         fprintf(stderr,"+d cov: returning first, last, delta = %d, %d, %g\n",
@@ -954,9 +1060,16 @@ static int volume_match( vol_t * vin, vol_t * vout, param_t * p, int start )
 
         if ( fabs( z - fp->geh.zoff ) > gD_epsilon )
         {
+            if ( p->opts.no_wait ) {
+                fprintf(stderr,"\n** volume match failure (bad zoff %f != %f)\n"
+                        "   (for more details, replace -no_wait with -quit)\n",
+                        fp->geh.zoff, z);
+                return -1;
+            }
+
             /* slice is either missing or out of order */
 
-            fp_test = fp + 1;                          /* check next image */
+            fp_test = fp + 1;  /* check next image, does it look okay? */
             if ( fabs( z + vin->z_delta - fp_test->geh.zoff ) < gD_epsilon )
             {
                 /* report the error?                v2.12 */
@@ -990,8 +1103,8 @@ static int volume_match( vol_t * vin, vol_t * vout, param_t * p, int start )
             else        /* unknown error - find start of next volume */
             {
                 /* search for a next starting point */
-                next_start = find_next_zoff( p, start+count, vin->z_first );
-
+                next_start = find_next_zoff( p, start+count, vin->z_first, 
+                                                             vin->nim );
                 if ( next_start < 0 )   /* come back and try again later */
                     return 0;
                 else
@@ -1018,6 +1131,13 @@ static int volume_match( vol_t * vin, vol_t * vout, param_t * p, int start )
         next_start = start + vin->nim - missing;
     else if ( (next_start < 0) && (fabs( z - fp->geh.zoff ) > gD_epsilon) )
     {
+        if ( p->opts.no_wait ) {
+            fprintf(stderr,"\n** volume match failure (bad zoffset %f != %f)\n"
+                    "   (for more details, replace -no_wait with -quit)\n",
+                    fp->geh.zoff, z);
+            return -1;
+        }
+
         /* check last slice - count and fp should be okay*/
         if ( (p->nused - start) <= vin->nim )   /* no more images to check */
             return 0;                           /* wait for more data      */
@@ -1052,7 +1172,8 @@ static int volume_match( vol_t * vin, vol_t * vout, param_t * p, int start )
         else    /* unknown error - find start of next volume */
         {
             /* search for a next starting point */
-            next_start = find_next_zoff( p, start+count+1, vin->z_first );
+            next_start = find_next_zoff( p, start+count+1, vin->z_first, 
+                                                           vin->nim );
 
             if ( next_start < 0 )       /* come back and try again later */
                 return 0;
@@ -1147,7 +1268,7 @@ static int check_error( int * retry, float tr, char * note )
         nap_time = (gP.opts.sleep_vol > 0) ? gP.opts.sleep_vol :
                                              nap_time_in_ms(gP.opts.tr, tr);
 
-        iochan_sleep( nap_time );
+        if ( ! gP.opts.no_wait ) iochan_sleep( nap_time );
         return 0;
     }
 
@@ -1210,6 +1331,7 @@ static int read_ge_files(
             {
                 if ( read_file_list(p) ) return -1;
                 if( p->opts.dicom_org && dicom_order_files( p ) ) return -1;
+                if ( p->opts.flist_file ) create_flist_file( p );
                 org_todo = 0;  /* now don't do it, again */
             }
         }
@@ -1289,7 +1411,7 @@ static int read_ge_files(
 
         p->nalloc = nalloc;
 
-        if ( gD.level > 1 )
+        if ( gD.level > 2 )
         {
             idisp_param_t( "++ realloc of flist : ", p );
             fprintf( stderr,  "-- n2scan = %d, max = %d\n", n2scan, max );
@@ -1336,7 +1458,7 @@ static int read_file_list ( param_t  * p )
         return 1;
     }
 
-    if( p->opts.debug > 1 )
+    if( gD.level > 1 )
         fprintf(stderr,"++ reading file list from %s, size %d\n",infname,flen);
 
     text = (char *)malloc((flen+1)*sizeof(char));
@@ -1378,7 +1500,7 @@ static int read_file_list ( param_t  * p )
         fname = strtok(NULL, " \n\r\t\f");
     }
 
-    if( p->opts.debug > 1 )
+    if( gD.level > 1 )
         fprintf(stderr,"++ read %d filenames from '%s'\n", p->nfiles, infname);
 
     free(text);
@@ -1866,6 +1988,7 @@ static int init_options( param_t * p, ART_comm * A, int argc, char * argv[] )
     ART_init_AC_struct( A );            /* init for no real-time comm */
     A->param = p;                       /* store the param_t pointer  */
     p->opts.ep = IFM_EPSILON;           /* allow user to override     */
+    p->opts.max_images = IFM_MAX_VOL_SLICES;   /* allow user override */
     p->opts.sleep_frac = 1.5;           /* fraction of TR to sleep    */
     p->opts.use_dicom = 1;              /* will delete this later...  */
 
@@ -1914,9 +2037,19 @@ static int init_options( param_t * p, ART_comm * A, int argc, char * argv[] )
                 errors++;
             }
         }
+        else if ( ! strcmp( argv[ac], "-fast") )
+        {
+            /* equiv to -sleep_init 50 -sleep_vol 50 */
+            p->opts.sleep_init = 50;
+            p->opts.sleep_vol = 50;
+        }
         else if ( ! strncmp( argv[ac], "-gert_create_dataset", 20) )
         {
-            p->opts.gert_exec = 1;      /* execute GERT_Reco script     */
+            p->opts.gert_exec = 1;      /* execute GERT_Reco script  */
+
+            p->opts.gert_reco = 1;      /* these options are implied */
+            p->opts.no_wait = 1;
+            p->opts.quit = 1;
         }
         else if ( ! strncmp( argv[ac], "-gert_filename", 10 ) )
         {
@@ -1962,6 +2095,10 @@ static int init_options( param_t * p, ART_comm * A, int argc, char * argv[] )
         {
             p->opts.gert_format = 1;    /* NIFTI format */
         }
+        else if ( ! strcmp( argv[ac], "-gert_quit_on_err") )
+        {
+            p->opts.gert_quiterr = 1;    /* Don't comeup in interactive mode */
+        }
         else if ( ! strncmp( argv[ac], "-help", 5 ) )
         {
             usage( IFM_PROG_NAME, IFM_USE_LONG );
@@ -2005,6 +2142,16 @@ static int init_options( param_t * p, ART_comm * A, int argc, char * argv[] )
             strcpy(p->opts.dicom_glob, argv[ac]);
             strcat(p->opts.dicom_glob, "*");
         }
+        else if ( ! strncmp( argv[ac], "-max_images", 7 ) )
+        {
+            if ( ++ac >= argc )
+            {
+                fputs( "option usage: -max_images NUM_IMAGES\n", stderr );
+                return 1;
+            }
+
+            p->opts.max_images = atoi(argv[ac]);
+        }
         else if ( ! strncmp( argv[ac], "-nice", 4 ) )
         {
             if ( ++ac >= argc )
@@ -2021,6 +2168,11 @@ static int init_options( param_t * p, ART_comm * A, int argc, char * argv[] )
                          IFM_MIN_NICE_INC, IFM_MAX_NICE_INC );
                 errors++;
             }
+        }
+        else if ( ! strncmp( argv[ac], "-no_wait", 8 ) )
+        {
+            p->opts.no_wait = 1;
+            p->opts.quit = 1;
         }
         else if ( ! strncmp( argv[ac], "-nt", 3 ) )
         {
@@ -2369,7 +2521,7 @@ static int init_options( param_t * p, ART_comm * A, int argc, char * argv[] )
     p->opts.argv = argv;
     p->opts.argc = argc;
 
-    if ( gD.level > 1 )
+    if ( gD.level > 2 )
     {
         idisp_opts_t ( "end init_options : ", &p->opts );
         idisp_param_t( "end init_options : ", p );
@@ -3090,12 +3242,14 @@ static int idisp_opts_t( char * info, opts_t * opt )
             "   (argv, argc)       = (%p, %d)\n"
             "   tr, ep             = %g, %g\n"
             "   nt, num_slices     = %d, %d\n"
+            "   max_images         = %d\n"
             "   nice, pause        = %d, %d\n"
             "   sleep_frac         = %g\n"
             "   sleep_init         = %d\n"
             "   sleep_vol          = %d\n"
             "   debug              = %d\n"
-            "   quit, use_dicom    = %d, %d\n"
+            "   quit, no_wait      = %d, %d\n"
+            "   use_dicom          = %d\n"
             "   use_last_elem      = %d\n"
             "   show_sorted_list   = %d\n"
             "   gert_reco          = %d\n"
@@ -3104,6 +3258,7 @@ static int idisp_opts_t( char * info, opts_t * opt )
             "   gert_nz            = %d\n"
             "   gert_format        = %d\n"
             "   gert_exec          = %d\n"
+            "   gert_quiterr       = %d\n"
             "   dicom_org          = %d\n"
             "   sort_num_suff      = %d\n"
             "   sort_acq_time      = %d\n"
@@ -3123,13 +3278,14 @@ static int idisp_opts_t( char * info, opts_t * opt )
             CHECK_NULL_STR(opt->sp),
             CHECK_NULL_STR(opt->gert_outdir),
             opt->argv, opt->argc,
-            opt->tr, opt->ep, opt->nt, opt->num_slices, opt->nice, opt->pause,
+            opt->tr, opt->ep, opt->nt, opt->num_slices, opt->max_images,
+            opt->nice, opt->pause,
             opt->sleep_frac, opt->sleep_init, opt->sleep_vol,
-            opt->debug, opt->quit, opt->use_dicom, opt->use_last_elem,
-            opt->show_sorted_list, opt->gert_reco,
+            opt->debug, opt->quit, opt->no_wait, opt->use_dicom,
+            opt->use_last_elem, opt->show_sorted_list, opt->gert_reco,
             CHECK_NULL_STR(opt->gert_filename),
             CHECK_NULL_STR(opt->gert_prefix),
-            opt->gert_nz, opt->gert_format, opt->gert_exec,
+            opt->gert_nz, opt->gert_format, opt->gert_exec, opt->gert_quiterr,
             opt->dicom_org, opt->sort_num_suff, opt->sort_acq_time,
             opt->rev_org_dir, opt->rev_sort_dir,
             CHECK_NULL_STR(opt->flist_file),
@@ -3349,9 +3505,9 @@ static int usage ( char * prog, int level )
       "\n"
       "    See the '-dicom_org' option, under 'other options', below.\n"
       "\n"
-      "    If no -quit option is provided, the user should terminate the\n"
-      "    program when it is done collecting images according to the\n"
-      "    input file pattern.\n"
+      "    If no -quit option is provided (and no -no_wait), the user should\n"
+      "    terminate the program when it is done collecting images according\n"
+      "    to the input file pattern.\n"
       "\n"
       "    Dimon can be terminated using <ctrl-c>.\n"
       "\n"
@@ -3405,7 +3561,7 @@ static int usage ( char * prog, int level )
       "\n"
       "  A2. investigate a list of files: \n"
       "\n"
-      "    %s -infile_pattern '*' -dicom_org -show_sorted_list\n"
+      "    %s -infile_pattern '*' -dicom_org -show_sorted_list -quit\n"
       "\n"
       "  A3. save a sorted list of files and check it later: \n"
       "\n"
@@ -3414,11 +3570,11 @@ static int usage ( char * prog, int level )
       "\n"
       "  B. for GERT_Reco:\n"
       "\n"
-      "    %s -infile_prefix run_003/image -GERT_Reco -quit\n"
-      "    %s -infile_prefix run_003/image -dicom_org -GERT_Reco -quit\n"
+      "    %s -infile_prefix run_003/image -gert_create_dataset\n"
+      "    %s -infile_prefix run_003/image -dicom_org -GERT_Reco -no_wait\n"
       "    %s -infile_prefix 'run_00[3-5]/image' -GERT_Reco -quit\n"
-      "    %s -infile_prefix anat/image -GERT_Reco -quit\n"
-      "    %s -infile_prefix epi_003/image -dicom_org -quit   \\\n"
+      "    %s -infile_prefix anat/image -GERT_Reco -no_wait\n"
+      "    %s -infile_prefix epi_003/image -dicom_org -no_wait \\\n"
       "          -GERT_Reco -gert_to3d_prefix run3 -gert_nz 42\n"
       "\n"
       "  B2. Deal with Philips data (names are not sorted, and image numbers\n"
@@ -3432,17 +3588,16 @@ static int usage ( char * prog, int level )
       "\n"
       "      o  create GERT_Reco script to put data into AFNI format\n"
       "      o  create GERT_Reco script AND execute it (running to3d)\n"
+      "         (-gert_create_dataset implies -GERT_Reco and -quit)\n"
       "      o  create and execute script, but make a NIfTI dataset\n"
       "      o  also, store the datasets under a 'MRI_dsets' directory\n"
       "\n"
       "    %s -infile_pattern 'mr_0015/*.dcm' -GERT_Reco -quit \n"
-      "    %s -infile_pattern 'mr_0003/*.dcm' -GERT_Reco -quit \\\n"
-      "          -gert_create_dataset\n"
-      "    %s -infile_pattern 'mr_0003/*.dcm' -GERT_Reco -quit \\\n"
-      "          -gert_write_as_nifti -gert_create_dataset\n"
-      "    %s -infile_pattern 'mr_0003/*.dcm' -GERT_Reco -quit \\\n"
-      "          -gert_outdir MRI_dsets                           \\\n"
-      "          -gert_write_as_nifti -gert_create_dataset\n"
+      "    %s -infile_prefix 'mr_0003/image' -gert_create_dataset\n"
+      "    %s -infile_pattern 'mr_0003/*.dcm' -gert_create_dataset\n"
+      "          -gert_write_as_nifti \n"
+      "    %s -infile_pattern 'mr_0003/*.dcm' -gert_create_dataset\n"
+      "          -gert_outdir MRI_dsets -gert_write_as_nifti\n"
       "\n"
       "  C. with real-time options:\n"
       "\n"
@@ -3700,6 +3855,10 @@ static int usage ( char * prog, int level )
           "        about a new dataset before opening the given image window,\n"
           "        allowing afni to size the window appropriately.\n"
           "\n"
+          "    -fast              : process data very quickly\n"
+          "\n"
+          "        short for:  -sleep_init 50 -sleep_vol 50\n"
+          "\n"
           "    -host HOSTNAME     : specify the host for afni communication\n"
           "\n"
           "        e.g.  -host mycomputer.dot.my.network\n"
@@ -3779,6 +3938,8 @@ static int usage ( char * prog, int level )
           "\n"
           "        The example shows a sleep time of half of a second.\n"
           "\n"
+          "        See also -fast.\n"
+          "\n"
           "    -sleep_vol MS     : time to sleep between volume checks\n"
           "\n"
           "        e.g.  -sleep_vol 1000\n"
@@ -3789,6 +3950,8 @@ static int usage ( char * prog, int level )
           "        sleeps before checking again.  The default is 1.5*TR.\n"
           "\n"
           "        The example shows a sleep time of one second.\n"
+          "\n"
+          "        See also -fast.\n"
           "\n"
           "    -sleep_frac FRAC  : new data search, fraction of TR to sleep\n"
           "\n"
@@ -3892,6 +4055,15 @@ static int usage ( char * prog, int level )
           "\n"
           "    -hist              : display a history of program changes\n"
           "\n"
+          "    -max_images NUM    : limit on images (slices per volume)\n"
+          "\n"
+          "        e.g.  -max_images 256\n"
+          "        default = 3000\n"
+          "\n"
+          "        This variable is in case something is very messed up with\n"
+          "        the data, and prevents the program from continuing after\n"
+          "        failing to find a volume in this number of images.\n"
+          "\n"
           "    -nice INCREMENT    : adjust the nice value for the process\n"
           "\n"
           "        e.g.  -nice 10\n"
@@ -3901,6 +4073,15 @@ static int usage ( char * prog, int level )
           "        A positive INCREMENT to the nice value of a process will\n"
           "        lower its priority, allowing other processes more CPU\n"
           "        time.\n"
+          "\n"
+          "    -no_wait           : never wait for new data\n"
+          "\n"
+          "        More forceful than -quit, when using this option, the\n"
+          "        program should never wait for new data.  This option\n"
+          "        implies -quit and is implied by -gert_create_dataset.\n"
+          "\n"
+          "        This is appropriate to use when the image files have\n"
+          "        already been collected.\n"
           "\n"
           "    -nt VOLUMES_PER_RUN : set the number of time points per run\n"
           "\n"
@@ -3931,8 +4112,9 @@ static int usage ( char * prog, int level )
           "    -quit              : quit when there is no new data\n"
           "\n"
           "        With this option, the program will terminate once a delay\n"
-          "        in new data occurs.  This is most appropriate to use when\n"
-          "        the image files have already been collected.\n"
+          "        in new data occurs (an apparent end-of-run pause).\n"
+          "\n"
+          "        This option is implied by -no_wait.\n"
           "\n"
           "    -rev_org_dir       : reverse the sort in dicom_org\n"
           "\n"
@@ -4058,7 +4240,7 @@ static int usage ( char * prog, int level )
           "        Execute any GERT_Reco script, creating the AFNI or NIfTI\n"
           "        datasets.\n"
           "\n"
-          "        By default, the script is created but not executed.\n"
+          "        This option implies -GERT_Reco and -quit.\n"
           "\n"
           "        See also -gert_write_as_nifti.\n"
           "\n"
@@ -4127,6 +4309,10 @@ static int usage ( char * prog, int level )
           "\n"
           "        See also -gert_create_dataset.\n"
           "\n"
+          "    -gert_quit_on_err : Add -quit_on_err option to to3d command\n"
+          "                        which has the effect of causing to3d to \n"
+          "                        fail rather than come up in interactive\n"
+          "                        mode if the input has an error.\n"
           "  ---------------------------------------------------------------\n"
           "\n"
           "  Author: R. Reynolds - %s\n"
@@ -4415,8 +4601,10 @@ static int create_gert_dicom( stats_t * s, param_t * p )
             else                         nspaces = 0;
 
             /* if gert_format = 1, write as NIfTI */
-            fprintf(fp, "to3d -prefix %s%s  \\\n", pname,
-                    opts->gert_format==1 ? ".nii" : "" );
+            fprintf(fp, "to3d%s -prefix %s%s  \\\n", 
+                     opts->gert_quiterr==1 ? " -quit_on_err" : "",
+                     pname,
+                     opts->gert_format==1 ? ".nii" : "" );
 
             if( s->runs[c].volumes > 1 )
             {
@@ -4444,7 +4632,8 @@ static int create_gert_dicom( stats_t * s, param_t * p )
 
             /* and possibly move output datasets there */
             if( opts->gert_outdir )
-                fprintf(fp, "mv %s+orig.* $OutDir\n\n", pname);
+                fprintf(fp, "mv %s%s $OutDir\n\n", pname,
+                        opts->gert_format==1 ? ".nii" : "+orig.*");
         }
 
     fclose( fp );
@@ -4692,12 +4881,14 @@ static int nap_time_in_ms( float t1, float t2 )
  * Given p->flist, search from index start for an image with
  * geh.zoff equal to zoff.
  *
+ * if enough images but we are not finding it, warn user
+ *
  * return   index : upon succes         (start <= index <= p->nused)
  *             -1 : not found
  *             -2 : error
  * ----------------------------------------------------------------------
 */
-static int find_next_zoff( param_t * p, int start, float zoff )
+static int find_next_zoff( param_t * p, int start, float zoff, int nim )
 {
     int count;
 
@@ -4710,6 +4901,13 @@ static int find_next_zoff( param_t * p, int start, float zoff )
     for ( count = start; count <= p->nused; count++ )
         if ( fabs( zoff - p->flist[count].geh.zoff ) < gD_epsilon )
             return count;                       /* found! */
+
+    /* did not find it, but have extra images waiting, so warn user */
+    if ( p->nused-start >= 2*nim )
+        fprintf(stderr,"** warning: have enough images (%d) for new vol (%d)\n"
+                "            but cannot find zoff %.4f, have %.4f (in %s)\n",
+                       p->nused-start, nim, zoff, p->flist[start].geh.zoff,
+                       p->fnames[start]);
 
     return -1;
 }

@@ -78,7 +78,8 @@ int main( int argc , char *argv[] )
 
    mainENTRY("3dcopy") ; machdep() ; AFNI_logger("3dcopy",argc,argv) ;
    PRINT_VERSION("3dcopy") ;
-
+   set_obliquity_report(0); /* silence obliquity */
+   
    /* input arguments */
 
    while( nopt < argc && argv[nopt][0] == '-' ){
@@ -199,7 +200,11 @@ int main( int argc , char *argv[] )
                           ADN_prefix    , new_prefix ,
                           ADN_view_type , new_view   ,
                         ADN_none ) ;
+       if (!THD_copy_labeltable_atr( cset->dblk,  qset->dblk)) {           
+          WARNING_message("Failed trying to preserve labeltables");
+       }
        tross_Make_History( "3dcopy" , argc,argv , cset ) ;
+       
        DSET_mallocize(qset); DSET_load(qset); CHECK_LOAD_ERROR(qset);
        for( ii=0 ; ii < DSET_NVALS(qset) ; ii++ )
          EDIT_substitute_brick( cset , ii ,
@@ -238,7 +243,6 @@ int main( int argc , char *argv[] )
        }
 
        if( denote ) THD_anonymize_write(1) ;  /* 08 Jul 2005 */
-
        if ( DSET_write(cset) != True )  exit(1) ;
        else exit (0);
      } else if ( non_afni_out ) { /* fail */

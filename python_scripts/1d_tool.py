@@ -224,6 +224,32 @@ examples (very basic for now):
                     -set_nruns 3                        \\
                     -split_into_pad_runs mot.padded
 
+   15a. Show the maximum pairwise displacement in the motion parameter file.
+       So over all TRs pairs, find the biggest displacement.
+
+       In one direction it is easy (AP say).  If the minimum AP shift is -0.8
+       and the maximum is 1.5, then the maximum displacement is 2.3 mm.  It
+       is less clear in 6-D space, and instead of trying to find an enveloping
+       set of "coordinates", distances between all N choose 2 pairs are
+       evaluated (brute force).
+
+        1d_tool.py -infile dfile.rall.1D -show_max_displace
+
+   15b. Similar to 15a, but do not include displacement from censored TRs.
+
+        1d_tool.py -infile dfile.rall.1D -show_max_displace \\
+                   -censor_infile motion_censor.1D
+
+   16. Randomize a list of numbers, say, those from 1..40.
+
+       The numbers can come from 1deval, with the result piped to
+       '1d_tool.py -input stdin -randomize_trs ...'.
+
+        1deval -num 40 -expr t+1 |   \\
+           1d_tool.py -infile stdin -randomize_trs -write stdout
+
+        See also -seed.
+
 ---------------------------------------------------------------------------
 basic informational options:
 
@@ -284,6 +310,14 @@ general options:
 
         See example 12.
 
+   -censor_infile CENSOR_FILE   : apply censoring to -infile dataset
+
+        This removes TRs from the -infile dataset where the CENSOR_FILE is 0.
+        The censor file is akin to what is used with "3dDeconvolve -censor",
+        where TRs with 1 are kept and those with 0 are excluded from analysis.
+
+        See example 15b.
+
    -censor_first_trs N          : when censoring motion, also censor the first
                                   N TRs of each run
    -censor_prev_TR              : for each censored TR, also censor previous
@@ -341,6 +375,8 @@ general options:
 
    -overwrite                   : allow overwriting of any output dataset
    -reverse                     : reverse data over time
+   -randomize_trs               : randomize the data over time
+   -seed SEED                   : set random number seed (integer)
    -select_cols SELECTOR        : apply AFNI column selectors, [] is optional
                                   e.g. '[5,0,7..21(2)]'
    -select_rows SELECTOR        : apply AFNI row selectors, {} is optional
@@ -366,6 +402,8 @@ general options:
    -show_indices_baseline       : display column indices for baseline
    -show_indices_motion         : display column indices for motion regressors
    -show_indices_interest       : display column indices for regs of interest
+   -show_max_displace           : display max displacement (from motion params)
+                                  - the maximum pairwise distance (enorm)
    -show_rows_cols              : display the number of rows and columns
    -sort                        : sort data over time (smallest to largest)
                                   - sorts EVERY vector
@@ -471,9 +509,16 @@ g_history = """
    0.22 Nov  4, 2010 - fixed print vs. return problem in -show_indices
    0.23 Dec 16, 2010 - updates to file type (looks like) errors and warnings
    0.24 May 27, 2010 - added -split_into_pad_runs (for regress motion per run)
+   1.00 Jul 14, 2011
+        - call this a release version, kept forgetting
+          (maybe release v2 can be when dealing with married timing is robust)
+        - added -show_max_displace (see example 15)
+   1.01 Oct  3, 2011 - added -censor_infile (e.g. to restrict motion params)
+        - added for N Adleman
+   1.02 Feb 22, 2012 - added -randomize_trs and -seed
 """
 
-g_version = "1d_tool.py version 0.24, May 27, 2011"
+g_version = "1d_tool.py version 1.02, February 22, 2012"
 
 
 class A1DInterface:
@@ -490,6 +535,9 @@ class A1DInterface:
 
       # action variables
       self.add_cols_file   = None       # filename to add cols from
+      self.censor_dset     = None       # censor dataset from censor_infile
+      self.censor_infile   = None       # for -censor_infile
+
       self.censor_fill     = 0          # zero-fill censored TRs
       self.censor_fill_par = ''         # same, but via this parent dset
       self.censor_first_trs= 0          # number of first TRs to also censor
@@ -499,6 +547,8 @@ class A1DInterface:
       self.derivative      = 0          # take temporal derivative
       self.overwrite       = 0          # whether to allow overwriting
       self.pad_to_runs     = []         # pad as run #A out of #B runs
+      self.rand_trs        = 0          # randomize order of data over time
+      self.rand_seed       = 0          # randomization seed, set if positive
       self.reverse         = 0          # reverse data over time
       self.select_cols     = ''         # column selection string
       self.select_rows     = ''         # row selection string
@@ -511,6 +561,7 @@ class A1DInterface:
       self.cormat_cutoff   = -1         # if > 0, apply to show_cormat_warns
       self.show_censor_count= 0         # show count of censored TRs
       self.show_cormat_warn= 0          # show cormat warnings
+      self.show_displace   = 0          # max_displacement (0,1,2)
       self.show_indices    = 0          # bitmask for index lists to show
                                         # (base, motion, regs of interest)
       self.show_label_ord  = 0          # show the label ordering
@@ -549,9 +600,7 @@ class A1DInterface:
          adata = LAD.Afni1D(fname, verb=self.verb)
          self.dtype = 1
 
-      if not adata.ready:
-         print "** failed to read 1D data from '%s'" % fname
-         return 1
+      if not adata.ready: return 1
 
       if self.verb > 1: print "++ read 1D data from file '%s'" % fname
 
@@ -618,6 +667,9 @@ class A1DInterface:
       self.valid_opts.add_opt('-censor_first_trs', 1, [], 
                       helpstr='number of initial TRs to censor, per run')
 
+      self.valid_opts.add_opt('-censor_infile', 1, [],
+                      helpstr='apply censor file to input file')
+
       self.valid_opts.add_opt('-censor_motion', 2, [], 
                       helpstr='censor motion data with LIMIT and PREFIX')
 
@@ -658,8 +710,14 @@ class A1DInterface:
       self.valid_opts.add_opt('-pad_into_many_runs', 2, [], 
                       helpstr='make data run #k of N runs (pad with 0)')
 
+      self.valid_opts.add_opt('-randomize_trs', 0, [], 
+                      helpstr='randomize the data over time (fixed per TR)')
+
       self.valid_opts.add_opt('-reverse', 0, [], 
                       helpstr='reverse the data per column (over time)')
+
+      self.valid_opts.add_opt('-seed', 1, [], 
+                      helpstr='integegral random number seed')
 
       self.valid_opts.add_opt('-select_cols', 1, [], 
                       helpstr='select the list of columns from the dataset')
@@ -696,6 +754,9 @@ class A1DInterface:
 
       self.valid_opts.add_opt('-show_labels', 0, [], 
                       helpstr='display the labels from the file')
+
+      self.valid_opts.add_opt('-show_max_displace', 0, [], 
+                      helpstr='display maximum displacements over TRs')
 
       self.valid_opts.add_opt('-show_rows_cols', 0, [], 
                       helpstr='display the number of rows and columns')
@@ -804,6 +865,13 @@ class A1DInterface:
                print '** -set_tr must be positive'
                return 1
 
+         # ----- general options -----
+
+         if opt.name == '-censor_infile':
+            val, err = uopts.get_string_opt('', opt=opt)
+            if err: return 1
+            self.censor_infile = val
+
          elif opt.name == '-censor_fill':
             self.censor_fill = 1
 
@@ -901,8 +969,16 @@ class A1DInterface:
             if err: return 1
             self.pad_to_runs = vals
 
+         elif opt.name == '-randomize_trs':
+            self.rand_trs = 1
+
          elif opt.name == '-reverse':
             self.reverse = 1
+
+         elif opt.name == '-seed':
+            val, err = uopts.get_type_opt(int, '', opt=opt)
+            if err: return 1
+            self.rand_seed = val
 
          elif opt.name == '-select_cols':
             val, err = uopts.get_string_opt('', opt=opt)
@@ -934,6 +1010,9 @@ class A1DInterface:
 
          elif opt.name == '-show_labels':
             self.show_labels = 1
+
+         elif opt.name == '-show_max_displace':
+            self.show_displace = 3
 
          elif opt.name == '-show_rows_cols':
             self.show_rows_cols = 1
@@ -1010,6 +1089,13 @@ class A1DInterface:
       # process AfniData separately
       if self.dtype == 2: return self.process_afnidata()
 
+      if self.censor_infile:
+         cdata = LAD.Afni1D(self.censor_infile, verb=self.verb)
+         if cdata == None:
+            print '** failed to censor input file'
+            return 1
+         self.adata.apply_censor_dset(cdata)
+
       if self.add_cols_file:
          newrd = LAD.Afni1D(self.add_cols_file,verb=self.verb)
          if not newrd.ready: return 1
@@ -1017,13 +1103,13 @@ class A1DInterface:
 
       if self.select_cols:
          ilist=UTIL.decode_1D_ints(self.select_cols, verb=self.verb,
-                                                     max=self.adata.nvec-1)
+                                                     imax=self.adata.nvec-1)
          if ilist == None: return 1
          if self.adata.reduce_by_vec_list(ilist): return 1
 
       if self.select_rows:
          ilist = UTIL.decode_1D_ints(self.select_rows, verb=self.verb,
-                                                       max=self.adata.nt-1)
+                                                       imax=self.adata.nt-1)
          if ilist == None: return 1
          if self.adata.reduce_by_tlist(ilist): return 1
 
@@ -1076,6 +1162,9 @@ class A1DInterface:
          if self.adata.extreme_mask(self.extreme_min, self.extreme_max):
             return 1
 
+      if self.rand_trs:
+         self.adata.randomize_trs(seed=self.rand_seed)
+
       if self.censor_fill:
          if self.adata.apply_goodlist(padbad=1): return 1
 
@@ -1099,6 +1188,9 @@ class A1DInterface:
       if self.show_indices:
          istr = self.adata.get_indices_str(self.show_indices)
          print istr
+
+      if self.show_displace:
+         print self.adata.get_max_displacement_str(verb=self.verb)
 
       if self.show_rows_cols: self.adata.show_rows_cols(verb=self.verb)
 

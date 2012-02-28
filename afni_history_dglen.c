@@ -49,6 +49,121 @@
 
 
 afni_history_struct dglen_history[] = {
+{ 21 , FEB, 2012 , DRG , "whereami" , 
+    SUPER , TYPE_NEW_OPT, 
+    "Web-based access atlases available",
+    "Able to query web atlases from whereami and open webpages\n"
+    "Support starting with rat brain atlas from Elsevier's\n"
+    "BrainNavigator"
+} ,
+
+{ 07 , NOV, 2011 , DRG , "deobliquing" , 
+    MINOR , TYPE_MODIFY, 
+    "More programs lose original data obliquity",
+    "3drefit, 3dWarp, 3daxialize, 3dZcutup, 3dCM, 3dZregrid\n"
+    "added to the list of programs"
+} ,
+
+{ 07 , NOV, 2011 , DRG , "lost last character in sub-brick labels" , 
+    MINOR , TYPE_BUG_FIX, 
+    "Fixed miscount of characters"
+} ,
+
+{ 03 , NOV, 2011 , DRG , "longer sub-brick labels" , 
+    MINOR , TYPE_MODIFY, 
+    "Allow sub-brick labels to be up to 63 characters"
+} ,
+
+{ 03 , NOV, 2011 , DRG , "3drefit" , 
+    MINOR , TYPE_BUG_FIX, 
+    "Allow refitting of some attributes",
+    "Some attributes like IJK_TO_DICOM_REAL and DELTA were not\n"
+    "being updated correctly with the original values remaining\n"
+    "in the dataset"
+} ,
+
+
+{ 13 , SEP, 2011 , DRG , "3dMean" , 
+    MINOR , TYPE_NEW_OPT, 
+    "Added non_zero and count options"
+} ,
+
+{ 13 , SEP, 2011 , DRG , "whereami" , 
+    MICRO , TYPE_BUG_FIX, 
+    "Added trivial ability to invert identity transformation"
+} ,
+
+{ 06 , SEP, 2011 , DRG , "align_epi_anat.py" , 
+    MINOR , TYPE_BUG_FIX, 
+    "save_skullstrip option saved obliqued and skullstripped data",
+    "Fixed to save only skullstripped"
+} ,
+
+{ 02 , SEP, 2011 , DRG , "3dhistog" , 
+    MINOR , TYPE_BUG_FIX, 
+    "Handle binning and output of integer and float data differently",
+    "Distinguish between integer and float data. Added float and int\n"
+    "options to enforce specified behavior.\n"
+    "Done with Rick Reynolds."
+} ,
+
+{ 30 , AUG, 2011 , DRG , "Draw Dataset" , 
+    MINOR , TYPE_BUG_FIX, 
+    "Draw Dataset plugin incorrect label for current atlas",
+    "Fixed current atlas to be updated properly if atlas is\n"
+    "changed."
+} ,
+
+{ 11 , JUL, 2011 , DRG , "whereami" , 
+    MINOR , TYPE_NEW_ENV, 
+    "AFNI_ATLAS_COLORS and default atlas in AFNI GUI",
+    "Set atlas to use for Atlas colors, Go to atlas location,\n"
+    "Draw Dataset and Renderer. Name of atlas can be set in\n"
+    "environment and modified in the AFNI GUI environmentalism menu.\n"
+    "Several other environmental variables regarding atlas usage\n"
+    "can also be modified there too."
+} ,
+
+{ 27 , JUN, 2011 , DRG , "whereami" , 
+    MINOR , TYPE_NEW_ENV, 
+    "AFNI_WHEREAMI_DEC_PLACES",
+    "Set precision for whereami output\n"
+    "Higher field data and animal atlases require higher precision.\n"
+    "The default value used for focus point among template spaces is\n"
+    "still 0 decimal places (closest mm), but animal data requires three\n"
+    "decimal places. Value may range from 0 to 10.\n"
+} ,
+
+{ 23 , JUN, 2011 , DRG , "whereami" , 
+    MINOR , TYPE_NEW_ENV, 
+    "Desai MPM atlases",
+    "New maximum probability map atlases derived from the Desai probability\n"
+    "maps just introduced in distribution."
+} ,
+
+{ 10 , JUN, 2011 , DRG , "whereami" , 
+    SUPER , TYPE_GENERAL, 
+    "Generic Atlas Support and new atlases",
+    "Atlases, spaces and transformations are now defined in a NIML file,\n"
+    "AFNI_atlas_spaces.niml. Transformations among spaces for coordinates\n"
+    "are defined in that file for use by whereami and the whereami display\n"
+    "in the AFNI GUI. The flexible naming of the spaces and atlases allows\n"
+    "easy addition of new atlases to AFNI processing.\n"
+    "Two new environment variables control what atlases and spaces are shown\n"
+    "when no atlas is specified, AFNI_ATLAS_LIST and AFNI_TEMPLATE_SPACE_LIST\n"
+    "The list of atlases now defaults to the TT_Daemon and the Eickhoff-\n"
+    "Zilles atlases in MNI_ANAT space.\n\n"
+    "Additionally, the cytoarchitectonic atlases from the Zilles, Eickhoff\n"
+    "group have been updated to the most recent version, 1.8.\n"
+    "***The previous versions, 1.5, are not used in this release by default.\n"
+    "Depending upon differences on how regions or codes are defined and used,\n"
+    "it is possible that processing scripts and results may be affected.\n\n"
+    "With this release, we also introduce three probabilistic atlases\n"
+    "donated by the Desai group generated from a typical AFNI pipeline.\n"
+    "These atlases contain a multitude of regions created using both\n"
+    "@auto_tlrc and FreeSurfer."
+} ,
+
 { 07 , APR, 2011 , DRG , "whereami" , 
     MAJOR , TYPE_NEW_ENV, 
     "Framework changes for generic atlases",

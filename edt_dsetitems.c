@@ -12,6 +12,19 @@
 #define EDERR(str) \
  do{ ERROR_message("EDIT_dset_items[%d]: %s\n",ncall,str); errnum++; } while(0)
 
+/* Remove +view.BRIK ness ZSS Feb 2012 */
+#define STRING_DEVIEW_DEEXT_BRICK(fname) {   \
+   if (STRING_HAS_SUFFIX((fname),"+orig.BRIK") || \
+      STRING_HAS_SUFFIX((fname),"+acpc.BRIK") ||  \
+      STRING_HAS_SUFFIX((fname),"+tlrc.BRIK") ) { /* ZSS Nov 2011 */   \
+      (fname)[ll-10] = '\0' ;   \
+   } else if (STRING_HAS_SUFFIX((fname),"+orig.BRIK.gz") ||   \
+             STRING_HAS_SUFFIX((fname),"+acpc.BRIK.gz") || \
+             STRING_HAS_SUFFIX((fname),"+tlrc.BRIK.gz") ) {/* ZSS Feb 2012 */   \
+     (fname)[ll-13] = '\0' ; \
+   }  \
+}
+
 /*-----------------------------------------------------------------------*/
 /*! Edit some internals of a dataset.  Notice that it is possible to
   create a dataset which is inconsistent.  Note also that some operations
@@ -98,6 +111,8 @@ int EDIT_dset_items( THD_3dim_dataset *dset , ... )
 
    /* 14 July 2006 */
    int cmode = COMPRESS_NOFILE;   /* check compression mode for NIFTI separately */
+    
+   int new_smode=STORAGE_UNDEFINED; /* ZSS Feb 2012 */
 
 
    /****---------------------- Sanity Check ----------------------****/
@@ -119,7 +134,11 @@ ENTRY("EDIT_dset_items") ;
 
    va_start( vararg_ptr , dset ) ;              /** Initialize arg reading **/
    iarg = 1 ;
-
+   memset(&ijk_to_dicom, 0, sizeof(mat44)); 
+   memset(&xyzorient, 0, sizeof(THD_ivec3)); 
+   memset(&xyzorg, 0, sizeof(THD_fvec3)); 
+   memset(&xyzdel, 0, sizeof(THD_fvec3)); 
+   memset(&nxyz, 0, sizeof(THD_ivec3));
    do{
       flag_arg = va_arg( vararg_ptr , int ) ;   /** Get next arg  **/
       if( flag_arg == ADN_none ) break ;        /** No more args! **/
@@ -188,8 +207,14 @@ fprintf(stderr,"EDIT_dset_items: iarg=%d flag_arg=%d\n",iarg,flag_arg) ;
 
          case ADN_prefix:  /* processed later */
             prefix = va_arg( vararg_ptr , char * ) ;
-            if( prefix != NULL ) new_prefix = 1 ;
-            else EDERR("illegal new prefix") ;
+            if( prefix != NULL ) {
+               new_prefix = 1 ;
+               new_smode = storage_mode_from_prefix(prefix);
+               if (new_smode != STORAGE_UNDEFINED &&
+                   dset->dblk && dset->dblk->diskptr) { 
+                  dset->dblk->diskptr->storage_mode = new_smode;
+               }
+            } else EDERR("illegal new prefix") ;
          break ;
 
          case ADN_directory_name:  /* processed later */
@@ -346,9 +371,12 @@ fprintf(stderr,"EDIT_dset_items: iarg=%d flag_arg=%d\n",iarg,flag_arg) ;
 
          case ADN_view_type:  /* processed later */
             view_type = va_arg( vararg_ptr , int ) ;
-            if( view_type >= FIRST_VIEW_TYPE && view_type <= LAST_VIEW_TYPE )
+            if( view_type >= FIRST_VIEW_TYPE && view_type <= LAST_VIEW_TYPE ) {
                new_view_type = 1 ;
-            else EDERR("illegal new view_type") ;
+               if (dset->dblk && dset->dblk->diskptr) { /* ZSS Feb 2012 */
+                  dset->dblk->diskptr->storage_mode = STORAGE_BY_BRICK;
+               }
+            } else EDERR("illegal new view_type") ;
          break ;
 
          case ADN_func_type:  /* processed later */
@@ -483,31 +511,33 @@ fprintf(stderr,"EDIT_dset_items: iarg=%d flag_arg=%d\n",iarg,flag_arg) ;
       if( DSET_IS_1D(dset) || DSET_IS_3D(dset) ){         /* 21 Mar 2003 */
         char *fname = dset->dblk->diskptr->brick_name ;
         int  ll = strlen(fname) ;
-        fname[ll-10] = '\0' ;
-        if( DSET_IS_1D(dset) || (DSET_NY(dset)==1 && DSET_NZ(dset)==1) )
-          strcat(fname,".1D");
-        else
+        STRING_DEVIEW_DEEXT_BRICK(fname);
+        if( DSET_IS_1D(dset) || (DSET_NY(dset)==1 && DSET_NZ(dset)==1) ) {
+          if( !STRING_HAS_SUFFIX(fname,".1D") &&
+              !STRING_HAS_SUFFIX(fname,".1D.dset")) strcat(fname,".1D");
+        } else {
           strcat(fname,".3D");
+        }
       }
 
       if( DSET_IS_NIML(dset) ){         /* 07 Jun 2006 [rickr] */
         char *fname = dset->dblk->diskptr->brick_name ;
         int  ll = strlen(fname) ;
-        fname[ll-10] = '\0' ;
+        STRING_DEVIEW_DEEXT_BRICK(fname);
         if( !STRING_HAS_SUFFIX(fname,".niml") ) strcat(fname,".niml");
       }
 
       if( DSET_IS_NI_SURF_DSET(dset) ){ /* 28 Jun 2006 [rickr] */
         char *fname = dset->dblk->diskptr->brick_name ;
         int  ll = strlen(fname) ;
-        fname[ll-10] = '\0' ;
+        STRING_DEVIEW_DEEXT_BRICK(fname);
         if( !STRING_HAS_SUFFIX(fname,".niml.dset") ) strcat(fname,".niml.dset");
       }
 
       if( DSET_IS_GIFTI(dset) ){ /* 13 Feb 2008 [rickr] */
         char *fname = dset->dblk->diskptr->brick_name ;
         int  ll = strlen(fname) ;
-        fname[ll-10] = '\0' ;
+        STRING_DEVIEW_DEEXT_BRICK(fname);
         if( ! STRING_HAS_SUFFIX(fname,".gii") &&
             ! STRING_HAS_SUFFIX(fname,".gii.dset") )
            strcat(fname,".gii");
@@ -515,33 +545,41 @@ fprintf(stderr,"EDIT_dset_items: iarg=%d flag_arg=%d\n",iarg,flag_arg) ;
 
       /** output of NIfTI-1.1 dataset: 06 May 2005 **/
       /* if the prefix ends in .nii or .nii.gz, change filename in brick_name */
-
       if( nprefix != NULL && ( STRING_HAS_SUFFIX(nprefix,".nii") ||
                                STRING_HAS_SUFFIX(nprefix,".nii.gz") ) ){
 
         char *fname = dset->dblk->diskptr->brick_name ;
         int  ll = strlen(fname) ;
-        fname[ll-10] = '\0' ;  /* taking off "+view.BRIK" */
-
+        STRING_DEVIEW_DEEXT_BRICK(fname);
         if( STRING_HAS_SUFFIX(nprefix,".nii") ) {  /* 22 Jun 2006 mod drg */
 
-          cmode = THD_get_write_compression() ; /* check env. variable for compression*/
-          if(cmode==0) { /* have to compress this NIFTI data, add .gz to prefix */
-             sprintf(DSET_PREFIX(dset),"%s.gz",nprefix); /* add .gz on to prefix initialized in */
-                                                         /* THD_init_diskptr_names just above */
-             if(STRING_HAS_SUFFIX(fname,".nii")) {  /* if filename ends with .nii */
+          cmode = THD_get_write_compression() ; 
+                           /* check env. variable for compression*/
+          if(cmode==0) { /* have to compress this NIFTI data, 
+                            add .gz to prefix */
+             sprintf(DSET_PREFIX(dset),"%s.gz",nprefix); 
+                           /* add .gz on to prefix initialized in */
+                           /* THD_init_diskptr_names just above */
+             if(STRING_HAS_SUFFIX(fname,".nii")) {
+                                       /* if filename ends with .nii */
                strcat(fname,".gz") ;   /* add the .gz extension */
              } else {
-               if(!(STRING_HAS_SUFFIX(fname,".nii.gz"))) /* compressed NIFTI extension*/
+               if(!(STRING_HAS_SUFFIX(fname,".nii.gz"))) { 
+                                       /* compressed NIFTI extension*/
                  strcat(fname,".nii.gz") ;
+               }
              }
           } else {
-             if(!(STRING_HAS_SUFFIX(fname,".nii")))  /* if filename doesn't end with .nii */
+             if(!(STRING_HAS_SUFFIX(fname,".nii"))) { 
+                                        /* if filename doesn't end with .nii */
                strcat(fname,".nii") ;   /* add the .nii extension */
+             }
           }
         } else {
-           if(!(STRING_HAS_SUFFIX(fname,".nii.gz"))) /* compressed NIFTI extension*/
+           if(!(STRING_HAS_SUFFIX(fname,".nii.gz"))) {
+                                       /* compressed NIFTI extension*/
              strcat(fname,".nii.gz") ;
+           }
         }
       }
 
@@ -551,8 +589,7 @@ fprintf(stderr,"EDIT_dset_items: iarg=%d flag_arg=%d\n",iarg,flag_arg) ;
 
         char *fname = dset->dblk->diskptr->brick_name ;
         int  ll = strlen(fname) ;
-        fname[ll-10] = '\0' ;  /* taking off "+view.BRIK" */
-        
+        STRING_DEVIEW_DEEXT_BRICK(fname);
         if( !strcmp(fname+ll-14,".hdr") ) fname[ll-14] = '\0';
         if( !STRING_HAS_SUFFIX(fname,".img") ) strcat(fname,".img") ;
         /* and override the BRICK mode */
@@ -836,12 +873,14 @@ fprintf(stderr,"stataux_one:  iv=%d bso[0]=%g bso[1]=%g bso[2]=%g\n",
    if( new_tunits ){
       THD_timeaxis * taxis = dset->taxis ;
 
-      if( taxis == NULL ){
-         EDERR("have new_tunits but have no time axis") ;
-         RETURN(errnum) ;
+      if( taxis == NULL) {
+         if (DSET_NVALS(dset) > 1) {
+            EDERR("have new_tunits but have no time axis") ;
+            RETURN(errnum) ;
+         }
+      } else {
+         taxis->units_type = tunits ;
       }
-
-      taxis->units_type = tunits ;
    }
 
    /**--------------- Need to redo dataset type codes? ------------**/
@@ -928,11 +967,27 @@ int THD_volDXYZscale( THD_dataxes  * daxes, float xyzscale, int reuse_shift)
 
 char * THD_deplus_prefix( char *prefix )
 {
+   static char * plussers[] = {
+      "+orig", "+orig.", "+orig.HEAD", "+orig.BRIK", "+orig.BRIK.gz",
+      "+acpc", "+acpc.", "+acpc.HEAD", "+acpc.BRIK", "+acpc.BRIK.gz",
+      "+tlrc", "+tlrc.", "+tlrc.HEAD", "+tlrc.BRIK", "+tlrc.BRIK.gz"
+      };
    char *newprefix ;
-   int nn ;
+   int nn, N_nn;
 
    if( prefix == NULL ) return NULL ;
 
+   newprefix = strdup(prefix);
+   
+   N_nn = sizeof(plussers)/sizeof(char *);
+   for (nn=0; nn<N_nn; ++nn) {
+      if( STRING_HAS_SUFFIX(newprefix, plussers[nn]) ) {
+         newprefix[strlen(newprefix)-strlen(plussers[nn])] = '\0';
+         return newprefix ;
+      }
+   }
+   
+   #if 0       /* Pre Nov. 2011 , kill this section in a month or so */
    nn = strlen(prefix); newprefix = strdup(prefix);
 
    /* only remove the basic 3: +orig, +acpc +tlrc   17 May 2004 [rickr] */
@@ -948,6 +1003,7 @@ char * THD_deplus_prefix( char *prefix )
        isalpha(newprefix[nn-2]) &&
        isalpha(newprefix[nn-1])   ) newprefix[nn-5] = '\0' ;
 */
-
+   #endif
+   
    return newprefix ;
 }

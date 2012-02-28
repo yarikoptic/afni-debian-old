@@ -43,7 +43,309 @@
 
 afni_history_struct rwcox_history[] = {
 /*=====BELOW THIS LINE=====*/
-  { 7 , JUN , 2011 , RWC , "3dAllineate" , MICRO , TYPE_GENERAL ,
+  { 23 , FEB , 2012 , RWC , "afni" , MINOR , TYPE_MODIFY ,
+   "Enable 'bigthree' mode for color pbar" ,
+   "If AFNI_PBAR_THREE is YES, the color pbar in the AFNI GUI (but not the\n"
+   "renderer) will start in 'bigthree' mode, with 3 panes -- the colorscale\n"
+   "in the middle one, and the upper and lower panes adjustable to allow for\n"
+   "scaling that is not symmetrical." } ,
+
+ { 21 , FEB , 2012 , RWC , "3dAutobox" , MICRO , TYPE_NEW_OPT ,
+   "Add -npad option, for Larry Frank" ,
+   NULL } ,
+
+ { 17 , FEB , 2012 , RWC , "debugtrace.h" , MICRO , TYPE_MODIFY ,
+   "Add printout of 'from' and 'to' information on ENTRY/RETURN macros" ,
+   "Also patched up a missing ENTRY macro in new_MCW_optmenu() in bbox.c,\n"
+   "that SOMEONE (who shall go un-named) criminally forgot when patching the\n"
+   "code for LessTif compatibility." } ,
+
+ { 13 , FEB , 2012 , RWC , "3dPeriodogram" , MICRO , TYPE_BUG_FIX ,
+   "pfact was not static" ,
+   "But apparently worked OK until Ziad initialized it to zero." } ,
+
+ { 8 , FEB , 2012 , RWC , "afni" , MICRO , TYPE_GENERAL ,
+   "Add ability to flip colors in a discrete paned pbar" ,
+   "And a 'Flip Colors' button to do so." } ,
+
+ { 11 , JAN , 2012 , RWC , "3dhistog" , MICRO , TYPE_BUG_FIX ,
+   "Fix bugs" ,
+   "(a) fbin storing the counts was not always allocated the right length\n"
+   "(b) changed it from int to int64_t to allow for really large datasets\n"
+   "(c) there is no 3rd item" } ,
+
+ { 11 , JAN , 2012 , RWC , "many programs" , MICRO , TYPE_GENERAL ,
+   "Print WARNING message if '-polort A' is used where not allowed" ,
+   "This is the Inati's fault." } ,
+
+ { 10 , JAN , 2012 , RWC , "1dBport" , MINOR , TYPE_NEW_PROG ,
+   "Generates sin/cos waveforms for bandpass-via-regression" ,
+   NULL } ,
+
+ { 4 , JAN , 2012 , RWC , "1dsvd" , MICRO , TYPE_MODIFY ,
+   "Add percent ability to -nev option" ,
+   "That is, the ability to output (via -1Dleft) the set of vectors that\n"
+   "make up the first 'n' percent of the column space." } ,
+
+ { 3 , JAN , 2012 , RWC , "THD_dset_in_session" , MICRO , TYPE_MODIFY ,
+   "Alter FIND_PREFIX to strip off '+view' if present." ,
+   NULL } ,
+
+ { 23 , DEC , 2011 , RWC , "afni" , MICRO , TYPE_MODIFY ,
+   "Allow user to append a string to the overlay label" ,
+   "Via environment AFNI_IMAGE_LABEL_STRING or by a new item on the\n"
+   "intensity bar popup menu in the GUI -- the latter takes precendence. \n"
+   "This is Ziad's Xmas present." } ,
+
+ { 22 , DEC , 2011 , RWC , "afni realtime plugin" , MICRO , TYPE_NEW_ENV ,
+   "AFNI_REALTIME_External_Dataset environment variable" ,
+   "Lets the realtime user (let's call her/him 'CC') specify an external\n"
+   "dataset to be used as the registation base.  CC doesn't have to use a\n"
+   "dataset that is in the cwd, unlike the plugin's GUI selector.  Nor does\n"
+   "the setting of this environment variable affect the plugin's GUI." } ,
+
+ { 22 , DEC , 2011 , RWC , "mycat" , MICRO , TYPE_NEW_PROG ,
+   "Minor program to be sort of like 'cat' but un-Microsofts files." ,
+   NULL } ,
+
+ { 22 , DEC , 2011 , RWC , "afni_fgets" , MICRO , TYPE_MODIFY ,
+   "Modified to use system fgets if file pointer is a ttty" ,
+   NULL } ,
+
+ { 21 , DEC , 2011 , RWC , "afni_fgets" , MICRO , TYPE_MODIFY ,
+   "Modify to use system fgets for stdin" ,
+   NULL } ,
+
+ { 20 , DEC , 2011 , RWC , "fgets" , MICRO , TYPE_GENERAL ,
+   "Replace (mostly) fgets with afni_fgets" ,
+   "Recognizes CR and CR+LF and LF+CR as line enders, not just LF like the\n"
+   "standard Unix library function -- these Microsofties are killing me." } ,
+
+ { 20 , DEC , 2011 , RWC , "3dttest++" , MICRO , TYPE_MODIFY ,
+   "Add debug output to thd_table.c" ,
+   "To help me (and users) figure out what might be wrong with a covariates\n"
+   "table.  Also applies to 3dGroupInCorr" } ,
+
+ { 20 , DEC , 2011 , RWC , "fdrval" , MICRO , TYPE_MODIFY ,
+   "Add -inverse (AKA -qinput) option" ,
+   "Allows user to compute the threshold, given the q-value." } ,
+
+ { 19 , DEC , 2011 , RWC , "THD_patch_brickim" , MICRO , TYPE_MODIFY ,
+   "Modify to set zero dataset grids spacings to a nonzero value" ,
+   "In the dataset struct itself, that is, not just the brick image structs." } ,
+
+ { 16 , DEC , 2011 , RWC , "3dLSS" , MICRO , TYPE_GENERAL ,
+   "Added -nodata option, and fleshed out the help with an example." ,
+   NULL } ,
+
+ { 15 , DEC , 2011 , RWC , "3dLSS" , MICRO , TYPE_NEW_PROG ,
+   "3dLSS implement LS-S regression" ,
+   "As described in Mumford, Turner, Asby, and Poldrack, NeuroImage 2011. \n"
+   "See 3dLSS -help for more info." } ,
+
+ { 9 , DEC , 2011 , RWC , "afni (imseq.c)" , MICRO , TYPE_BUG_FIX ,
+   "Patch weird bug" ,
+   "When the intensity bar popup menu is up, then the user clicks on an\n"
+   "optmenu, then the next time the user button1 clicks in the image viewer\n"
+   "(say to move the crosshairs), the values of last_bx and last_by are lost\n"
+   "(reset to 0) so the move wrong.  Solution -- check if button release is\n"
+   "in the same location (or close) as the button press, and only then allow\n"
+   "a move." } ,
+
+ { 9 , DEC , 2011 , RWC , "3dttest" , MICRO , TYPE_BUG_FIX ,
+   "Fix sub-brick selection bug" ,
+   "in THD_multiplex_dataset(), the '$' was not treated right -- just set to\n"
+   "999998.  Fix is to use MCW_get_thd_intlist() for proper expansion, which\n"
+   "also will add sub-brick label selection capability." } ,
+
+ { 6 , DEC , 2011 , RWC , "3dDeconvolve" , MICRO , TYPE_GENERAL ,
+   "Allow runs with -polort ONLY (no other regression model)" ,
+   NULL } ,
+
+ { 2 , DEC , 2011 , RWC , "3dDeconvolve" , MICRO , TYPE_NEW_OPT ,
+   "Add -ortvec option (to appease the Inati)" ,
+   "Lets the pitiful user add multiple baseline (i.e., ort) vectors from a\n"
+   "single file." } ,
+
+ { 1 , DEC , 2011 , RWC , "p2t" , MICRO , TYPE_GENERAL ,
+   "Remove this program from AFNI binary distributions" ,
+   NULL } ,
+
+ { 18 , NOV , 2011 , RWC , "3dUndump" , MICRO , TYPE_BUG_FIX ,
+   "Fix bug introduced with -ROImask" ,
+   NULL } ,
+
+ { 16 , NOV , 2011 , RWC , "3dDeconvolve" , MICRO , TYPE_BUG_FIX ,
+   "Condition numbers were checked with SQUARES of singular values!" ,
+   "Fixed by changing function matrix_singvals().  Also make clear in 1dsvd\n"
+   "help that -vnorm option is needed to compare singular values with\n"
+   "3dDeconvolve." } ,
+
+ { 16 , NOV , 2011 , RWC , "dicom_hinfo" , MICRO , TYPE_GENERAL ,
+   "Minor edits, mostly to the help." ,
+   NULL } ,
+
+ { 15 , NOV , 2011 , RWC , "dicom_hinfo" , MINOR , TYPE_NEW_PROG ,
+   "For printing out info from lots of DICOM files" ,
+   "For each file input, prints 1 line with the values of only the desired\n"
+   "tags.  The goal is to be helpful in figuring out which files go\n"
+   "together.  See Example #2 in the help output for such a case." } ,
+
+ { 10 , NOV , 2011 , RWC , "afni InstaCorr" , MINOR , TYPE_NEW_OPT ,
+   "Add ExtraSet option" ,
+   "That is, to correlate seeds from the TimeSeries dataset with voxel data\n"
+   "from the ExtraSet dataset.  Ziad asked for something like this, so here\n"
+   "it is." } ,
+
+ { 9 , NOV , 2011 , RWC , "3dUndump" , MINOR , TYPE_NEW_OPT ,
+   "Add -ROImask option" ,
+   "To put values into locations defined by a mask dataset." } ,
+
+ { 8 , NOV , 2011 , RWC , "afni" , MICRO , TYPE_NEW_ENV ,
+   "AFNI_IMAGE_COLORANGLE" ,
+   "Set this to 360 to get the 'Colr' image to be a full circle colormap." } ,
+
+ { 7 , NOV , 2011 , RWC , "3dDeconvolve" , MINOR , TYPE_MODIFY ,
+   "No -iresp or -sresp for dmBLOCK" ,
+   "Also, change defintion of 'near-duplicate' times from 0.05*TR to 0.50*TR" } ,
+
+ { 17 , OCT , 2011 , RWC , "3dhistog" , MICRO , TYPE_MODIFY ,
+   "removed DOS ctrl-M's in file, they screwed things up for compiling" ,
+   NULL } ,
+
+ { 13 , OCT , 2011 , RWC , "3dttest++" , MINOR , TYPE_BUG_FIX ,
+   "Fixed error in computing with un-centered covariates" ,
+   "inv[Xt*X] matrix not computed correctly in mri_matrix_psinv_pair()\n"
+   "function." } ,
+
+ { 12 , OCT , 2011 , RWC , "NIML library" , MICRO , TYPE_GENERAL ,
+   "Extend printout of floats to higher precision" ,
+   NULL } ,
+
+ { 7 , OCT , 2011 , RWC , "afni" , MICRO , TYPE_GENERAL ,
+   "Move splashes, faces, and poems to funstuff/ subdirectory" ,
+   "funstuff/ is now a sub-directory of the binary install directory." } ,
+
+ { 7 , OCT , 2011 , RWC , "1dTsort" , MICRO , TYPE_GENERAL ,
+   "Add -col option, to sort on just one column." ,
+   NULL } ,
+
+ { 21 , SEP , 2011 , RWC , "3dTshift" , MICRO , TYPE_NEW_OPT ,
+   "Add -voxshift option" ,
+   NULL } ,
+
+ { 21 , SEP , 2011 , RWC , "3dClustSim" , MICRO , TYPE_NEW_OPT ,
+   "Add -2sided option" ,
+   NULL } ,
+
+ { 26 , AUG , 2011 , RWC , "3dclust" , MICRO , TYPE_NEW_OPT ,
+   "add -savemask option" ,
+   NULL } ,
+
+ { 26 , AUG , 2011 , RWC , "afni Clusterize" , MICRO , TYPE_GENERAL ,
+   "Modify to print out 3dclust and whereami commands when used" ,
+   "Per the suggestion of Andy Connolly of Dartmouth College." } ,
+
+ { 19 , AUG , 2011 , RWC , "3dNwarpCalc" , MINOR , TYPE_MODIFY ,
+   "Fix &readpoly() and implement &read4x4()" ,
+   "Modify 3dNwarpApply to use same function as &apply() so that the 2\n"
+   "programs are in sync.\n"
+   "Release 3dNwarpCalc into the wild:\n"
+   "\n"
+   "Born free, and code is worth running, but only worth running, because\n"
+   "you're born freeware!" } ,
+
+ { 18 , AUG , 2011 , RWC , "3dNwarpCalc" , MICRO , TYPE_GENERAL ,
+   "Add '&apply' function" ,
+   "To apply a calculated 3D warp to a dataset, without having to use\n"
+   "3dNwarpApply" } ,
+
+ { 18 , AUG , 2011 , RWC , "3dttest++" , MICRO , TYPE_GENERAL ,
+   "Add some clarify text about covariates to the -help output" ,
+   "Also add an addition check to see if dataset name covariates are all the\n"
+   "same, and print out some info about the covariates." } ,
+
+ { 11 , AUG , 2011 , RWC , "3dNwarpCalc" , MICRO , TYPE_GENERAL ,
+   "Added sqrt of a nonlinear warp to the repertoire." ,
+   NULL } ,
+
+ { 9 , AUG , 2011 , RWC , "3dNwarpCalc" , MINOR , TYPE_NEW_PROG ,
+   "Implemented about 80% of it" ,
+   "Seems to work, but needs a fair amount of fine tuning and testing." } ,
+
+ { 9 , AUG , 2011 , RWC , "3dTstat" , MICRO , TYPE_NEW_OPT ,
+   "Add '-cvarinv' option for Vinai" ,
+   NULL } ,
+
+ { 2 , AUG , 2011 , RWC , "3dclust" , MINOR , TYPE_NEW_OPT ,
+   "Add '-inmask' option, to use internal mask" ,
+   "To be compatible with AFNI's Clusterize GUI, which was also modified to\n"
+   "output this option when appropriate." } ,
+
+ { 1 , AUG , 2011 , RWC , "afni" , MICRO , TYPE_MODIFY ,
+   "Clusterize minor changes" ,
+   "* Shift+3clust button = actually run the 3dclust command, in addition\n"
+   "printing it out\n"
+   "* Add a warning message if an internal 3dClustSim mask is present, since\n"
+   "3dclust results will vary from Clusterize\n"
+   "* Add Jumpto buttons to AFNI crosshair label popup menu" } ,
+
+ { 21 , JUL , 2011 , RWC , "3dttest++" , MICRO , TYPE_MODIFY ,
+   "Add column selection to -covariates for this, also" ,
+   NULL } ,
+
+ { 20 , JUL , 2011 , RWC , "3dGroupInCorr" , MICRO , TYPE_MODIFY ,
+   "Allow sub-brick selectors on the -covariates table" ,
+   NULL } ,
+
+ { 15 , JUL , 2011 , RWC , "3dGroupInCorr" , MICRO , TYPE_NEW_OPT ,
+   "Add -center option for covariates (cf. Chen Gang)" ,
+   NULL } ,
+
+ { 13 , JUL , 2011 , RWC , "3dTcorrMap" , MINOR , TYPE_BUG_FIX ,
+   "Bug in computation of indx" ,
+   "The mask is turned into an index table of active voxel indx[].  However,\n"
+   "constant voxels were removed from the mask AFTER indx[] was created,\n"
+   "which is stupid.  This is fixed now, and Zhark will be chastised." } ,
+
+ { 8 , JUL , 2011 , RWC , "AFNI" , MICRO , TYPE_BUG_FIX ,
+   "Tips HTML window crashes on kampos (Solaris)" ,
+   "Debugging shows XmHTML crashed when rendering different-than-normal\n"
+   "fonts.  Solution = strip font-changing HTML tags out of file before\n"
+   "display -- only on systems marked as evil in this way." } ,
+
+ { 5 , JUL , 2011 , RWC , "1dplot" , MICRO , TYPE_NEW_OPT ,
+   "add -NOLINE to include clipping of points outside the box" ,
+   NULL } ,
+
+ { 1 , JUL , 2011 , RWC , "afni" , MINOR , TYPE_GENERAL ,
+   "Replace text-only AFNI Tips with HTML-based" ,
+   "Allows incorporation of images and better formatting.\n"
+   "Uses XmHTML widget set, whose source code is also added to AFNI." } ,
+
+ { 28 , JUN , 2011 , RWC , "3dDeconvolve" , MICRO , TYPE_NEW_ENV ,
+   "Ability to skip the 'centering' done in AM2 regression" ,
+   "By setting environment variable AFNI_3dDeconvolve_rawAM2 to YES, as in\n"
+   "the command\n"
+   " 3dDeconvolve -DAFNI_3dDeconvolve_rawAM2=YES ..." } ,
+
+ { 27 , JUN , 2011 , RWC , "afni" , MICRO , TYPE_MODIFY ,
+   "Add README.afnigui and AFNI Tips button" ,
+   NULL } ,
+
+ { 23 , JUN , 2011 , RWC , "afni InstaCorr" , MINOR , TYPE_MODIFY ,
+   "Ability to INIT-ialize InstaCorr from a plugout" ,
+   "Details are in README.driver, under the INSTACORR command section." } ,
+
+ { 17 , JUN , 2011 , RWC , "afni" , MICRO , TYPE_MODIFY ,
+   "Button3 (right) click image viewer 'Disp' to raise AFNI controller" ,
+   NULL } ,
+
+ { 15 , JUN , 2011 , RWC , "3dmaskave" , MICRO , TYPE_NEW_OPT ,
+   "Add -sum option; rearrange -help output a little." ,
+   NULL } ,
+
+ { 7 , JUN , 2011 , RWC , "3dAllineate" , MICRO , TYPE_GENERAL ,
    "modify number of points used for optimization" ,
    "Powell's NEWUOA algorithm requires specifying number of points kept at\n"
    "each stage for approximating the objective function.  Modification here\n"

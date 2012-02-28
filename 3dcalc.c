@@ -226,7 +226,8 @@ void CALC_read_opts( int argc , char * argv[] )
    int nopt = 1 ;
    int ids ;
    int ii, kk;
-
+   char *srcspace=NULL;
+      
    for( ids=0 ; ids < 26 ; ids++ ){
       CALC_dset[ids]   = NULL ;
       CALC_type[ids]   = -1 ;
@@ -645,10 +646,24 @@ void CALC_read_opts( int argc , char * argv[] )
          nxyz = dset->daxes->nxx * dset->daxes->nyy * dset->daxes->nzz ;
          if( CALC_nvox < 0 ){
             CALC_nvox = nxyz ;
-         } else if( nxyz != CALC_nvox ){
-            ERROR_exit("dataset %s differs in size [%d voxels] from others [%d]\n",
-                       argv[nopt-1] , nxyz , CALC_nvox ) ;
-         }
+            /* set space for any atlas datasets */
+            srcspace = THD_get_space(dset); /* update default space */
+            set_out_space(srcspace);   /* make output space for mask dset */
+         } 
+         else{
+            if(!equivalent_space(THD_get_space(dset))){
+               WARNING_message(
+          "Template space of dataset %s does not match space of first dataset\n"
+          "Continuing anyway, but be sure the datasets really do match\n",
+                  argv[nopt-1]);
+/*               exit(1);*/
+            }
+            if( nxyz != CALC_nvox ){
+               ERROR_exit(
+                "dataset %s differs in size [%d voxels] from others [%d]\n",
+                argv[nopt-1] , nxyz , CALC_nvox ) ;
+            }
+        }
 
          if( !DSET_datum_constant(dset) ){   /* 29 May 2003 */
            float *far ;
@@ -773,8 +788,9 @@ DSET_DONE: continue;  /*** target for various goto statements above ***/
 
       } /* end of dataset input */
 
-      ERROR_exit("Unknown option: %s\n",argv[nopt]) ;
-
+      ERROR_message("Unknown option: %s\n",argv[nopt]) ;
+      suggest_best_prog_option(argv[0], argv[nopt]);
+      exit(1);
    }  /* end of loop over options */
 
    /*---------------------------------------*/
@@ -1541,7 +1557,8 @@ int main( int argc , char *argv[] )
    mainENTRY("3dcalc main"); machdep() ;
    PRINT_VERSION("3dcalc") ; AUTHOR("A cast of thousands") ;
    THD_check_AFNI_version("3dcalc") ;
-
+   set_obliquity_report(0); /* silence obliquity */
+   
    { int new_argc ; char ** new_argv ;
      addto_args( argc , argv , &new_argc , &new_argv ) ;
      if( new_argv != NULL ){ argc = new_argc ; argv = new_argv ; }
@@ -1570,12 +1587,22 @@ int main( int argc , char *argv[] )
    /* 23 May 2005: check input datasets for axis consistency */
 
    for( iii=0 ; iii < 26 ; iii++ ){
+     double angle;
      if( iii            != ids                                &&
-         CALC_dset[iii] != NULL                               &&
-         !EQUIV_DATAXES(new_dset->daxes,CALC_dset[iii]->daxes)  )
-       WARNING_message("dataset '%c'=%s grid mismatch with %s\n",
+         CALC_dset[iii] != NULL) {
+       if (!EQUIV_DATAXES(new_dset->daxes,CALC_dset[iii]->daxes)  )
+         WARNING_message("dataset '%c'=%s grid mismatch with %s\n",
                       'a'+iii , DSET_BRIKNAME(CALC_dset[iii]) ,
                                 DSET_BRIKNAME(CALC_dset[ids]) ) ;
+      
+       }
+       angle = dset_obliquity_angle_diff(new_dset, CALC_dset[iii], -1.0);
+       if (angle > 0.0) {
+         WARNING_message(
+           "dataset '%c'=%s has an obliquity difference of %f degrees with %s\n",
+            'a'+iii , DSET_BRIKNAME(CALC_dset[iii]) ,
+            angle, DSET_BRIKNAME(CALC_dset[ids]) );
+       }
    }
 
    /** make history for new dataset */

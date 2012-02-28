@@ -2,7 +2,7 @@ print("#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 print("          ================== Welcome to 1dSVAR.R ==================          ")
 print("AFNI Structural Vector Auto-Regressive (SVAR) Modeling Package!")
 print("#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
-print("Version 0.0.2,  April. 28, 2011")
+print("Version 0.0.3,  June 21, 2011")
 print("Author: Gang Chen (gangchen@mail.nih.gov)")
 print("Website: http://afni.nimh.nih.gov/sscc/gangc/SVAR.html")
 print("SSCC/NIMH, National Institutes of Health, Bethesda MD 20892")
@@ -846,10 +846,10 @@ cat("\tROI names should be provided for both column and row.\n")
 cat("\tThe diagonals should be 0, and each of the off-diagonals\n")
 cat("\tindicates a connection from row to column, specified with\n")
 cat("\teither 0 (not connected), NA (to be estimated), or a known\n")
-cat("\tvalue (prior knowledge of path stength).\n\n")
+cat("\tvalue (prior knowledge of path strength).\n\n")
 
 
-instMat <- readMultiFiles(1, 2, "specification matrix for instantaneous effectss") # both row and column names assumed
+instMat <- readMultiFiles(1, 2, "specification matrix for instantaneous effects") # both row and column names assumed
 instMat <- diag(nROIs)-t(as.matrix(instMat[[1]])) # A0
 
 #readMultiFiles(1, 1, "instantaneous effects matrix")
@@ -860,7 +860,13 @@ instMat <- diag(nROIs)-t(as.matrix(instMat[[1]])) # A0
 #vv <- SVAR(x = fm, estmethod = "scoring", Amat = aa, Bmat = NULL, max.iter = 100, maxls = 1000, conv.crit = 1.0e-6)
 bb <- diag(nROIs); diag(bb) <- NA  # make B as a diagonal matrix with unknown elments
 
-fm2 <- SVAR(x = fm, estmethod = "scoring", Amat = instMat, Bmat = bb, max.iter = 100, maxls = 1000, conv.crit = 1.0e-6)
+cat("\nThe following two options are for numerical algorithm. Choose first")
+cat("\n'Iterative', switch to 'Direct' if the iterative approach fails.\n\n")
+
+estMeth <- as.integer(readline("Numerical scheme (0: Iterative; 1: Direct)? "))
+
+if(estMeth==0) fm2 <- SVAR(x = fm, estmethod = "scoring", Amat = instMat, Bmat = bb, max.iter = 100, maxls = 1000, conv.crit = 1.0e-6)
+if(estMeth==1) fm2 <- SVAR(x = fm, estmethod = "direct", Amat = instMat, Bmat = bb, max.iter = 100, maxls = 1000, conv.crit = 1.0e-6)
 
 #vv <- SVAR(x = fm, estmethod = "scoring", Amat = aa, Bmat = bb, max.iter = 100, maxls = 1000, conv.crit = 1.0e-6)
 #(vv$A[abs(vv$Ase)>1e-6])/(vv$As[abs(vv$Ase)>1e-6])

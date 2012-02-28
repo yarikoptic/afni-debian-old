@@ -31,7 +31,6 @@
 #define MAIN
 
 #include "afni.h"
-#include "thd_atlas.h"
 #include <X11/keysym.h>  /* 20 Feb 2003 */
 #include "afni_plugout.h"
 
@@ -238,6 +237,11 @@ void AFNI_syntax(void)
      "   -port_number PORT_NAME: Give port number for PORT_NAME and quit\n"
      "   -port_number_quiet PORT_NAME: Same as -port_number but writes out \n"
      "                                    number only\n"
+     "   -available_npb: Find the first available block of port numbers, \n"
+     "                   print it to stdout and quit\n"
+     "                   The value can be used to set the -npb option for\n"
+     "                   a new set of chatty AFNI/SUMA/etc group.\n"
+     "   -available_npb_quiet: Just print the block number to stdout and quit.\n"
      "\n"
      "   -com ccc     This option lets you specify 'command strings' to\n"
      "                  drive AFNI after the program startup is completed.\n"
@@ -266,8 +270,12 @@ void AFNI_syntax(void)
      " * The maximum number of datasets per session is %d.\n"
      " * To change these maximums, you must edit file '3ddata.h' and then\n"
      "    recompile this program.\n"
-
-     , get_np_help() , THD_MAX_NUM_SESSION , THD_MAX_SESSION_SIZE
+     "\n"
+     "Global Options (available to all AFNI/SUMA programs)\n"
+     "%s"
+     , get_np_help() ,
+     THD_MAX_NUM_SESSION , THD_MAX_SESSION_SIZE , 
+     get_gopt_help()
    ) ;
 
    printf(
@@ -276,6 +284,7 @@ void AFNI_syntax(void)
      "USAGE 2: read in images for 'quick and dirty' viewing\n"
      "-----------------------------------------------------\n"
      "(Most advanced features of AFNI will be disabled.)\n"
+     "(The aiv program can be used now instead of AFNI.)\n"
      "\n"
      "   afni -im [options] im1 im2 im3 ...\n"
      "\n"
@@ -381,6 +390,8 @@ void AFNI_syntax(void)
      "   -nomall      Disables use of the mcw_malloc() library routines.\n"
 #endif
      "   -motif_ver   Show the applied motif version string.\n"
+     "   -goodbye     Print a 'goodbye' message and exit (just for fun).\n"
+     "   -ver         Print the current AFNI version and exit.\n"
      "\n"
      "N.B.: Many of these options, as well as the initial color set up,\n"
      "      can be controlled by appropriate X11 resources.  See the\n"
@@ -480,6 +491,23 @@ void AFNI_syntax(void)
     "  * http://dx.doi.org/10.1016/j.neuroimage.2008.09.037\n"
     "  * http://afni.nimh.nih.gov/sscc/rwcox/papers/LocalPearson2009.pdf\n"
     "\n"
+    "ZS Saad, RC Reynolds, BD Argall, S Japee, RW Cox.\n"
+    "  SUMA: An interface for surface-based intra- and inter-subject analysis\n"
+    "  within AFNI.  2004 IEEE International Symposium on Biomedical Imaging:\n"
+    "  from Nano to Macro.  IEEE, Arlington VA, pp. 1510-1513.\n"
+    "\n"
+    "  * A brief description of SUMA.\n"
+    "  * http://dx.doi.org/10.1109/ISBI.2004.1398837\n"
+    "  * http://afni.nimh.nih.gov/sscc/rwcox/papers/SUMA2004paper.pdf\n"
+    "\n"
+    "BD Argall, ZS Saad, MS Beauchamp.\n"
+    "  Simplified intersubject averaging on the cortical surface using SUMA.\n"
+    "  Human Brain Mapping 27: 14-27, 2006.\n"
+    "\n"
+    "  * Describes the 'standard mesh' surface approach used in SUMA.\n"
+    "  * http://dx.doi.org/10.1002/hbm.20158\n"
+    "  * http://afni.nimh.nih.gov/sscc/rwcox/papers/SUMA2006paper.pdf\n"
+    "\n"
     "POSTERS on varied subjects from the AFNI development group can be found at\n"
     "  * http://afni.nimh.nih.gov/sscc/posters\n"
    ) ;
@@ -526,8 +554,8 @@ void AFNI_parse_args( int in_argc , char *in_argv[] )
 
 ENTRY("AFNI_parse_args") ;
 
-   if( argc > 1 && strncmp(argv[1],"-help",2) == 0 ) AFNI_syntax() ;
-   
+   if( argc > 1 && strcmp(argv[1],"-help")    == 0 ) AFNI_syntax() ;
+
    GLOBAL_argopt.dz       = 1.0 ;          /* set up defaults */
    GLOBAL_argopt.dy       = 1.0 ;
    GLOBAL_argopt.ignore   = INIT_ignore ;
@@ -580,6 +608,9 @@ ENTRY("AFNI_parse_args") ;
      if( lf != NULL ){
        char *eh = NULL , *ff ;
        int ll = strlen(lf) + 8 ;
+       if( !THD_is_file(lf) && lf[0] == '.' ){
+         if( THD_is_file(lf+1) ) lf = lf+1 ;
+       }
        if( !THD_is_file(lf) && lf[0] != '/' ) eh = getenv("HOME") ;
        if( eh != NULL ) ll += strlen(eh) ;
        ff = AFMALL(char, ll) ;
@@ -1133,27 +1164,38 @@ ENTRY("AFNI_parse_args") ;
 
          narg++ ; continue ;  /* go to next arg */
       }
-      
+
       /* -list_ports list and quit */
       if( strncmp(argv[narg],"-list_ports", 8) == 0) {
          show_ports_list(); exit(0);
       }
       
+      /* -available_npb and quit */
+      if( strcmp(argv[narg],"-available_npb") == 0) {
+         fprintf(stdout,
+                 "\nFirst available npb: %d\n",get_available_npb());
+         exit(0);
+      }
+      if( strncmp(argv[narg],"-available_npb_quiet", 17) == 0) {
+         fprintf(stdout,"%d\n",get_available_npb());
+         exit(0);
+      }
+
       /* -port_number and quit */
       if( strncmp(argv[narg],"-port_number", 8) == 0) {
          int pp = 0;
-         if( ++narg >= argc ) 
-            ERROR_exit("need an argument after -port_number!"); 
+         if( ++narg >= argc )
+            ERROR_exit("need an argument after -port_number!");
          pp = get_port_named(argv[narg]);
-         if (strcmp(argv[narg-1], "-port_number_quiet")) { 
-            fprintf(stdout, "\nPort %s: %d\n", argv[narg], pp); 
+         if (strcmp(argv[narg-1], "-port_number_quiet")) {
+            fprintf(stdout, "\nPort %s: %d\n", argv[narg], pp);
          } else {
-            fprintf(stdout, "%d\n", pp); 
+            fprintf(stdout, "%d\n", pp);
          }
          if (pp < 1) exit(1);
          else exit(0);
       }
-            
+
       /*----- -nomall option -----*/
 
       if( strncmp(argv[narg],"-nomall",5) == 0 ){    /* was handled in main() */
@@ -1181,6 +1223,7 @@ ENTRY("AFNI_parse_args") ;
       /*----- if we get here, bad news for America! -----*/
 
       ERROR_message("Unknown option %s ***",argv[narg]) ;
+      suggest_best_prog_option(argv[0], argv[narg]);
       ERROR_exit   ("Try 'afni -help' for a list of command line options.") ;
 
    } /* end of loop over argv's starting with '-' */
@@ -1258,18 +1301,18 @@ static char *FALLback[] =
   {   "AFNI*fontList:              9x15bold=charset1"    ,
       "AFNI*pbar*fontList:         6x10=charset1"        ,
       "AFNI*imseq*fontList:        7x13=charset1"        ,
-      "AFNI*font8*fontList:        8x13=charset1"        ,
+      "AFNI*font8*fontList:        8x13bold=charset1"    ,
       "AFNI*font7*fontList:        7x13=charset1"        ,
       "AFNI*font6*fontList:        6x10=charset1"        ,
-      "AFNI*background:            gray20"               ,
-      "AFNI*menu*background:       gray12"               ,
-      "AFNI*borderColor:           gray20"               ,
+      "AFNI*background:            gray19"               ,
+      "AFNI*menu*background:       gray5"                ,
+      "AFNI*borderColor:           gray19"               ,
       "AFNI*foreground:            yellow"               ,
       "AFNI*borderWidth:           0"                    ,
       "AFNI*troughColor:           blue3"                ,
       "AFNI*XmLabel.translations:  #override<Btn2Down>:" , /* Motif 2.0 bug */
       "AFNI*help*background:       black"                ,
-      "AFNI*help*foreground:       #ffdd66"              ,
+      "AFNI*help*foreground:       #ffffff"              ,
       "AFNI*help*helpborder:       False"                ,
       "AFNI*help*waitPeriod:       1066"                 ,
       "AFNI*help*fontList:         9x15bold=charset1"    ,
@@ -1382,17 +1425,42 @@ void AFNI_sigfunc_alrm(int sig)
      "I will not say 'do not weep', for not all tears are an evil"   ,
      "Calo anor na ven -- May the sun shine upon your road"          ,
      "Little by little, one travels far"                             ,
+     "Divide By Cucumber Error; Please Reinstall Universe and Reboot",
+     "Out of Cheese Error; Please Install Wensleydale and Try Again" ,
+     "If at first you don't succeed -- call it version 1.0"          ,
+     "Never trust a statistic you haven't faked yourself"            ,
+     "May your teeth never be replaced by woolen socks"              ,
+     "Hasta la vista and so long for now"                            ,
+     "Farewell, and may an elephant never sit on your computer"      ,
+     "So long, and may the bluebird of happiness fly up your nose"   ,
+     "Ta ta, and may an elephant caress you gently with his toes"    ,
+     "The Square Root of -1 said to Pi, 'Be Rational'"               ,
+     "Pi told the Square Root of -1 to 'Get Real'"                   ,
+     "By Grapthar's Hammer, you SHALL be avenged"                    ,
+     "We live to tell the tale"                                      ,
+     "Are we there yet?"                                             ,
+     "Never give up, never surrender"                                ,
+     "Activate the Omega 13"                                         ,
+     "No time for pleasantries; we have a level-5 emergency!"        ,
+     "Digitize me, Fred"                                             ,
+     "Drink to me only with thine eyes, and I will drink with mine"  ,
+     "O Captain, My Captain, rise up and hear the bells"             ,
+     "Ever returning spring, trinity sure to me you bring"           ,
+
+     "May the Dark Side of the Force get lost on the way to your data"                ,
+     "The Andromeda Galaxy is on a collision course with us -- be prepared"           ,
+     "AFNI is very user friendly -- we are just selective about who our friends are"  ,
      "May it be a light to you in dark places, when all other lights go out"          ,
      "No in elenath hilar nan had gin -- May the stars shine upon your path"          ,
      "There is a time for departure even when there is no place to go"                ,
      "Sometimes you've got to let go to see if there was anything worth holding onto" ,
      "Remember me and smile, for it's better to forget than remember me and cry"      ,
      "So now I say goodbye, but I feel sure we will meet again sometime"              ,
-     "If you're anything like me, you're both smart and incredibly good looking"      ,
+     "If you're anything like me, you're both smart and incredibly good looking"
    } ;
 #undef NTOP
 #ifdef USE_SONNETS
-# define NTOP (NMSG+9)
+# define NTOP (NMSG+3)
 #else
 # define NTOP NMSG
 #endif
@@ -1409,11 +1477,11 @@ void AFNI_sigfunc_alrm(int sig)
      else {
 #undef  NDEL
 #define NDEL (sizeof(del)/sizeof(char *))
-       char *del[] = { "delectation" , "delight"       ,
-                       "edification" , "ennoblement"   ,
-                       "felicity"    , "gratification"  } ;
+       char *del[] = { "delectation" , "delight"       , "spirit"       ,
+                       "edification" , "ennoblement"   , "refinement"   ,
+                       "felicity"    , "gratification" , "enlightenment" } ;
        nn = (lrand48()>>3) % NUM_SONNETS ;
-       fprintf(stderr,"\n** Exeunt AFNI: for your %s, a sonnet by Shakespeare:\n"
+       fprintf(stderr,"\n** Exeunt AFNI: for thy %s, a sonnet by William Shakespeare:\n"
                       "                  --- %d ---\n"
                       "%s\n" , del[lrand48()%NDEL] , nn+1 , sonnets[nn] ) ;
      }
@@ -1471,30 +1539,10 @@ int main( int argc , char *argv[] )
 
    /*--- help the pitiful user? ---*/
 
-   if( argc > 1 && strncmp(argv[1],"-help",2) == 0 ) AFNI_syntax() ;
+   init_rand_seed(0) ;
 
-   { char *eee = getenv("AFNI_FORK") ;    /* 31 May 2011 */
-     if( YESSISH(eee) ){
-       ii = (int)fork();
-       if( ii != 0 ){         /* parent process dies now */
-         AFNI_sleep(2345) ;   /* msec */
-         fprintf(stderr,"++ AFNI is detached from terminal.\n") ;
-         _exit(0) ;
-       }
-     }
-   }
-
-   AFNI_prefilter_args( &argc , argv ) ;  /* 11 Dec 2007 */
-
-   /*--- Initialize some stuff ---*/
-
-   machdep() ;                     /* RWCox: 20 Apr 2001 */
-   THD_load_datablock_verbose(1) ; /* 21 Aug 2002 */
-
-   signal(SIGINT ,AFNI_sigfunc) ;  /* may be superseded by mainENTRY below */
-   signal(SIGBUS ,AFNI_sigfunc) ;
-   signal(SIGSEGV,AFNI_sigfunc) ;
-   signal(SIGTERM,AFNI_sigfunc) ;
+   if( argc > 1 && strcmp(argv[1],"-help")    == 0 ) AFNI_syntax() ;
+   if( argc > 1 && strcmp(argv[1],"-goodbye") == 0 ) AFNI_sigfunc_alrm(0) ;
 
    /** Check for -version [15 Aug 2003] **/
 
@@ -1546,6 +1594,31 @@ int main( int argc , char *argv[] )
 
    if( dienow) exit(0) ;
 
+   /*** otherwise, perhaps become all detached from reality ***/
+
+   { char *eee = getenv("AFNI_FORK") ;    /* 31 May 2011 */
+     if( YESSISH(eee) ){
+       ii = (int)fork();
+       if( ii != 0 ){         /* parent process dies now */
+         AFNI_sleep(2345) ;   /* msec */
+         fprintf(stderr,"++ AFNI is detached from terminal.\n") ;
+         _exit(0) ;
+       }
+     }
+   }
+
+   /*--- Initialize some stuff ---*/
+
+   machdep() ;
+   AFNI_prefilter_args( &argc , argv ) ;  /* 11 Dec 2007 */
+
+   THD_load_datablock_verbose(1) ; /* 21 Aug 2002 */
+
+   signal(SIGINT ,AFNI_sigfunc) ;  /* may be superseded by mainENTRY below */
+   signal(SIGBUS ,AFNI_sigfunc) ;
+   signal(SIGSEGV,AFNI_sigfunc) ;
+   signal(SIGTERM,AFNI_sigfunc) ;
+
 #if 0
 #ifdef USE_TRACING
    if( ALLOW_realtime ) DBG_trace = 0 ; /* 26 Jan 2001 */
@@ -1587,7 +1660,9 @@ int main( int argc , char *argv[] )
    if( argc > 1 ) AFNI_logger("afni",argc,argv) ; /* 14 Aug 2001 */
 #endif
 
+#if 0                                          /* now in machdep() */
    srand48((long)time(NULL)+(long)getpid()) ;  /* initialize random number generator */
+#endif
 
    REPORT_PROGRESS( "\n" ) ;
 
@@ -1745,6 +1820,10 @@ int main( int argc , char *argv[] )
    if( AFNI_yesenv("AFNI_ALWAYS_LOCK") ){
      for( ii=0 ; ii < MAX_CONTROLLERS ; ii++ )
        GLOBAL_library.controller_lock |= (1<<ii) ;
+   }
+
+   if( AFNI_yesenv("AFNI_TIME_LOCK") ){
+       GLOBAL_library.time_lock = 1 ;
    }
 
    /*-- now create first display context: MAIN_dc --*/
@@ -2452,9 +2531,15 @@ ENTRY("AFNI_startup_timeout_CB") ;
 
    /* finish up getting AFNI ready to be presented to the world */
 
+   if( im3d->vwid->tips_pb != NULL && lrand48()%2==0 )
+     MCW_flash_widget(1,im3d->vwid->tips_pb) ;
+
    SHOW_AFNI_READY ;
    RESET_AFNI_QUIT(im3d) ;
    PICTURE_OFF(im3d) ;
+
+   if( im3d->vwid->tips_pb != NULL && lrand48()%2==0 )
+     MCW_flash_widget(1,im3d->vwid->tips_pb) ;
 
    /* 29 Jul 2005: run any driver commands from the command line */
 
@@ -2490,6 +2575,152 @@ ENTRY("AFNI_startup_timeout_CB") ;
 
    MPROBE ;                       /* check mcw_malloc() for integrity */
    EXRETURN ;
+}
+
+/*----------------------------------------------------------------------
+   Return the underlay or overlay brick and the sub-brick index that 
+   the user had selected in the 'Underlay' and 'Overlay' menus.
+   
+   So whether or not the user has bkgd:ULay or bkgd:OLay is irrelevant 
+   to what gets returned.
+   
+   The returned structure is brr
+   brr->dset will contain the dset selected as underlay if
+      type  ==  isqCR_getulayim 
+              and         the dset selected as overlay if
+      type  ==  isqCR_getolayim 
+   
+   brr = br if type is set to anything other than isqCR_get[uo]ayim
+   
+   See also Get_UO_Dset
+----------------------------------------------------------------------*/
+FD_brick *Get_FD_Brick_As_Selected(FD_brick *br, int type, int *rival) 
+{
+   Three_D_View *im3d = (Three_D_View *)br->parent ;
+   FD_brick *brr=NULL ;
+   int ival , banat ;
+
+   banat = EQUIV_DSETS(br->dset,im3d->anat_now) ;
+   switch( type ){
+     case isqCR_getulayim: brr = (banat) ? br : br->brother ; break ;
+     case isqCR_getolayim: brr = (banat) ? br->brother : br ; break ;
+   }
+   if( brr == NULL ) brr = br ;
+   /*** decide which 3D brick to extract data from (ival) ***/
+
+   if( EQUIV_DSETS(brr->dset,im3d->anat_now) )      /* underlay dataset */
+     ival = im3d->vinfo->anat_index ;
+   else if( EQUIV_DSETS(brr->dset,im3d->fim_now) )  /* overlay dataset */
+     ival = im3d->vinfo->fim_index ;
+   else
+     ival = 0 ;                                     /* shouldn't happen */
+     
+   if( br->deltival != 0 && DSET_NVALS(brr->dset) > 1 ){  /* 23 Feb 2011 */
+            /*    This is for allowing montage to cycle trough sub-bricks */
+      ival += br->deltival ;
+      ININFO_message("afni: deltival changes ival to %d",ival) ;
+      if( ival < 0 || ival >= DSET_NVALS(brr->dset) ) RETURN( NULL ) ;
+   }
+
+        if( type == isqCR_getqimage       ) ival = -1; /* get empty image */
+   else if( ival >= DSET_NVALS(brr->dset) ) ival = brr->dset->dblk->nvals-1;
+
+   *rival = ival;
+   /*
+   fprintf(stderr,"Get_FD_Brick_As_Selected:\n"
+                  "     br->dset %s, brr->dset %s\n"
+                  "     anat_now %s, fim_now   %s\n"
+                  "     banat = %d, ival = %d\n"
+                  "     type %d (%s)\n",
+                  DSET_PREFIX(br->dset), DSET_PREFIX(brr->dset),
+                  DSET_PREFIX(im3d->anat_now), DSET_PREFIX(im3d->fim_now), 
+                  banat, ival,
+                  type,
+                  type == isqCR_getulayim ? "getULAY" : 
+                           type == isqCR_getolayim ? "getOLAY" : "Other");
+   */
+   return(brr);
+}
+
+/* 
+   Return the overlay or underaly dset currently selected and set
+   the sub-brick number.
+   
+   Peculiar input:
+   UOlay:  'O' --> Return the overlay
+           'U'     Return the underlay
+   AsSet: 1 --> Return the dataset that is set by the 'Underlay'
+                      or 'Overlay' selectors.
+                0 --> Return the 'displayed' overlay or underlay dset. 
+                      This means, take into account the bkgd:ULay or bkgd:OLay 
+                      setting.
+*/
+THD_3dim_dataset *Get_UO_Dset(FD_brick *br, char UOlay, 
+                              byte AsSet, int *rival)
+{
+   Three_D_View *im3d = (Three_D_View *)br->parent ;
+   FD_brick *brt=NULL;
+   THD_3dim_dataset *dset=NULL;
+   
+   /* set up with basics */
+   if (UOlay=='O') {
+      dset = im3d->fim_now;
+      *rival = im3d->vinfo->fim_index;
+   } else {
+      dset = im3d->anat_now;
+      *rival = im3d->vinfo->anat_index;
+   }
+   
+   /* now allow for things like deltival, and other stuff */
+   if (AsSet) { /* as selected in 'Underlay' and 'Overlay' */
+      if (!(brt = Get_FD_Brick_As_Selected(br, 
+                  UOlay=='O' ? isqCR_getolayim : isqCR_getulayim, rival))) {
+         ERROR_message("Case 1: Failed to select brick, returning defaults");
+         return(dset);            
+      }
+   } else { /* as displayed, works OK, not well tested for rival below */
+      if (EQUIV_DSETS(br->dset,im3d->anat_now)) {
+         /* vanilla */
+         if (!(brt = Get_FD_Brick_As_Selected(br, 
+                  UOlay=='O' ? isqCR_getolayim : isqCR_getulayim, rival))) {
+            ERROR_message("Case 2: Failed to select brick, returning defaults");
+            return(dset);  
+         }
+      } else {
+         /* Olay as Ulay: always return the overlay */
+         if (!(brt = Get_FD_Brick_As_Selected(br, isqCR_getolayim, rival))) {
+            ERROR_message("Case 3: Failed to select brick, returning defaults");
+            return(dset);  
+         }
+      }
+   }    
+   if (brt) dset = brt->dset;
+   return(dset);           
+}
+
+/*!
+   Return 0 if FD_brick is not in montage mode.
+          1 if Axial montage
+          2 if Sagittal montage
+          4 if Coronal montage
+*/ 
+int FD_brick_montized(FD_brick *br ) 
+{
+   Three_D_View *im3d = (Three_D_View *)br->parent ;
+   
+   if ( (br == im3d->b123_anat || br == im3d->b123_fim) &&
+        (im3d->s123->mont_nx > 1|| im3d->s123->mont_ny > 1) ) {
+      return(1); /* Axial brick and in montage */
+   } 
+   if ( (br == im3d->b231_anat || br == im3d->b231_fim) &&
+        (im3d->s231->mont_nx > 1|| im3d->s231->mont_ny > 1) ) {
+      return(2);  /* Sagittal brick and in montage */
+   } 
+   if ( (br == im3d->b312_anat || br == im3d->b312_fim) &&
+        (im3d->s312->mont_nx > 1|| im3d->s312->mont_ny > 1) ) {
+      return(4);  /* Coronal brick and in montage */
+   }
+   return(0);    
 }
 
 /*----------------------------------------------------------------------
@@ -3172,11 +3403,15 @@ STATUS("drawing crosshairs") ;
 
    if( type == isqCR_getlabel ){
       Three_D_View *im3d = (Three_D_View *) br->parent ;
-      char *lab , str[32] , *dd ;
+      char *lab , str[2048] , *dd , *eee=NULL;
+      char labstrf[256]={""}, labstra[256]={""};
       THD_ivec3 iv,ivp,ivm ;
       THD_fvec3 fv,fvp,fvm ;
       float dxyz , cc ;
-      int ii ;
+      int ii, ival;
+      double dval;
+      THD_3dim_dataset *dset=NULL ;   
+      
 
       if( im3d->type != AFNI_3DDATA_VIEW ) RETURN(NULL) ;
 
@@ -3210,42 +3445,58 @@ STATUS("drawing crosshairs") ;
       sprintf(str,"%6.2f",fabs(cc)) ;
       for( ii=strlen(str)-1 ; ii > 0 && str[ii] == '0' ; ii-- ) str[ii] = '\0' ;
       if( str[ii] == '.' ) str[ii] = '\0' ;
-      strcat(str,dd) ; lab = strdup(str) ; RETURN(lab) ;
+      strcat(str, dd) ;
+      
+      if (!FD_brick_montized(br)){ /* Show labels if any.  ZSS Dec. 2011*/
+         dset = Get_UO_Dset(br, 'U', 1, &ival);
+         if ((dval = (double)THD_get_voxel_dicom(dset, 
+                              im3d->vinfo->xi,
+                              im3d->vinfo->yj,
+                              im3d->vinfo->zk, ival))>0.0f) {
+            AFNI_get_dset_val_label(dset,         /* Dec 7 2011 ZSS */
+                                    dval, labstra);
+         }
+         dset = Get_UO_Dset(br, 'O', 1, &ival);
+         if ((dval = (double)THD_get_voxel_dicom(dset, 
+                              im3d->vinfo->xi,
+                              im3d->vinfo->yj,
+                              im3d->vinfo->zk, ival))>0.0f) {
+            AFNI_get_dset_val_label(dset,         /* Dec 7 2011 ZSS */
+                                    dval, labstrf);
+         }
+         
+         if (labstrf[0] != '\0' || labstra[0] != '\0') {
+            strcat(str, " \\noesc ");
+            if (!strcmp(labstrf, labstra)) {
+               strcat(str, "U+O:");
+               strncat(str, labstra, 126*sizeof(char));
+            } else {
+               if (labstra[0] != '\0') {
+                  strcat(str, "U:");
+                  strncat(str, labstra, 126*sizeof(char));
+               }
+               if (labstrf[0] != '\0') {
+                  strcat(str, labstra[0] != '\0' ? " O:" : "O:");
+                  strncat(str, labstrf, 126*sizeof(char));
+               }
+            }
+         }
+      }
+      
+      lab = strdup(str) ;
+      
+      RETURN(lab) ;
    }
 
    /*--- underlay image # n ---*/
-
    if( type == isqCR_getimage  || type == isqCR_getqimage ||
        type == isqCR_getulayim || type == isqCR_getolayim   ){
-
+      
       Three_D_View *im3d = (Three_D_View *)br->parent ;
       FD_brick *brr=NULL ;
-      int ival , banat ;
-
-      banat = EQUIV_DSETS(br->dset,im3d->anat_now) ;
-      switch( type ){
-        case isqCR_getulayim: brr = (banat) ? br : br->brother ; break ;
-        case isqCR_getolayim: brr = (banat) ? br->brother : br ; break ;
-      }
-      if( brr == NULL ) brr = br ;
-
-      /*** decide which 3D brick to extract data from (ival) ***/
-
-      if( EQUIV_DSETS(brr->dset,im3d->anat_now) )      /* underlay dataset */
-        ival = im3d->vinfo->anat_index ;
-      else if( EQUIV_DSETS(brr->dset,im3d->fim_now) )  /* overlay dataset */
-        ival = im3d->vinfo->fim_index ;
-      else
-        ival = 0 ;                                     /* shouldn't happen */
-
-      if( br->deltival != 0 && DSET_NVALS(brr->dset) > 1 ){  /* 23 Feb 2011 */
-        ival += br->deltival ;
-ININFO_message("afni: deltival changes ival to %d",ival) ;
-        if( ival < 0 || ival >= DSET_NVALS(brr->dset) ) RETURN( NULL ) ;
-      }
-
-           if( type == isqCR_getqimage       ) ival = -1; /* get empty image */
-      else if( ival >= DSET_NVALS(brr->dset) ) ival = brr->dset->dblk->nvals-1;
+      int ival;
+      
+      if (!(brr = Get_FD_Brick_As_Selected(br, type, &ival))) RETURN(NULL);
 
 if(PRINT_TRACING)
 { char str[256] ;
@@ -4160,6 +4411,14 @@ if(PRINT_TRACING)
       }
       break ;
 
+      /*--- raise the controller [17 Jun 2011] ---*/
+
+      case isqCR_raiseupthedead:{
+        if( IM3D_OPEN(im3d) ) XMapRaised( XtDisplay(im3d->vwid->top_shell) ,
+                                          XtWindow(im3d->vwid->top_shell)   ) ;
+      }
+      break ;
+
    }  /* end of switch on reason for call */
 
    EXRETURN ;
@@ -4184,6 +4443,14 @@ if(PRINT_TRACING)
    switch( cbs->reason ){
 
       default: break ;  /* unimplemented reasons */
+
+      /*** 17 Jun 2011 ***/
+
+      case graCR_raiseupthedead:{
+        if( IM3D_OPEN(im3d) ) XMapRaised( XtDisplay(im3d->vwid->top_shell) ,
+                                          XtWindow(im3d->vwid->top_shell)   ) ;
+      }
+      break ;
 
       /*** Death ***/
 
@@ -5271,6 +5538,8 @@ ENTRY("AFNI_controller_panel_CB") ;
          im3d->vwid->prog->panel_pb_inverted = False ;
       }
 
+      SHIFT_TIPS( im3d , TIPS_TOTAL_SHIFT ) ;
+
    } else {  /** open the view frame (but not its children) **/
 
       XtManageChild(im3d->vwid->view->frame) ;
@@ -5278,6 +5547,9 @@ ENTRY("AFNI_controller_panel_CB") ;
          MCW_invert_widget(im3d->vwid->prog->panel_pb) ;
          im3d->vwid->prog->panel_pb_inverted = True ;
       }
+
+      SHIFT_TIPS( im3d , (im3d->vwid->view->marks_enabled) ? TIPS_MINUS_SHIFT
+                                                           : TIPS_PLUS_SHIFT ) ;
    }
 
    RESET_AFNI_QUIT(im3d) ;
@@ -6161,9 +6433,13 @@ if(PRINT_TRACING)
    daxes = CURRENT_DAXES(im3d->anat_now) ;
    dim1  = daxes->nxx ; dim2 = daxes->nyy ; dim3 = daxes->nzz ;
 
+   /** save old ijk coordinates **/
+
    old_i1 = im3d->vinfo->i1 ;
    old_j2 = im3d->vinfo->j2 ;
    old_k3 = im3d->vinfo->k3 ;
+
+   /** get and store new ijk coordinates **/
 
    i1 = im3d->vinfo->i1 = (xx < 0 || xx >= dim1) ? (old_i1) : xx ;
    j2 = im3d->vinfo->j2 = (yy < 0 || yy >= dim2) ? (old_j2) : yy ;
@@ -6192,6 +6468,8 @@ STATUS(" ") ;
 DUMP_IVEC3("  old_id",old_id) ;
 DUMP_IVEC3("  new_id",new_id) ;
 #endif
+
+   /** store new xyz coordinates into im3d struct **/
 
    if( im3d->type == AFNI_3DDATA_VIEW ){
      fv = THD_3dind_to_3dmm ( im3d->anat_now , new_id ) ;
@@ -6225,9 +6503,10 @@ DUMP_IVEC3("  new_id",new_id) ;
            im3d->vedset.exinfo   = NULL ;
          break ;
        }
-       if( !im3d->vedskip )
-         changed = AFNI_vedit( im3d->fim_now , im3d->vedset ,
-                               im3d->vwid->func->clu_mask    ) ;
+       if( !im3d->vedskip ){
+         byte *mmm = (im3d->vednomask) ? NULL : im3d->vwid->func->clu_mask ;
+         changed = AFNI_vedit( im3d->fim_now , im3d->vedset , mmm ) ;
+       }
        if( !DSET_VEDIT_good(im3d->fim_now) ){
          UNCLUSTERIZE(im3d) ;
        } else if( changed ){
@@ -6833,7 +7112,7 @@ ENTRY("AFNI_crosshair_label") ;
 
    } else if( im3d->type == AFNI_IMAGES_VIEW || im3d->vinfo->show_voxind ){
       int ixyz = DSET_ixyz_to_index( im3d->anat_now ,
-                                     im3d->vinfo->i1, im3d->vinfo->j2, im3d->vinfo->k3 ) ;
+                    im3d->vinfo->i1, im3d->vinfo->j2, im3d->vinfo->k3 ) ;
 
 STATUS("voxel indexes") ;
 
@@ -6863,8 +7142,9 @@ STATUS("voxel indexes") ;
                   ixyz , im3d->vinfo->i1 , im3d->vinfo->j2 , im3d->vinfo->k3  ) ;
       }
    } else {
-      char bxyz[3][32] , *cname ;
-
+      char bxyz[3][32] , *cname, obl[8] ;
+      float angle=0.0;
+      
 STATUS("voxel coordinates") ;
 
       xval = im3d->vinfo->xi ;
@@ -6892,9 +7172,13 @@ STATUS("voxel coordinates") ;
         cname = "=SPM  " ;
       else
         cname = "      " ;
+      
+      
+      if (dset_obliquity(im3d->anat_now, &angle)==1) sprintf(obl," *");
+      else obl[0]='\0';
 
-      sprintf( buf , "[order: %s%s]\nx %17s\ny %17s\nz %17s"   ,
-               GLOBAL_library.cord.orcode       , cname ,
+      sprintf( buf , "[order: %s%s%s]\nx %17s\ny %17s\nz %17s"   ,
+               GLOBAL_library.cord.orcode       , cname , obl,
                bxyz[GLOBAL_library.cord.first]  ,
                bxyz[GLOBAL_library.cord.second] ,
                bxyz[GLOBAL_library.cord.third]   ) ;
@@ -8122,7 +8406,7 @@ STATUS(" -- processing points in this dataset") ;
    }
 
    /*-------------------------------------------------------------------*/
-   /*--- Sep 1995: turn "Go to atlas position" button on 
+   /*--- Sep 1995: turn "Go to atlas position" button on
          image popup on or off ---*/
 
 STATUS(" -- managing Go to atlas position button, etc") ;
@@ -8153,8 +8437,8 @@ STATUS(" -- managing Go to atlas position button, etc") ;
 
 #if 1
    XtSetSensitive( im3d->vwid->func->see_ttatlas_bbox->wrowcol ,
-             (Boolean)( im3d->anat_now->view_type == VIEW_TALAIRACH_TYPE &&
-                        TT_retrieve_atlas_dset("TT_Daemon", 0)    != NULL                  ) ) ;
+          (Boolean)( im3d->anat_now->view_type == VIEW_TALAIRACH_TYPE &&
+          TT_retrieve_atlas_dset(Current_Atlas_Default_Name(), 0) != NULL) ) ;
 #else
    XtSetSensitive( im3d->vwid->func->see_ttatlas_bbox->wrowcol , False ) ;
 #endif
@@ -8520,6 +8804,7 @@ STATUS("remanaging children") ;
          XtManageChild( im3d->vwid->func->rowcol ) ;
 #endif
          HIDE_SCALE(im3d) ;
+         im3d->vwid->func->inten_pbar->update_me = 2 ;
          update_MCW_pbar( im3d->vwid->func->inten_pbar ) ;
          FIX_SCALE_SIZE(im3d) ; FIX_SCALE_VALUE(im3d) ;
 
@@ -8753,6 +9038,11 @@ ENTRY("AFNI_crosshair_relabel") ;
   callback for crosshair label popup menu [12 Mar 2004]
 --------------------------------------------------------------------*/
 
+static char *last_jumpto_xyz_string = NULL ;  /* 23 Sep 2008 */
+static char *last_jumpto_ijk_string = NULL ;
+static char *last_mnito_string      = NULL ;
+static char *last_sumato_string     = NULL ;
+
 void AFNI_crosshair_pop_CB( Widget w ,
                             XtPointer client_data , XtPointer call_data )
 {
@@ -8764,6 +9054,24 @@ void AFNI_crosshair_pop_CB( Widget w ,
 ENTRY("AFNI_crosshair_pop_CB") ;
 
    if( !IM3D_OPEN(im3d) ) EXRETURN ;
+
+   /*-- jumpto stuff added 01 Aug 2011 --*/
+
+   if( w == im3d->vwid->imag->crosshair_jtxyz_pb ){
+     char tbuf[128] ;
+     sprintf(tbuf , "Enter new x y z (%s mm):" , GLOBAL_library.cord.orcode ) ;
+     MCW_choose_string( im3d->vwid->imag->crosshair_label , tbuf ,
+                        last_jumpto_xyz_string,
+                        AFNI_jumpto_CB, (XtPointer) im3d ) ;
+     EXRETURN ;
+   } else if ( w == im3d->vwid->imag->crosshair_jtijk_pb ){
+     MCW_choose_string( im3d->vwid->imag->crosshair_label , "Enter new i j k:" ,
+                        last_jumpto_ijk_string ,
+                        AFNI_jumpto_ijk_CB , (XtPointer) im3d ) ;
+     EXRETURN ;
+   }
+
+   /*-- the other options --*/
 
         if( w == im3d->vwid->imag->crosshair_dicom_pb ) val = cord_dicom ;
    else if( w == im3d->vwid->imag->crosshair_spm_pb   ) val = cord_spm   ;
@@ -8793,15 +9101,10 @@ ENTRY("AFNI_crosshair_pop_CB") ;
   callback for non-marker buttons on the popup
 --------------------------------------------------------------------*/
 
-static char *last_jumpto_xyz_string = NULL ;  /* 23 Sep 2008 */
-static char *last_jumpto_ijk_string = NULL ;
-static char *last_mnito_string      = NULL ;
-static char *last_sumato_string     = NULL ;
-
 void AFNI_imag_pop_CB( Widget w ,
                        XtPointer client_data , XtPointer call_data )
 {
-   Three_D_View *im3d = (Three_D_View *) client_data ;
+   Three_D_View *im3d = (Three_D_View *)client_data ;
    MCW_imseq *seq=NULL ;
 
 ENTRY("AFNI_imag_pop_CB") ;
@@ -8880,7 +9183,7 @@ ENTRY("AFNI_imag_pop_CB") ;
       }
    }
 
-   /*-- jump to a predetermined Talairach anatomical reference point --*/
+   /*-- jump to a predetermined atlas-based anatomical reference point --*/
 
    else if( w == im3d->vwid->imag->pop_talto_pb &&
             im3d->type == AFNI_3DDATA_VIEW      &&
@@ -8889,18 +9192,25 @@ ENTRY("AFNI_imag_pop_CB") ;
       {  /* initialize labels */
          char **at_labels=NULL ;
          int iii;
-         at_labels = atlas_chooser_formatted_labels("TT_Daemon");
+         char title_str[256];
+
+         at_labels = atlas_chooser_formatted_labels(
+                           Current_Atlas_Default_Name());
          if( ISQ_REALZ(seq) && at_labels ){
            if( AFNI_yesenv("AFNI_DATASET_BROWSE") ) MCW_set_browse_select(1) ;
+
+           sprintf(title_str, "Brain Structure (from %s)", 
+                        Current_Atlas_Default_Name());
            MCW_choose_strlist( seq->wbar ,
-                       "Brain Structure (from San Antonio Talairach Daemon)" ,
-                       atlas_n_points("TT_Daemon") , atlas_current_structure ,
+                       title_str ,
+                       atlas_n_points(Current_Atlas_Default_Name()) , 
+                       atlas_current_structure ,
                        at_labels ,
                        AFNI_talto_CB , (XtPointer) im3d ) ;
-            for (iii=0; iii<atlas_n_points("TT_Daemon"); ++iii) {
+            for (iii=0; iii<atlas_n_points(Current_Atlas_Default_Name()); ++iii) {
                if (at_labels[iii]) free(at_labels[iii]);
             }
-            free(at_labels); at_labels=NULL; 
+            free(at_labels); at_labels=NULL;
          }
       }
    }
@@ -8957,32 +9267,29 @@ ENTRY("AFNI_imag_pop_CB") ;
 
          MCW_register_help( im3d->vwid->imag->pop_whereami_twin->wtext ,
           "Lists the brain structures near the crosshair focus point\n"
-          "according to the Talairach Daemon database (kindly provided\n"
-          "by Jack Lancaster and Peter Fox of RIC UTHSCSA).\n"
+          "according to a set of atlases defined in AFNI_atlas_spaces.niml\n"
+          "and limited by the environment variable,AFNI_ATLAS_LIST.\n"
+          "The default list includes the original Talairach Daemon database\n"
+          "(kindly provided by Jack Lancaster and Peter Fox of RIC UTHSCSA,\n"
+          "the cytoarchitectonic and macrolabel atlases provided by Simon\n"
+          "Eickhoff and Karl Zilles, and the probabilistic atlases provided\n"
+          "Rutvik Desai.\n"
           "\n"
           "The search is conducted outwards from the focus point, until\n"
-          "9 different structures are found, or a 7 mm radius is reached,\n"
+          "9 different structures are found, or a 7.5 mm radius is reached,\n"
           "whichever occurs first. (Distances are rounded to nearest 1 mm,\n"
-          "the grid spacing on which the database is constructed.) Labels\n"
-          "reported on different output lines came from different voxels.\n"
+          "by default.) The defaults can be adjusted with AFNI environment\n"
+          "Please see whereami help, README.environment for more details.\n"
           "\n"
-          "In the database, some voxels have 2 labels - a larger scale\n"
-          "'gyral' name and a finer scale 'area' name.  Locations that\n"
-          "are doubly labeled will appear with a listing like\n"
+          "In the database, voxels may have multiple labels for a particular\n"
+          "atlas. For example, the voxels may a larger scale 'gyral' name\n"
+          "and a finer scale 'area' name.  Locations that are doubly labeled\n"
+          "will appear with a listing like\n"
           "    Within 2 mm: Right Precuneus -AND- Right Brodmann area 31\n"
-          "In the database there are\n"
-          "    1,205,737 voxels with at least one label\n"
-          "      709,953 voxels with only a 'gyral' label\n"
-          "       15,898 voxels with only a 'area' label\n"
-          "      479,886 voxels with both types of labels\n"
-          "A list of all the labels (of either type) is presented by the\n"
-          "'Go to atlas location' control.\n"
-          "  In the TT_Daemon database,there are\n"
-          "           50 'gyral' labels (times 2 for Left and Right)\n"
-          "           68 'area' labels\n"
-          "          355 distinct combinations of labels\n"
+          "A list of all the labels for the principal default atlas is\n"
+          "presented by the 'Go to atlas location' control or from the\n"
+          "command line program, 'whereami -show_atlas_code', for any atlas.\n"
           "Note Very Well:\n"
-          "* This feature of AFNI is experimental, and is subject to change.\n"
           "* The Atlas is only useful as a ROUGH guide to determining where\n"
           "    you are in any individual brain.  Do not rely exclusively on\n"
           "    the Atlas for brain region identification: you must use your\n"
@@ -9067,7 +9374,8 @@ ENTRY("AFNI_imag_pop_CB") ;
 }
 
 /*---------------------------------------------------------------------
-   called when the talto chooser is set
+   called when the talto chooser is set - now "Go to Atlas position"
+   for generic atlas usage
 -----------------------------------------------------------------------*/
 
 void AFNI_talto_CB( Widget w , XtPointer cd , MCW_choose_cbs *cbs )
@@ -9092,14 +9400,14 @@ ENTRY("AFNI_talto_CB") ;
       BEEPIT ; WARNING_message("Can't 'Go to Atlas position'!?") ;
       EXRETURN ;
    }
-   
-   if (!(tto_list = atlas_points("TT_Daemon"))) {
-      BEEPIT ; WARNING_message("Can't get daemon!@!#x!") ;
+
+   if (!(tto_list = atlas_points(Current_Atlas_Default_Name()))) {
+      BEEPIT ; WARNING_message("Can't get atlas: %s", Current_Atlas_Default_Name()) ;
       EXRETURN ;
    }
-   
+
    nn = cbs->ival ;
-   if( nn < 0 || nn >= atlas_n_points("TT_Daemon") ) EXRETURN ;
+   if( nn < 0 || nn >= atlas_n_points(Current_Atlas_Default_Name()) ) EXRETURN ;
    atlas_current_structure = nn ;  /* index for structure in list for atlas */
 
    /* transform point from Dicom to local coords and go there */
@@ -9152,18 +9460,23 @@ void AFNI_pop_whereami_kill( Three_D_View *im3d )
 
 char * AFNI_ttatlas_query( Three_D_View *im3d )
 {
-   static int have_TT = -1 ;
+   static int have_TT = 1 ;
    THD_3dim_dataset *dset;
+   ATLAS_LIST *atlas_alist;
 
    if( !IM3D_OPEN(im3d) || !CAN_TALTO(im3d) ) return NULL ;
 
-   /*-- make sure we have the TT atlas --*/
+   set_TT_whereami_version(0,0);
+   set_wami_web_reqtype(WAMI_WEB_STRUCT); /* set web atlas output to simple structure */
 
+#if 0
+   /*-- make sure we have the TT atlas --*/
    have_TT = 0;
    if( TT_retrieve_atlas_dset("TT_Daemon",0)){
       have_TT = 1 ;
    }
    if( !have_TT ) return NULL ;
+#endif
 
    if( have_TT ){
      THD_fvec3 tv ; char *tlab ;
@@ -9183,9 +9496,11 @@ char * AFNI_ttatlas_query( Three_D_View *im3d )
      /* will want to change this for flexibility not to use preset xform */
      dset = im3d->anat_dset[VIEW_TALAIRACH_TYPE];
 
+     atlas_alist = get_G_atlas_list(); /* get the whole atlas list */
+
      tlab = TT_whereami( tv.xyz[0] , tv.xyz[1] , tv.xyz[2],
-                         THD_get_space(dset)  , NULL );
-                         
+                         THD_get_space(dset)  , env_atlas_list() );
+
      return tlab ;
    }
 

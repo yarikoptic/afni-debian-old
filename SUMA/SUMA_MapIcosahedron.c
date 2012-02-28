@@ -503,6 +503,7 @@ int main (int argc, char *argv[])
          fprintf (SUMA_STDERR,
                   "Error %s: Option %s not understood. Try -help for usage\n", 
                   FuncName, argv[kar]);
+         suggest_best_prog_option(argv[0], argv[kar]);
          exit (1);
       } 
       else {   
@@ -534,7 +535,7 @@ int main (int argc, char *argv[])
    sprintf (outSpecFileNm, "%s%s", 
             fout, SUMA_FnameGet(brainSpecFile,"f", SUMAg_CF->cwd));
    
-   if (!UseCOM && UserCenter == -1) {
+   if (LocalHead && !UseCOM && UserCenter == -1) {/* Enough already. Dec 2011 */
       SUMA_S_Note("\n"
                   "---------------------------------------------------\n"
                   "The program now uses the estimated geometric center\n"

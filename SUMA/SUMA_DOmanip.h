@@ -5,6 +5,7 @@ SUMA_SurfaceObject * SUMA_findanySOp_inDOv(SUMA_DO *dov, int N_dov);
 int SUMA_ClosestNodeToVoxels(SUMA_SurfaceObject *SO, SUMA_VOLPAR *vp, int *closest_node, float *closest_dist, byte *vox_mask, int verb);
 float * SUMA_IV_XYZextract (char *IV_filename, int *N_NodeList, int IncludeIndex);
 int *SUMA_IV_FaceSetsextract (char *IV_filename, int *N_FaceSetList);
+void set_surf_norm_quiet(int v);
 SUMA_SURF_NORM SUMA_SurfNorm (float *NodeList, int N_NodeList, int *FaceSetList, int N_FaceSetList );
 int SUMA_SurfNormDir (SUMA_SurfaceObject *SO);
 SUMA_Boolean SUMA_Free_Displayable_Object (SUMA_DO *dov);
@@ -96,7 +97,10 @@ SUMA_ASSEMBLE_LIST_STRUCT *SUMA_FreeAssembleListStruct(SUMA_ASSEMBLE_LIST_STRUCT
 SUMA_ASSEMBLE_LIST_STRUCT *SUMA_CreateAssembleListStruct(void);
 SUMA_Boolean SUMA_DeleteROI (SUMA_DRAWN_ROI *ROI); 
 int SUMA_isTypicalSOforVolSurf (SUMA_SurfaceObject *SO);
+int SUMA_ExcludeFromSendToAfni (SUMA_SurfaceObject *SO);
 char *SUMA_DOv_Info (SUMA_DO *dov, int N_dov, int detail);
+int SUMA_isSurfaceOfSide(SUMA_SurfaceObject *SO, SUMA_SO_SIDE ss);
+int SUMA_BiggestLocalDomainParent_Side(SUMA_DO *dov, int N_dov, SUMA_SO_SIDE ss);
 int SUMA_BiggestLocalDomainParent(SUMA_DO *dov, int N_dov);
 SUMA_Boolean SUMA_SetXformShowPreProc(SUMA_XFORM *xf, int ShowPreProc, 
                                       int fromgui);

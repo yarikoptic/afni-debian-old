@@ -5013,7 +5013,9 @@ void REND_func_widgets(void)
 
    SAVEUNDERIZE(XtParent(wfunc_pbar_menu)) ; /* 27 Feb 2001 */
    VISIBILIZE_WHEN_MAPPED(wfunc_pbar_menu) ;
+#if 0
    if( !AFNI_yesenv("AFNI_DISABLE_TEAROFF") ) TEAROFFIZE(wfunc_pbar_menu) ;
+#endif
 
    XtInsertEventHandler( wfunc_color_label ,     /* handle events in label */
 
@@ -5155,7 +5157,7 @@ void REND_func_widgets(void)
                         sel_height / npane ,        /* init pane height */
                         pmin , pmax ,               /* value range */
                         REND_color_pbar_CB ,        /* callback */
-                        NULL                ) ;     /* callback data */
+                        NULL , 0            ) ;     /* callback data */
 
    wfunc_color_pbar->parent       = NULL ;
    wfunc_color_pbar->mode         = 0 ;
@@ -6584,7 +6586,9 @@ void REND_script_menu( Widget parent )
          XmCreatePulldownMenu( mbar , "menu" , NULL,0 ) ;
 
    VISIBILIZE_WHEN_MAPPED(script_menu) ;
+#if 0
    if( !AFNI_yesenv("AFNI_DISABLE_TEAROFF") ) TEAROFFIZE(script_menu) ;
+#endif
 
    script_cbut =
          XtVaCreateManagedWidget(

@@ -26,13 +26,6 @@
 #define SUMA_CLOSE_MODE       SUMA_WITHDRAW
 #define SUMA_GL_CLOSE_MODE    SUMA_UNREALIZE
 
-#define DO_FLUSH        0  /* 0 = Avoid flushing/Buffer swapping, at close time 
-                                  Part of the effort to keep suma from crashing
-                                  on OS X 10.5 , when closing a widget with an 
-                                  OpenGL drawable.
-                                  Keep it at 0, at least for OS X 10.5 and 
-                                  early 10.6 . 
-                                  Perhaps it should be kept off forever */
 #define SUMA_HOLD_IT  if (0) { SUMA_S_Note("Waiting...");glXWaitGL();glXWaitX(); SUMA_S_Note("Done.");}  
                                   
 typedef struct suma_menu_item {
@@ -196,11 +189,29 @@ sets the select color of the widget to its foreground color */
 
 #define SUMA_MARGIN  1
 
+/* return the character for a viewer struct */
+#define SUMA_SV_CHAR(csv) \
+   (char)( 65+SUMA_WhichSV((csv), SUMAg_SVv, SUMA_MAX_SURF_VIEWERS) )
+
+/* Make sure recording path is legit */
+#define SUMA_VALIDATE_RECORD_PATH(autorecord) {\
+   if (!THD_mkdir((autorecord)->Path)) {  \
+      SUMA_PARSED_NAME *pn2=NULL;   \
+      SUMA_S_Errv(   \
+   "Failed to create directory %s, resorting to local directory.\n", \
+         (autorecord)->Path); \
+      pn2 = SUMA_ParseFname((autorecord)->FileName, NULL);  \
+      SUMA_Free_Parsed_Name((autorecord)); \
+      (autorecord) = pn2; pn2=NULL; \
+   }  \
+}
+
 String *SUMA_get_fallbackResources ();         
 void SUMA_CullOption(SUMA_SurfaceViewer *, const char *action);
 Boolean SUMA_handleRedisplay (XtPointer w);
 void SUMA_postRedisplay(Widget w, XtPointer clientData, XtPointer call);
 GLenum SUMA_index_to_clip_plane(int iplane) ;
+int SUMA_SnapToDisk(SUMA_SurfaceViewer *csv, int verb);
 void SUMA_display(SUMA_SurfaceViewer *csv, SUMA_DO *dov);
 Colormap SUMA_getShareableColormap_Eng(XVisualInfo * vi, Display *dpy);
 Colormap SUMA_getShareableColormap(SUMA_SurfaceViewer * csv);
@@ -210,8 +221,11 @@ void SUMA_resize(Widget w, XtPointer clientData, XtPointer call);
 SUMA_Boolean SUMA_X_SurfaceViewer_Create (void);
 void SUMA_ButtOpen_pushed (Widget w, XtPointer cd1, XtPointer cd2);
 void SUMA_ButtClose_pushed (Widget w, XtPointer cd1, XtPointer cd2);
-int SUMA_generateEPS(char *filename, int inColor, unsigned int width, unsigned int height);
+int SUMA_generateEPS(char *filename, int inColor, 
+                     unsigned int width, unsigned int height);
 GLvoid *SUMA_grabPixels(int inColor, unsigned int width, unsigned int height);
+GLvoid *SUMA_grabRenderedPixels(SUMA_SurfaceViewer *sv,
+                     int inColor, unsigned int width, unsigned int height);
 SUMA_Boolean SUMA_RenderToPixMap (SUMA_SurfaceViewer *csv, SUMA_DO* dov);
 void SUMA_context_Init(SUMA_SurfaceViewer *sv);
 SUMA_Boolean SUMA_NormScreenToWorld(SUMA_SurfaceViewer *sv, 
@@ -268,12 +282,15 @@ SUMA_CREATE_TEXT_SHELL_STRUCT * SUMA_CreateTextShellStruct (void (*opencallback)
                                                             void (*closecallback)(void*data), void *closedata);
 SUMA_CREATE_TEXT_SHELL_STRUCT * SUMA_CreateTextShell (char *s, char *title, SUMA_CREATE_TEXT_SHELL_STRUCT *TextShellStruct);
 void SUMA_cb_search_text(Widget widget, XtPointer client_data, XtPointer call_data);
+char * SUMA_WriteStringToFile(char *fname, char *s, int, int);
+void SUMA_SaveTextShell(Widget w, XtPointer ud, XtPointer cd);
 void SUMA_DestroyTextShell (Widget w, XtPointer ud, XtPointer cd);
 void SUMA_SurfInfo_open (void *SO);
 void SUMA_SurfInfo_destroyed (void *SO);
 void SUMA_cb_ToggleCaseSearch (Widget widget, XtPointer client_data, XtPointer call_data);
 void SUMA_cb_helpUsage (Widget w, XtPointer data, XtPointer callData);
 void SUMA_cb_helpIO_notify(Widget w, XtPointer data, XtPointer callData);
+void SUMA_cb_helpEchoKeyPress(Widget w, XtPointer data, XtPointer callData);
 void SUMA_cb_helpMemTrace(Widget w, XtPointer data, XtPointer callData);
 char * SUMA_FormatMessage (SUMA_MessageData *MD);
 void SUMA_PopUpMessage (SUMA_MessageData *MD);

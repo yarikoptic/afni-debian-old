@@ -65,14 +65,619 @@
 
 afni_history_struct ziad_history[] = {
 /*=====BELOW THIS LINE=====*/
+
+ { 13, FEB , 2012 , ZSS , "3dSkullStrip" , MINOR , TYPE_BUG_FIX,
+   "-orig_vol now forces datum type to be same as that of input.",
+   "This fixed a problem with anatomicals ranging in the million(!) to\n"
+   "come up the equivalent of a binary mask with -orig_vol.\n"
+ },
+ 
+ { 10, FEB , 2012 , ZSS , "suma" , MINOR , TYPE_BUG_FIX,
+   "Improved snapshot making. Previous bugs were caused by buffer swap problems",
+   "This fixed (I hope for good), problems of recording ('r'), continuous \n"
+   "recording (OS X and Linux), and the oversampling.\n"
+ },
+ 
+ { 9, FEB , 2012 , ZSS , "3dSurf2Vol" , MINOR , TYPE_NEW_OPT,
+   "Added -sdata, making 3dSurf2Vol compatible with multitude of surface dsets",
+   NULL
+ },
+ 
+ { 7, FEB , 2012 , ZSS , "3dcopy" , MINOR , TYPE_BUG_FIX,
+   "Fixed problem with 3dcopy HHH.nii TTT+orig not producing output",
+   "Problem was caused by new change to EDIT_empty_copy() which\n"
+   "assigned storage mode to that of input dset instead of STORAGE_BY_BRICK\n"
+   "Fix involved setting storage mode per the prefix or view in \n"
+   "EDIT_dset_items()\n"
+ },
+ 
+ { 7, FEB , 2012 , ZSS , "DriveSuma" , MINOR , TYPE_NEW_OPT,
+   "Added -bkg_col and -autorecord options",
+   NULL
+ },
+ 
+ { 7, FEB , 2012 , ZSS , "SurfMeasures" , MINOR , TYPE_NEW_OPT,
+   "Added -out option to handle output in various formats.",
+   "Also added -func ALL option.\n"
+ },
+
+ { 6, FEB , 2012 , ZSS , "suma" , MINOR , TYPE_NEW_OPT,
+   "Added automatic sub-brick selection matching IxT in interface",
+   "Also see corresponding env var: SUMA_IxT_LinkMode\n"
+ },
+ 
+ { 6, FEB , 2012 , ZSS , "3dANOVA3" , MINOR , TYPE_BUG_FIX,
+   "Improved (I hope) sub-brick labels. Added FDR to.",
+   "Same improvements to all 3dANOVA programs.\n"
+ },
+ 
+ { 6, FEB , 2012 , ZSS , "3dANOVA3" , MINOR , TYPE_BUG_FIX,
+   "Fixed comaptibility with .niml.dset data",
+   "This required more improvements (I hope) to THD_init_diskptr_names() and\n"
+   "EDIT_empty_copy() for surface-based datasets.\n"
+ },
+ 
+ { 6, FEB , 2012 , ZSS , "3drefit" , MINOR , TYPE_BUG_FIX,
+   "3drefit was failing on the view change when target dset is under a path.",
+   "Prolem was with default catenation of path to DSET_BRIKNAME and \n"
+   "DSET_HEADNAME. Those now contain the path automatically.\n"
+ },
+ 
+ { 26, JAN , 2012 , ZSS , "3dinfill" , MINOR , TYPE_NEW_PROG,
+   "Fills holes in a volume based on neighboring values",
+   "This program is a wrapper to function SUMA_VolumeInFill.\n"
+   "Written in response to a query by Mike Beauchamp.\n"
+ },
+ 
+ { 24, JAN , 2012 , ZSS , "SurfExtrema" , MINOR , TYPE_NEW_PROG,
+   "Finds nodes that are local extrema on the surface.",
+   "Program in response to request by Daniel Margulies\n"
+ },
+ 
+ { 23, JAN , 2012 , ZSS , "@SUMA_Make_Spec_FS" , MINOR , TYPE_NEW_OPT,
+   "Added -ld and -no_ld options",
+   "@SUMA_Make_Spec_FS by default now runs MapIcosahedron at two ld values.\n"
+ },
+ 
+ { 23, JAN , 2012 , ZSS , "@SUMA_AlignToExperiment" , MINOR , TYPE_NEW_OPT,
+   "Added -atlas_followers",
+   "Automatically bring along atlas datasets under -surf_anat's directory.\n"
+ },
+ 
+ { 23, JAN , 2012 , ZSS , "suma-general" , MINOR , TYPE_NEW_OPT,
+   "Allowed addition of 'R' or 'L' when jumping to a node.",
+   "This make DriveSuma work well with node indices that are specified\n"
+   "for two hemispheres as is done in the batch mode of 3dGroupInCorr.\n"
+   "This applies to both suma and DriveSuma",
+ },
+ 
+ { 23, JAN , 2012 , ZSS , "suma" , MICRO , TYPE_BUG_FIX,
+   "Improved logic for assigning ROIs when parent is not present",
+   "ROI parent assignment now takes into account last visited surface"
+   "in any of the open viewer, and hemisphere side when appropriate.",
+ },
+ 
+ { 23, JAN , 2012 , ZSS , "suma" , MICRO , TYPE_BUG_FIX,
+   "Fixed bug in display of FRAME bound textures.",
+   "Looks like it had to do with depth testing.",
+ },
+ 
+ { 20, JAN , 2012 , ZSS , "afni" , MICRO , TYPE_MODIFY,
+   "Trim dset names to keep them readable in plugin dataset selector buttons",
+   "See function TrimString() and how it is used in PLUG_finalize_dataset_CB()",
+ },
+ 
+ { 20, JAN , 2012 , ZSS , "afni-general" , MICRO , TYPE_NEW_OPT,
+   "Added -h_web, and -Vname= to all C command-line programs.",
+   "See also apsearch -web_prog_help option",
+ },
+ 
+ { 19, JAN , 2012 , ZSS , "DriveSuma" , MINOR , TYPE_NEW_OPT,
+   "Allow definition of DO on the fly with -fixed_do, -mobile_do.",
+   "See DriveAfni -help and suma -help_nido",
+ },
+    
+ { 18, JAN , 2012 , ZSS , "suma-general" , MICRO , TYPE_NEW_ENV,
+   "SUMA_Position_Original for controlling initial window position.",
+   "Use suma -update_env ; to update env file, then look for\n"
+   " env SUMA_Position_Original for help and default value.",
+ },
+    
+ { 18, JAN , 2012 , ZSS , "niccc" , MINOR , TYPE_NEW_OPT,
+   "-s option to test string NI elements",
+   NULL,
+ },
+    
+ { 18, JAN , 2012 , ZSS , "Surf2VolCoord" , MINOR , TYPE_NEW_OPT,
+   "-closest_* options to create find nodes that fall closest to XYZ locations",
+   NULL,
+ },
+    
+ { 17, JAN , 2012 , ZSS , "3dGroupInCorr" , MINOR , TYPE_NEW_OPT,
+   "Allowed BATCH mode to work on surfaces.",
+   NULL,
+ },
+    
+ { 13, JAN , 2012 , ZSS , "ParseName" , MINOR , TYPE_NEW_OPT,
+   "Options -pre and -app help in creating filenames regarding of type",
+   NULL,
+ },
+    
+ { 11, JAN , 2012 , ZSS , "3dROIstats" , MICRO , TYPE_MODIFY,
+   "Use ROI labels in output if label tables or atlas point lists are present",
+   NULL,
+ },
+    
+ { 11, JAN , 2012 , ZSS , "3drefit" , MICRO , TYPE_NEW_OPT,
+   "Added -copytables to copy label tables and atlas point lists",
+   NULL,
+ },
+    
+ { 11, JAN , 2012 , ZSS , "afni-general" , MICRO , TYPE_MODIFY,
+   "Added copying of label table and atlas point lists to aux copying function",
+   "See functions THD_copy_labeltable_atr and THD_copy_datablock_auxdata\n"
+   "for details." 
+ },
+    
+ { 10, JAN , 2012 , ZSS , "3dTagalign" , MICRO , TYPE_NEW_OPT,
+   "Added interpolation options.",
+   NULL,
+ },
+    
+ { 9, JAN , 2012 , ZSS , "DriveSuma" , MICRO , TYPE_NEW_OPT,
+   "Added -setSUMAenv,-N_fore_smooth, and -N_final_smooth",
+   NULL,
+ },
+    
+ { 9, JAN , 2012 , ZSS , "suma-general" , MICRO , TYPE_NEW_OPT,
+   "Added -setenv to all SUMA programs",
+   NULL,
+ },
+    
+ { 6, JAN , 2012 , ZSS , "ROI2dataset" , MICRO , TYPE_NEW_OPT,
+   "Added -keep_separate to allow for another way to split ROIs",
+   NULL,
+ },
+    
+ { 4, JAN , 2012 , ZSS , "ROI2dataset" , MICRO , TYPE_NEW_OPT,
+   "Added -nodelist_with_ROIval to facilitate splitting ROIs",
+   NULL,
+ },
+    
+ { 4, JAN , 2012 , ZSS , "@Atlasize" , MICRO , TYPE_NEW_OPT,
+   "Allow for delimiters in keys file and handle names with spaces",
+   "Similar additions are made to @MakeLabelTable",
+ },
+    
+ { 4, JAN , 2012 , ZSS , "afni" , MINOR , TYPE_NEW_OPT,
+   "Automatically add an Atlas to whereami list if encountered in the session",
+   NULL,
+ },
+    
+ { 30, DEC , 2011 , ZSS , "afni" , MINOR , TYPE_NEW_OPT,
+   "Simplified how afni handles custom group or single-subject atlases",
+   "By default, SessionAtlases and AFNI_SUPP_ATLAS_DIR/CustomAtlases.niml\n"
+   "are added to the atlas list for whereami queries.",
+ },
+    
+ { 30, DEC , 2011 , ZSS , "@AfniEnv" , MINOR , TYPE_NEW_PROG,
+   "A convenience script to automatically edit .afnirc",
+   NULL,
+ },
+    
+ { 30, DEC , 2011 , ZSS , "@Atlasize" , MINOR , TYPE_NEW_PROG,
+   "A convenience script to turn a dataset to an atlas",
+   "The script makes it easy to create a group atlas or a single-subject\n"
+   "atlas and place them automatically in a location that AFNI\n"
+   "recognizes making them available to the user without bothering with\n"
+   "too many environment variable settings.\n",
+ },
+    
+ { 30, DEC , 2011 , ZSS , "@MakeLabelTable" , MINOR , TYPE_NEW_OPT,
+   "Improved @MakeLabelTable's creation of ATLAS niml files",
+   NULL,
+ },
+    
+ { 30, DEC , 2011 , ZSS , "3dinfo" , MINOR , TYPE_NEW_OPT,
+   "Numerous new options to 3dinfo, including checks for dset presence on disk",
+   NULL,
+ },
+    
+ { 30, DEC , 2011 , ZSS , "afni-general" , MINOR , TYPE_BUG_FIX,
+   "NIFTI datasets used to loose their path information upon loading.",
+   "This is problematic for a few reasons. For instance, afni ~/tmp/joe.niml\n"
+   "will display the dataset as ./joe.niml. Some internal functions for\n"
+   "conveniently dealing with atlases fail when the path is messed up in this\n"
+   "way. Also, this problem occurred for NIFTI but NOT AFNI native formats \n"
+   "wich resulted in different behaviour for programs like 3drefit.\n"
+   "For example: 3drefit -space MNI ~/tmp/joe.nii is not comparable to\n"
+   "3drefit -space MNI ~/tmp/joe+tlrc. (Actually, that behaviour was patched\n"
+   "on Dec 27 but explicitly setting the path at output. But the fix needed\n"
+   "to happen for other programs so that is now done at the io level.)\n",
+ },
+    
+ { 27, DEC , 2011 , ZSS , "3drefit" , MINOR , TYPE_BUG_FIX,
+   "3drefit failed when refitting a NIFTI dset in another directory.",
+   "If you did something like 3drefit -space MNI joe/jim/dset.nii\n"
+   "you ended up with a new dataset ./dset.nii as opposed to modifying\n"
+   "the one under joe/jim/ directory",
+ },
+    
+ { 20, DEC , 2011 , ZSS , "3dclust" , MINOR , TYPE_BUG_FIX,
+   "-prefix failed when input dset was mastered.",
+   "Better use macro PREP_LOADED_DSET_4_REWRITE whenever modifying\n"
+   "a dataset loaded from disk for the purporse of rewriting it.",
+ },
+    
+ { 20, DEC , 2011 , ZSS , "3dUpsample" , MINOR , TYPE_NEW_OPT,
+   "Allow for upsampling to go to 11 (actually 320) and control output datum",
+   NULL,
+ },
+ 
+ { 20, DEC , 2011 , ZSS , "suma" , MINOR , TYPE_NEW_OPT,
+   "SUMA now allows for direct recording to disk.",
+   "See SUMA's ctrl+h for key ctrl+R for details.\n"
+   "Related environment variable is SUMA_AutoRecordPrefix.",
+ },
+ 
+ { 20, DEC , 2011 , ZSS , "suma" , MINOR , TYPE_NEW_OPT,
+   "SUMA now displays area labels in the viewer, F9 key toggles it",
+   "See SUMA's ctrl+h output in the section for F9\n"
+   "Related environment variable is SUMA_ShowLabelsAtCrossHair.",
+ },
+ 
+ { 13, DEC , 2011 , ZSS , "3dinfo" , MINOR , TYPE_NEW_OPT,
+   "-same_* options return information about dset pairs",
+   NULL,
+ },
+ 
+ { 13, DEC , 2011 , ZSS , "@SUMA_AlignToExperiment" , MINOR , TYPE_NEW_OPT,
+   "-init_xform to allow for an initial transformation of -surf_anat",
+   NULL,
+ },
+ 
+ { 13, DEC , 2011 , ZSS , "plugout_drive" , MICRO , TYPE_BUG_FIX,
+   "AFNI_drive_switch_* functions discriminated against short prefixes.",
+   NULL,
+ },
+ 
+ { 12, DEC , 2011 , ZSS , "apsearch" , MINOR , TYPE_NEW_OPT,
+   "Small improvements and addition of logging option of search results",
+   "See -apsearch_log_file option for details. Logging is only enabled\n"
+   "if AFNI_LOG_BEST_PROG_OPTION is set to YES.",
+ },
+ 
+ { 12, DEC , 2011 , ZSS , "@global_parse" , MINOR , TYPE_NEW_PROG,
+   "Script to simplify support of global options such as h_find from scripts",
+   NULL ,
+ },
+ 
+ { 12, DEC , 2011 , ZSS , "afni" , MINOR , TYPE_NEW_OPT,
+   "Slice displays can now show atlas labels in addition to slice location ",
+   "The displays are turned on by right-clicking on the slice viewer's color\n"
+   "bar and then setting the 'Label' to something other than 'OFF'\n"
+   "See isqCR_getlabel, ISQ_getlabel, and AFNI_get_dset_val_label in code\n",
+ },
+ 
+ { 9, DEC , 2011 , ZSS , "suma" , MICRO , TYPE_NEW_ENV,
+   "SUMA_DoNotSendStates restricts certain surfaces from getting sent to suma.",
+   NULL,
+ },
+ 
+ { 7, DEC , 2011 , ZSS , "@SUMA_Make_Spec_FS" , MINOR , TYPE_NEW_OPT,
+   "Added atlas creation of aseg, aparc+aseg, in addition to aparc.a200*",
+   "See whereami's example 3 for how to extract ROIs from FreeSurfer atlases.",
+ },
+ 
+ { 7, DEC , 2011 , ZSS , "@FS_roi_label" , MICRO , TYPE_BUG_FIX,
+   "Fixed bug caused by not cleaning tmp files under /tmp/ with -rankmap",
+   "This bug should not have affected anyone. It showed up as I\n"
+   "was making @SUMA_Make_Spec_FS process more than one type of\n"
+   "parcellation volume.\n",
+ },
+ 
+ { 6, DEC , 2011 , ZSS , "apsearch" , MICRO , TYPE_NEW_OPT,
+   "-stdin for input",
+   "More tweaking of search distances and a battery of tests\n"
+   "to help decide if tweak is in the right direction.\n",
+ },
+ 
+ { 5, DEC , 2011 , ZSS , "afni-general" , MICRO , TYPE_NEW_OPT,
+   "Added -h_view to all C command-line programs.",
+   "See also apsearch -view_prog_help option",
+ },
+ 
+ { 5, DEC , 2011 , ZSS , "afni-general" , MICRO , TYPE_NEW_ENV,
+   "AFNI_GUI_EDITOR controls user's preferred text editor.",
+   "See apsearch -afni_text_editor.",
+ },
+ 
+ { 2, DEC , 2011 , ZSS , "suma" , MICRO , TYPE_NEW_OPT,
+   "Added 'Save' button to suma text info windows",
+   NULL,
+ },
+ 
+ { 2, DEC , 2011 , ZSS , "suma" , MICRO , TYPE_NEW_ENV,
+   "SUMA_NodeCoordsUnits allows the specification of node coord. units",
+   NULL,
+ },
+ 
+ { 2, DEC , 2011 , ZSS , "afni-general" , MICRO , TYPE_BUG_FIX,
+   "Wrote SOLARIS_strcasestr to replace missing strcasestr on SOLARIS",
+   NULL,
+ },
+ 
+ { 2, DEC , 2011 , ZSS , "ConvertSurface" , MINOR , TYPE_NEW_OPT,
+   "-XYZscale is added to scale the coordinates of a surface",
+   "Surface that are not in mm coordinates can look pretty bad in SUMA.\n"
+   "This scaling option can be used to easily change coordinates from cm to mm\n"
+   "for example.",
+ },
+ 
+ { 30, NOV , 2011 , ZSS , "ConvertDset" , MICRO , TYPE_NEW_OPT,
+   "-pad_to_node 0 now padds output dset to max node in input dset",
+   NULL,
+ },
+ 
+ { 29, NOV , 2011 , ZSS , "@clean_help_dir" , MICRO , TYPE_NEW_PROG,
+   "Removes redundant help files from the afni help directory.",
+   NULL,
+ },
+ 
+ { 29, NOV , 2011 , ZSS , "@DeblankFileNames" , MICRO , TYPE_NEW_PROG,
+   "Replaces spaces in filenames with_something_less_annoying.",
+   NULL,
+ },
+ 
+ { 28, NOV , 2011 , ZSS , "afni-general" , MICRO , TYPE_BUG_FIX,
+   "Fixed function THD_deplus_prefix to improve prefix cleanup",
+   "Previous version cleaned +orig but not +orig.HEAD or +orig. for example.\n"
+   "Current one removes +orig +orig. +orig.HEAD +orig.BRIK +orig.BRIK.gz and\n"
+   "corresponding +acpc and +tlrc brethren.\n"
+ },
+ 
+ { 25, NOV , 2011 , ZSS , "Dimon" , MICRO , TYPE_NEW_OPT,
+   "Added -gert_quit_on_err",
+   "Passes -quit_on_err option to to3d."
+ },
+ 
+ { 25, NOV , 2011 , ZSS , "to3d" , MICRO , TYPE_NEW_OPT,
+   "Added -quit_on_err",
+   "Keeps to3d from going in interactive mode in case of error."
+ },
+ 
+ { 22, NOV , 2011 , ZSS , "afni" , MICRO , TYPE_NEW_OPT,
+   "Added -h_find as a global option",
+   "afni -help now outputs information about 'Global options'"
+ },
+ 
+ { 21, NOV , 2011 , ZSS , "afni" , MICRO , TYPE_NEW_OPT,
+   "Added -all_opts as a global option",
+   "The option is the equivalent of running apsearch -all_opts \n"
+   "for a certain program."
+ },
+ 
+ { 21, NOV , 2011 , ZSS , "apsearch" , MICRO , TYPE_NEW_OPT,
+   "Added -all_opts to show all options for a program",
+   NULL
+ },
+ 
+
+ { 17, NOV , 2011 , ZSS , "apsearch" , MINOR , TYPE_NEW_PROG,
+   "This is a program to test approximate string matching functions",
+   "The program is best described by its help output.\n"
+   "It is meant to quickly test the behavior of the approx* functions\n"
+   "in thd_ttatlas_query.c where approximate string matching will\n"
+   "be useful is easily specifying an atlas areas by name.\n"
+   "Another useful offshoot is the function: suggest_best_prog_option\n"
+   "which can easily be called right after a command-line parsing error\n"
+   "message is displayed. For example, in apsearch I have the following:\n"
+   "\n"
+   "   { /* bad news in tennis shoes */\n"
+"      fprintf(stderr,\"** Error %s: bad option %s\\n\", argv[0], argv[iarg]);\n"
+   "      suggest_best_prog_option(argv[0], argv[iarg]);\n"
+   "      return 1;\n"
+   "   }\n"
+   "So all is needed to retrofit an old program is the suggest function.\n"
+   "That function will do nothing if environment variable AFNI_NO_OPTION_HINT\n"
+   "is set.\n"
+   "To use suggest_best_prog_option from a script, use:\n"
+   "     apsearch -popt `basnemane $0` -word ARG\n"
+   "\n"
+ },
+
+ { 17, NOV , 2011 , ZSS , "afni" , MICRO , TYPE_NEW_ENV,
+   "Added threshold locking capability under the 'Lock' menu",
+   NULL
+ },
+ 
+ { 17, NOV , 2011 , ZSS , "afni" , MINOR , TYPE_NEW_OPT,
+   "If AFNI_NO_OPTION_HINT, don't bother with helpful suggestions",
+   NULL
+ },
+ 
+ { 15, NOV , 2011 , ZSS , "afni_general" , MINOR , TYPE_BUG_FIX,
+   "Fixed bug introduced by cleaning up header_name and brick_name",
+   NULL
+ },
+ 
+ { 15, NOV , 2011 , ZSS , "afni_general" , MINOR , TYPE_BUG_FIX,
+   "More changes regarding obliquity warnings.",
+   "   AFNI:\n"
+   "   Popups only appear when user is viewing dsets of different obliquity.\n"
+   "     See dset_obliquity_angle_diff()\n"
+   "      and THD_report_obliquity()\n"
+   "   \n"
+   "   The warnings only appear ONCE per pair of misfits, per afni process. \n"
+   "      See AFNI_check_obliquity() for implementation details.\n"
+   "   \n"
+   "   Oblique notices no longer appear on the command line each time you \n"
+   "   read a session or switch dsets. To tell you that you are viewing an \n"
+   "   oblique dset and that the coords are not quite what they should be,\n"
+   "   I added a '*' next to the 'order:' descriptor in the top left corner. \n"
+   "\n"
+   "Command Line programs:\n"
+   "   In most programs that should not care about obliquity, I add\n"
+   "   early under main():   \n"
+   "      set_obliquity_report(0); /* silence obliquity */ \n"
+   "   \n"
+   "  Also, 3dcalc, 3dTcat, 3dbucket, and function THD_open_tcat() \n"
+   "   Only complain when obliquity between dset pair differs. \n"
+   "   The check is done right after checking for grid matching with\n"
+   "   EQUIV_DATAXES\n"
+   "   \n"
+  } ,
+
+
+ { 10, NOV , 2011 , ZSS , "afni" , MINOR , TYPE_BUG_FIX,
+   "Turned off obliquity popup warning when Ulay and Olay angles are similar",
+   "AFNI issues warning when obliquity differs for a pair of viewed sets.\n"
+   "It does not repeat warnings for a certain pair. It only output one set\n"
+   "of warnings per dataset when 'switch ulay' is set, although I'd love to\n"
+   "get rid of that habit as soon as possible.\n"   
+  } ,
+
+ { 10, NOV , 2011 , ZSS , "3dinfo" , MICRO , TYPE_BUG_FIX,
+   "Many new options for selective information.",
+   NULL   
+  } ,
+
+ { 2, NOV , 2011 , ZSS , "3dfim+" , MICRO , TYPE_BUG_FIX,
+   "Turned off scaling for Best Index in output dset",
+   NULL   
+  } ,
+
+ { 26, OCT , 2011 , ZSS , "suma" , MICRO , TYPE_NEW_OPT,
+   "Made SUMA hide overlay from SUMA whenever 'See Overlay' is off in AFNI",
+   NULL   
+  } ,
+
+ { 26, OCT , 2011 , ZSS , "afni" , MICRO , TYPE_BUG_FIX,
+   "Fixed bug where AFNI sent the max voxel to suma despite threshold",
+   "In BYTE and SHORT datasets the maximum voxel always got sent to\n"
+   "suma, even if the threshold was higher than the maximum value in\n"
+   "the dataset.\n"   
+  } ,
+
+ { 18, OCT , 2011 , ZSS , "afni" , MICRO , TYPE_NEW_OPT,
+   "Added -available_npb* options to suggest available port blocks",
+   NULL  
+  } ,
+
+ { 14, OCT , 2011 , ZSS , "afni-general" , MINOR , TYPE_GENERAL,
+   "Improvements of atlas handling in whereami and afni",
+   "1- In addition to loading atlas specs from environment variable\n"
+   "AFNI_SUPP_ATLAS, AFNI will automatically search for a file\n"
+   "named  SessionAtlases.niml which is created with @MakeLabelTable.\n"
+   "2- AFNI will check if a viewed dataset is an atlas and will\n"
+   "automatically add it to the atlas list. It will also show the label at \n"
+   "the cross-hair location.\n"
+   "New functions of interest:\n"
+   "  get_Atlas_ByDsetID, is_Dset_Atlasy, \n"
+   "  label_table_to_atlas_point_list, is_identity_xform_chain\n"
+  } ,
+
+ { 13, OCT , 2011 , ZSS , "whereami" , MINOR , TYPE_BUG_FIX,
+   "-omask failed if atlas was stored in float type.",
+   NULL
+  } ,
+
+ { 13, OCT , 2011 , ZSS , "3drefit" , MINOR , TYPE_BUG_FIX,
+   "Added support for -atrstring operation on NIFTI datasets ",
+   "This required making changes to THD_init_diskptr_names functions\n"
+   "and a few more of its colleagues."
+  } ,
+
+ { 11, OCT , 2011 , ZSS , "@auto_tlrc" , MINOR , TYPE_NEW_OPT,
+   "Added support for NIFTI datasets",
+   NULL
+  } ,
+
+ { 11, OCT , 2011 , ZSS , "3dinfo" , MINOR , TYPE_NEW_OPT,
+   "Added new options for extracting field values in scripts",
+   NULL
+  } ,
+
+ { 4, OCT , 2011 , ZSS , "CreateIcosahedron" , MICRO , TYPE_NEW_OPT,
+   "Added -min_nodes option",
+   NULL
+  } ,
+
+ { 4, OCT , 2011 , ZSS , "GroupAna" , MINOR , TYPE_NEW_OPT,
+   "Added support for writing NIML files as output",
+   "This also required writing a few new matlab functions such as\n"
+   " BrikInfo_2_niml_writesimple."
+ } ,
+
+ { 1, AUG , 2011 , ZSS , "Draw Dataset" , MINOR , TYPE_MODIFY,
+   "Changed the gap selection to arrows to allow for much larger gaps",
+   NULL
+  } ,
+
+ { 1, AUG , 2011 , ZSS , "whereami" , MINOR , TYPE_BUG_FIX,
+   "Whereami's symbolic notation failed with float valued atlases",
+   "This is now fixed. Code also checks for scale factors.\n"
+   "There was another bug waiting to happen with:\n"
+   "!is_Atlas_Named(atlas, \"CA_N27_PM\"), which is now:\n"
+   "!is_probabilistic_atlas(atlas)\n"
+  } ,
+
+ { 22, JUL , 2011 , ZSS , "afni" , MICRO , TYPE_NEW_ENV,
+   "Added AFNI_TIME_LOCK to turn on AFNI's Time Lock by default",
+   NULL
+  } ,
+
+ { 20, JUL , 2011 , ZSS , "1dcat" , MICRO , TYPE_NEW_OPT,
+   "added -sel option to 1dcat",
+   "with -sel one can apply the same selection of columns and rows\n"
+   "to all files on the command line, allowing the use of wildcards\n"
+   "when specifying input 1D files.\n"
+  } ,
+
+ { 24, JUN , 2011 , ZSS , "afni-general" , MICRO , TYPE_NEW_OPT,
+   "added global option -pif which is used to flag certain commands.",
+   "-pif PROCESS_ID_FLAG is used to flag a particular AFNI command\n"
+   "so that you can identify from the shell that command's process id\n"
+   "by grepping for PROCESS_ID_FLAG on the output of 'ps -a'.\n"
+  } ,
+
+ { 20, JUN , 2011 , ZSS , "@ROI_Corr_Mat" , MICRO , TYPE_BUG_FIX,
+   "added support for +tlrc input, more debugging messages, -echo option.",
+   NULL
+  } ,
+
+ { 20, JUN , 2011 , ZSS , "3drename" , MICRO , TYPE_NEW_OPT,
+   "added support for -overwrite",
+   NULL
+  } ,
+
+ { 16, JUN , 2011 , ZSS , "3dSurfMask" , MAJOR , TYPE_NEW_OPT,
+   "Major improvements for mask creation and voxel distance computations",
+   "Option -fill_method SLOW produces more accurate masks for voxels\n"
+   "inside the closed surface. In addition, the program outputs a dataset\n"
+   "with the shortest distance of each voxel to the surface.\n"
+   "See examples under 3dSurfMask -help."
+  } ,
+ 
+ { 16, JUN , 2011 , ZSS , "SurfPatch" , MINOR , TYPE_NEW_OPT,
+   "-flip_orientation allows for reversing triangle orientation.",
+   "See new examples under SurfPatch -help"
+ } ,
+
+ { 16, JUN , 2011 , ZSS , "SurfPatch" , MINOR , TYPE_BUG_FIX,
+   "No longer complains about not finding seed in cases where it should.",
+   NULL
+  } ,
+
  { 8, JUN , 2011 , ZSS , "@FSlabel2dset" , MINOR , TYPE_NEW_PROG,
    "Script to change FreeSurfer ascii label file to SUMA dset",
    NULL
   } ,
 
- { 8, JUN , 2011 , ZSS , "afni-general" , MINOR , TYPE_NEW_OPT,
+ { 8, JUN , 2011 , ZSS , "afni-general" , MAJOR , TYPE_NEW_OPT,
    "Added -npb and modified title bar to reflect bloc of ports",
-   "See afni's help for -npb option."
+   "You can have multiple instances of programs talking to each other.\n"
+   "See afni's help for details on the -npb option."
   } ,
 
  { 7, JUN , 2011 , ZSS , "afni" , MINOR , TYPE_NEW_OPT,

@@ -30,6 +30,7 @@ typedef enum
     E_SMAP_AVE,  E_SMAP_COUNT,
     E_SMAP_MIN,  E_SMAP_MAX,
     E_SMAP_MAX_ABS,
+    E_SMAP_MODE,                        /* 3 Nov 2011 [rickr]  */
     E_SMAP_FINAL                        /* do not change FINAL */
 } s2v_map_num;
 
@@ -96,6 +97,7 @@ typedef struct
     THD_3dim_dataset * oset;            /* output dataset              */
     MRI_IMAGE        * sxyz_im;         /* surface coordinate image    */
     MRI_IMAGE        * sdata_im;        /* sub-surface data image      */
+    SUMA_DSET        * dset;            /* Dset instead of sdata_im    */
     THD_fvec3          f3mm_min;        /* numerical min xyz points    */
     THD_fvec3          f3mm_max;        /* numerical max xyz points    */
     parser_t           parser;          /* code for expression eval    */
@@ -118,13 +120,19 @@ typedef struct
     int          ilen;                  /* length of ilist             */
 } node_list_t;
 
+/* aggregate voxel list structure (allow for multiple possibilities)   */
+typedef struct {
+    float_list * vlist;
+} aggr_list_t;
+
 /* ---- function prototypes ---- */
 
 /* library protos - rcr - move to separate file */
 float dist_f3mm       ( THD_fvec3 * p1, THD_fvec3 * p2 );
 int   s2v_map_type    ( char * map_str );
 int   compute_results ( param_t * p, node_list_t * N, s2v_opts_t * sopt,
-                         double * ddata, int * idata, THD_fvec3 * pary );
+                         double * ddata, int * idata, THD_fvec3 * pary,
+                         aggr_list_t * aggr );
 THD_3dim_dataset * s2v_nodes2volume(node_list_t *N,param_t *p,s2v_opts_t *sopt);
 
 
@@ -140,21 +148,25 @@ int f3mm_out_of_bounds( THD_fvec3 * cp, THD_fvec3 * min, THD_fvec3 * max );
 int fill_node_list    ( opts_t * opts, param_t * p, node_list_t * N );
 int fill_SUMA_structs ( opts_t * opts, SUMA_SurfSpecFile * spec );
 int final_clean_up    ( node_list_t * N );
-int final_computations(double *ddata, int *idata, s2v_opts_t *sopt, int nvox);
+int final_computations(double *ddata, int *idata, s2v_opts_t *sopt, int nvox,
+                       aggr_list_t * aggr);
 int get_mappable_surfs( SUMA_SurfaceObject ** slist, int how_many, int debug );
 int init_node_list    (opts_t *opts,param_t *p,s2v_opts_t *sopt,node_list_t *N);
 int init_options      ( opts_t * opts, int argc, char * argv [] );
 int insert_list       ( node_list_t * N, param_t * p, s2v_opts_t * sopt,
-                        THD_fvec3 *pary, int nindex, double *ddata, int *idata);
+                        THD_fvec3 *pary, int nindex, double *ddata, int *idata,
+                        aggr_list_t * aggr );
 int insert_value      ( s2v_opts_t * sopt, double *dv, int *iv, int vox,
-                        int node, float value );
+                        int node, float value, aggr_list_t * aggr );
 int integral_doubles  ( double * dp, int nvals );
+int is_aggregate_type ( int map_func );
 int make_point_list   ( THD_fvec3 * list, THD_fvec3 * p1, THD_fvec3 * pn,
                         s2v_opts_t * sopt );
 int read_surf_files   ( opts_t * opts, param_t * p, SUMA_SurfSpecFile * spec,
                         s2v_opts_t * sopt, node_list_t * N );
 int read_sxyz_1D      ( opts_t * opts, param_t * p );
 int sdata_from_1D     ( opts_t * opts, param_t * p, node_list_t * N );
+int sdata_from_niml     ( opts_t * opts, param_t * p, node_list_t * N );
 int sdata_from_default( node_list_t * N );
 int set_3dmm_bounds   ( THD_3dim_dataset *dset, THD_fvec3 *min, THD_fvec3 *max);
 int set_node_list_data( node_list_t *N, param_t *p, s2v_opts_t *sopt, int col);

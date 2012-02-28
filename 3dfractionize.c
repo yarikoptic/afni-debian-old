@@ -35,7 +35,7 @@ int main( int argc , char * argv[] )
 
    int do_vote=0 ;          /* 18 Oct 1999 */
    int *vote_val = NULL ;
-   int  nvote_val , ivote , voter , vote_print=0 ;
+   int  nvote_val=0 , ivote , voter=0 , vote_print=0 ;
    byte  *vote_bout = NULL ;
    short *vote_sout = NULL ;
    float *vote_best = NULL ;
@@ -193,6 +193,7 @@ int main( int argc , char * argv[] )
             exit(1) ;
          }
          iarg++ ; continue ;
+         THD_make_cardinal(tset);    /* deoblique    21 Oct, 2011 [rickr] */
       }
 
       if( strcmp(argv[iarg],"-input") == 0 || strcmp(argv[iarg],"-iset") == 0 ){
@@ -205,6 +206,7 @@ int main( int argc , char * argv[] )
             fprintf(stderr,"** Can't open input %s\n",argv[iarg]) ;
             exit(1) ;
          }
+         THD_make_cardinal(iset);    /* deoblique    21 Oct, 2011 [rickr] */
          iarg++ ; continue ;
       }
 
@@ -218,6 +220,7 @@ int main( int argc , char * argv[] )
             fprintf(stderr,"** Can't open warp %s\n",argv[iarg]) ;
             exit(1) ;
          }
+         THD_make_cardinal(wset);    /* deoblique    21 Oct, 2011 [rickr] */
          iarg++ ; continue ;
       }
 

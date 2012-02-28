@@ -27,7 +27,7 @@ static char * file_extension_list[] = {
     ".mnc",
     ".mri",
     ".svl",
-    ".1D",
+    ".1D", ".1D.dset",
     ".3D",
     ".nii", ".nii.gz", ".nia", ".hdr", ".img",
     ".mpg", ".mpeg", ".MPG", ".MPEG",
@@ -210,7 +210,8 @@ ENTRY("THD_open_one_dataset") ;
 
    /*-- 04 Mar 2003: allow input of .1D files --*/
 
-   if( STRING_HAS_SUFFIX(pathname,".1D") ){
+   if( STRING_HAS_SUFFIX(pathname,".1D") ||
+       STRING_HAS_SUFFIX(pathname,".1D.dset") ){
      CHECK_FOR_DATA(pathname) ;               /* 06 Jan 2005 */
      dset = THD_open_1D(pathname) ;
      THD_patch_brickim(dset) ;  /* 20 Oct 2006 */
@@ -534,7 +535,8 @@ ENTRY("storage_mode_from_filename");
 
     if( STRING_HAS_SUFFIX(fname, ".svl") )      RETURN(STORAGE_BY_CTFSAM);
 
-    if( STRING_HAS_SUFFIX(fname, ".1D") )       RETURN(STORAGE_BY_1D);
+    if( STRING_HAS_SUFFIX(fname, ".1D") ||
+        STRING_HAS_SUFFIX(fname, ".1D.dset"))       RETURN(STORAGE_BY_1D);
 
     if( STRING_HAS_SUFFIX(fname, ".3D") )       RETURN(STORAGE_BY_3D);
 
@@ -558,6 +560,60 @@ ENTRY("storage_mode_from_filename");
     RETURN(STORAGE_UNDEFINED);
 }
 
+int storage_mode_from_prefix( char * fname )
+{
+   int sm=STORAGE_UNDEFINED;
+   
+ENTRY("storage_mode_from_prefix");
+   
+   if( !fname || !*fname )                     RETURN(STORAGE_UNDEFINED);
+   if ((sm = storage_mode_from_filename(fname)) != STORAGE_UNDEFINED) RETURN(sm);
+   
+   if (fname[strlen(fname)-1] == '.') { 
+      if( STRING_HAS_SUFFIX(fname, "+orig.") ||
+          STRING_HAS_SUFFIX(fname, "+acpc.") ||
+          STRING_HAS_SUFFIX(fname, "+tlrc.") ) sm = STORAGE_BY_BRICK;
+   } else {
+      if( STRING_HAS_SUFFIX(fname, "+orig") ||
+          STRING_HAS_SUFFIX(fname, "+acpc") ||
+          STRING_HAS_SUFFIX(fname, "+tlrc") ) sm = STORAGE_BY_BRICK;
+   }
+
+   RETURN(sm);
+}
+
+/* There is also: storage_mode_str() */
+char *storage_mode_name(int mode) {
+   switch (mode) {
+      case STORAGE_UNDEFINED:
+         return("UNDEFINED");
+      case STORAGE_BY_BRICK:
+         return("BRIK");
+      case STORAGE_BY_VOLUMES:
+         return("VOLUMES");
+      case STORAGE_BY_ANALYZE:
+         return("ANALYZE");
+      case STORAGE_BY_CTFMRI:
+         return("CTFMRI");
+      case STORAGE_BY_CTFSAM:
+         return("CTFSAM");
+      case STORAGE_BY_1D:
+         return("1D");
+      case STORAGE_BY_3D:
+         return("3D");
+      case STORAGE_BY_NIFTI:
+         return("NIFTI");
+      case STORAGE_BY_MPEG:
+         return("MPEG");
+      case STORAGE_BY_NIML:
+         return("NIML");
+      case STORAGE_BY_NI_SURF_DSET:
+         return("NI_SURF_DSET");
+      case STORAGE_BY_GIFTI:
+         return("GIFTI");
+   }
+   return("UNDEFINED");
+}
 
 /* ---------------------------------------------------- */
 /* given a filename, return a pointer to the extension
@@ -603,4 +659,43 @@ ENTRY("has_known_non_afni_extension");
         mode  > LAST_STORAGE_MODE ) RETURN(0);
 
     RETURN(1); /* otherwise, we recognize it as non-AFNI */
+}
+
+/* ---------------------------------------------------- */
+/* given a filename, return a string excluding known 
+   afni extensions (from file_extension_list)
+   DO NOT FREE output.
+                                   06 Feb 2012 [ZSS] */
+
+char * without_afni_filename_extension( char * fname )
+{
+    char ** eptr;
+    static char onames[5][THD_MAX_NAME+1];
+    static int icall=0;
+    int c, flen, num_ext;
+
+ENTRY("without_afni_filename_extension");
+    
+    if( !fname || !*fname ) RETURN(NULL);
+    ++icall;
+    if (icall > 4) icall = 0;
+    onames[icall][0]='\0';
+    
+    if (strlen(fname) >= THD_MAX_NAME) {
+      WARNING_message("Filename too long for without_afni_filename_extension()"
+                      "Returing fname");
+      RETURN(fname);
+    }
+    num_ext = sizeof(file_extension_list)/sizeof(char *);
+    flen = strlen(fname);
+
+    for( c = 0, eptr = file_extension_list; c < num_ext; c++, eptr++ ) {
+        if( STRING_HAS_SUFFIX(fname, *eptr) ) {
+            flen = flen - strlen(*eptr);
+            strncpy(onames[icall], fname, flen);
+            onames[icall][flen]='\0';
+            RETURN(onames[icall]);
+        }
+    }
+    RETURN(fname);   /* not found */
 }

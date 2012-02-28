@@ -268,11 +268,20 @@ parse.AFNI.name <- function(filename, verb = 0) {
    #and the path
    an$path <- dirname(an$orig_name)
    
-  if (verb > 2) {
-   note.AFNI("Browser not active");
-   # browser()
-  }
-  
+   if (verb > 2) {
+      note.AFNI("Browser not active");
+      # browser()
+   }
+   if (  an$type != '1D' && (
+         !is.null(an$brsel) || !is.null(an$rosel) || 
+         !is.null(an$rasel) || !is.null(an$insel))) {
+       #Remove trailing quote if any
+       an$prefix <- gsub("'$", '', an$prefix); 
+       an$prefix <- gsub('"$', '', an$prefix);       
+       an$pprefix <- gsub("'$",'', an$pprefix); 
+       an$pprefix <- gsub('"$','', an$pprefix);       
+   } 
+
   return(an)
 }
 
@@ -1069,11 +1078,14 @@ trim.string <- function (s, nchar=32, left=TRUE, strim='...')
       ss <- strsplit(s,'')[[1]]
       nc <- length(ss)
       if (nc>nchar) {
+         #browser()
          nstrim = length(strsplit(strim,'')[[1]])
          if (left) {
             ns <- nc - nchar - nstrim
-            ss <- ss[ns:nc] 
-            s<-paste(strim,paste(ss,collapse=''), sep='')
+            if (ns > nstrim) {
+               ss <- ss[ns:nc] 
+               s<-paste(strim,paste(ss,collapse=''), sep='')
+            }
             return(s)
          }else {
             ns <- nchar - nstrim
@@ -1107,7 +1119,8 @@ as.num.vec <- function(ss, addcount=TRUE, sepstr='.', reset=FALSE) {
          lastname <- ll
       } else {
          valnum <- valnum+1
-         vv <- as.numeric(vv[1]);
+         wrn <- getOption('warn'); options(warn=-1);
+         vv <- as.numeric(vv[1]); options(warn=wrn);
          if (is.na(vv)) { return(NULL); }
          if (addcount) {
             sfnd <- paste(lastname, sepstr,'[[:digit:]]*$', sep='', collapse='')
@@ -1319,9 +1332,11 @@ r.NI_read_element <- function (fname, HeadOnly = TRUE) {
    for (i in (stpv[1]+1):(strv[2]-1)) {
       #browser()
       if (is.null(nel$dat)) 
-         nel$dat <- rbind(r.NI_dequotestring(strsplit(ff[i],split=' ')[[1]]))
+         nel$dat <- rbind(r.NI_dequotestring(
+                  strsplit(deblank.string(ff[i]),split=' ')[[1]]))
       else nel$dat <- rbind(nel$dat,
-                           r.NI_dequotestring(strsplit(ff[i],split=' ')[[1]]))
+                           r.NI_dequotestring(strsplit(
+                              deblank.string(ff[i]),split=' ')[[1]]))
    }
    return(nel)
 }
@@ -1697,8 +1712,9 @@ read.AFNI.matrix <- function (fname,
          subjCol <- paste('row',sprintf('%02d',c(1:(dim(brk)[1]-1))), sep='')
          istrt<- 2
       }else {  #completely naked
-         covNames <- paste('col',sprintf('%02d',c(1:dim(brk)[2])),sep='');
-         subjCol <- paste('row',sprintf('%02d',c(1:dim(brk)[1])), sep='')
+         ccc <- trim.string(fname$prefix, nchar=10, left=FALSE, strim='..');
+         covNames <- paste(ccc,sprintf(' c%02d',c(1:dim(brk)[2])),sep='');
+         subjCol <- paste(ccc,sprintf(' r%02d',c(1:dim(brk)[1])), sep='')
          istrt<- 1
       }
       if (dim(brk)[2] == 1) {
@@ -2328,8 +2344,12 @@ write.AFNI <- function( filename, brk=NULL, label=NULL,
    err.AFNI("NULL input");
    return(0)
   }
+  #make sure we don't have 3 dims array, need always 4d
+  ddb <- dimBRKarray(brk)
+  dim(brk) <- ddb
+  
   if (is.null(defhead)) { # No default header
-     if (is.null(label)) label <- paste(c(1:dim(brk)[4]),collapse='~');
+     if (is.null(label)) label <- paste(c(1:ddb[4]),collapse='~');
      if (is.null(origin)) origin <- c(0,0,0)
      if (is.null(delta)) delta <- c(4,4,4)
      if (is.null(orient)) orient <- 'RAI'
@@ -2338,7 +2358,7 @@ write.AFNI <- function( filename, brk=NULL, label=NULL,
       if (!is.null(defhead$BRICK_LABS)) {
          label <- gsub("^'", '', defhead$BRICK_LABS);
       } else {
-         label <- paste(c(1:dim(brk)[4]),collapse='~');
+         label <- paste(c(1:ddb[4]),collapse='~');
       }
      }
      if (is.null(origin)) {
@@ -2410,24 +2430,24 @@ write.AFNI <- function( filename, brk=NULL, label=NULL,
   writeChar(AFNIheaderpart("float-attribute","BRICK_STATS",mm),
             conhead,eos=NULL)
   writeChar(AFNIheaderpart("integer-attribute","DATASET_RANK",
-                           c(3,dim(brk)[4],0,0,0,0,0,0)),
+                           c(3,ddb[4],0,0,0,0,0,0)),
             conhead,eos=NULL)  
   writeChar(AFNIheaderpart("integer-attribute","DATASET_DIMENSIONS",
-                           c(dim(brk)[1:3],0,0)),
+                           c(ddb[1:3],0,0)),
             conhead,eos=NULL)  
-  writeChar(AFNIheaderpart("integer-attribute","BRICK_TYPES",rep(1,dim(brk)[4])),
+  writeChar(AFNIheaderpart("integer-attribute","BRICK_TYPES",rep(1,ddb[4])),
             conhead,eos=NULL)  
 
   if (scale) {
      if (verb) {
       note.AFNI("Computing scaling factors");
      }
-     scale_fac <- rep(0,dim(brk)[4])
-     for (k in 1:dim(brk)[4]) {
+     scale_fac <- rep(0,ddb[4])
+     for (k in 1:ddb[4]) {
        scale_fac[k] <- max(abs(mm[2*k-1]),abs(mm[2*k]))/32767
      }
    } else {
-      scale_fac <- rep(0,dim(brk)[4])
+      scale_fac <- rep(0,ddb[4])
    }
   writeChar(AFNIheaderpart("float-attribute","BRICK_FLOAT_FACS",scale_fac),
             conhead,eos=NULL)  
@@ -2436,6 +2456,14 @@ write.AFNI <- function( filename, brk=NULL, label=NULL,
             conhead,eos=NULL)  
   writeChar(AFNIheaderpart("string-attribute","BYTEORDER_STRING","MSB_FIRST"),
             conhead,eos=NULL)  
+  
+  #The tross logger
+  trlog <- Sys.getenv("AFNI_HISTDB_SCRIPT")
+  if ( trlog != '') {
+    writeChar(AFNIheaderpart("string-attribute","HISTDB_SCRIPT", trlog ),
+               conhead,eos=NULL)  ;
+  }
+  
   close(conhead)
 
   # Write BRIK
@@ -2447,7 +2475,7 @@ write.AFNI <- function( filename, brk=NULL, label=NULL,
       if (verb) {
          note.AFNI("Applying scaling ")
         }
-      for (k in 1:dim(brk)[4]) {
+      for (k in 1:ddb[4]) {
          brk[,,,k] <- brk[,,,k] / scale_fac[k]
       }
    }
@@ -2463,12 +2491,12 @@ write.AFNI <- function( filename, brk=NULL, label=NULL,
      #Write on sub-brick at a time to reduce memory use. 
      #      as.integer will allocate a new copy
      if (scale) {
-        for (k in 1:dim(brk)[4]) {
+        for (k in 1:ddb[4]) {
          writeBin(as.integer(brk[,,,k] / scale_fac[k]), 
                   conbrik,size=2, endian="big") 
         }
      } else {
-        for (k in 1:dim(brk)[4]) {
+        for (k in 1:ddb[4]) {
          writeBin(as.integer(brk[,,,k]), 
                   conbrik,size=2, endian="big") 
         }

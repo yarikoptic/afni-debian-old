@@ -436,6 +436,7 @@ extern THD_3dim_dataset * EDIT_full_copy ( THD_3dim_dataset * , char * ) ;
 extern int                EDIT_dset_items( THD_3dim_dataset * , ... ) ;
 extern THD_3dim_dataset * EDIT_geometry_constructor( char * , char * ) ; /* 05 Jan 2008 */
 extern char * EDIT_get_geometry_string( THD_3dim_dataset *dset ) ;
+extern char * EDIT_imat_to_geometry_string( mat44 imat , int nx,int ny,int nz ) ;
 
 extern int THD_volDXYZscale(  THD_dataxes  *daxes,
                               float xyzscale,
@@ -446,7 +447,11 @@ extern THD_datablock *    EDIT_empty_datablock(void) ;          /* 11 Mar 2005 *
 extern void EDIT_add_bricklist( THD_3dim_dataset *,int,int *,float *,void *sbr[] ) ;
 
 extern void EDIT_add_brick( THD_3dim_dataset * , int , float , void * ) ;
-
+extern int EDIT_add_bricks_from_far(THD_3dim_dataset *dset, 
+                                      float **far, int nval,
+                                      int otype, char scaleopt, 
+                                      int verb);
+                    
 extern void EDIT_substitute_brick( THD_3dim_dataset *,  int,int, void * ) ;
 extern void EDIT_substscale_brick( THD_3dim_dataset *,  int,int, void *, int,float ) ;
 
@@ -524,7 +529,10 @@ extern int cluster_alphaindex_64( int csize, int nz, float fw, float pv ) ;
 #define ADN_anatpar_idcode       6065     /*=  MCW_idcode * [13 Dec 1999] =*/
 
 /* 30 Nov 1997 */
-#define ADN_ONE_STEP            100000
+/* 100000 -> 10000000                            3 Oct 2011 [rickr]
+ * Allow for 10 million sub-bricks in output datasets.  Many people
+ * currently need more than just 100000 (e.g. HJ Jo, Javier, Meghan). */
+#define ADN_ONE_STEP            10000000
 #define ADN_brick_label_one             (2*ADN_ONE_STEP)  /*=  char *   =*/
 #define ADN_brick_fac_one               (3*ADN_ONE_STEP)  /*=  float    =*/
 #define ADN_brick_stataux_one           (4*ADN_ONE_STEP)  /*=  float *  =*/
@@ -696,9 +704,13 @@ extern MRI_IMAGE * mri_localstat( MRI_IMAGE *, byte *, MCW_cluster *, int ) ;
 extern THD_3dim_dataset * THD_localstat( THD_3dim_dataset *, byte *,
                                          MCW_cluster *, int, int *, 
                                          float p[][MAX_CODE_PARAMS+1],
-                                         float *reduce_grid) ;
+                                         float *reduce_grid, int resam_mode) ;
 extern void THD_localstat_verb(int) ;
-
+extern int DSET_1Dindex_to_regrid_ijk( THD_3dim_dataset *iset, int ijk, 
+                                 THD_3dim_dataset *gset, 
+                                 int *ii, int *jj, int *kk);
+extern THD_3dim_dataset * THD_reduced_grid_copy(THD_3dim_dataset *dset, 
+                                 float *redx);
 extern MRI_IMAGE * mri_localbistat( MRI_IMAGE *, MRI_IMAGE *,
                                     byte *, MCW_cluster *, int ) ;
 extern THD_3dim_dataset * THD_localbistat( THD_3dim_dataset *, THD_3dim_dataset *,

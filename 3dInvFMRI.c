@@ -9,7 +9,7 @@ int main( int argc , char *argv[] )
 {
    THD_3dim_dataset *yset=NULL , *aset=NULL , *mset=NULL , *wset=NULL ;
    MRI_IMAGE *fim=NULL, *qim,*tim, *pfim=NULL , *vim     , *wim=NULL  ;
-   float     *flar    , *qar,*tar, *par=NULL  , *var     , *war  ;
+   float     *flar    , *qar,*tar, *par=NULL  , *var     , *war=NULL  ;
    MRI_IMARR *fimar=NULL ;
    MRI_IMAGE *aim , *yim ; float *aar , *yar ;
    int nt=0 , nxyz=0 , nvox=0 , nparam=0 , nqbase , polort=0 , ii,jj,kk,bb ;
@@ -261,7 +261,9 @@ int main( int argc , char *argv[] )
      }
 
      if( strcmp(argv[iarg],"-polort") == 0 ){
-       polort = (int)strtol(argv[++iarg],NULL,10) ;
+       char *cpt ;
+       polort = (int)strtod(argv[++iarg],&cpt) ;
+       if( *cpt != '\0' ) WARNING_message("Illegal non-numeric value after -polort") ;
        iarg++ ; continue ;
      }
 

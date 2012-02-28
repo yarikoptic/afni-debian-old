@@ -4,6 +4,10 @@
 #define SEG_LSQFIT 2
 #define SEG_L1FIT 1
 
+typedef enum {
+   SEG_BIM, SEG_LSB, SEG_BNN, SEG_BFT
+} BLUR_METH;
+
 typedef struct {
    int N_label;
    char **label;
@@ -15,7 +19,7 @@ typedef struct {
   
 
 typedef struct {
-   void (*helpfunc)(void);
+   void (*helpfunc)(int);
    char *aset_name;
    char *mset_name;
    char *sig_name;
@@ -115,10 +119,12 @@ typedef struct {
    
    char *hist;
    int *Split;
+   
+   BLUR_METH blur_meth;
 } SEG_OPTS;
 
-void GenPriors_usage(void) ;
-void Seg_usage(void) ;
+void GenPriors_usage(int) ;
+void Seg_usage(int) ;
 SEG_OPTS *Seg_ParseInput (SEG_OPTS *Opt, char *argv[], int argc);
 byte *MaskSetup(SEG_OPTS *Opt, THD_3dim_dataset *aset, 
                 THD_3dim_dataset **msetp, byte **cmaskp, int dimcmask, 

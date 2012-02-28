@@ -1,6 +1,6 @@
 #include "SUMA_suma.h"
 
-void usage_ROI2dataset_Main ()
+void usage_ROI2dataset_Main (int detail)
    
   {/*Usage*/
       static char FuncName[]={"usage_ROI2dataset_Main"};
@@ -11,7 +11,6 @@ void usage_ROI2dataset_Main ()
 "   ROI2dataset <-prefix dsetname> [...] <-input ROI1 ROI2 ...>\n"
 "               [<-of ni_bi|ni_as|1D>] \n"
 "               [<-dom_par_id idcode>] \n"
-/* "   [<-dom_par domain> NOT IMPLEMENTED YET] \n" */
 "    This program transforms a series of ROI files\n"
 "    to a node dataset. This data set will contain\n"
 "    the node indices in the first column and their\n"
@@ -25,6 +24,7 @@ void usage_ROI2dataset_Main ()
 "                          Program will not overwrite existing\n"
 "                          datasets.\n"
 "                          See also -label_dset alternate below.\n"
+"    -keep_separate: Output one column (sub-brick) for each ROI value\n"
 "\n"      
 " and/or\n"
 "    -nodelist        NL: Prefix for a set of .1D files\n"
@@ -44,6 +44,8 @@ void usage_ROI2dataset_Main ()
 "                         This is not the case for -nodelist.nodups because\n"
 "                         ConvertDset's -node_select_1D does allow for \n"
 "                         duplicate node entries. \n"
+"    -nodelist_with_ROIval: Also add the ROIval as a second column in .1D\n"
+"                           files output by -nodelist.\n"
 "    -input ROI1 ROI2....: ROI files to turn into a \n"
 "                          data set. This parameter MUST\n"
 "                          be the last one on command line.\n"
@@ -53,6 +55,9 @@ void usage_ROI2dataset_Main ()
 "\n"
 "    -label_dset dsetname: Write a label dataset, instead of a simple dataset.\n"
 "                          Labeled datasets are treated differently in SUMA.\n"   "                          This option also sets the output format to NIML.\n"
+"                    Note: Using -keep_separate with this option is legal, but\n"
+"                          makes little sense. You can't view more than one \n"
+"                          sub-brick in SUMA for Labeled datasets.\n"
 "    -h | -help: This help message\n"
 "    -of FORMAT: Output format of dataset. FORMAT is one of:\n"
 "                ni_bi: NIML binary\n"
@@ -75,7 +80,9 @@ void usage_ROI2dataset_Main ()
 "                            specify your own padding label.\n"
 "    -pad_label padding_label: Use padding_label (an integer) to\n"
 "                            label nodes that do not belong\n"
-"                            to any ROI. Default is 0.\n" 
+"                            to any ROI. Default is 0.\n"
+"                         This padding value is also used in the multi-column\n"
+"                            format of option -keep_separate.\n" 
 "\n");
          s = SUMA_New_Additions(0, 1); printf("%s\n", s);SUMA_free(s); s = NULL;
          fprintf(SUMA_STDOUT, 
@@ -100,17 +107,13 @@ int main (int argc,char *argv[])
    SUMA_ROI_EXTRACT *dd=NULL;
    DList *ddl=NULL;
    DListElmt *el=NULL;
-   int nodups=0, olabel = 0;
+   int nodups=0, olabel = 0, withflag = 0, keepsep=0;
    SUMA_COLOR_MAP *cmap=NULL;
    SUMA_Boolean LocalHead = NOPE;
 	
    SUMA_STANDALONE_INIT;
    SUMA_mainENTRY;
 	
-   if (argc < 4) {
-      usage_ROI2dataset_Main ();
-   }
-   
    /* parse the command line */
    kar = 1;
 	brk = NOPE;
@@ -122,13 +125,15 @@ int main (int argc,char *argv[])
    pad_to = -1;
    pad_val = 0;
    nodelist=NULL;
+   withflag = 0;
    olabel = 0;
+   keepsep = 0;
    nodups = 0;
    while (kar < argc) { /* loop accross command ine options */
 		/* SUMA_LH("Parsing command line..."); */
       
 		if (strcmp(argv[kar], "-h") == 0 || strcmp(argv[kar], "-help") == 0) {
-			 usage_ROI2dataset_Main();
+			 usage_ROI2dataset_Main(strlen(argv[kar]) > 3 ? 2:1);
           exit (1);
 		}
       
@@ -165,8 +170,16 @@ int main (int argc,char *argv[])
 		}
       
       if (  !brk && 
-            (strncmp(argv[kar], "-nodelist", 9) == 0) ) {
-         if (strcmp(argv[kar], "-nodelist.nodups") == 0) nodups = 1;
+            (strcmp(argv[kar], "-keep_separate") == 0) ) {
+         keepsep = 1;
+         brk = YUP;     
+      }
+      
+      
+      if (  !brk && 
+            (strcmp(argv[kar], "-nodelist") == 0 || 
+             strcmp(argv[kar], "-nodelist.nodups") == 0) ) {
+         if (strlen(argv[kar])> 10) nodups = 1;
          else nodups = 0;
          kar ++;
 			if (kar >= argc)  {
@@ -177,6 +190,12 @@ int main (int argc,char *argv[])
          
          brk = YUP;
 		}
+      
+      if (  !brk && 
+            (strcmp(argv[kar], "-nodelist_with_ROIval") == 0) ) {
+         withflag = 1;
+         brk = YUP;     
+      }
       
       if (!brk && (strcmp(argv[kar], "-of") == 0)) {
          kar ++;
@@ -230,17 +249,6 @@ int main (int argc,char *argv[])
          brk = YUP;
       }
       
-      #if 0   /* now handled in main_ENTRY() */
-      if (!brk && (strcmp(argv[kar], "-pad_to_node") == 0)) {
-         kar ++;
-			if (kar >= argc)  {
-		  		fprintf (SUMA_STDERR, "need argument after -pad_to_node");
-				exit (1);
-			}
-			pad_to = atoi(argv[kar]);
-         brk = YUP;
-      }
-      #endif
       if (!brk && ( (strcmp(argv[kar], "-pad_label") == 0) || 
                      (strcmp(argv[kar], "-pad_val") == 0) )) {
          kar ++;
@@ -256,12 +264,18 @@ int main (int argc,char *argv[])
 			fprintf (SUMA_STDERR,
                   "Error %s: Option %s not understood. Try -help for usage\n", 
                   FuncName, argv[kar]);
-			exit (1);
+			suggest_best_prog_option(argv[0], argv[kar]);
+         exit (1);
 		} else {	
 			brk = NOPE;
 			kar ++;
 		}   
    }   
+   
+   if (argc < 4) {
+      SUMA_S_Err("Too few options");
+      usage_ROI2dataset_Main (1);
+   }
    
    if (MRILIB_DomainMaxNodeIndex >= 0) pad_to = MRILIB_DomainMaxNodeIndex;
 
@@ -412,7 +426,7 @@ int main (int argc,char *argv[])
       el = dlist_head(ddl);
       while (el) {
          dd = (SUMA_ROI_EXTRACT *)el->data;
-         sprintf(cbuf, ".%0d.1D", dd->label);
+         sprintf(cbuf, ".%03d.1D", dd->label);
          outlist_name = SUMA_append_string(nodelist, cbuf);
          /* check for existence of outlist_name */
          if (SUMA_filexists(outlist_name) && !THD_ok_overwrite()) {
@@ -421,7 +435,12 @@ int main (int argc,char *argv[])
             exit(1); 
          }
          
-         SUMA_WRITE_INT_ARRAY_1D(dd->vals, dd->N_vals, 1, outlist_name);
+         if (withflag) {
+            SUMA_WRITE_INT_ARRAY_AND_FLAG_1D(dd->vals, dd->N_vals, 1, 
+                                             outlist_name, dd->label);
+         } else {
+            SUMA_WRITE_INT_ARRAY_1D(dd->vals, dd->N_vals, 1, outlist_name);
+         }
          SUMA_free(outlist_name); outlist_name = NULL;
          el = dlist_next(el);
       } 
@@ -429,14 +448,23 @@ int main (int argc,char *argv[])
    }
    
    if (out_name) { /* output dset required */
-      if (!(dset = SUMA_ROIv2Grpdataset ( ROIv, N_ROIv, 
-                                          Parent_idcode_str, 
-                                          pad_to, pad_val, 
-                                          &cmap))) {
-         SUMA_SL_Err("Failed in SUMA_ROIv2Grpdataset");
-         exit(1);
+      if (!keepsep) {
+         if (!(dset = SUMA_ROIv2Grpdataset ( ROIv, N_ROIv, 
+                                             Parent_idcode_str, 
+                                             pad_to, pad_val, 
+                                             &cmap))) {
+            SUMA_SL_Err("Failed in SUMA_ROIv2Grpdataset");
+            exit(1);
+         }
+      } else {
+         if (!(dset = SUMA_ROIv2MultiDset ( ROIv, N_ROIv, 
+                                             Parent_idcode_str, 
+                                             pad_to, pad_val, 
+                                             &cmap))) {
+            SUMA_SL_Err("Failed in SUMA_ROIv2MultiDset");
+            exit(1);
+         }
       }
-
       if (LocalHead) {
          fprintf (SUMA_STDERR,"%s: Adding history\n",
                            FuncName);

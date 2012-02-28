@@ -75,64 +75,8 @@ static int mybsearch_int( int tt , int nar , int *ar )
    return -1 ;
 }
 
-/*----------------------------------------------------------------------------*/
-
-int main( int argc , char *argv[] )
-{
-   THD_3dim_dataset *xset=NULL ; int nx,ny,nz,nxy,nxyz ;
-   THD_3dim_dataset *sset=NULL ;
-   int nopt=1 , do_automask=0 ;
-   int nvox , nvals , ii,jj,kk , polort=1 , ntime ;
-   float *xsar ; float acc,cc,csum,Mcsum,Zcsum,Qcsum , Tcount ;
-   byte *mask=NULL ; int nxmask=0,nymask=0,nzmask=0 , nmask=0 , vstep=0 ;
-   int nref=0 , iv=0, N_iv=0, Tbone=0;
-   float **ref=NULL, t0=0.0, t1=0.0, ti=0.0;
-   MRI_IMAGE *ortim=NULL ; float *ortar=NULL ;
-   int *indx=NULL ; MRI_IMARR *timar=NULL ; MRI_IMARR *simar=NULL ;
-   char *Mprefix=NULL ; THD_3dim_dataset *Mset=NULL ; float *Mar=NULL ;
-   char *Zprefix=NULL ; THD_3dim_dataset *Zset=NULL ; float *Zar=NULL ;
-   char *Qprefix=NULL ; THD_3dim_dataset *Qset=NULL ; float *Qar=NULL ;
-   char *Tprefix=NULL ; THD_3dim_dataset *Tset=NULL ; float *Tar=NULL ;
-   char *Pprefix=NULL ; THD_3dim_dataset *Pset=NULL ; float *Par=NULL ;
-   char *COprefix=NULL; THD_3dim_dataset *COset=NULL ; short *COar=NULL ;
-   int COmask=0 ;
-   float Thresh=0.0f ;
-   char *Tvprefix=NULL ; THD_3dim_dataset *Tvset=NULL ;
-   float **Tvar=NULL ; float *Threshv=NULL, *Tvcount=NULL ;
-   char stmp[256];
-   int nout=0 ;
-   int isodd ;  /* 29 Apr 2009: for unrolling innermost dot product */
-   struct  timeval  tt;
-   float dtt=0.0;
-   float *ccar=NULL ; /* 29 Apr 2009: for OpenMP usage */
-
-   float Pcsum ; int nPcsum ;  /* 23 Jun 2009 */
-
-   char        *expr_string=NULL , expr_type='\0' ;  /* 23 Jun 2009 */
-   PARSER_code *expr_code=NULL ;
-   char *Eprefix=NULL ; THD_3dim_dataset *Eset=NULL ; float *Ear=NULL ;
-   double *atoz[26] ;
-   double *eear=NULL ; float Esum ; int nEsum ;
-   int expr_has_z=0 , expr_has_r=0 ;
-
-   char *HHprefix=NULL ; THD_3dim_dataset *HHset=NULL ;
-   int   HHnum=0 ; short *HHist=NULL ; float HHdel=0.0f , HHdin=0.0f ;
-
-   float bpass_L=0.0f , bpass_H=0.0f , dtime ; int do_bpass=0 ;
-   double ctime ;
-   float gblur=0.0f ;
-   float Mseedr=0.0f , dx,dy,dz ; MCW_cluster *Mseed_nbhd=NULL ;
-   float *Mseedar=NULL ;
-
-   int PCortn=0 , PCnmask=0 ; byte *PCmask=NULL ; int PCnx=0, PCny=0, PCnz=0 ;
-   MRI_IMARR *PCimar=NULL ;
-
-   int need_acc = 0 ;
-
-   /*----*/
-
-   if( argc < 2 || strcasecmp(argv[1],"-help") == 0 ){
-      printf(
+void usage_3dTcorrMap(int detail) {
+         printf(
        "Usage: 3dTcorrMap [options]\n"
        "For each voxel time series, computes the correlation between it\n"
        "and all other voxels, and combines this set of values into the\n"
@@ -180,6 +124,8 @@ int main( int argc , char *argv[] )
        "            ** If you don't use one of these masking options, then\n"
        "               all voxels will be processed, and the program will\n"
        "               probably run for a VERY long time.\n"
+       "            ** Voxels with constant time series will be automatically\n"
+       "               excluded.\n"
        "\n"
        "----------------------------------\n"
        "Time Series Preprocessing Options: (applied only to -input, not to -seed)\n"
@@ -250,6 +196,14 @@ int main( int argc , char *argv[] )
        "Output Options: (at least one of these must be given!)\n"
        "---------------\n"
        "  -Mean pp  = Save average correlations into dataset prefix 'pp'\n"
+       "            ** As pointed out to me by NK, '-Mean' is the same\n"
+       "               as computing the correlation map with the 1D file\n"
+       "               that is the mean of all the normalized time series\n"
+       "               in the mask -- that is, a form of the global signal.\n"
+       "               Such a calculation could be done much faster with\n"
+       "               program 3dTcorr1D.\n"
+       "            ** Nonlinear combinations of the correlations, as done by\n"
+       "               the options below, can't be done in such a simple way.\n"
        "  -Zmean pp = Save tanh of mean arctanh(correlation) into 'pp'\n"
        "  -Qmean pp = Save RMS(correlation) into 'pp'\n"
        "  -Pmean pp = Save average of squared positive correlations into 'pp'\n"
@@ -347,19 +301,81 @@ int main( int argc , char *argv[] )
              "    you will wait a LONG LONG time for the results.\n"
             ) ;
 #endif
-      PRINT_COMPILE_DATE ; exit(0) ;
-   }
+      PRINT_COMPILE_DATE ;
+   return;
+}
+
+/*----------------------------------------------------------------------------*/
+
+int main( int argc , char *argv[] )
+{
+   THD_3dim_dataset *xset=NULL ; int nx,ny,nz,nxy,nxyz ;
+   THD_3dim_dataset *sset=NULL ;
+   int nopt=1 , do_automask=0 ;
+   int nvox , nvals , ii,jj,kk , polort=1 , ntime ;
+   float *xsar ; float acc,cc,csum,Mcsum,Zcsum,Qcsum , Tcount ;
+   byte *mask=NULL ; int nxmask=0,nymask=0,nzmask=0 , nmask=0 , vstep=0 ;
+   int nref=0 , iv=0, N_iv=0, Tbone=0;
+   float **ref=NULL, t0=0.0, t1=0.0, ti=0.0;
+   MRI_IMAGE *ortim=NULL ; float *ortar=NULL ;
+   int *indx=NULL ; MRI_IMARR *timar=NULL ; MRI_IMARR *simar=NULL ;
+   char *Mprefix=NULL ; THD_3dim_dataset *Mset=NULL ; float *Mar=NULL ;
+   char *Zprefix=NULL ; THD_3dim_dataset *Zset=NULL ; float *Zar=NULL ;
+   char *Qprefix=NULL ; THD_3dim_dataset *Qset=NULL ; float *Qar=NULL ;
+   char *Tprefix=NULL ; THD_3dim_dataset *Tset=NULL ; float *Tar=NULL ;
+   char *Pprefix=NULL ; THD_3dim_dataset *Pset=NULL ; float *Par=NULL ;
+   char *COprefix=NULL; THD_3dim_dataset *COset=NULL ; short *COar=NULL ;
+   int COmask=0 ;
+   float Thresh=0.0f ;
+   char *Tvprefix=NULL ; THD_3dim_dataset *Tvset=NULL ;
+   float **Tvar=NULL ; float *Threshv=NULL, *Tvcount=NULL ;
+   char stmp[256];
+   int nout=0 ;
+   int isodd ;  /* 29 Apr 2009: for unrolling innermost dot product */
+   struct  timeval  tt;
+   float dtt=0.0;
+   float *ccar=NULL ; /* 29 Apr 2009: for OpenMP usage */
+
+   float Pcsum ; int nPcsum ;  /* 23 Jun 2009 */
+
+   char        *expr_string=NULL , expr_type='\0' ;  /* 23 Jun 2009 */
+   PARSER_code *expr_code=NULL ;
+   char *Eprefix=NULL ; THD_3dim_dataset *Eset=NULL ; float *Ear=NULL ;
+   double *atoz[26] ;
+   double *eear=NULL ; float Esum ; int nEsum ;
+   int expr_has_z=0 , expr_has_r=0 ;
+
+   char *HHprefix=NULL ; THD_3dim_dataset *HHset=NULL ;
+   int   HHnum=0 ; short *HHist=NULL ; float HHdel=0.0f , HHdin=0.0f ;
+
+   float bpass_L=0.0f , bpass_H=0.0f , dtime ; int do_bpass=0 ;
+   double ctime ;
+   float gblur=0.0f ;
+   float Mseedr=0.0f , dx,dy,dz ; MCW_cluster *Mseed_nbhd=NULL ;
+   float *Mseedar=NULL ;
+
+   int PCortn=0 , PCnmask=0 ; byte *PCmask=NULL ; int PCnx=0, PCny=0, PCnz=0 ;
+   MRI_IMARR *PCimar=NULL ;
+
+   int need_acc = 0 ;
+
+   /*----*/
 
 #if defined(USING_MCW_MALLOC) && !defined(USE_OMP)
    enable_mcw_malloc() ;
 #endif
    mainENTRY("3dTcorrMap main"); machdep(); PRINT_VERSION("3dTcorrMap");
    AFNI_logger("3dTcorrMap",argc,argv);
+   THD_check_AFNI_version("3dTcorrMap") ;
 
    /*-- option processing --*/
 
    while( nopt < argc && argv[nopt][0] == '-' ){
-
+      if( strcasecmp(argv[nopt],"-h") == 0 ||
+          strcasecmp(argv[nopt],"-help") == 0 ) {
+         usage_3dTcorrMap(strlen(argv[1]) > 3 ? 2:1);
+         exit(0);
+      }
       if( strcasecmp(argv[nopt],"-Mseed") == 0 ){
         if( sset != NULL ) ERROR_exit("Can't use -Mseed with -seed!") ;
         Mseedr = (float)strtod( argv[++nopt] , NULL ) ;
@@ -495,8 +511,6 @@ int main( int argc , char *argv[] )
                "%s prefix '%s' starts with '-' :: is this a mistake?",
                argv[nopt-1] , COprefix ) ;
 
-         INFO_message("CorrMap, this might take a long while...\n") ;
-
          nopt++ ; continue ;
       }
 
@@ -537,7 +551,7 @@ int main( int argc , char *argv[] )
          char *cpt ;
          int val = (int)strtod(argv[++nopt],&cpt) ;
          if( *cpt != '\0' || val < -1 || val > 19 )
-            ERROR_exit("Illegal value after -polort!\n") ;
+            ERROR_exit("Illegal value '%s' after -polort!",argv[nopt]) ;
          polort = val ; nopt++ ; continue ;
       }
 
@@ -575,15 +589,24 @@ int main( int argc , char *argv[] )
         DSET_load(mset) ; CHECK_LOAD_ERROR(mset) ;
         nxmask = DSET_NX(mset); nymask = DSET_NY(mset); nzmask = DSET_NZ(mset);
         mask = THD_makemask( mset , 0 , 0.5f, 0.0f ) ; DSET_delete(mset) ;
-        if( mask == NULL ) ERROR_exit("Can't make mask from dataset '%s'",argv[nopt]) ;
+        if( mask == NULL ) 
+            ERROR_exit("Can't make mask from dataset '%s'",argv[nopt]) ;
         nmask = THD_countmask( nxmask*nymask*nzmask , mask ) ;
         INFO_message("Number of voxels in mask = %d",nmask) ;
         if( nmask < 9 ) ERROR_exit("Mask is too small to process") ;
         nopt++ ; continue ;
       }
 
-      ERROR_exit("Unknown option: %s",argv[nopt]) ;
+      ERROR_message("Unknown option: %s",argv[nopt]) ;
+      suggest_best_prog_option(argv[0], argv[nopt]);
+      exit(1);
    }
+   if( argc < 2 ){
+      ERROR_message("Too few options");
+      usage_3dTcorrMap(0);
+      exit(1) ;
+   }
+
 
    /*-- open dataset, check for legality --*/
 
@@ -660,6 +683,30 @@ int main( int argc , char *argv[] )
      INFO_message("computing for all %d voxels!",nmask) ;
    }
 
+   /*--- load input data ---*/
+
+   if( !DSET_LOADED(xset) ){
+     INFO_message("Loading input dataset") ;
+     DSET_load(xset) ; CHECK_LOAD_ERROR(xset) ;
+   }
+
+   /* check for constant voxels, and remove them from the mask */
+
+   xsar = (float *)malloc( sizeof(float)*ntime ) ;
+   for( ii=0 ; ii < nvox ; ii++ ){
+     if( mask[ii] == 0 ) continue ;
+     (void)THD_extract_array( ii , xset , 0 , xsar ) ;
+     for( kk=1 ; kk < ntime && xsar[kk] == xsar[0] ; kk++ ) ; /*nada*/
+     if( kk == ntime ) mask[ii] = 0 ; /* xsar is constant */
+   }
+   free(xsar) ;
+   ii = THD_countmask( nvox , mask ) ;
+   if( ii < nmask ){
+     if( ii > 9 ) ININFO_message("only %d voxels in dataset are non-constant"  ,ii);
+     else         ERROR_exit    ("only %d voxels in dataset are non-constant!?",ii);
+     nmask = ii ;
+   }
+
    /* create indx[jj] = voxel index in dataset whence
                         jj-th extracted time series comes from */
 
@@ -709,6 +756,10 @@ int main( int argc , char *argv[] )
                         ADN_type      , HEAD_FUNC_TYPE,
                         ADN_func_type , FUNC_FIM_TYPE ,
                       ADN_none ) ;
+
+     INFO_message  ("CorrMap: this might take a long while and a lot of memory,\n") ;
+     ININFO_message("         and will create big [%s bytes] output dataset ...",
+                       approximate_number_string((double)DSET_TOTALBYTES(COset)) ) ;
      free(lesfac); lesfac = NULL;
      dig = (int)ceil(log((double)nv)/log(10.0));
      for (ii=0; ii<nv; ++ii) {
@@ -716,31 +767,18 @@ int main( int argc , char *argv[] )
       EDIT_BRICK_TO_NOSTAT(COset,ii) ;
       if (!DSET_IS_VOL(xset)) {
          switch (dig) {
-            case 6:
-               sprintf(stmp,"n%06d", ii);
-               break;
-            case 5:
-               sprintf(stmp,"n%05d", ii);
-               break;
-            case 4:
-               sprintf(stmp,"n%04d", ii);
-               break;
+            case 6: sprintf(stmp,"n%06d", ii); break;
+            case 5: sprintf(stmp,"n%05d", ii); break;
+            case 4: sprintf(stmp,"n%04d", ii); break;
             case 3:
             case 2:
-            case 1:
-               sprintf(stmp,"n%03d", ii);
-               break;
-            default:
-               sprintf(stmp,"n%07d", ii);
-               break;
+            case 1: sprintf(stmp,"n%03d", ii); break;
+           default: sprintf(stmp,"n%07d", ii); break;
          }
       } else {
          ijk = (COmask) ? indx[ii] : ii ;
-         kkk = ijk / nxy ;
-         jjj = ijk % nxy ;
-         iii = jjj % nx  ;
-         jjj = jjj / nx  ;
-         sprintf(stmp,"v%03d.%03d.%03d",iii, jjj, kkk) ;
+         kkk = ijk / nxy ; jjj = ijk % nxy ; iii = jjj % nx  ; jjj = jjj / nx  ;
+         sprintf(stmp,"v%03d.%03d.%03d",iii,jjj,kkk) ;
       }
       EDIT_BRICK_LABEL(COset,ii,stmp) ;
      }
@@ -891,30 +929,6 @@ int main( int argc , char *argv[] )
        ERROR_exit("Output dataset %s already exists!",
                   DSET_HEADNAME(HHset)) ;
      tross_Make_History( "3dTcorrMap" , argc,argv , HHset ) ;
-   }
-
-   /*--- load input data and pre-process it ---*/
-
-   if( !DSET_LOADED(xset) ){
-     INFO_message("Loading input dataset") ;
-     DSET_load(xset) ; CHECK_LOAD_ERROR(xset) ;
-   }
-
-   /* check for constant voxels, and remove them from the mask */
-
-   xsar = (float *)malloc( sizeof(float)*ntime ) ;
-   for( ii=0 ; ii < nvox ; ii++ ){
-     if( mask[ii] == 0 ) continue ;
-     (void)THD_extract_array( ii , xset , 0 , xsar ) ;
-     for( kk=1 ; kk < ntime && xsar[kk] == xsar[0] ; kk++ ) ; /*nada*/
-     if( kk == ntime ) mask[ii] = 0 ; /* xsar is constant */
-   }
-   free(xsar) ;
-   ii = THD_countmask( nvox , mask ) ;
-   if( ii < nmask ){
-     if( ii > 9 ) ININFO_message("only %d voxels in dataset are non-constant"  ,ii);
-     else         ERROR_exit    ("only %d voxels in dataset are non-constant!?",ii);
-     nmask = ii ;
    }
 
    /* make neighborhood mask for -Mseed, if needed */
@@ -1230,6 +1244,12 @@ int main( int argc , char *argv[] )
      Tcount = Mcsum = Zcsum = Qcsum = 0.0f ;
      Pcsum = 0.0f ; nPcsum = 0 ;
      for( iv=0 ; iv < N_iv ; ++iv ) Tvcount[iv] = 0.0f ;
+
+#if 0
+  INFO_message("correlations for ii=%d indx=%d",ii,indx[ii]) ;
+  for( jj=0 ; jj < nmask ; jj++ ) fprintf(stderr," %.3f",ccar[jj]) ;
+  fprintf(stderr,"\n") ;
+#endif
 
      if (COset) {
          int ijk = (COmask) ? ii : indx[ii] ;

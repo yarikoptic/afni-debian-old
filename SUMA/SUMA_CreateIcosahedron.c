@@ -31,6 +31,9 @@ void SUMA_CreateIcosahedron_usage ()
 "       Ntri  = 20 * linDepth^2\n"
 "       Nedge = 30 * linDepth^2\n"
 "\n"
+"   -min_nodes MIN_NODES: Automatically select the -ld value which produces an\n"
+"                         icosahedron of at least MIN_NODES nodes.\n"
+"\n"
 "   -nums: output the number of nodes (vertices), triangles, edges, \n"
 "          total volume and total area then quit\n"
 "\n"
@@ -152,7 +155,30 @@ int main (int argc, char *argv[])
             sprintf (bin, "n");
             brk = YUP;
          }      
-      
+      if (!brk && (strcmp(argv[kar], "-min_nodes") == 0 ))
+         {
+            kar ++;
+            if (kar >= argc)  {
+               fprintf (SUMA_STDERR, "need argument after -ld ");
+               exit (1);
+            }
+            {
+               int min_nodes = atoi(argv[kar]);
+               depth = 1;
+               while ((2 + (10 * depth * depth)) < min_nodes 
+                        && depth<500) ++depth;
+               if (depth >= 500) {
+                  fprintf (SUMA_STDERR, 
+                        "-min_nodes of %d is too big", min_nodes);
+                  exit (1);
+               }
+               fprintf (SUMA_STDERR, 
+                  "Minimum -ld to result in at least %d nodes was: %d\n",
+                     min_nodes, depth);
+            }
+            sprintf (bin, "n");
+            brk = YUP;
+         }
       if (!brk && (strcmp(argv[kar], "-nums") == 0 ))
          {
             NumOnly = 1;
@@ -193,6 +219,7 @@ int main (int argc, char *argv[])
          fprintf (SUMA_STDERR,
                   "Error %s: Option %s not understood. Try -help for usage\n", 
                   FuncName, argv[kar]);
+         suggest_best_prog_option(argv[0], argv[kar]);
          exit (1);
       } else {   
          brk = NOPE;
@@ -209,15 +236,9 @@ int main (int argc, char *argv[])
    if (NumOnly) {
       /* output counts and quit */
       int Ntri, Nedge, Nvert;
-      if (strcmp(bin, "y") == 0) {
-         Nvert = (int)(pow(2, (2*depth)))*10 + 2;
-         Ntri = (int)(pow(2, (2*depth)))*20;
-         Nedge = (int)(pow(2, (2*depth)))*30;
-      } else {
-         Nvert = 2 + (10 * depth * depth);
-         Ntri = 20 * depth * depth;
-         Nedge = 30 * depth * depth; 
-      }
+         Nvert = SUMA_IcoNums(depth, !strcmp(bin, "y"), 'v');
+         Ntri = SUMA_IcoNums(depth, !strcmp(bin, "y"), 't');
+         Nedge = SUMA_IcoNums(depth, !strcmp(bin, "y"), 'e');
       
       SUMA_ICOSAHEDRON_DIMENSIONS(r, a, b, lgth);
       A = 1/4.0 * lgth * lgth * sqrt(3.0);   

@@ -12,7 +12,7 @@
 
 #include "SUMA_suma.h"
 
-void usage_ConverDset()
+void usage_ConverDset(SUMA_GENERIC_ARGV_PARSE *ps, int detail)
 {
    static char FuncName[]={"usage_ConverDset"};
    char *s = NULL, *sd=NULL, *sm=NULL;
@@ -23,6 +23,9 @@ void usage_ConverDset()
 "Usage: \n"
 "  ConvertDset -o_TYPE -input DSET [-i_TYPE] [-prefix OUT_PREF]\n"
 "  Converts a surface dataset from one format to another.\n"
+"\n%s", detail ? "":"use -h or -help for more help detail.\n");
+   if (detail) {
+      printf ( 
 "  Mandatory parameters:\n"
 "     -o_TYPE: TYPE of output datasets\n"
 "              where TYPE is one of:\n"
@@ -52,6 +55,9 @@ void usage_ConverDset()
 "                      is assumed to be implicit (0,1,2,3.... for rows 0,1\n"
 "                      2,3,...). If that is not the case, use -node_index_1D\n"
 "                      option below. \n"
+"             ** NOTE: It is highly recommended you use one of -node_index_1D\n"
+"                       or -add_node_index when going from 1D format to NIML \n"
+"                       GIFTI formats.\n"
 "     -node_index_1D INDEX.1D: Specify file containing node indices\n"
 "                              Use this to provide node indices with \n"
 "                              a .1D dset. In many cases for .1D data\n"
@@ -71,8 +77,16 @@ void usage_ConverDset()
 "                            MAX_INDEX + 1 nodes). Nodes that\n"
 "                            get no value from input DSET are\n"
 "                            assigned a value of 0\n"
-"                            Notice that padding get done at the\n"
-"                            very end.\n"
+"                            If MAX_INDEX is set to 0 it means you want\n"
+"                            to pad the maximum node in the input dataset.\n"
+"             ** Notice that padding gets done at the very end.\n"
+"             ** Instead of directly setting MAX_INDEX to an integer you \n"
+"                can set MAX_INDEX to something like:\n"
+"             ld120 (or rd17) which sets MAX_INDEX to be the maximum \n"
+"                node index on an Icosahedron with -ld 120. See \n"
+"                CreateIcosahedron for details.\n"
+"             d:DSET.niml.dset which sets MAX_INDEX to the maximum node found\n"
+"                      in dataset DSET.niml.dset.\n"       
 "\n"
 "     -i_TYPE: TYPE of input datasets\n"
 "              where TYPE is one of:\n"
@@ -87,6 +101,12 @@ void usage_ConverDset()
 "     -prefix OUT_PREF: Output prefix for data set.\n"
 "                       Default is something based\n"
 "                       on the input prefix.\n"
+"     -split N: Split a multi-column dataset into about N output datasets\n"
+"               with all having the same number of columns, except perhaps\n"
+"               for the last one. Confused? try:\n"
+"               ConvertDset -i v2s.lh.TS.niml.dset -split 3 \\\n"
+"                           -prefix Split3\n"
+"               3dinfo -n4 -label Split3.000* v2s.lh.TS.niml.dset\\\n"
 "     -no_history: Do not include a history element in the output\n"
 "  Notes:\n"
 "     -This program will not overwrite pre-existing files.\n"  
@@ -102,13 +122,19 @@ void usage_ConverDset()
 "1-   Plot a node's time series from a niml dataset:\n"
 "     ConvertDset -input DemoSubj_EccCntavir.niml.dset'#5779#' \\\n"
 "                 -o_1D_stdout | 1dplot -nopush -stdin \n"
-"\n", sd, sm, s);
+"\n",(detail > 1) ? sd : "Use -help for more detail.",
+     (detail > 1) ? sm : "",
+     (detail > 1) ? s : "");
+      }
    SUMA_free(s); s = NULL; SUMA_free(sd); sd = NULL; SUMA_free(sm); sm = NULL;  
-   #ifdef SUMA_COMPILED
-   s = SUMA_New_Additions(0, 1); printf("%s\n", s);SUMA_free(s); s = NULL;
-   #endif
-   fprintf (SUMA_STDOUT, "    Ziad S. Saad SSCC/NIMH/NIH saadz@mail.nih.gov    Thu Apr  8 16:15:02 EDT 2004\n\n");
-   exit(0); 
+   if (detail) {
+      #ifdef SUMA_COMPILED
+      s = SUMA_New_Additions(0, 1); printf("%s\n", s);SUMA_free(s); s = NULL;
+      #endif
+      fprintf (SUMA_STDOUT, 
+         "    Ziad S. Saad SSCC/NIMH/NIH saadz@mail.nih.gov\n\n");
+   }
+   return; 
 }
 int main (int argc,char *argv[])
 {/* Main */
@@ -124,18 +150,13 @@ int main (int argc,char *argv[])
    char *ooo=NULL, *node_index_1d = NULL, *node_mask = NULL;
    int overwrite = 0, exists = 0, N_inmask=-1, pad_to_node = -1;
    SUMA_GENERIC_ARGV_PARSE *ps=NULL;
-   int orderednodelist = 1;
+   int orderednodelist = 1, split=0;
    SUMA_Boolean LocalHead = NOPE;
    
    SUMA_STANDALONE_INIT;
    SUMA_mainENTRY;
    
    ps = SUMA_Parse_IO_Args(argc, argv, "-mask;");
-
-   if (argc < 3) {
-      usage_ConverDset  ();
-      exit (1);
-   }
 
    pad_to_node = -1;
    add_node_index = 0;
@@ -148,13 +169,14 @@ int main (int argc,char *argv[])
    node_index_1d = NULL;
    node_mask = NULL;
    exists = 0;
+   split = 0;
    no_hist = 0;
    kar = 1;
    brk = NOPE;
    while (kar < argc) { /* loop accross command ine options */
       if (strcmp(argv[kar], "-h") == 0 || strcmp(argv[kar], "-help") == 0) {
-         usage_ConverDset  ();
-         exit (1);
+         usage_ConverDset  (ps, strlen(argv[kar]) > 3 ? 2:1);
+         exit (0);
       }
       
       SUMA_SKIP_COMMON_OPTIONS(brk, kar);
@@ -269,10 +291,22 @@ int main (int argc,char *argv[])
          brk = YUP;
       }
       
+      if (!brk && (strcmp(argv[kar], "-split") == 0))
+      {
+         if (kar+1 >= argc) {
+            SUMA_SL_Err("Need positive integer after -split");
+            exit(1);
+         }
+         ++kar;
+         split = atoi(argv[kar]);
+         brk = YUP;
+      }
+      
       if (!brk && !ps->arg_checked[kar]) {
          fprintf (SUMA_STDERR,
             "Error %s: Option %s not understood. Try -help for usage\n",
                FuncName, argv[kar]);
+         suggest_best_prog_option(argv[0], argv[kar]);
          exit (1);
       } else {   
          brk = NOPE;
@@ -280,7 +314,12 @@ int main (int argc,char *argv[])
       }
       
    }/* loop accross command ine options */
-   
+   if (argc < 3) {
+      usage_ConverDset  (ps, 0);
+      exit (1);
+   }
+
+
    if (!prfx) {
       prfx = "you_look_marvellous.niml.dset";
       overwrite = 1;
@@ -373,6 +412,18 @@ int main (int argc,char *argv[])
             SUMA_S_Err("Failed to add node index column");
             exit(1);
          }
+      }
+             
+      if (pad_to_node == 0) {
+         DSET_MAX_NODE_INDEX(dset, pad_to_node);
+         if (pad_to_node < 0) {
+            SUMA_S_Err( "Failed to get max node index in input dset.\n" 
+                  "Cannot set pad_to_node automatically\n");   
+            exit(1);
+         }
+      }
+      if (pad_to_node > 0) {
+         SUMA_S_Notev("Padding output dset until node %d\n", pad_to_node);
       }
        
       SUMA_LHv("On to auto_nmask ...%p %p %p\n", 
@@ -489,12 +540,44 @@ int main (int argc,char *argv[])
       
          
       SUMA_LHv("About to write dset to %s\n", prefix);
-      NameOut = SUMA_WriteDset_s (prefix, dset, oform, overwrite, 0);
+      if (!split) {
+         NameOut = SUMA_WriteDset_s (prefix, dset, oform, overwrite, 0);
+         if (!NameOut && !SUMA_IS_DSET_STDXXX_FORMAT(oform)) { 
+            SUMA_SL_Err("Failed to write dataset."); exit(1); 
+         } else {
+            if (NameOut) SUMA_free(NameOut); NameOut = NULL;      
+         }
+      } else {
+         int ksp, ikp, ikps, nsplits=(int)ceil((float)SDSET_VECNUM(dset)/split);
+         SUMA_DSET *ds=NULL;
+         char cbuf[12]={""}, *prefs = NULL;
+         byte *colmask=NULL;
+         colmask=(byte*)SUMA_malloc(sizeof(byte)*SDSET_VECNUM(dset));
+         for (ksp=0; ksp<split; ++ksp) {
+            sprintf(cbuf,"%04d",ksp);
+            memset(colmask, 0, sizeof(byte)*SDSET_VECNUM(dset));
+            ikp = ksp*nsplits; 
+            ikps = SUMA_MIN_PAIR(SDSET_VECNUM(dset), (ksp+1)*nsplits);
+            if (ikp == ikps) continue; /* all one */
+            while (ikp < ikps) colmask[ikp++]=1;
+            prefs = SUMA_RemoveDsetExtension_eng(prefix,SUMA_NO_DSET_FORMAT);
+            prefs = SUMA_append_replace_string(prefs,cbuf,".", 1);
+            if (!(ds = SUMA_MaskedCopyofDset(dset, NULL, colmask, 1, 1))) {
+               SUMA_S_Err("Failed to get masked copy");
+               exit(1); 
+            } 
+            NameOut = SUMA_WriteDset_s (prefs, ds, oform, overwrite, 0);
+            if (!NameOut && !SUMA_IS_DSET_STDXXX_FORMAT(oform)) { 
+               SUMA_SL_Err("Failed to write dataset."); exit(1); 
+            } else {
+               if (NameOut) SUMA_free(NameOut); NameOut = NULL;
+            }
+            if (prefs) SUMA_free(prefs);
+            SUMA_FreeDset(ds); ds=NULL; 
+         }
+         SUMA_free(colmask); colmask=NULL;
+      }
       
-      
-      if (!NameOut && !SUMA_IS_DSET_STDXXX_FORMAT(oform)) { 
-         SUMA_SL_Err("Failed to write dataset."); exit(1); 
-      } 
       if (prefix) SUMA_free(prefix); prefix = NULL;    
       if (dset) SUMA_FreeDset((void *)dset); dset = NULL;
       if (NameOut) SUMA_free(NameOut); NameOut = NULL;

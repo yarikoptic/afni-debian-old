@@ -60,9 +60,11 @@ void DT_read_opts( int argc , char * argv[] )
       /**** -polort p ****/
 
       if( strncmp(argv[nopt],"-polort",6) == 0 ){
+        char *cpt ;
         nopt++ ;
         if( nopt >= argc ) ERROR_exit("Need argument after -polort") ;
-        DT_polort = (int)strtod(argv[nopt],NULL) ;
+        DT_polort = (int)strtod(argv[nopt],&cpt) ;
+        if( *cpt != '\0' ) WARNING_message("Illegal non-numeric value after -polort") ;
         if( DT_polort < 0 )
           WARNING_message("Ignoring negative value after -polort") ;
         nopt++ ; continue ;
@@ -368,6 +370,8 @@ void DT_Syntax(void)
     "                    -vector 'xyzzy.1D[3,5]'\n"
     "                   will remove the 4th and 6th columns of file xyzzy.1D\n"
     "                   from the dataset (sub-vector indexes start at 0).\n"
+    "                 You can use multiple -vector instances to specify\n"
+    "                   components from different files.\n"
     "\n"
     " -expr eee     = Remove components proportional to the function\n"
     "                   specified in the expression string 'eee'.\n"

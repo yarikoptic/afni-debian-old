@@ -525,9 +525,9 @@ void TT_syntax(char * msg)
     "      (the single quotes are necessary).  If you want to use ALL the\n"
     "      sub-bricks from a multi-volume dataset, you can't just give the\n"
     "      dataset filename -- you have to use\n"
-    "        datasetname+orig'[0-$]'\n"
+    "        datasetname+orig'[0-$]' or datasetname'[0..$]'\n"
     "      Otherwise, the program will reject the dataset as being too\n"
-    "      complicated for it to understand.  [New in July 2007]\n"
+    "      complicated for its pitiful understanding.  [New in July 2007]\n"
    ) ;
    printf("\n" MASTER_SHORTHELP_STRING ) ;
    PRINT_COMPILE_DATE ; exit(0) ;
@@ -542,7 +542,7 @@ int main( int argc , char *argv[] )
    int nx,ny,nz , nxyz , ii,kk , num1,num2 , num_tt=0 , iv ,
        piece , fim_offset;
    float dx,dy,dz , dxyz ,
-         num1_inv , num2_inv , num1m1_inv , num2m1_inv , dof ,
+         num1_inv=0.0 , num2_inv , num1m1_inv=0.0 , num2m1_inv , dof ,
          dd,tt,q1,q2 , f1,f2 , tt_max=0.0 ;
    THD_3dim_dataset *dset=NULL , *new_dset=NULL ;
    THD_3dim_dataset * base_dset;

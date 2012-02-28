@@ -367,6 +367,8 @@ int p_cv_GIV_afu (SEG_OPTS *Opt, char *feat,
                   char *cls, double *d);
 int p_cv_GIV_A (SEG_OPTS *Opt, char *cls, double *dr);
 int normalize_p(SEG_OPTS *Opt, THD_3dim_dataset *pout);
+int is_shorty(THD_3dim_dataset *pset);
+int set_p_floor(THD_3dim_dataset *pset, float pfl, byte *cmask);
 THD_3dim_dataset *p_C_GIV_A (SEG_OPTS *Opt);
 int SUMA_LabelToGroupedIndex(char *cls_str, char **group_clss_lbls, int N_lbls);
 int SUMA_LabelToGroupedKey(char *cls_str, char **group_clss_lbls, int N_lbls, 
@@ -467,17 +469,23 @@ int SUMA_CompareSegDsets(THD_3dim_dataset *base, THD_3dim_dataset *seg,
                          SUMA_CLASS_STAT *cs );
 int SUMA_VolumeInFill(THD_3dim_dataset *aset,
                       THD_3dim_dataset **filledp,
-                      int method);
+                      int method, int integ, int MxIter);
 int SUMA_mri_volume_infill(MRI_IMAGE *imin);
-int SUMA_mri_volume_infill_zoom(MRI_IMAGE *imin, byte thorough);
+int SUMA_mri_volume_infill_zoom(MRI_IMAGE *imin, byte thorough, 
+                                 int integ, int mxiter);
 int SUMA_VolumeBlurInMask(THD_3dim_dataset *aset,
                                      byte *cmask,
                                      THD_3dim_dataset **blrdp,
-                                     float FWHM, float unifac);
+                                     float FWHM, float unifac,
+                                     int speed);
+int SUMA_VolumeBlur(THD_3dim_dataset *aset,
+                   byte *cmask,
+                   THD_3dim_dataset **blurredp,
+                   float FWHM);
 int SUMA_VolumeLSBlurInMask(THD_3dim_dataset *aset ,
                                      byte *cmask,
                                      THD_3dim_dataset **blurredp,
-                                     float FWHM);
+                                     float FWHM, float mxvx);
 double SUMA_EdgeEnergy(short *a, float af, short *b, float bf,
                       int Ni, int Nj, int Nk,
                       short *c, short c1, short c2, 

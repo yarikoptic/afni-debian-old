@@ -43,6 +43,7 @@ char * SUMA_New_Additions (int ver, SUMA_Boolean StampOnly)
 
    SS = SUMA_StringAppend (NULL, NULL);
    
+   #if 0 /* Stopped maintaining this list for a long time now. */
    if (ver == 0) { /* just the latest */
       s = SUMA_New_Additions_perver( verv[0], StampOnly);
       if (s) {
@@ -68,10 +69,10 @@ char * SUMA_New_Additions (int ver, SUMA_Boolean StampOnly)
          SS = SUMA_StringAppend (SS, s); SUMA_free(s); s = NULL;
       }
    }
-   
    /* add the CVS tag            ZSS: Looks like nobody likes tags. 
                                       Compile Date is enough*/
    SS = SUMA_StringAppend_va (SS, "\nCVS tag:\n   %s\n", SUMA_VERSION_LABEL);
+   #endif
    
    /* add the compile date */
    SS = SUMA_StringAppend_va (SS, "\nCompile Date:\n   %s\n",__DATE__);
@@ -535,6 +536,16 @@ char * SUMA_NIDO_Info(void)
 "     You can do multi-line text.\n"
 "  coord attribute:\n"
 "     XYZ coordinates whose units are determined by nido_head's coord_type.\n" 
+"     See also p attribute\n"
+"  p attribute:\n"
+"     A convenience positioning attribute for placing text in fixed screen\n"
+"     coordinates. If present, it will override coord, h_align, and v_align\n"
+"     attributes. Its value is two to 3 characters long.\n"
+"     1st char: t for top, c for center or m for middle, b for bottom\n"
+"     2nd char: l for left, c for center or m for middle, r for right\n"
+"     3rd char: f for front, r for rear (optional)\n"
+"     h_align and v_align are set in a manner that makes sense for these \n"
+"     special position flags.\n"
 "  font attribute:\n"
 "     Sets the font for the text element. If not specified, font is set per \n"
 "     default_font.\n"
@@ -1036,9 +1047,10 @@ char * SUMA_help_Cmap_message_Info(SUMA_COLOR_MAP * ColMap)
    SUMA_ENTRY;
    
    SS = SUMA_StringAppend (NULL, NULL);
-
+   #if 0
    s = SUMA_New_Additions (0, 1);
    SS = SUMA_StringAppend (SS, s); SUMA_free(s); s = NULL;
+   #endif
    
    SS = SUMA_StringAppend (SS, 
       "\nColormap Keyboard Controls:\n"
@@ -1144,9 +1156,10 @@ char * SUMA_help_message_Info(void)
    
    SS = SUMA_StringAppend (NULL, NULL);
 
+   #if 0 /* not maintained any more */
    s = SUMA_New_Additions (0, 1);
    SS = SUMA_StringAppend (SS, s); SUMA_free(s); s = NULL;
-   
+   #endif
    SS = SUMA_StringAppend (SS, 
       "\nKeyboard Controls\n"
       "   Note: On MACs, Alt is the Apple/Command key.\n"
@@ -1224,10 +1237,9 @@ char * SUMA_help_message_Info(void)
       "        in Focus. Does not update in other viewers\n"
       "        or in AFNI.\n");
    SS = SUMA_StringAppend (SS, 
-      "     j: Set the cross hair to a certain node on \n"
-      "        SO in Focus.\n"
-      "        Does update in other viewers\n"
-      "        if linked by index"
+      "     j: Set the cross hair to a certain node on SO in Focus.\n"
+      "        Append/prepend L or R to switch hemispheres.\n"
+      "        Does update in other viewers if linked by index\n"
       "        and AFNI if connected\n");
    SS = SUMA_StringAppend (SS, 
       "     Ctrl+j: Set the cross hair's XYZ location. \n"
@@ -1264,6 +1276,10 @@ char * SUMA_help_message_Info(void)
    if (SUMAg_CF->Dev) SS = SUMA_StringAppend (SS, 
       "     n: bring a node to direct view (does not work AT ALL)\n");
    SS = SUMA_StringAppend (SS, 
+      "     Ctrl+o: Set new center of rotation.\n"
+      "            Enter nothing to go back to default.\n"
+      "\n");
+   SS = SUMA_StringAppend (SS, 
       "     Ctrl+n: Open a new surface viewer window.\n\n");
    SS = SUMA_StringAppend (SS, 
       "     p: Viewer rendering mode  \n"
@@ -1279,12 +1295,27 @@ char * SUMA_help_message_Info(void)
       "        window has no visible controls for saving\n"
       "        the image. Either take another picture, or\n"
       "        use 'Shift+right click' to get a menu.\n\n");
-   if (SUMAg_CF->Dev) SS = SUMA_StringAppend (SS, 
-      "     Alt+r: Set new center of rotation.\n"
-      "            Enter nothing to go back to default.\n"
-      "\n");
+   SS = SUMA_StringAppend_va (SS, 
+      "     Ctrl+r: Record current image directly to disk.\n"
+   "             Images are saved with a date stamp of the\n"
+   "             format PREFIX.X.yymmdd_hhmmss.MMM.jpg where:\n"
+   "          PREFIX controlled with SUMA_AutoRecordPrefix.\n"
+   "             See environment variable SUMA_AutoRecordPrefix for\n"
+   "             controlling prefix and output image type (suma -update_env).\n"
+   "          X  The character indicating which viewer is recording (you can\n"
+   "             record from multiple viewers at once.\n"
+   "          yy, mm, dd, hh, mm, ss for year, month, day, hours, minutes,\n"
+   "             and seconds, respectively. MMM is a millisecond marker to\n"
+   "             avoid overwriting files. Unlike the other recording mode \n"
+   "            (with the 'R' key), there is no rejection of identical images\n"
+   "\n"
+   "             This option is useful for saving a large number of images\n"
+   "             without running out of memory in the recorder GUI. \n"
+   "\n"
+   "             Your current PREFIX is: %s%s\n"
+   "\n", SUMAg_CF->autorecord->Path, SUMAg_CF->autorecord->FileName);
    SS = SUMA_StringAppend (SS, 
-      "     Ctrl+r: Increase the image oversampling factor.\n"
+      "     Alt+r: Increase the image oversampling factor.\n"
       "             By increasing this factor, you can create\n"
       "             images at a resolution higher than that \n"
       "             of the SUMA window. This is done by subdividing \n"
@@ -1301,10 +1332,13 @@ char * SUMA_help_message_Info(void)
       "             This limitation is due to the graphics card\n"
       "             on your system. SUMA will take care not to exceed\n"
       "             this limit.\n");
-   SS = SUMA_StringAppend (SS, 
-      "     R: Toggle continuous recording \n"
-      "        to an a la AFNI image viewer.\n"
-      "        Identical images are rejected.\n\n");
+   SS = SUMA_StringAppend(SS, 
+   "     Ctrl+R: Toggle continuous jpeg saving to disk.\n"
+   "             Naming of output images is automatic, same as in Ctrl+r.\n"
+   "             See help for Ctrl+r above for more info.\n"
+   "     R: Toggle continuous recording \n"
+   "        to an a la AFNI image viewer.\n"
+   "        Identical images are rejected.\n\n");
    SS = SUMA_StringAppend (SS, 
       "     s: NO LONGER IN USE. \n"
       "        View the surface's structure contents.\n"
@@ -1529,6 +1563,9 @@ char * SUMA_help_message_Info(void)
       "     F8: Viewing mode (Perspective or Orthographic Projection), toggle.\n"
       );
    SS = SUMA_StringAppend (SS, 
+      "     F9: Labels at cross hair, toggle.\n"
+      );
+   SS = SUMA_StringAppend (SS, 
       "     F12: Time 20 scene renderings.\n\n");
    SS = SUMA_StringAppend (SS, 
       "     HOME: reset zoom and recenter surfaces.\n"
@@ -1621,13 +1658,13 @@ char * SUMA_help_message_Info(void)
       "\n");
    SS = SUMA_StringAppend_va( SS,
                               "SUMA's list of environment variables:\n");
-   s = SUMA_env_list_help();
+   s = SUMA_env_list_help(0);
    SS = SUMA_StringAppend( SS, s); SUMA_free(s); s = NULL;
    SS = SUMA_StringAppend( SS, "\n");
    
    SS = SUMA_StringAppend (SS, 
       "    More help at \n"
-      "    http://afni.nimh.nih.gov/pub/dist/doc/SUMA/SUMA_doc.htm\n");
+      "    http://afni.nimh.nih.gov/pub/dist/edu/latest/suma/suma.pdf\n");
    SS = SUMA_StringAppend (SS, 
       "\n");
    
@@ -1822,9 +1859,11 @@ void SUMA_Version (FILE *Out)
    static char FuncName[]={"SUMA_Version"};
    char *s = NULL;
    
+
    if (Out == NULL) {
 		Out = stdout;
 	}
+   
    s = SUMA_New_Additions (0, 0);
 	if (s) {
       fprintf (Out, "\n   %s\n", s);
@@ -1980,6 +2019,7 @@ char * SUMA_Help_AllSurfCont ()
          "\n"
          "++ Mapping Data: \n"
          "\n"
+         "+++ I,T Link:\n%s\n"
          "+++ I\n%s\n"
          "++++ v:\n%s\n"
          "+++ T\n%s\n"
@@ -1987,6 +2027,7 @@ char * SUMA_Help_AllSurfCont ()
          "+++ B\n%s\n"
          "++++ v\n%s\n"
          "\n", 
+         SUMA_SurfContHelp_Link, 
          SUMA_SurfContHelp_SelInt, SUMA_SurfContHelp_SelIntTgl,
          SUMA_SurfContHelp_SelThr, SUMA_SurfContHelp_SelThrTgl, 
          SUMA_SurfContHelp_SelBrt, SUMA_SurfContHelp_SelBrtTgl );

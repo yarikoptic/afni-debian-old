@@ -251,18 +251,18 @@ SUMA_Boolean SUMA_Engine (DList **listp)
                            FuncName, NextCom, NextComCode);
                   break;
                }
+               /* open the ROI file */
+               if (!sv) sv = SUMA_LAST_VIEWER;
                /* wildcard selection 
                  for a surface, just use the one in focus
                  But it is only to select the wildcard
                  SO assignment to an ROI is done in the ROI
                  reading function*/
                SO = (SUMA_SurfaceObject *)
-                           SUMAg_DOv[SUMAg_SVv[0].Focus_SO_ID].OP;
+                           SUMAg_DOv[sv->Focus_SO_ID].OP;
                if (!SUMA_WildcardChoice(2, SO, sbuf)) {
                   sprintf(sbuf, "*.roi");
                }
-               /* open the ROI file */
-               if (!sv) sv = &(SUMAg_SVv[0]);
                if (!EngineData->vp) EngineData->vp = sv;
                if (!EngineData->ip) {
                   SUMAg_CF->X->FileSelectDlg = 
@@ -1794,14 +1794,19 @@ SUMA_Boolean SUMA_Engine (DList **listp)
             /* expects nothing in EngineData */
             {  int N_Send, *SendList, ti=1;
                SUMA_IVEC ivec;
-               /* send to afni the list of anatomically correct surfaces and with a surface volume*/
-               /* No surfaces are sent twice because there should not be duplicate 
-               local domain parent surfaces in SUMAg_DOv */
-               /* prior to Wed Nov  6 17:47:20 EST 2002, only mappable surfaces that are related to the ones shown in the viewer
-               were being sent to AFNI. Now all mappable surfaces loaded are sent regardless of what is shown */
-               /* Jan. 08 04: All anatomically correct surfaces are now sent to AFNI */
-               SendList = SUMA_FormSOListToSendToAFNI(SUMAg_DOv , SUMAg_N_DOv, &N_Send);
-               if (N_Send) {
+               /* send to afni the list of anatomically correct surfaces 
+                  and with a surface volume*/
+               /* No surfaces are sent twice because there should not be 
+                  duplicate  local domain parent surfaces in SUMAg_DOv */
+               /* prior to Wed Nov  6 17:47:20 EST 2002, only mappable surfaces 
+                  that are related to the ones shown in the viewer
+                  were being sent to AFNI. Now all mappable surfaces loaded are 
+                  sent regardless of what is shown */
+               /* Jan. 08 04: 
+                  All anatomically correct surfaces are now sent to AFNI */
+               SendList = 
+                  SUMA_FormSOListToSendToAFNI(SUMAg_DOv , SUMAg_N_DOv, &N_Send);
+               if (N_Send > 0) {
                   ivec.v = SendList;
                   ivec.n = N_Send;
                   ED = SUMA_InitializeEngineListData (SE_SetAfniSurfList);
@@ -1833,11 +1838,13 @@ SUMA_Boolean SUMA_Engine (DList **listp)
                   }
                   if (SendList) SUMA_free(SendList); SendList = NULL;   
                }else {
-                  SUMA_SLP_Warn(
-                     "None of the surfaces were marked as 'Anatomical'\n"
-                     "So none were sent to AFNI. You can label a surface\n"
-                     "as Anatomical by adding 'Anatomical = Y' where the \n"
-                     "surface is declared in the .spec file.");
+                  if (N_Send < 0) {
+                     SUMA_SLP_Warn(
+                        "None of the surfaces were marked as 'Anatomical'\n"
+                        "So none were sent to AFNI. You can label a surface\n"
+                        "as Anatomical by adding 'Anatomical = Y' where the \n"
+                        "surface is declared in the .spec file.");
+                  }
                }
 
                break;
@@ -1948,6 +1955,9 @@ SUMA_Boolean SUMA_Engine (DList **listp)
                break;
             }
             
+            /* NB: I find it strange that there is this block here
+               followed by a similar one in SUMA_UpdateNodeField
+               Check for possible duplications ... */
             if (SUMAg_CF->callbacks && !SUMAg_CF->HoldClickCallbacks) {
                if (!SUMA_Selected_Node_Activate_Callbacks (
                         SO, SO->SurfCont->curColPlane,
@@ -1955,7 +1965,7 @@ SUMA_Boolean SUMA_Engine (DList **listp)
                   SUMA_S_Err("Failed to activate callbacks");
                }
             }
-
+            
             SUMA_UpdateNodeField(SO);
             break;
             
@@ -2059,7 +2069,7 @@ SUMA_Boolean SUMA_Engine (DList **listp)
             }
             sv->Ch->SurfaceID = EngineData->iv3[0];
             sv->Ch->NodeID = EngineData->iv3[1];
-            
+            SUMA_UpdateCrossHairNodeLabelField(sv);
             break;
          
          case SE_SetSOinFocus:
@@ -2341,14 +2351,15 @@ SUMA_Boolean SUMA_Engine (DList **listp)
             /* expects nothing in EngineData */
             /* sends the current node to Group Icor */
             if (SUMAg_CF->giset && SUMAg_CF->Connected_v[SUMA_GICORR_LINE] 
-                && !SUMAg_CF->HoldClickCallbacks) {
-               SUMA_LH("Sending notice to GICOR");
-               if (SUMA_AFNI_gicor_setref((SUMA_SurfaceObject *)
-                                          (SUMAg_DOv[sv->Focus_SO_ID].OP),
-                                          SO->SelectedNode) < 0) {
+                && !SUMAg_CF->HoldClickCallbacks &&
+                (SO = (SUMA_SurfaceObject *)SUMAg_DOv[sv->Focus_SO_ID].OP)) {
+               SUMA_LHv("Sending notice to GICOR, SO_ID: %d\n",
+                              sv->Focus_SO_ID);
+               if (SUMA_AFNI_gicor_setref(SO, SO->SelectedNode) < 0) {
                   SUMA_S_Err("Failed in SUMA_AFNI_gicor_setref");
                } 
             }
+
             break;
          
          case SE_SetLookAtNode:
@@ -2706,7 +2717,9 @@ SUMA_Boolean SUMA_Engine (DList **listp)
          case SE_SetLight0Pos:
             /* expects light XYZ position in fv[3] */
             if (EngineData->fv3_Dest != NextComCode) {
-               fprintf (SUMA_STDERR,"Error %s: Data not destined correctly for %s (%d).\n",FuncName, NextCom, NextComCode);
+               fprintf (SUMA_STDERR,
+                  "Error %s: Data not destined correctly for %s (%d).\n",
+                     FuncName, NextCom, NextComCode);
                break;
             }
             sv->light0_position[0] = EngineData->fv3[0];
@@ -3293,7 +3306,46 @@ SUMA_Boolean SUMA_Engine (DList **listp)
                   SUMA_setIO_notify(0);
                } 
 
-            }            
+            }
+
+            if (NI_get_attribute(EngineData->ngr, "bkg_col")) {
+               char *stmp = NULL;
+               NI_GET_STR_CP(EngineData->ngr, "bkg_col", stmp);
+               if (!stmp) { 
+                  SUMA_S_Err("Bad bkg_col"); 
+               } else {
+                  nn = SUMA_StringToNum(stmp, (void*)dv15, 4,4);
+                  if (nn != 4) {
+                     SUMA_S_Err("Bad bkg_col string.");
+                  } else {
+                     /* have bkg_col, set it please */
+                     SUMA_LHv("Have bkg_col of %f, %f, %f, %f\n", 
+                              dv15[0], dv15[1], dv15[2], dv15[3]);  
+                     sv->clear_color[0] = dv15[0];
+                     sv->clear_color[1] = dv15[1];
+                     sv->clear_color[2] = dv15[2];
+                     sv->clear_color[3] = dv15[3];
+                     {
+                        DList *llist = SUMA_CreateList();
+                        SUMA_REGISTER_HEAD_COMMAND_NO_DATA(llist, SE_Redisplay, 
+                                                            SES_SumaFromAny, sv);
+                        if (!SUMA_Engine (&llist)) {
+                           fprintf( stderr, 
+                                    "Error %s: SUMA_Engine call failed.\n",
+                                    FuncName);
+                        }
+                     }
+                  }
+                  SUMA_free(stmp); stmp = NULL;
+               }
+            }
+            /* autorecord prefix? */
+            if (NI_get_attribute(EngineData->ngr, "autorecord")) {
+               if (SUMAg_CF->autorecord) SUMA_free(SUMAg_CF->autorecord);
+               SUMAg_CF->autorecord = SUMA_SetAutoRecord(
+                  NI_get_attribute(EngineData->ngr, "autorecord"));
+            }
+            
             /* search for the keys */
             if (NI_get_attribute(EngineData->ngr,"N_Key")) {
                char *stmp=NULL, nc, *vbuf=NULL, *strgval=NULL;
@@ -3371,6 +3423,12 @@ SUMA_Boolean SUMA_Engine (DList **listp)
                            case XK_m:
                            case XK_M:
                               if (!SUMA_M_Key(sv, stmp, "drivesuma")) {
+                                 SUMA_S_Err("Failed in Key function.");
+                              }
+                              break;
+                           case XK_o:
+                           case XK_O:
+                              if (!SUMA_O_Key(sv, stmp, "drivesuma")) {
                                  SUMA_S_Err("Failed in Key function.");
                               }
                               break;
@@ -3470,6 +3528,11 @@ SUMA_Boolean SUMA_Engine (DList **listp)
                               break;
                            case XK_F8:
                               if (!SUMA_F8_Key(sv, stmp, "drivesuma")) {
+                                 SUMA_S_Err("Failed in Key function.");
+                              }
+                              break;
+                           case XK_F9:
+                              if (!SUMA_F9_Key(sv, stmp, "drivesuma")) {
                                  SUMA_S_Err("Failed in Key function.");
                               }
                               break;
@@ -3693,7 +3756,8 @@ void *SUMA_nimlEngine2Engine(NI_group *ngr)
    SUMA_EngineData *ED = NULL; 
    DListElmt *el=NULL;
    void *Ret = NULL;
-   char *SOid=NULL, *svid=NULL, *name=NULL, *SOlabel=NULL;
+   char *SOid=NULL, *svid=NULL, *name=NULL, *SOlabel=NULL, 
+        ename[32], lhs[64], rhs[256], *enveqn=NULL, *attr=NULL;
    SUMA_SurfaceObject *SO = NULL;
    SUMA_SurfaceViewer *sv = NULL;
    SUMA_PARSED_NAME *fn = NULL;
@@ -3719,6 +3783,22 @@ void *SUMA_nimlEngine2Engine(NI_group *ngr)
    }
    
    /* do we have the classics? */
+   itmp = 0;
+   sprintf(ename,"ENV.%d", itmp);
+   while ((attr=NI_get_attribute(ngr, ename))) {
+      SUMA_LHv("Have %s:>%s<\n", ename, attr);
+      lhs[0] = '\0'; rhs[0]='\0';
+      if (SUMA_ParseLHS_RHS (attr, lhs, rhs)) {
+         enveqn = (char *) malloc(strlen(lhs)+strlen(rhs)+4) ;
+         sprintf(enveqn,"%s=%s", lhs, rhs);
+         putenv(enveqn);
+         SUMA_LHv("Got %s\n", enveqn);
+      } else {
+         SUMA_S_Errv("Failed to parse %s: %s\n",
+               ename, attr);
+      }
+      sprintf(ename,"ENV.%d", ++itmp);
+   }
    
    sv = NULL;
    svid = NI_get_attribute(ngr,"SV_id");
@@ -3888,6 +3968,12 @@ void *SUMA_nimlEngine2Engine(NI_group *ngr)
          }
          break; 
       case SE_niSetViewerCont:
+         if ((name = NI_get_attribute(ngr,"N_foreg_smooth"))) {
+            SUMA_SetNumForeSmoothing(name, (void *)sv);
+         }
+         if ((name = NI_get_attribute(ngr,"N_final_smooth"))) {
+            SUMA_SetNumFinalSmoothing(name, (void *)sv);
+         }
          if ((name = NI_get_attribute(ngr,"VVS_FileName"))) {
             /* Have a vvs to load, do it straight up, 
                no need to call some SE_SetViewerCont, a la SE_SetSurfCont yet */
@@ -5169,7 +5255,8 @@ float * SUMA_XYZmap_XYZ (float *XYZmap, SUMA_SurfaceObject *SO, SUMA_DO* dov, in
    \ret Prec_ID (int) index into dov of the surface object that is related to Cur_ID
 
 */
-int SUMA_MapRefRelative (int cur_id, int *prec_list, int N_prec_list, SUMA_DO *dov) 
+int SUMA_MapRefRelative (int cur_id, int *prec_list, int N_prec_list, 
+                           SUMA_DO *dov) 
 {
    int i, rel_id = -1;
    static char FuncName[]={"SUMA_MapRefRelative"};
@@ -5190,10 +5277,11 @@ int SUMA_MapRefRelative (int cur_id, int *prec_list, int N_prec_list, SUMA_DO *d
       if (  SO_prec == SOcur ||
             strcmp(SOcur->idcode_str, SO_prec->idcode_str) == 0 ) {
          if (N_prec_list == 1) {
-            /* if all you have is one surface in one state in SUMA then you need not worry about the rest */
+            /* if all you have is one surface in one state in SUMA 
+               then you need not worry about the rest */
          } else {
             /* this can happen if you have multiple surfaces with each being 
-            their own mappable surfaces., so it is OK too */
+               their own mappable surfaces., so it is OK too */
             /*
                fprintf(SUMA_STDERR, "\nError %s: Flow problem.\n"
                                  "Did not expect identical surfaces \n"
@@ -5204,23 +5292,28 @@ int SUMA_MapRefRelative (int cur_id, int *prec_list, int N_prec_list, SUMA_DO *d
          }
          /* 
          I changed the next condition: 
-         if (  strcmp(SOcur->LocalDomainParentID, SO_prec->LocalDomainParentID) == 0 || 
+         if (  strcmp(SOcur->LocalDomainParentID, 
+                      SO_prec->LocalDomainParentID) == 0 || 
             strcmp(SOcur->LocalDomainParentID, SO_prec->idcode_str) == 0 )
          to
          if (  SUMA_isRelated(SOcur, SO_prec, 1) )
-         The two are the same except for the condition when the two surfaces are identical.
-         So I put in a error message when that would happen and I'll deal with it then.
+         The two are the same except for the condition when the two surfaces 
+         are identical. So I put in a error message when that would happen and 
+         I'll deal with it then.
          ZSS Jan 08 04
          */
          
       }
       
-      if (  SUMA_isRelated(SOcur, SO_prec, 1) ) { /* Change made Jan 08 04, see note above */
+      if (  SUMA_isRelated(SOcur, SO_prec, 1) ) { 
+         /* Change made Jan 08 04, see note above */
          /* there's some relationship here, save it for return */
          if (rel_id < 0) {
             rel_id = prec_list[i];
          } else {
-            fprintf (SUMA_STDERR,"Error %s: I did not think that would occur! Ignoring other relatives for now.\n", FuncName); 
+            fprintf (SUMA_STDERR,
+                  "Error %s: I did not think that would occur!"
+                  " Ignoring other relatives for now.\n", FuncName); 
          }
 
       }
@@ -5238,6 +5331,7 @@ int *SUMA_FormSOListToSendToAFNI(SUMA_DO *dov, int N_dov, int *N_Send)
    static char FuncName[]={"SUMA_FormSOListToSendToAFNI"};
    int *SendList = NULL, ii, j, s, *is_listed=NULL;
    SUMA_SurfaceObject *SO=NULL;
+   int no_need = 0;
    SUMA_SO_SIDE side=SUMA_NO_SIDE;
    SUMA_Boolean LocalHead = NOPE;
    
@@ -5256,52 +5350,68 @@ int *SUMA_FormSOListToSendToAFNI(SUMA_DO *dov, int N_dov, int *N_Send)
       for (ii=0; ii<N_dov; ++ii) {
          if (SUMA_isSO(dov[ii])) {
             SO = (SUMA_SurfaceObject *)(dov[ii].OP);      
-            if (SO->AnatCorrect && !SO->SentToAfni && SO->VolPar) {
-               switch (s) {
-                  case 0:
-                     if (  !is_listed[ii] && 
-                           SO->Side == SUMA_LEFT && 
-                           SUMA_isTypicalSOforVolSurf(SO) ==  -1) { 
-                              SendList[*N_Send] = ii; 
-                              *N_Send = *N_Send + 1; 
-                              is_listed[ii] = 1;}
-                     break;
-                  case 1:
-                     if (  !is_listed[ii] && 
-                           SO->Side == SUMA_LEFT && 
-                           SUMA_isTypicalSOforVolSurf(SO) ==   1) { 
-                              SendList[*N_Send] = ii; 
-                              *N_Send = *N_Send + 1; 
-                              is_listed[ii] = 1;}
-                     break;
-                  case 2:
-                     if (  !is_listed[ii] && 
-                           SO->Side == SUMA_RIGHT && 
-                           SUMA_isTypicalSOforVolSurf(SO) == -1) { 
-                              SendList[*N_Send] = ii; 
-                              *N_Send = *N_Send + 1; 
-                              is_listed[ii] = 1;}
-                     break;
-                  case 3:
-                     if (  !is_listed[ii] && 
-                           SO->Side == SUMA_RIGHT && 
-                           SUMA_isTypicalSOforVolSurf(SO) ==  1) { 
-                              SendList[*N_Send] = ii; 
-                              *N_Send = *N_Send + 1; 
-                              is_listed[ii] = 1;}
-                     break;
-                  default:
-                     if (  !is_listed[ii]) { 
-                        SendList[*N_Send] = ii; 
-                        *N_Send = *N_Send + 1; 
-                        is_listed[ii] = 1;}
-                     break;
+            if (SO->SentToAfni) { no_need = 1; }
+            if (  SO->AnatCorrect && !SO->SentToAfni 
+                  && SO->VolPar ) {
+               if (!SUMA_ExcludeFromSendToAfni(SO)) {
+                  switch (s) {
+                     case 0:
+                        if (  !is_listed[ii] && 
+                              SO->Side == SUMA_LEFT && 
+                              SUMA_isTypicalSOforVolSurf(SO) ==  -1) { 
+                                 SendList[*N_Send] = ii; 
+                                 *N_Send = *N_Send + 1; 
+                                 is_listed[ii] = 1;}
+                        break;
+                     case 1:
+                        if (  !is_listed[ii] && 
+                              SO->Side == SUMA_LEFT && 
+                              SUMA_isTypicalSOforVolSurf(SO) ==   1) { 
+                                 SendList[*N_Send] = ii; 
+                                 *N_Send = *N_Send + 1; 
+                                 is_listed[ii] = 1;}
+                        break;
+                     case 2:
+                        if (  !is_listed[ii] && 
+                              SO->Side == SUMA_RIGHT && 
+                              SUMA_isTypicalSOforVolSurf(SO) == -1) { 
+                                 SendList[*N_Send] = ii; 
+                                 *N_Send = *N_Send + 1; 
+                                 is_listed[ii] = 1;}
+                        break;
+                     case 3:
+                        if (  !is_listed[ii] && 
+                              SO->Side == SUMA_RIGHT && 
+                              SUMA_isTypicalSOforVolSurf(SO) ==  1) { 
+                                 SendList[*N_Send] = ii; 
+                                 *N_Send = *N_Send + 1; 
+                                 is_listed[ii] = 1;}
+                        break;
+                     default:
+                        if (  !is_listed[ii]) { 
+                           SendList[*N_Send] = ii; 
+                           *N_Send = *N_Send + 1; 
+                           is_listed[ii] = 1;}
+                        break;
+                  }
+               } else {
+                  if (s == 0) { 
+                     SUMA_S_Notev(
+                     "State %s not sent to AFNI per exclusion in env %s\n",
+                     SO->State, "SUMA_DoNotSendStates");
+                  }
                }
             }
          }
       }
    }
    
+   if (*N_Send == 0 && !no_need) {
+      /* an indication that nothing can be sent,
+         as opposed things have been sent already
+         and need not be resent */
+      *N_Send = -1;
+   }
    SUMA_RETURN(SendList);
 
 }

@@ -276,6 +276,50 @@ int AFNI_setenv( char *cmd )
 }
 
 /*-------------------------------------------------------------------------*/
+char *get_gopt_help() {
+   static char GOPT_HELP[] = {
+"   -overwrite: Overwrite existing output dataset.\n"
+"               Equivalent to setting env. AFNI_DECONFLICT=OVERWRITE\n"
+"   -ok_1D_text: Zero out uncommented text in 1D file.\n"
+"                Equivalent to setting env. AFNI_1D_ZERO_TEXT=YES\n"
+"   -Dname=val: Set environment variable 'name' to value 'val'\n"
+"             For example: -DAFNI_1D_ZERO_TEXT=YES\n"
+"   -Vname=: Print value of environment variable 'name' to stdout and quit.\n"
+"            This is more reliable that the shell's env query because it would\n"
+"            include envs set in .afnirc files and .sumarc files for SUMA\n"
+"            programs.\n"
+"             For example: -VAFNI_1D_ZERO_TEXT=\n"
+"   -all_opts: Try to identify all options for the program from the\n"
+"              output of its -help option. Some options might be missed\n"
+"              and others misidentified. Use this output for hints only.\n"
+"   -h_find WORD: Look for lines in this programs's -help output that match\n"
+"                 (approximately) WORD.\n"
+"   -h_view: Open help in text editor. AFNI will try to find a GUI editor\n"
+"            on your machine. You can control which it should use by\n"
+"            setting environment variable AFNI_GUI_EDITOR.\n"
+"   -h_web: Open help in web browser. AFNI will try to find a browser\n"
+"            on your machine. You can control which it should use by\n"
+"            setting environment variable AFNI_GUI_EDITOR.\n"
+"   -skip_afnirc: Do not read the afni resource (like ~/.afnirc) file.\n"
+"   -pad_to_node NODE: Output a full dset from node 0 to MAX_NODE-1\n"
+"                   ** Instead of directly setting NODE to an integer you \n"
+"                      can set NODE to something like:\n"
+"                   ld120 (or rd17) which sets NODE to be the maximum \n"
+"                      node index on an Icosahedron with -ld 120. See \n"
+"                      CreateIcosahedron for details.\n"
+"                   d:DSET.niml.dset which sets NODE to the maximum node found\n"
+"                      in dataset DSET.niml.dset.\n" 
+"                   ** This option is for surface-based datasets only.\n"
+"                      Some programs may not heed it, so check the output if\n"
+"                      you are not sure.\n"
+"   -pif SOMETHING: Does absolutely nothing but provide for a convenient\n"
+"                   way to tag a process and find it in the output of ps -a\n"
+"   -echo_edu: Echos the entire command line to stdout (without -echo_edu)\n"
+"              for edification purposes\n"
+"\n" 
+   };
+   return(GOPT_HELP);
+}
 
 int MRILIB_DomainMaxNodeIndex = -1;
 
@@ -312,13 +356,77 @@ int AFNI_prefilter_args( int *argc , char **argv )
        (void)AFNI_setenv(argv[ii]+2) ; used[ii] = 1 ; continue ;
      }
 
+     /*** -Vname=val to get environment variable ***/
+
+     if( strncmp(argv[ii],"-V",2) == 0 && strchr(argv[ii],'=') != NULL ){
+       if( ttt ) fprintf(stderr,"++ argv[%d] does getenv %s\n",ii,argv[ii]) ;
+       fprintf(stdout,"%s\n",
+               (eee = my_getenv(argv[ii]+2)) ? eee:"") ; 
+        used[ii] = 1 ; exit(0) ;
+     }
+
      /*** -overwrite to set AFNI_DECONFLICT ***/
 
      if( strcmp(argv[ii],"-overwrite") == 0 ){
        if( ttt ) fprintf(stderr,"++ argv[%d] is -overwrite\n",ii) ;
-       AFNI_setenv("AFNI_DECONFLICT=OVERWRITE") ; used[ii] = 1 ; continue ;
+       AFNI_setenv("AFNI_DECONFLICT=OVERWRITE") ; 
+       THD_set_quiet_overwrite(1); /* no need to kvetch */
+       used[ii] = 1 ; continue ;
      }
 
+     /*** echo command ***/
+     
+     if( strcmp(argv[ii],"-echo_edu") == 0 ){
+       if( ttt ) fprintf(stderr,"++ argv[%d] is -echo_edu\n",ii) ;
+       {
+         int jjj=0; 
+         fprintf(stdout,"\n+++ Command Echo:\n   "); 
+         for (jjj=0; jjj<narg; ++jjj)  { 
+            if (jjj != ii) {   
+               fprintf(stdout,"%s ", argv[jjj]);  
+            }     
+         }
+         fprintf(stdout,"\n\n");
+         used[ii] = 1 ; continue ;
+       }
+     }
+     
+     if( strcmp(argv[ii],"-all_opts") == 0 ){
+       if( ttt ) fprintf(stderr,"++ argv[%d] is -all_opts\n",ii) ;
+       print_prog_options(argv[0]); used[ii] = 1 ; 
+       exit(0); 
+         /* better exit, otherwise output get burried by program's own -help */ 
+     }
+
+     if( strcmp(argv[ii],"-h_find") == 0 ){
+       if( ttt ) fprintf(stderr,"++ argv[%d] is -h_find\n",ii) ;
+       if (ii+1 >= narg) {
+         fprintf(stderr,"** -h_find needs a string.\n");
+         exit(1);
+       }
+       used[ii] = 1 ; ii++;
+       suggest_best_prog_option(argv[0], argv[ii]);
+       used[ii] = 1 ; 
+       exit(0); 
+         /* better exit, otherwise output get burried by program's own -help */ 
+     }
+     
+     if( strcmp(argv[ii],"-h_view") == 0 ){
+       if( ttt ) fprintf(stderr,"++ argv[%d] is -h_view\n",ii) ;
+       view_prog_help(argv[0]);
+       used[ii] = 1 ; 
+       exit(0); 
+         /* better exit, otherwise output get burried by program's own -help */ 
+     }
+     
+     if( strcmp(argv[ii],"-h_web") == 0 ){
+       if( ttt ) fprintf(stderr,"++ argv[%d] is -h_web\n",ii) ;
+       web_prog_help(argv[0]);
+       used[ii] = 1 ; 
+       exit(0); 
+         /* better exit, otherwise output get burried by program's own -help */ 
+     }
+     
      /*** -ok_1D_text to set AFNI_1D_ZERO_TEXT ZSS Dec 09 ***/
 
      if( strcmp(argv[ii],"-ok_1D_text") == 0 ){
@@ -338,11 +446,50 @@ int AFNI_prefilter_args( int *argc , char **argv )
      if( strcmp(argv[ii],"-pad_to_node") == 0 ){
        if( ttt ) fprintf(stderr,"++ argv[%d] is -pad_to_node\n",ii) ;
        if (ii+1 >= narg) {
-         fprintf(stderr,"** -pad_to_node needs a positive integer.\n");
+         fprintf(stderr,"** -pad_to_node needs a positive integer,\n"
+                        "   or standard mesh description such as ld120\n");
          exit(1);
        }
        used[ii] = 1 ; ii++;
-       MRILIB_DomainMaxNodeIndex = atoi(argv[ii]);
+       
+       if (!strncasecmp(argv[ii],"ld",2)) {
+         if (strlen(argv[ii]) < 3) {
+            fprintf(stderr,"** need a number right after ld (like ld120)\n");
+            exit(1);
+         }
+         MRILIB_DomainMaxNodeIndex = SUMA_IcoNums(atoi(argv[ii]+2), 0, 'n')-1;
+         if( ttt ) fprintf(stderr, "ld pad_to_node %d\n", 
+                                    MRILIB_DomainMaxNodeIndex);
+       } else if (!strncasecmp(argv[ii],"rd",2)) {
+         if (strlen(argv[ii]) < 3) {
+            fprintf(stderr,"** need a number right after rd (like rd6)\n");
+            exit(1);
+         }
+         MRILIB_DomainMaxNodeIndex = SUMA_IcoNums(atoi(argv[ii]+2), 1, 'n')-1;
+         if( ttt ) fprintf(stderr, "rd pad_to_node %d\n", 
+                                    MRILIB_DomainMaxNodeIndex);
+       } else if (!strncasecmp(argv[ii],"d:",2)) {
+         THD_3dim_dataset *dset=NULL;
+         if (strlen(argv[ii]) < 3) {
+            fprintf(stderr,
+               "** need a dataset right after d: (like d:hello.niml.dset)\n");
+            exit(1);
+         }
+         dset = THD_open_dataset(argv[ii]+2);
+         if (dset) { 
+            DSET_MAX_NODE(dset, MRILIB_DomainMaxNodeIndex); 
+            DSET_delete(dset); dset = NULL;
+            if( ttt ) fprintf(stderr, "d: pad_to_node %d\n", 
+                                    MRILIB_DomainMaxNodeIndex);         
+         } else {
+            fprintf(stderr,"** Could not load dset %s to determine padding\n",
+                           argv[ii]+2);
+         } 
+       } else {
+         MRILIB_DomainMaxNodeIndex = atoi(argv[ii]);
+         if( ttt ) fprintf(stderr, "pad_to_node %d\n", 
+                                    MRILIB_DomainMaxNodeIndex);     
+       }
        if (MRILIB_DomainMaxNodeIndex < 0) {
          fprintf(stderr,"** parameter for -pad_to_node (%d) is negative!\n",
                         MRILIB_DomainMaxNodeIndex);
@@ -379,6 +526,7 @@ int AFNI_prefilter_args( int *argc , char **argv )
        used[ii] = 1;
        continue ;
      }
+     
      if( strcmp(argv[ii],"-npb") == 0 ){   /* ZSS, June 2011 */
        if( ttt ) fprintf(stderr,"++ argv[%d] is -npb\n",ii) ;
        if (ii+1 >= narg) {
@@ -393,6 +541,19 @@ int AFNI_prefilter_args( int *argc , char **argv )
                "** -npb is not an integer such that 0 <= NPB <= %d\n"
                "   -npb was ignored\n", get_max_port_bloc());
        } 
+       used[ii] = 1;
+       continue ;
+     }
+
+     if( strcmp(argv[ii],"-pif") == 0 ){   /* ZSS, June 2011 */
+       if( ttt ) fprintf(stderr,"++ argv[%d] is -pif\n",ii) ;
+       if (ii+1 >= narg) {
+         fprintf(stderr,
+               "** -pif needs a string value\n");
+         exit(1);
+       }
+       used[ii] = 1 ; ii++;
+       set_user_pif(argv[ii]);
        used[ii] = 1;
        continue ;
      }

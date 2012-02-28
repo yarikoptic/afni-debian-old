@@ -1,10 +1,10 @@
 #!/bin/tcsh -f
+@global_parse `basename $0` "$*" ; if ($status) exit 0
 
 PARSE: 
    #exit status
    set estat = 0
    
-   echo "Parsing ..."
    set Narg = $#
    
    set ok_notice = 0
@@ -36,6 +36,7 @@ PARSE:
    set npass = -twopass
    set prexform = ""
    set OneWarp = 0
+   set just_copy_base = ""
    if ("$1" == '') goto HELP
 
    while ($cnt <= $Narg)
@@ -202,6 +203,21 @@ PARSE:
             set donext = 0   
          endif   
       endif
+      if ($donext && "$argv[$cnt]" == "-base_copy") then
+         set pLoc = $cnt      
+         if ($pLoc == $Narg) then
+            echo "Need prefix volume after -base_copy"
+            goto END
+         else
+            @ cnt ++
+            set just_copy_base = "$argv[$cnt]"
+            set donext = 0   
+         endif   
+      endif
+      if ($donext && "$argv[$cnt]" == "-base_list") then
+         set just_copy_base = "LIST"
+         set donext = 0   
+      endif
       if ($donext && "$argv[$cnt]" == "-apar") then
          set pLoc = $cnt      
          if ($pLoc == $Narg) then
@@ -306,21 +322,41 @@ PARSE:
       endif
       if ($donext == 1) then
          echo "Error: Option or parameter '$argv[$cnt]' not understood"
+         apsearch -popt `basename $0` -word $argv[$cnt]
          goto END
       endif
       @ cnt ++
    end
+   
+   goto SET_REF_PATH
+   SET_REF_PATH_RETURN:
+   
    if ("$anat_in" == "" || "$ref_in" == "") then
       echo "Error: Need both -base and -input parameters"
       goto END
    endif
    
-   goto SET_REF_PATH
-   SET_REF_PATH_RETURN:
    #echo "Template/Apar path is: $ref_path"
    
    set prs_in = `@parse_afni_name "$anat_in"`
    set anat_path = $prs_in[1]
+   
+   set isNIFTI = `3dinfo -is_nifti "$anat_in"`
+   set delete_this = ()
+   if ($isNIFTI == 1) then
+      set NIpref = `echo "$prs_in[2]" | sed 's/.nii.gz$//g' | sed 's/.nii$//g'`
+      set RNS = `3dnewid -hash NIpref`
+      echo "Copying NIFTI volume to $prs_in[1]/${NIpref}_${RNS}"
+      3dcopy "$anat_in" $prs_in[1]/${NIpref}_${RNS}
+      set anat_in = ($prs_in[1]/${NIpref}_${RNS}+????.HEAD)
+      if ($#anat_in != 1) then
+         echo "Failed to copy NIFTI input ($anat_in)"
+         goto END
+      endif
+      set delete_this = ($delete_this $prs_in[1]/${NIpref}_${RNS}+????.HEAD  \
+                                      $prs_in[1]/${NIpref}_${RNS}+????.BRIK* ) 
+      set prs_in = `@parse_afni_name "$anat_in"`
+   endif 
    
    #Make a copy of anat_in if we are given sub-brick selectors
    if ($#prs_in > 3) then
@@ -401,11 +437,24 @@ PARSE:
    set rs_pref = ${tmppref}__rs_`@GetAfniPrefix "${anat_in}"`
    set tt_pref = ${anat_pref}${suf}
    
-   set out_pref = `@GetAfniPrefix "${nopre_anat_in}"`${suf}
-
-   set ref_pref_nopad = "${ref_path}/`@GetAfniPrefix ${ref_in}`"
+   if ($isNIFTI) then
+      if ($suf == '') set suf = '_at'
+      set out_pref = ${NIpref}${suf}
+      if ( -f ${out_pref}.nii) then
+         echo "ERROR: ${out_pref}.nii exists already"
+         goto BEND
+      endif
+   else
+      set out_pref = `@GetAfniPrefix "${nopre_anat_in}"`${suf}
+   endif
+    
    set ref_pref_pad  = "${tmppref}_ref_`@GetAfniPrefix ${ref_in}`_${pd}pad"
-   set ref_view = "`@GetAfniView ${ref_in}`"
+   set ref_view = `3dinfo -av_space ${ref_in}`
+   if (`3dinfo -is_nifti $ref_in` == 1) then
+      set ref_nopad = "${ref_path}/`@GetAfniPrefix ${ref_in}`"
+   else   
+      set ref_nopad = "${ref_path}/`@GetAfniPrefix ${ref_in}`${ref_view}"
+   endif
    # use the template space for the transformed dataset
    set ref_space = `3dinfo ${ref_in} | grep "Template Space"` 
    set ref_space = "$ref_space[3]"
@@ -413,15 +462,14 @@ PARSE:
 IN_CHECK:
 if ("$suf" == '' && $KeepView == 1) then
    echo "Cannot use -keep_view and -suffix none"
-   set estat = 1
-   goto END
+   goto BEND
 endif
 
-if ( `@CheckForAfniDset ${ref_in}` != 2 ) then
-   echo "Error: Template dset ${ref_in} not found."
-   set estat = 1
-   goto END
+if ( `@CheckForAfniDset ${ref_in}` < 2 ) then
+   echo "Error: Template (or -apar) dset ${ref_in} not found."
+   goto BEND
 endif
+
 set ttt_pref = "`@GetAfniPrefix ${ref_in}`"
 if ("$ttt_pref" == "TT_avg152EPI") then
    echo ""
@@ -813,6 +861,13 @@ AUTO_TLRC_MODE:
    endif
    cp ${tt_prefpad}.Xat.1D ${out_pref}.Xat.1D
    
+   if ($isNIFTI) then
+      if ( -f ${ns_pref}_WarpDrive.log) \
+         mv ${ns_pref}_WarpDrive.log ${out_pref}.nii_WarpDrive.log
+      if ( -f ${ns_pref}.Xaff12.1D) \
+         mv ${ns_pref}.Xaff12.1D ${out_pref}.nii.Xaff12.1D
+   endif
+
    OUTPUT_GRID:
    if ($user_res) then
       3dresample    -rmode Linear \
@@ -889,9 +944,17 @@ AUTO_TLRC_MODE:
          3drefit -wset ${nopre_anat_in} ${tt_prefupad}${ref_view}
       endif
       #finally, rename the damned thing
-      3drename ${tt_prefupad}${ref_view} ${out_pref}${ref_view}
+      if ($isNIFTI) then
+         3dAFNItoNIFTI -prefix ${out_pref}.nii ${tt_prefupad}${ref_view} 
+      else
+         3drename ${tt_prefupad}${ref_view} ${out_pref}${ref_view}
+      endif
    else
-      3drename ${tt_prefupad}${anat_view} ${out_pref}${anat_view}
+      if ($isNIFTI) then
+         3dAFNItoNIFTI -prefix ${out_pref}.nii ${tt_prefupad}${anat_view} 
+      else
+         3drename ${tt_prefupad}${anat_view} ${out_pref}${anat_view}
+      endif
    endif
    
    
@@ -924,9 +987,18 @@ AUTO_TLRC_MODE:
       if ($KeepView == 0) then
          echo "Changing view of rigid_equiv anatomy"
          3drefit -view ${ref_view} ${out_pref}.Xat.rigid${anat_view}.HEAD
-      endif
-      
-      
+         if ($isNIFTI) then
+            3dAFNItoNIFTI -prefix $NIpref.Xat.rigid.nii \
+                     ${out_pref}.Xat.rigid${ref_view}.HEAD 
+            \rm -f ${out_pref}.Xat.rigid${ref_view}.*
+         endif
+      else
+         if ($isNIFTI) then
+            3dAFNItoNIFTI -prefix $NIpref.Xat.rigid.nii \
+                          ${out_pref}.Xat.rigid${anat_view}.HEAD 
+            \rm -f ${out_pref}.Xat.rigid${anat_view}.*
+         endif
+      endif      
    endif
    
    goto WRAP_UP
@@ -939,7 +1011,7 @@ AUTO_TLRC_MODE:
 #######################
 APAR_MODE:
    set tmp_out_pref = ${tmppref}${out_pref}
-   echo "Applying tlrc warp from ${ref_pref_nopad}${ref_view} to ${ns_pref}${anat_view} ..."
+   echo "Applying tlrc warp from ${ref_nopad} to ${ns_pref}${anat_view} ..."
    if ( -f warp_tmp${anat_view}.HEAD) then
       rm -f warp_tmp${anat_view}.HEAD warp_tmp${anat_view}.BRIK*
    endif
@@ -963,7 +1035,7 @@ APAR_MODE:
    endif            
    if ($OneWarp) then
       echo "Direct warping per parent transform ($rmode interpolation) ..."
-      3dWarp   -matparent ${ref_pref_nopad}${ref_view} \
+      3dWarp   -matparent ${ref_nopad} \
             -gridset ${tmppref}_warp_grid${ref_view} \
             -prefix ./${tmp_out_pref} -${rmode} \
             ${tmppref}_ipad${anat_view}
@@ -975,10 +1047,14 @@ APAR_MODE:
       #Keep old way involving two interpolations for backward
       #compatibility
       echo "Warping per parent transform ($rmode interpolation) and resampling with $resam interpolation (use -onewarp for single interpolation) ..."
-      3dWarp   -matparent ${ref_pref_nopad}${ref_view} \
+      3dWarp   -matparent ${ref_nopad} \
             -prefix ./${tmp_out_pref} -${rmode} \
             ${tmppref}_ipad${anat_view}
       #Change view of master or else 3dresample will force a change
+      
+      if (${ref_view} == '') then
+         set ref_view = `3dinfo -av_space ${ref_in}`
+      endif
       3drefit -view ${anat_view} ${tmppref}_warp_grid${ref_view}
       3dresample  -master ${tmppref}_warp_grid${anat_view} \
                -prefix ./${tmp_out_pref} -inset ${tmp_out_pref}${anat_view} \
@@ -1007,13 +1083,13 @@ APAR_MODE:
       # @auto_tlrc -apar T1High_ns+tlrc -input T1High+orig -suffix NONE
       #
       #copy the WARPDRIVE_MATVEC_ fields to the zero unpadded dude
-         set FromVol = ${ref_pref_nopad}${ref_view}
+         set FromVol = ${ref_nopad}
          set ToVol = ${tmp_out_pref}${anat_view}
          set RET_copy_fields = APCW
          goto COPY_FIELDS
          APCW:    
       
-      3drefit -wpar ${ref_pref_nopad}${ref_view} ${tmp_out_pref}${anat_view}
+      3drefit -wpar ${ref_nopad} ${tmp_out_pref}${anat_view}
    endif
    
    # reset the space of the output to match the template space
@@ -1022,28 +1098,44 @@ APAR_MODE:
    3dNotes  -a "Dataset created via: `basename $0` $argv[*]" \
             -h "Dataset created via: `basename $0` $argv[*]" \
             ${tmp_out_pref}${anat_view}
-
+   
+   if ($isNIFTI && -f ${out_pref}.nii || -f ${out_pref}.nii.gz) then
+      echo "ERROR: Final output ${out_pref}.nii.gz is already on disk"
+            echo "   Aborted command:"
+            echo "   3drename ${tmp_out_pref}${ref_view} ${out_pref}${ref_view}"
+            echo "Transformed dataset ${tmp_out_pref}${ref_view} not renamed"
+            goto BEND
+   endif
+   
    if ($KeepView == 0) then
       echo "Changing view of xformed volumes"
       3drefit -view ${ref_view} ${tmp_out_pref}${anat_view}.HEAD
-      if ( `@CheckForAfniDset ${out_pref}${ref_view}` < 1) then
-         3drename ${tmp_out_pref}${ref_view} ${out_pref}${ref_view}
+      if ($isNIFTI) then
+            3dAFNItoNIFTI -prefix ${out_pref}.nii ${tmp_out_pref}${ref_view} 
       else
-         echo "ERROR: Final output ${out_pref}${ref_view} is already on disk"
-         echo "   Aborted command:"
-         echo "   3drename ${tmp_out_pref}${ref_view} ${out_pref}${ref_view}"
-         echo "Transformed dataset ${tmp_out_pref}${ref_view} not renamed"
-         goto BEND
+         if ( `@CheckForAfniDset ${out_pref}${ref_view}` < 1) then
+            3drename ${tmp_out_pref}${ref_view} ${out_pref}${ref_view}
+         else
+            echo "ERROR: Final output ${out_pref}${ref_view} is already on disk"
+            echo "   Aborted command:"
+            echo "   3drename ${tmp_out_pref}${ref_view} ${out_pref}${ref_view}"
+            echo "Transformed dataset ${tmp_out_pref}${ref_view} not renamed"
+            goto BEND
+         endif
       endif
    else
-      if ( `@CheckForAfniDset ${out_pref}${anat_view}` < 1) then
-         3drename ${tmp_out_pref}${anat_view} ${out_pref}${anat_view}
+      if ($isNIFTI) then
+         3dAFNItoNIFTI -prefix ${out_pref}.nii ${tmp_out_pref}${anat_view}
       else
-         echo "ERROR: Final output ${out_pref}${anat_view} is already on disk"
-         echo "   Aborted command:"
-         echo "   3drename ${tmp_out_pref}${anat_view} ${out_pref}${anat_view}"
-         echo "Transformed dataset ${tmp_out_pref}${anat_view} not renamed"
-         goto BEND
+         if ( `@CheckForAfniDset ${out_pref}${anat_view}` < 1) then
+            3drename ${tmp_out_pref}${anat_view} ${out_pref}${anat_view}
+         else
+            echo "ERROR: Final output ${out_pref}${anat_view} is already on disk"
+            echo "   Aborted command:"
+            echo "   3drename ${tmp_out_pref}${anat_view} ${out_pref}${anat_view}"
+            echo "Transformed dataset ${tmp_out_pref}${anat_view} not renamed"
+            goto BEND
+         endif
       endif
    endif
    
@@ -1060,6 +1152,13 @@ WRAP_UP:
 if ($KeepTmp != 1) then 
    set Ret_Clean = END
    echo "Cleanup ..."
+   #Don't move this IF into CLEANUP, it is only to
+   #be execute at exit.
+   if ($#delete_this) then
+      foreach ff ($delete_this)
+         if ( -f "$ff") rm -f "$ff" >& /dev/null 
+      end
+   endif
    goto CLEANUP
 else
    goto END
@@ -1071,7 +1170,7 @@ goto END
 #ONLY SUB-ROUTINES BELOW
 
 CLEANUP:
-rm -f ${tmppref}*_ref*.????*     >& /dev/null
+rm -f ${tmppref}*ref*.????*     >& /dev/null
 rm -f ${tmppref}*_reg*.????*     >& /dev/null
 rm -f ${tmppref}*_resam*.????*   >& /dev/null
 rm -f ${tmppref}*_rs*.????*      >& /dev/null
@@ -1080,6 +1179,9 @@ rm -f ${tmppref}_acpc*.????*     >& /dev/null
 rm -f ${tmppref}*gridout*.????*  >& /dev/null
 rm -f ${tmppref}*ipad*.????*  >& /dev/null
 rm -f ${tmppref}_MP* >& /dev/null
+rm -f ${tmppref}*upad*.????*  >& /dev/null
+rm -f ${tmppref}*warp_grid*.????*  >& /dev/null
+
 goto $Ret_Clean
 
 SET_REF_PATH:
@@ -1088,12 +1190,12 @@ if ( "$ref_path" == "$ref_in" ) then
    #echo "No Path specified ( $ref_path == $ref_in )" 
    set ref_path = "."
    if ($apar_mode == 1) then
-      goto SET_REF_PATH_RETURN
+      goto END_REF_SEARCH
    endif
    #if not in apar mode, try to set the path
    if ( `@CheckForAfniDset ${ref_in}` == 2 ) then
-      echo "Template dset ${ref_in} found."
-      goto SET_REF_PATH_RETURN
+      if ($verb) echo "Template dset ${ref_in} found."
+      goto END_REF_SEARCH
    endif
    
    set ref_path = `@FindAfniDsetPath $ref_in`
@@ -1110,11 +1212,23 @@ if ( "$ref_path" == "$ref_in" ) then
       set estat = 1
       goto END
    endif
-   echo "Using template from ${ref_path} ..."
+   if ($verb) echo "Using template from ${ref_path} ..."
    set ref_in = ${ref_path}/${ref_in}
 else
    #echo "Path specified (${ref_path}), stay out of this"
 endif
+
+END_REF_SEARCH:
+if ($just_copy_base ==  "LIST" ) then
+   echo "$ref_in"
+   goto END
+else if ($just_copy_base != "" ) then
+   3dcopy $ref_in $just_copy_base
+   goto END
+endif
+echo $just_copy_base
+
+
 goto SET_REF_PATH_RETURN
 
 HELP:
@@ -1128,37 +1242,37 @@ echo "      -base template :  Reference anatomical volume in TLRC space (+tlrc).
 echo "                        Preferably, this reference volume should have had"
 echo "                        the skull removed but that is not mandatory."
 echo "                        AFNI's distribution contains a few templates:"
-echo "                        TT_N27+tlrc --> Single subject, skull stripped volume."
-echo "                                     This volume is also known as "
-echo "                                     N27_SurfVol_NoSkull+tlrc elsewhere in "
-echo "                                     AFNI and SUMA land."
-echo "                                     (www.loni.ucla.edu, www.bic.mni.mcgill.ca)"
-echo "                                     This template has a full set of FreeSurfer"
-echo "                                     (surfer.nmr.mgh.harvard.edu)"
-echo "                                     surface models that can be used in SUMA. "
-echo "                                     For details, see Talairach-related link:"
-echo "                                     http://afni.nimh.nih.gov/afni/suma"
-echo "                        TT_icbm452+tlrc --> Average volume of 452 normal brains."
-echo "                                         Skull Stripped. (www.loni.ucla.edu)"
-echo "                        TT_avg152T1+tlrc --> Average volume of 152 normal brains."
-echo "                                         Skull Stripped.(www.bic.mni.mcgill.ca)"
-echo "                        TT_EPI+tlrc --> EPI template from spm2, masked as TT_avg152T1"
-echo "                                        TT_avg152 and TT_EPI volume sources are from"
-echo "                                        SPM's distribution. (www.fil.ion.ucl.ac.uk/spm/)"
+echo "          TT_N27+tlrc --> Single subject, skull stripped volume."
+echo "                       This volume is also known as "
+echo "                       N27_SurfVol_NoSkull+tlrc elsewhere in "
+echo "                       AFNI and SUMA land."
+echo "                       (www.loni.ucla.edu, www.bic.mni.mcgill.ca)"
+echo "                       This template has a full set of FreeSurfer"
+echo "                       (surfer.nmr.mgh.harvard.edu)"
+echo "                       surface models that can be used in SUMA. "
+echo "                       For details, see Talairach-related link:"
+echo "                       http://afni.nimh.nih.gov/afni/suma"
+echo "          TT_icbm452+tlrc --> Average volume of 452 normal brains."
+echo "                           Skull Stripped. (www.loni.ucla.edu)"
+echo "          TT_avg152T1+tlrc --> Average volume of 152 normal brains."
+echo "                           Skull Stripped.(www.bic.mni.mcgill.ca)"
+echo "          TT_EPI+tlrc --> EPI template from spm2, masked as TT_avg152T1"
+echo "                          TT_avg152 and TT_EPI volume sources are from"
+echo "                          SPM's distribution. (www.fil.ion.ucl.ac.uk/spm/)"
 echo ""
-echo "                        If you do not specify a path for the template, the script"
-echo "                        will attempt to locate the template AFNI's binaries directory."
+echo "          If you do not specify a path for the template, the script"
+echo "          will attempt to locate the template AFNI's binaries directory."
 echo ""
-echo "                        NOTE: These datasets have been slightly modified from"
-echo "                              their original size to match the standard TLRC"
-echo "                              dimensions (Jean Talairach and Pierre Tournoux"
-echo "                              Co-Planar Stereotaxic Atlas of the Human Brain"
-echo "                              Thieme Medical Publishers, New York, 1988). "
-echo "                              That was done for internal consistency in AFNI."
-echo "                              You may use the original form of these"
-echo "                              volumes if you choose but your TLRC coordinates"
-echo "                              will not be consistent with AFNI's TLRC database"
-echo "                              (San Antonio Talairach Daemon database), for example."
+echo "          NOTE: These datasets have been slightly modified from"
+echo "                their original size to match the standard TLRC"
+echo "                dimensions (Jean Talairach and Pierre Tournoux"
+echo "                Co-Planar Stereotaxic Atlas of the Human Brain"
+echo "                Thieme Medical Publishers, New York, 1988). "
+echo "                That was done for internal consistency in AFNI."
+echo "                You may use the original form of these"
+echo "                volumes if you choose but your TLRC coordinates"
+echo "                will not be consistent with AFNI's TLRC database"
+echo "                (San Antonio Talairach Daemon database), for example."
 echo "      -input anat    :  Original anatomical volume (+orig)."
 echo "                        The skull is removed by this script"
 echo "                        unless instructed otherwise (-no_ss)."
@@ -1339,8 +1453,14 @@ echo "   -suffix    SUF :  Name the output dataset by append SUF "
 echo "                     to the prefix of the input data for the output."
 echo "                     Default for SUF is NONE (see below)"
 echo "              NOTE:  You can now set SUF to 'none' or 'NONE' and enable"
-echo "                     afni's warp on demand features."                
+echo "                     afni's warp on demand features."
+echo "                     With NIFTI input volumes -suffix defaults to _at"
 echo "   -keep_view     :  Do not mark output dataset as +tlrc"
+echo "   -base_copy COPY_PREFIX: Copy base (template) dataset into COPY_PREFIX"
+echo "                           and quit. You can use ./ for COPY_PREFIX if you"
+echo "                           want the copy to have the same name as the"
+echo "                           template."
+echo "   -base_list     : List the full path of the base dataset and quit"
 echo "   -verb          :  Yakiti yak yak" 
 echo ""
 echo ""
@@ -1398,6 +1518,8 @@ echo "      Then use @auto_tlrc on the shifted datasets."
 echo "      Take care not to shift datasets from the same session by differing"
 echo "      amounts as they will no longer be in alignment." 
 echo ""
+@global_parse -gopts_help
+echo ""
 echo "Written by Ziad S. Saad (saadz@mail.nih.gov)"
 echo "                        SSCC/NIMH/NIH/DHHS"
 echo ""
@@ -1412,7 +1534,7 @@ WARN_notice:
       set vers_str = "Old version of TT_avg152 template found."
 echo ""
 echo "Error:"
-echo "It looks like your version of template $ref_pref_nopad is old,"
+echo "It looks like your version of template $ref_nopad is old,"
 echo "and in MNI space."
 echo "Please download new corrected version of this template "
 echo "and of ${alternate}+tlrc "

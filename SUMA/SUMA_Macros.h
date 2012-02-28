@@ -500,6 +500,21 @@ if Dist = 0, point on plane, if Dist > 0 point above plane (along normal), if Di
             }  \
    }         
 
+#define SUMA_GLX_BUF_SWAP(sv) {\
+   if ((sv)->X->DOUBLEBUFFER) {  \
+       glXSwapBuffers((sv)->X->DPY, XtWindow((sv)->X->GLXAREA));\
+   } else { \
+      glFlush();\
+   }  \
+}
+
+/*!
+   \brief Get the pointer for the last visited viewer 
+*/
+#define SUMA_LAST_VIEWER (SUMAg_CF->PointerLastInViewer >=0 && SUMAg_N_SVv >1 ? \
+                             &(SUMAg_SVv[SUMAg_CF->PointerLastInViewer]) : \
+                             &(SUMAg_SVv[0]))
+
 /*!
    \brief SO->Show is not quite not the end of the story
 */ 
@@ -540,6 +555,7 @@ if Dist = 0, point on plane, if Dist > 0 point above plane (along normal), if Di
    SUMA_SURF_NORM m_SN;   \
    if (SO->NodeNormList) SUMA_free(SO->NodeNormList); SO->NodeNormList = NULL;   \
    if (SO->FaceNormList) SUMA_free(SO->FaceNormList); SO->FaceNormList = NULL;   \
+   set_surf_norm_quiet(1); \
    m_SN = SUMA_SurfNorm(SO->NodeList,  SO->N_Node, SO->FaceSetList, SO->N_FaceSet );  \
    SO->NodeNormList = m_SN.NodeNormList; \
    SO->FaceNormList = m_SN.FaceNormList; \

@@ -345,6 +345,9 @@ g_help_string = """
       -save_epi_ns      : save skull-stripped epi
       -save_all         : save all the above datasets
 
+      Not included with -save_all (since parameters are required):
+
+      -save_orig_skullstrip PREFIX : save original skull-stripped dset
 
    Alternative cost functions and methods:
      The default method used in this script is the LPC (Localized Pearson 
@@ -551,7 +554,7 @@ g_help_string = """
 ## BEGIN common functions across scripts (loosely of course)
 class RegWrap:
    def __init__(self, label):
-      self.align_version = "1.33" # software version (update for changes)
+      self.align_version = "1.35" # software version (update for changes)
       self.label = label
       self.valid_opts = None
       self.user_opts = None
@@ -582,6 +585,7 @@ class RegWrap:
       self.save_tsh = 0    # don't save tshifted epi
       self.save_vr = 0     # don't save volume registered epi
       self.save_skullstrip = 0 # don't save skullstripped (not aligned)
+      self.save_origstrip  = '' # prefix for simple skullstripped dset
       self.save_rep = 0     # don't save representative tstat epi
       self.save_resample = 0 # don't save resampled epi
       self.save_epi_ns = 0  # don't save skull-stripped epi
@@ -844,7 +848,7 @@ class RegWrap:
                  "Output datasets are kept in the 'orig' view")
       self.valid_opts.add_opt('-skullstrip_opts', -1, [], \
                helpstr="Alternate options for 3dSkullstrip.\n"
-                       "like -rat or -orig_vol")
+                       "like -rat or -blur_fwhm 2")
       self.valid_opts.add_opt('-feature_size', 1, [],\
             helpstr="Minimal size in mm of structures in images to match.\n"\
                     "Changes options for 3dAllineate for the coarse\n" \
@@ -877,6 +881,9 @@ class RegWrap:
       # save skullstripped anat before alignment
       self.valid_opts.add_opt('-save_skullstrip', 0, [],    \
                helpstr = "Save unaligned, skullstripped dataset")
+      # save skullstripped anat before alignment and without oblique xform
+      self.valid_opts.add_opt('-save_orig_skullstrip', 1, [],    \
+               helpstr = "Save simply skullstripped dataset")
       # save skullstripped epi before alignment
       self.valid_opts.add_opt('-save_epi_ns', 0, [],    \
                helpstr = "Save unaligned, skullstripped EPI dataset")
@@ -1043,6 +1050,14 @@ class RegWrap:
          if opt == None:  self.volreg_flag = 1     # turn on volreg processing
       opt = opt_list.find_opt('-save_skullstrip')  # save unaligned skullstripped
       if opt != None: self.save_skullstrip = 1
+      # save unaligned, unobliqued dataset
+      opt = opt_list.find_opt('-save_orig_skullstrip')
+      if opt != None:
+         val, err = opt_list.get_string_opt('', opt=opt)
+         if val == None or err:
+            ps.self_help()
+            ps.ciao(0)  # terminate
+         self.save_origstrip = val
       opt = opt_list.find_opt('-save_epi_ns')      # save unaligned skullstripped epi
       if opt != None: self.save_epi_ns = 1
       opt = opt_list.find_opt('-save_rep')         # save unaligned representative epi
@@ -2525,7 +2540,7 @@ class RegWrap:
          if (not n.exist() or ps.rewrite or ps.dry_run()):
             n.delete(ps.oexec)
             com = shell_com(  \
-                  "3dSkullStrip %s -input %s -prefix %s" \
+                  "3dSkullStrip -orig_vol %s -input %s -prefix %s" \
                   % (skullstrip_opt, e.input(), n.out_prefix()) , ps.oexec)
             com.run()
             if (not n.exist() and not ps.dry_run()):
@@ -2535,7 +2550,7 @@ class RegWrap:
             self.exists_msg(n.input())
       elif use_ss == '3dAutomask': #Automask epi
          n = e.new(prefix)
-         j = e.new("junk")
+         j = e.new("__tt_am_%s" % prefix)
          if (not n.exist() or ps.rewrite or ps.dry_run()):
             n.delete(ps.oexec)
             com = shell_com(  \
@@ -2637,9 +2652,10 @@ class RegWrap:
         "3dcopy -overwrite %s AddEdge/%s" % (d3.input(), d3AE.out_prefix()), ps.oexec)
       com.run()
 
+      # changed .input to .shortinput           3 Feb 2012 [rickr,dglen]
       com = shell_com( 
             "cd AddEdge; @AddEdge -no_deoblique %s %s %s %s; cd .. " \
-            % (aelistlog, d1AE.input(), d2AE.input(), d3AE.input()), ps.oexec)
+            % (aelistlog, d1AE.shortinput(), d2AE.shortinput(), d3AE.shortinput()), ps.oexec)
       com.run()
 
    # do the preprocessing of the EPI data    
@@ -2768,7 +2784,7 @@ class RegWrap:
                        ps.dset1_generic_name)
 
             com = shell_com(  \
-                  "%s %s -input %s -prefix %s" \
+                  "%s -orig_vol %s -input %s -prefix %s" \
                   % (ps.skullstrip_method, ps.skullstrip_opt, a.input(), n.out_prefix()), ps.oexec)
             com.run()
             if (not n.exist() and not ps.dry_run()):
@@ -2836,10 +2852,20 @@ class RegWrap:
       ein = afni_name(opt.parlist[0])
 
       # save skull stripped anat before alignment
+      # Yikes! Rick noticed the saved skullstrip was the obliqued one
+      # and not the original. Should be original ps.anat_ns0, not ps.anat_ns
       if(ps.skullstrip and ps.save_skullstrip):
          ao_ns = ain.new("%s_ns" % ain.out_prefix())
-         self.copy_dset( ps.anat_ns, ao_ns, 
+         self.copy_dset( ps.anat_ns0, ao_ns, 
           "Creating final output: skullstripped %s data" % \
+                          self.dset1_generic_name, ps.oexec)
+
+      # maybe save pre-obliqued skull stripped anat before alignment
+      # 3 Aug 2011 [rickr]
+      if(ps.skullstrip and ps.save_origstrip):
+         ao_ons = ain.new(ps.save_origstrip)
+         self.copy_dset( ps.anat_ns0, ao_ons, 
+          "Creating final output: skullstripped original %s data" % \
                           self.dset1_generic_name, ps.oexec)
 
       # save anatomy aligned to epi 
@@ -3126,11 +3152,13 @@ if __name__ == '__main__':
    if(ps.AddEdge):
       print "To view edges produced by @AddEdge, type:"
       print "cd AddEdge"
-      print "afni -niml -yesplugouts &"
+      if (0):  #ZSS  @AddEdge now launches AFNI
+         print "afni -niml -yesplugouts &"
+         
       if (ps.epi2anat and ps.anat2epi):
          print "@AddEdge -examinelist %s" % listlog_a2e
          print "@AddEdge -examinelist %s" % listlog_e2a
       else:
          print "@AddEdge"
-
+            
    ps.ciao(0)

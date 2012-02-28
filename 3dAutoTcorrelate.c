@@ -324,7 +324,7 @@ int main( int argc , char *argv[] )
       }
 
       if( strcmp(argv[nopt],"-polort") == 0 ){
-         int val = strtod(argv[++nopt],&cpt) ;
+         int val = (int)strtod(argv[++nopt],&cpt) ;
          if( *cpt != '\0' || val < -1 || val > 3 ){
             ERROR_exit("Illegal value after -polort!") ;
          }
@@ -505,7 +505,7 @@ AFNI_OMP_START ;
 #pragma omp parallel if( nmask > 999 )
 {
    int ii,jj,kout , ithr,nthr , vstep,vii ;
-   float *xsar , *ysar ; short *car ;
+   float *xsar , *ysar ; short *car=NULL ;
 
 #ifdef USE_OMP
    ithr = omp_get_thread_num() ;
@@ -527,7 +527,8 @@ AFNI_OMP_START ;
 
       ii = imap[kout] ;  /* ii= source voxel (we know that ii is in the mask) */
 
-      if( ithr == 0 ){ vii++ ; if( vii%vstep == vstep/2 ) vstep_print(); }
+      if( ithr == 0 && vstep > 2 ) /* allow small dsets 16 Jun 2011 [rickr] */
+      { vii++ ; if( vii%vstep == vstep/2 ) vstep_print(); }
 
       /* get ref time series from this voxel */
 

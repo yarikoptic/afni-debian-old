@@ -5,6 +5,7 @@
 import sys, os, math
 import afni_base as BASE
 import lib_textdata as TD
+import glob
 import pdb
 
 # this file contains various afni utilities   17 Nov 2006 [rickr]
@@ -114,7 +115,8 @@ def make_single_row_string(data, row, nplaces=3, flag_empty=0):
 
    return rstr + '\n'
 
-def quotize_list(list, opt_prefix, skip_first=0, quote_wild=0):
+def quotize_list(list, opt_prefix='', skip_first=0, quote_wild=0,
+                 quote_chars='', ok_chars=''):
     """given a list of text elements, return a new list where any existing
        quotes are escaped, and then if there are special characters, put the
        whole string in single quotes
@@ -122,6 +124,8 @@ def quotize_list(list, opt_prefix, skip_first=0, quote_wild=0):
        if the first character is '-', opt_prefix will be applied
        if skip_first, do not add initial prefix
        if quote_wild, quotize any string with '*' or '?', too
+
+       add quote_chars to quote list, remove ok_chars
     """
     if not list or len(list) < 1: return list
 
@@ -130,6 +134,12 @@ def quotize_list(list, opt_prefix, skip_first=0, quote_wild=0):
     # default to ignoring wildcards, can always double-nest if needed
     if quote_wild: qlist = "[({*? "
     else:          qlist = "[({ "
+
+    for c in quote_chars:
+        if not c in qlist: qlist += c
+    for c in ok_chars:
+        posn = qlist.find(c)
+        if posn >= 0: qlist = qlist[0:posn]+qlist[posn+1:]
 
     newlist = []
     first = 1   # ugly, but easier for option processing
@@ -170,19 +180,27 @@ def show_args_as_command(args, note='command:'):
      "\n----------------------------------------------------------------------"
      )
 
-def exec_tcsh_command(cmd):
+def exec_tcsh_command(cmd, lines=0, noblank=0):
     """execute cmd via: tcsh -c "cmd"
        return status, output
-
           if status == 0, output is stdout
           else            output is stderr+stdout
+
+       if lines: return a list of lines
+       if noblank (and lines): omit blank lines
     """
 
     cstr = 'tcsh -c "%s"' % cmd
     status, so, se = BASE.simple_shell_exec(cstr, capture=1)
 
-    if not status: return status, so
-    else:          return status, se+so
+    if not status: otext = so
+    else:          otext = se+so
+    if lines:
+       slines = otext.splitlines()
+       if noblank: slines = [line for line in slines if line != '']
+       return status, slines
+
+    return status, otext
 
 def get_unique_sublist(inlist):
     """return a copy of inlist, but where elements are unique"""
@@ -223,14 +241,18 @@ def uniq_list_as_dsets(dsets, whine=0):
 
     return uniq
 
+def uniq_list_as_dset_names(dsets, whine=0):
+    """like as_dsets, but the input is a simlpe array of names"""
+    asets = list_to_datasets(dsets, whine=whine)
+    if not asets: return 0
+    return uniq_list_as_dsets(asets, whine=whine)
 
-def list_to_datasets(words):
+def list_to_datasets(words, whine=0):
     """given a list, return the list of afni_name elements
          - the list can include wildcarding
          - they must be valid names of existing datasets
          - return None on error"""
 
-    import glob # local, unless used elsewhere
     if not words or len(words) < 1: return []
     dsets = []
     wlist = []
@@ -247,11 +269,11 @@ def list_to_datasets(words):
         if dset.exist():
             dsets.append(dset)
         else:
-            print "** no dataset match for '%s'" % word
+            if whine: print "** no dataset match for '%s'" % word
             errs = 1
 
     if errs:
-        print # for separation
+        if whine: print # for separation
         return None
     return dsets
 
@@ -273,8 +295,9 @@ def basis_has_known_response(basis, warn=0):
     else:                                            return 0
 
 def get_default_polort(tr, reps):
-    """compute a default polort, as done in 3dDeconvolve
-       1+floor(time/150), time in seconds"""
+    """compute a default run polort, as done in 3dDeconvolve
+       (leave run_time as TR*reps, rather than TR*(reps-1), to match 3dD)
+    """
 
     if tr <= 0 or reps <= 0:
         print "** cannot guess polort from tr = %f, reps = %d" % (tr,reps)
@@ -320,22 +343,134 @@ def get_typed_dset_attr_list(dset, attr, atype, verb=1):
        dset  : (string) name of afni dataset
        attr  : (string) attribute name
        atype : (string) return type of attribute list
-       verb  : verbose level"""
+       verb  : verbose level
 
-    alist = BASE.read_attribute(dset, attr)
-    if alist == None:
+       This ends up running 3dAttribute for the given dataset name.
+    """
+
+    alist = BASE.read_attribute(dset, attr, verb=verb)
+    if alist == None and verb > 0:
         print "** GTDAL: failed to read dset attr %s, dset = %s" % (attr,dset)
         return 1, []
 
     err = 0
     try: result = [atype(val) for val in alist]
     except:
-        print "** GTDAL: failed to convert attr %s to type %s for dset %s" % \
-              (attr, atype, dset)
+        if verb > 0:
+           print "** GTDAL: failed to convert attr %s to type %s for dset %s"%\
+                 (attr, atype, dset)
         err = 1
         result = []
 
     return err, result
+
+def get_last_history_command(dname, substr):
+   """run 3dNotes -ses on 'dname' and return the last line containing 'substr'
+      return one text line, or '' on failure
+   """
+   command = '3dNotes -ses %s' % dname
+   status, olines = exec_tcsh_command(command, lines=1, noblank=1)
+   if status: return ''
+
+   olen   = len(olines)
+
+   # work backwards
+   for ind in range(olen-1, -1, -1):
+      if olines[ind].find(substr) >= 0: return olines[ind]
+
+   return ''
+
+def get_3dinfo(dname, lines=0, verb=0):
+   """run 3dinfo, possibly -verb or -VERB
+      if lines, splitlines
+      return text, or None on failure (applies to string or lines)
+   """
+   vstr = ' '
+   if verb == 1: vstr = ' -verb'
+   elif verb > 1: vstr = ' -VERB'
+   command = '3dinfo%s %s' % (vstr, dname)
+   status, output = exec_tcsh_command(command, lines=lines, noblank=1)
+   if status: return None
+
+   return output
+
+def dset_view(dname):
+   """return the AFNI view for the given dset"""
+   command = '3dinfo -av_space %s' % dname
+   status, output = exec_tcsh_command(command)
+   if status: return ''
+   return output.strip('\n')
+
+def get_3d_statpar(dname, vindex, statcode='', verb=0):
+   """return a single stat param at the given sub-brick index
+      if statcode, verify
+      return -1 on error
+   """
+   ilines = get_3dinfo(dname, lines=1, verb=1)
+   if ilines == None:
+      print '** failed get_3dinfo(%s)' % dname
+      return -1
+
+   N = len(ilines)
+
+   # find 'At sub-brick #v' line
+   sstr = 'At sub-brick #%d' % vindex
+   posn = -1
+   for ind, line in enumerate(ilines):
+      posn = line.find(sstr)
+      if posn >= 0: break
+
+   if posn < 0:
+      print '** 3d_statpar: no %s[%d]' % (dname, vindex)
+      return -1       # failure
+
+   # check statcode?
+   lind = ind + 1
+   if lind >= N:
+      if verb > 1: print '** 3d_statpar: no space for statpar line'
+      return -1
+
+   sline = ilines[lind]
+   plist = sline.split()
+   if statcode: 
+      olist = find_opt_and_params(sline, 'statcode', 2)
+      if len(olist) < 3:
+         print '** 3d_statpar: missing expected statcode'
+         return -1
+      code = olist[2]
+      if code[-1] == ';': code = code[:-1]
+      if code != statcode:
+         print '** 3d_statpar: statcode %s does not match expected %s'\
+               % (code, statcode)
+         return -1
+      if verb > 2: print '-- found %s' % olist
+
+   # now get something like "statpar = 32 x x"
+   olist = find_opt_and_params(sline, 'statpar', 4)
+   if len(olist) < 3:
+      if verb: print '** 3d_statpar: missing expected statpar'
+      if verb > 2: print '   found %s in %s' % (olist, sline)
+      return -1 
+   if verb > 2: print '-- found %s' % olist
+
+   par = -1
+   try: par = int(olist[2])
+   except:
+      if verb: print '** 3d_statpar: bad stat par[2] in %s' % olist
+      return -1 
+
+   return par
+
+def find_opt_and_params(text, opt, nopt=0):
+   """given some text, return the option with that text, as well as
+      the following 'nopt' parameters (truncated list if not found)"""
+   tlist = text.split()
+
+   if not opt in tlist: return []
+
+   tind = tlist.index(opt)
+
+   return tlist[tind:tind+1+nopt]
 
 def get_truncated_grid_dim(dset, verb=1):
     """return a new (isotropic) grid dimension based on the current grid
@@ -692,10 +827,72 @@ def consec_len(ilist, start):
 
    return length
 
-def decode_1D_ints(istr, verb=1, max=-1):
+def restrict_by_index_lists(dlist, ilist, base=0, nonempty=1, verb=1):
+    """restrict elements of dlist by indices in ilist
+
+        ilist    : can be string or list of strings
+                  (require unique composite list)
+        base     : can be 0 or 1 (0-based or 1-based)
+        nonempty : if set, sub-lists are not allowed to be empty
+        verb     : verbose level, default is to only report errors
+
+       return status, sub-list
+              status = 0 on success, 1 on error
+    """
+
+    # if either object is empty, there is nothing to do
+    if not ilist or not dlist: return 0, []
+
+    if type(ilist) == str: ilist = [ilist]
+
+    if base not in [0,1]:
+        if verb: print '** restrict_by_index_list: bad base = %d' % base
+        return 1, []
+
+    # set imax to correctly imply '$' index
+    if base: imax = len(dlist)          # 1-based
+    else:    imax = len(dlist)-1        # 0-based
+
+    composite = []
+    for ind, istr in enumerate(ilist):
+        if type(istr) != str:
+            print '** RBIL: bad index selector %s' % istr
+            return 1, []
+        curlist = decode_1D_ints(istr, verb=verb, imax=imax)
+        if not curlist and nonempty:
+            if verb: print "** empty index list for istr[%d]='%s'" % (ind,istr)
+            return 1, []
+        composite.extend(curlist)
+        if verb > 3: print '-- index %d, ilist %s' % (ind, curlist)
+
+    if not vals_are_unique(composite):
+        if verb: print '** RBIL: composite index list elements are not unique'
+        return 1, []
+
+    cmin = min(composite)
+    cmax = max(composite)
+    if cmin < 0:
+        if verb: print '** RBIL: cannot choose negative indices'
+        return 1, []
+    elif base and cmin == 0:
+        if verb: print '** RBIL: 1-based index list seems 0-based'
+        return 1, []
+    elif cmax > imax:
+        if verb: print '** RBIL: index value %d exceeds %d-based limit %d' \
+                       % (cmax, base, imax)
+        return 1, []
+
+    # now convert 1-based to 0-based, if needed
+    if base: clist = [v-1 for v in composite]
+    else:    clist = composite
+
+    # the big finish
+    return 0, [dlist[ind] for ind in clist]
+
+def decode_1D_ints(istr, verb=1, imax=-1):
     """Decode a comma-delimited string of ints, ranges and A@B syntax,
        and AFNI-style sub-brick selectors (including A..B(C)).
-       If the A..B format is used, and B=='$', then B gets 'max'.
+       If the A..B format is used, and B=='$', then B gets 'imax'.
        If the list is enclosed in [], <> or ##, strip those characters.
        - return a list of ints"""
 
@@ -711,15 +908,15 @@ def decode_1D_ints(istr, verb=1, max=-1):
             if s.find('@') >= 0:        # then expect "A@B"
                 [N, val] = [n for n in s.split('@')]
                 N = int(N)
-                val = to_int_special(val, '$', max)
+                val = to_int_special(val, '$', imax)
                 ilist.extend([val for i in range(N)])
             elif s.find('..') >= 0:     # then expect "A..B"
                 pos = s.find('..')
                 if s.find('(', pos) > 0:    # look for "A..B(C)"
                    [v1, v2] = [n for n in s.split('..')]
-                   v1 = to_int_special(v1, '$', max)
+                   v1 = to_int_special(v1, '$', imax)
                    [v2, step] = v2.split('(')
-                   v2 = to_int_special(v2, '$', max)
+                   v2 = to_int_special(v2, '$', imax)
                    # have start and end values, get step
                    step, junk = step.split(')')
                    step = int(step)
@@ -731,8 +928,8 @@ def decode_1D_ints(istr, verb=1, max=-1):
                    ilist.extend([i for i in range(v1, v2+inc, step)])
                 else:
                    [v1, v2] = [n for n in s.split('..')]
-                   v1 = to_int_special(v1, '$', max)
-                   v2 = to_int_special(v2, '$', max)
+                   v1 = to_int_special(v1, '$', imax)
+                   v2 = to_int_special(v2, '$', imax)
                    if v1 < v2 : step = 1
                    else:        step = -1
                    ilist.extend([i for i in range(v1, v2+step, step)])
@@ -746,13 +943,23 @@ def decode_1D_ints(istr, verb=1, max=-1):
     return ilist
 
 def to_int_special(cval, spec, sint):
-   """basicall return int(cval), but if cval==spec, return sint
+   """basically return int(cval), but if cval==spec, return sint
 
         cval: int as character string
         spec: special value as string
         sint: special value as int"""
    if cval == spec: return sint
    else:            return int(cval)
+
+def extract_subbrick_selection(sstring):
+   """search sstring for something like: [DIGITS*($|DIGITS)]
+      - do not consider all DIGITS, '..', ',', '(DIGITS)' pieces,
+        just let '*' refer to anything but another '['
+   """
+   import re
+   res = re.search('\[\d+[^\[]*]', sstring)
+   if res == None: return ''
+   return res.group(0)
 
 def strip_list_brackets(istr, verb=1):
    """strip of any [], {}, <> or ## surrounding this string
@@ -1043,6 +1250,15 @@ def find_last_space(istr,start,end,max_len=-1,stretch=1):
 
     return posn   # for either success or failure
 
+def nuke_final_whitespace(script, skipchars=[' ', '\t', '\n', '\\'],
+                                append='\n\n'):
+    """replace final white characters with newlines"""
+    slen = len(script)
+    ind = slen-1
+    while ind > 0 and script[ind] in skipchars: ind -= 1
+
+    return script[0:ind+1]+append
+
 # end line_wrapper functions
 # ----------------------------------------------------------------------
 
@@ -1222,11 +1438,9 @@ def int_list_string(ilist, mesg='', nchar=0):
 
    istr = mesg
 
-   if nchar > 0:
-      for val in ilist: istr += '%*d ' % (nchar, val)
-   else:
-      for val in ilist:
-         istr += '%d ' % val
+   if nchar > 0: slist = ['%*d' % (nchar, val) for val in ilist]
+   else:         slist = ['%d' % val for val in ilist]
+   istr = ' '.join(slist)
 
    return istr
 
@@ -1277,6 +1491,23 @@ def data_to_hex_str(data):
       remain -= llen
 
    return retstr
+
+def section_divider(hname, maxlen=74, hchar='=', endchar=''):
+    """return a title string of 'hchar's with the middle chars set to 'hname'
+       if endchar is set, put at both ends of header
+       e.g. block_header('volreg', endchar='##') """
+    if len(hname) > 0: name = ' %s ' % hname
+    else:              name = ''
+
+    if endchar != '': maxlen -= 2*len(endchar)
+    rmlen = len(name)
+    if rmlen >= maxlen:
+        print "** S_DIV_STR, rmlen=%d exceeds maxlen=%d" % (rmlen, maxlen)
+        return name
+    prelen  = (maxlen - rmlen) // 2     # basically half the chars
+    postlen = maxlen - rmlen - prelen   # other 'half'
+
+    return endchar + prelen*hchar + name + postlen*hchar + endchar
 
 # ----------------------------------------------------------------------
 # wildcard construction functions
@@ -1346,8 +1577,6 @@ def glob_form_matches_list(slist, ordered=1):
       else:       slist does not need to be sorted
    """
 
-   import glob
-
    slen = len(slist)
 
    # check trivial cases of lengths 0 and 1
@@ -1412,6 +1641,89 @@ def list_minus_glob_form(slist, hpad=0, tpad=0):
    # and return the list of center strings
    if tlen == 0: return [ s[hlen:]      for s in slist ]
    else:         return [ s[hlen:-tlen] for s in slist ]
+
+def glob_list_minus_pref_suf(pref, suf):
+   """just strip the prefix and suffix from string list elements
+      (for now, assume they are there)
+   """
+   glist = glob.glob('%s*%s' % (pref, suf))
+
+   plen = len(pref)
+   slen = len(suf)
+
+   return [d[plen:-slen] for d in glist]
+
+def okay_as_lr_spec_names(fnames, verb=0):
+   """check that names are okay as surface spec files, e.g. for afni_proc.py
+        - must be 1 or 2 file names
+        - must contain lh and rh, respectively
+        - must otherwise be identical
+
+        if verb, output why failure occurs
+        return 1 if okay, 0 otherwise
+   """
+   nfiles = len(fnames)
+   if nfiles == 0: return 1     # no problems, anyway
+   if nfiles > 2:
+      if verb: print '** only 1 or 2 spec files allowed (have %d)' % nfiles
+      return 0
+
+   if nfiles == 1:
+      if fnames[0].find('lh')>=0 or fnames[0].find('rh')>=0: return 1 # success
+      # failure
+      if verb: print "** spec file '%s' missing 'lh' or 'rh'" % fnames[0]
+      return 0
+
+   # so we have 2 files
+
+   hlist = list_minus_glob_form(fnames, tpad=1)  # go after following 'h'
+
+   for h in hlist:
+      if h != 'rh' and h != 'lh':
+         if verb: print '** multiple spec files must only differ in lh vs. rh'
+         return 0
+
+   return 1
+
+def make_spec_var(fnames, vname='hemi'):
+   """return a spec file variable and a list of replaced hemispheres
+
+        e.g. make_spec_var(['surface.lh.spec', 'surface.rh.spec']) returns
+                surface.${hemi}.spec, ['lh', 'rh']
+      given 1 or 2 spec file names, return a single variable that
+      represents them with $vname replacing the lh or rh
+
+      return '' on failure
+   """
+   if not okay_as_lr_spec_names(fnames): return '', []
+
+   nfiles = len(fnames)
+   if nfiles == 0 or nfiles > 2: return '', []
+
+   sfile = fnames[0]
+
+   if nfiles == 1:
+      # just find lh or rh and replace it
+      hh = 'lh'
+      posn = sfile.find(hh)
+      if posn < 0:
+         hh = 'rh'
+         posn = sfile.find(hh)
+      if posn < 0: return '', [] # should not happen
+
+      return sfile[0:posn] + '${%s}'%vname + sfile[posn+2:], [hh]
+
+   # so nfiles == 2, use glob
+
+   head, tail = first_last_match_strs(fnames)
+   hlen = len(head)
+
+   hemi = sfile[hlen:hlen+2]
+   if hemi != 'lh' and hemi != 'rh':
+      print '** MSV: bad lh/rh search from spec files: %s' % fnames
+      return '', []
+
+   return sfile[0:hlen] + '${%s}'%vname + sfile[hlen+2:], ['lh', 'rh']
 
 def parse_as_stim_list(flist):
    """parse filename list as PREFIX.INDEX.LABEL.SUFFIX, where the separators
@@ -1487,10 +1799,22 @@ def _parse_leading_int(name, seplist=['.','_','-']):
    # aaaaaand, we're done
    return val, sep, name[posn:]
 
+def glob_form_has_match(form):
+   """see if anything at all exists according to this glob form"""
+   glist = glob.glob(form)
+   glen = len(glist)
+   del(glist)
+   if glen > 0: return 1
+   return 0
+
 def common_dir(flist):
-   """return the directory name that is common to all files"""
+   """return the directory name that is common to all files (unless trivial)"""
    dir, junk = first_last_match_strs(flist)
-   return os.path.dirname(dir)
+   if len(dir) > 0 and dir[-1] == '/': dir = dir[0:-1]
+   if not os.path.isdir(dir): dir = os.path.dirname(dir)
+
+   if is_trivial_dir(dir): return ''
+   return dir
 
 def common_parent_dirs(flists):
    """return parent directories
@@ -1520,7 +1844,7 @@ def common_parent_dirs(flists):
    for flist in flists:
       # track parent dirs
       parent = common_dir(flist)
-      if parent.count('/') <= 1: parent = ''
+      if parent == '/' or is_trivial_dir(parent): parent = ''
       par_dirs.append(parent)
 
       # and make short names
@@ -1531,8 +1855,7 @@ def common_parent_dirs(flists):
 
    # top is common to all parents
    top_dir = common_dir(par_dirs)
-   if top_dir.count('/') <= 1:
-       top_dir = ''
+   if top_dir.count('/') <= 1: top_dir = ''
 
    # now get all short dir names, under top dir
    if top_dir == '': short_dirs = par_dirs
@@ -1561,6 +1884,66 @@ def is_trivial_dir(dname):
    if dname == '' or dname == '.' or dname == './' : return 1
 
    return 0
+
+def flist_to_table_pieces(flist):
+   """dissect a file list
+      input: list of file names
+      output:
+        - common directory name
+        - short name list (names after common directory)
+        - glob string from short names
+      note: short names will be new data, never just references to input
+   """
+   if len(flist) == 0: return '', [], ''
+
+   ddir = common_dir(flist)
+   dirlen = len(ddir)
+   if dirlen > 0: snames = [dset[dirlen+1:] for dset in flist]
+   else:          snames = [dset[:]         for dset in flist]
+
+   globstr = glob_form_from_list(snames)
+
+   return ddir, snames, globstr
+
+def get_ids_from_dsets(dsets, prefix='', suffix='', hpad=0, tpad=0, verb=1):
+   """return a list of subject IDs corresponding to the datasets
+
+      Try list_minus_glob_form on the datasets.  If that fails, try
+      on the directories.
+
+      prefix, suffix: attach these to the resulting IDs
+      hpad, tpad:     padding to pass to list_minus_glob_form
+
+      return None on failure
+   """
+   if hpad < 0 or tpad < 0:
+      print '** get_ids_from_dsets: will not apply negative padding'
+      hpad, tpad = 0, 0
+
+   if len(dsets) == 0: return None
+
+   dlist = [dset.split('/')[-1] for dset in dsets]
+
+   # if nothing to come from file tail, try the complete path names
+   if vals_are_constant(dlist): dlist = dsets
+
+   slist = list_minus_glob_form(dlist, hpad, tpad)
+
+   # do some error checking
+   for val in slist:
+      if '/' in val:            # no directories
+         if verb > 0: print '** GIFD: IDs would have directories'
+         return None
+
+   if len(slist) != len(dsets): # appropriate number of entries
+      if verb > 0: print '** GIFD: length mis-match getting IDs'
+      return None
+
+   if not vals_are_unique(slist):
+      if verb > 0: print '** GIFD: final IDs are not unique'
+      return None
+
+   return slist
 
 # ----------------------------------------------------------------------
 # mathematical functions:
@@ -1694,7 +2077,7 @@ def interval_offsets(times, dur):
 
     fdur = float(dur)   # to make sure (e.g. avoid int division)
 
-    try: offlist = [math.modf(val/fdur)[0] for val in times]
+    try: offlist = [val % fdur for val in times]
     except:
         print "** interval offsets 2: bad dur (%s) or times: %s" % (dur, times)
         return []
@@ -1718,7 +2101,9 @@ def fractional_offsets(times, dur):
     return olist
 
 def stdev_ub(data):
-    """unbiased standard deviation (divide by len-1, not just len)"""
+    """unbiased standard deviation (divide by len-1, not just len)
+              stdev_ub = sqrt( (sumsq - N*mean^2)/(N-1) )
+    """
 
     length = len(data)
     if length <  2: return 0.0
@@ -1781,8 +2166,71 @@ def variance(data):
     if val < 0.0 : return 0.0
     return val
 
+def r(vA, vB, sample=0):
+    """return Pearson's correlation coefficient
+       if sample, divide by length-1, not length
+
+       for demeaned and unit length vectors, r = dot product / length
+    """
+    length = len(vA)
+    if len(vB) != length:
+        print '** correlation_pearson: vectors have different lengths'
+        return 0.0
+    if length < 2: return 0.0
+    ma = mean(vA)
+    mb = mean(vB)
+    dA = [v-ma for v in vA]
+    dB = [v-mb for v in vB]
+    sA = stdev(dA)
+    sB = stdev(dB)
+    dA = [v/sA for v in dA]
+    dB = [v/sB for v in dB]
+
+    if sample: length -= 1
+
+    return dotprod(dA,dB)/length
+
+def eta2(vA, vB):
+    """return eta^2 (eta squared - Cohen, NeuroImage 2008
+
+                        SUM[ (a_i - m_i)^2 + (b_i - m_i)^2 ]
+         eta^2 =  1  -  ------------------------------------
+                        SUM[ (a_i - M  )^2 + (b_i - M  )^2 ]
+
+         where  a_i and b_i are the vector elements
+                m_i = (a_i + b_i)/2
+                M = mean across both vectors
+
+    """
+
+    length = len(vA)
+    if len(vB) != length:
+        print '** correlation_pearson: vectors have different lengths'
+        return 0.0
+    if length < 1: return 0.0
+
+    ma = mean(vA)
+    mb = mean(vB)
+    gm = 0.5*(ma+mb)
+
+    vmean = [(vA[i]+vB[i])*0.5 for i in range(length)]
+
+    da = [vA[i] - vmean[i] for i in range(length)]
+    db = [vB[i] - vmean[i] for i in range(length)]
+    num = sumsq(da) + sumsq(db)
+
+    da = [vA[i] - gm       for i in range(length)]
+    db = [vB[i] - gm       for i in range(length)]
+    denom = sumsq(da) + sumsq(db)
+
+    if num < 0.0 or denom <= 0.0 or num >= denom:
+        print '** bad eta2: num = %s, denom = %s' % (num, denom)
+        return 0.0
+    return 1.0 - num/denom
+
 def correlation_p(vA, vB):
-    """return the Pearson correlation between the 2 vectors"""
+    """return the Pearson correlation between the 2 vectors
+    """
 
     length = len(vA)
     if len(vB) != length:
@@ -1797,13 +2245,9 @@ def correlation_p(vA, vB):
     dA = [v-ma for v in vA]
     dB = [v-mb for v in vB]
 
-    ssA = 0.0
-    ssB = 0.0
-    sAB = 0.0
-    for ind in range(length):
-        ssA += dA[ind]*dA[ind]
-        ssB += dB[ind]*dB[ind]
-        sAB += dA[ind]*dB[ind]
+    sAB = dotprod(dA, dB)
+    ssA = sumsq(dA)
+    ssB = sumsq(dB)
 
     del(dA); del(dB)
 
@@ -1901,12 +2345,40 @@ def ttest_2sam_unpooled(data0, data1):
 
     return (m1-m0)/math.sqrt(v0/N0 + v1/N1)
 
+
+def p2q(plist, do_min=1, verb=1):
+    """convert list of p-value to a list of q-value, where
+         q_i = minimum (for m >= i) of N * p_m / m
+       if do min is not set, simply compute q-i = N*p_i/i
+
+       return q-values in increasing significance
+              (i.e. as p goes large to small, or gets more significant)
+    """
+
+    q = plist[:]
+    q.sort()
+    N = len(q)
+
+    # work from index N down to 0 (so index using i-1)
+    min = 1
+    for i in range(N,0,-1):
+       ind = i-1
+       q[ind] = N * q[ind] / i
+       if do_min:
+          if q[ind] < min: min = q[ind]
+          if min < q[ind]: q[ind] = min
+
+    # and flip results
+    q.reverse()
+
+    return q
+
 # ----------------------------------------------------------------------
 # random list routines: shuffle, merge, swap, extreme checking
 # ----------------------------------------------------------------------
 
 def shuffle(vlist):
-    """randomize the order of list elements, where each perumuation is
+    """randomize the order of list elements, where each permutation is
        equally likely
 
        - akin to RSFgen, but do it with equal probabilities
@@ -2051,6 +2523,8 @@ def test_polort_const(ntrs, nruns, verb=1):
        - make vectors of 11...10000...0 and 00...011...100..0 that are as the
          constant polort terms of the first 2 runs
        - return their correlation
+
+       - note that the correlation is easily provable as -1/(N-1) for N runs
     """
 
     if ntrs <= 0 or nruns <= 2: return -1  # flag

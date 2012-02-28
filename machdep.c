@@ -24,6 +24,10 @@ int machdep_be_quiet(void){ return be_quiet ; }
 void machdep()
 {
    long seed ;
+   static int first=1 ;
+
+   if( !first ) return ; else first = 0 ;
+
    /*-- force use of mcw_malloc.c functions - 05 Nov 2001 --*/
 
 #ifdef USING_MCW_MALLOC
@@ -36,11 +40,12 @@ void machdep()
    mallopt( M_MMAP_MAX , 1 ) ;
 #endif
 
-   seed = AFNI_numenv("AFNI_RANDOM_SEEDVAL") ;
-   if( seed != 0) srand48(seed) ;
-   else           srand48((long)time(NULL)+(long)getpid()) ;
+   seed = (long)AFNI_numenv("AFNI_RANDOM_SEEDVAL") ;
+   init_rand_seed(seed) ;
 
    be_quiet = AFNI_yesenv("AFNI_QUIET_STARTUP") ;  /* 08 Dec 2010 */
+
+   if( AFNI_yesenv("AFNI_USE_FGETS") ) afni_fgets_setskip(1) ; /* 21 Dec 2011 */
    return ;
 }
 
@@ -51,19 +56,33 @@ char * GetAfniWebBrowser(void)
    char *awb=NULL;
    awb = getenv("AFNI_WEB_BROWSER") ;
 #ifdef DARWIN
-   if( awb == NULL )
-     awb = strdup("open") ;  /* for Mac OS X */
+   if( awb == NULL ) awb = "open" ;  /* for Mac OS X */
 #endif
-   if( awb == NULL )
-     awb = THD_find_executable( "firefox" ) ;
-   if( awb == NULL )
-     awb = THD_find_executable( "mozilla" ) ;
-   if( awb == NULL )
-     awb = THD_find_executable( "netscape" ) ;
-   if( awb == NULL )
-     awb = THD_find_executable( "opera" ) ;
+   if( awb == NULL ) awb = THD_find_executable( "chrome" )   ;
+   if( awb == NULL ) awb = THD_find_executable( "firefox" )  ;
+   if( awb == NULL ) awb = THD_find_executable( "mozilla" )  ;
+   if( awb == NULL ) awb = THD_find_executable( "netscape" ) ;
+   if( awb == NULL ) awb = THD_find_executable( "opera" )    ;
    return(awb);
 }
+
+/*-------------------------------------------------------------------*/
+
+char * GetAfniTextEditor(void)
+{
+   char *ate=NULL;
+   ate = getenv("AFNI_GUI_EDITOR");
+   
+   if( ate == NULL ) ate = THD_find_executable( "nedit" )   ;
+   if( ate == NULL ) ate = THD_find_executable( "kedit" )   ;
+   if( ate == NULL ) ate = THD_find_executable( "gedit" )   ;
+   if( ate == NULL ) ate = THD_find_executable( "kwrite" )   ;
+#ifdef DARWIN
+   if( ate == NULL ) ate = "open -t" ;  /* for Mac OS X */
+#endif
+   return(ate);
+}
+
 
 /*-------------------------------------------------------------------*/
 
@@ -79,7 +98,7 @@ void init_rand_seed( long int seed )
   in machdep.h for your machine -- RWCox - 04 Sep 2001
 ---------------------------------------------------------------------*/
 #ifdef USE_RANDOM
-void srand48( long int s ){ srandom((unsigned int) s); }
+void srand48( long int s ){ srandom((unsigned int)s); }
 
 double drand48(void){ return (((double)random())/LONG_MAX); }
 
@@ -167,15 +186,49 @@ double lgamma( double x )
 
 char * Random_Insult(void)
 {
-#define NINSULT 17
-   static char *ins[NINSULT]={ "Stupid"    , "Moronic"   , "Cretinous" ,
-                               "Idiotic"   , "Bozonic"   , "Criminal"  ,
-                               "Repulsive" , "Dumb"      , "Pinheaded" ,
-                               "Fatuous"   , "Asinine"   , "Imbecilic" ,
-                               "Oafish"    , "Doltish"   , "Duncical"  ,
-                               "Witless"   , "Brainless"
+#define NINSULT 18
+   static char *ins[NINSULT]={ "Stupid"    , "Moronic"   , "Cretinous"   ,
+                               "Idiotic"   , "Bozonic"   , "Criminal"    ,
+                               "Repulsive" , "Dumb"      , "Pinheaded"   ,
+                               "Fatuous"   , "Asinine"   , "Imbecilic"   ,
+                               "Oafish"    , "Doltish"   , "Duncical"    ,
+                               "Witless"   , "Brainless" , "Flatbrained"
    } ;
    int ii = (lrand48()>>5) % NINSULT ;
    return ins[ii] ;
 }
 
+/*---------------------------------------------------------------------------*/
+#define SOL_TO_LOWER(c) ( ((c) >= 'A' && (c) <= 'Z') ? (c + 'a' - 'A') : (c) )
+char *SOLARIS_strcasestr(const char *s1, const char *s2)
+{
+   char *s1u=NULL;
+   char *s2u=NULL;
+   char *so=NULL;
+   int off=0;
+   int i = 0;
+   
+   if (!s1 || !s2 || s2[0] == '\0') 
+      return(strstr(s1,s2)); /* let it fail as in strstr 
+                                You will get death if s2 is NULL */
+   
+   if (!(s1u = strdup(s1))) {
+      fprintf(stderr,"SOLARIS_strcasestr: Failed to dup string 1\n");
+      return(NULL);
+   }
+   if (!(s2u = strdup(s2))) {
+      fprintf(stderr,"SOLARIS_strcasestr: Failed to dup string 2\n");
+      free(s1u);
+      return(NULL);
+   }
+   i=0; while (s1u[i]!='\0') { s1u[i] = SOL_TO_LOWER(s1u[i]); ++i; }
+   i=0; while (s2u[i]!='\0') { s2u[i] = SOL_TO_LOWER(s2u[i]); ++i; }
+   
+   so = strstr(s1u,s2u);
+   off=0;
+   if (so)  off = so-s1u;
+   free(s1u); free(s2u);
+    
+   if (so) return((char*)s1+off);
+   return(NULL);
+}

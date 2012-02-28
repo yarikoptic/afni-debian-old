@@ -475,11 +475,33 @@ void TCAT_Syntax(void)
     "                       with the input dataset name -- this might help\n"
     "                       identify the sub-bricks in the output dataset.\n"
     "\n"
+    "     -DAFNI_GLOB_SELECTORS=YES\n"
+    "                     Setting the environment variable AFNI_GLOB_SELECTORS\n"
+    "                     to YES (as done temporarily with this option) means\n"
+    "                     that sub-brick selectors '[..]' will not be used\n"
+    "                     as wildcards.  For example:\n"
+    " 3dTcat -DAFNI_GLOB_SELECTORS=YES -relabel -prefix EPIzero 'rest_*+tlrc.HEAD[0]'\n"
+    "                     will work to make a dataset with the #0 sub-brick\n"
+    "                     from each of a number of 3D+time datasets.\n"
+    "                  ** Note that the entire dataset specification is in quotes\n"
+    "                     to prevent the shell from doing the '*' wildcard expansion\n"
+    "                     -- it will be done inside the program itself, after the\n"
+    "                     sub-brick selector is temporarily detached from the string\n"
+    "                     -- and then a copy of the selector is re-attached to each\n"
+    "                     expanded filename.\n"
+    "                  ** Very few other AFNI '3d' programs do internal\n"
+    "                     wildcard expansion -- most of them rely on the shell.\n"
+    "\n"
     "Command line arguments after the above are taken as input datasets.\n"
     "A dataset is specified using one of these forms:\n"
-    "   'prefix+view', 'prefix+view.HEAD', or 'prefix+view.BRIK'.\n"
+    "   prefix+view\n"
+    "   prefix+view.HEAD\n"
+    "   prefix+view.BRIK\n"
+    "   prefix.nii\n"
+    "   prefix.nii.gz\n"
     "\n"
     "SUB-BRICK SELECTION:\n"
+    "--------------------\n"
     "You can also add a sub-brick selection list after the end of the\n"
     "dataset name.  This allows only a subset of the sub-bricks to be\n"
     "included into the output (by default, all of the input dataset\n"
@@ -493,6 +515,9 @@ void TCAT_Syntax(void)
     "to indicate the last sub-brick in a dataset; for example, you\n"
     "can select every third sub-brick by using the selection list\n"
     "  fred+orig[0..$(3)]\n"
+    "You can reverse the order of sub-bricks with a list like\n"
+    "  fred+origh[$..0(-1)]\n"
+    "(Exactly WHY you might want to time-reverse a dataset is a mystery.)\n"
     "\n"
     "You can also use a syntax based on the usage of the program count.\n"
     "This would be most useful when randomizing (shuffling) the order of\n"
@@ -506,6 +531,8 @@ void TCAT_Syntax(void)
     "You cannot mix and match count syntax with other selection gimmicks.\n"
     "\n"
     "NOTES:\n"
+    "------\n"
+    "You can also add a sub-brick selection list after the end of the\n"
     "* The TR and other time-axis properties are taken from the\n"
     "  first input dataset that is itself 3D+time.  If no input\n"
     "  datasets contain such information, then TR is set to 1.0.\n"
@@ -565,7 +592,8 @@ int main( int argc , char *argv[] )
    float *rlt0=NULL , *rlt1=NULL ;
    float *rltsum=NULL ;             /* 16 Sep 1999 */
    int   nrltsum ;
-   float dTR , nTR ;
+   float dTR , nTR;
+   double angle=0.0 ;
 
    /*** read input options ***/
 
@@ -574,7 +602,8 @@ int main( int argc , char *argv[] )
    /*-- 20 Apr 2001: addto the arglist, if user wants to [RWCox] --*/
 
    mainENTRY("3dTcat main"); machdep() ; PRINT_VERSION("3dTcat") ;
-
+   set_obliquity_report(0); /* silence obliquity */
+   
    { int new_argc ; char ** new_argv ;
      addto_args( argc , argv , &new_argc , &new_argv ) ;
      if( new_argv != NULL ){ argc = new_argc ; argv = new_argv ; }
@@ -612,9 +641,19 @@ int main( int argc , char *argv[] )
    /* 23 May 2005: check for axis consistency */
 
    for( iv=0 ; iv < ninp ; iv++ ){
-     if( iv != ids && !EQUIV_DATAXES(new_dset->daxes,DSUB(iv)->daxes) )
-       WARNING_message("%s grid mismatch with %s",
+     if( iv != ids ) {
+       if (!EQUIV_DATAXES(new_dset->daxes,DSUB(iv)->daxes) ) {
+         WARNING_message("%s grid mismatch with %s",
                DSET_BRIKNAME(dset) , DSET_BRIKNAME(DSUB(iv)) ) ;
+       }
+       angle = dset_obliquity_angle_diff(new_dset, DSUB(iv), -1.0);
+       if (angle > 0.0) {
+         WARNING_message(
+            "dataset %s has an obliquity difference of %f degress with %s\n",
+            new_dset ,
+            angle, DSUB(iv) );
+       }
+     }
    }
 
    tross_Make_History( "3dTcat" , argc,argv , new_dset ) ;
@@ -655,7 +694,9 @@ int main( int argc , char *argv[] )
                           ADN_ttorg  , torg ,
                           ADN_ttdur  , tdur ,
                        ADN_none ) ;
-      WARNING_message("Set TR of output dataset to 1.0 s") ;
+      if (DSET_NVALS(new_dset) > 1) {
+         WARNING_message("Set TR of output dataset to 1.0 s") ;
+      }
    }
 
    /* 10 Dec 2007: check if time steps are coherent */
@@ -663,7 +704,8 @@ int main( int argc , char *argv[] )
    nTR = DSET_TIMESTEP(new_dset) ;
    for( ids=0 ; ids < ninp ; ids++ ){
      dset = DSUB(ids) ; dTR = DSET_TIMESTEP(dset) ;
-     if( dTR > 0.0f && fabsf(dTR-nTR) > 0.001f )
+     if( dTR > 0.0f && fabsf(dTR-nTR) > 0.001f &&
+         DSET_NVALS(new_dset) > 1)
        WARNING_message("TR=%g in dataset %s; differs from output TR=%g",
                        dTR , DSET_HEADNAME(dset) , nTR ) ;
    }

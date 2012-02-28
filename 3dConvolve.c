@@ -404,10 +404,11 @@ void get_options
       /*-----   -polort num  -----*/
       if (strcmp(argv[nopt], "-polort") == 0)
 	{
+     char *cpt ;
 	  nopt++;
 	  if (nopt >= argc)  DC_error ("need argument after -polort ");
-	  sscanf (argv[nopt], "%d", &ival);
-	  if (ival < -1)
+     ival = (int)strtod(argv[nopt],&cpt) ;
+     if( *cpt != '\0' || ival < -1 )
 	    DC_error ("illegal argument after -polort ");
 	  option_data->polort = ival;
 	  nopt++;
@@ -722,8 +723,8 @@ void read_input_data
 {
   char message[THD_MAX_NAME];   /* error message */
   int it;                  /* time point index */
-  int nt;                  /* number of input data time points */
-  int nxyz;                /* number of voxels */
+  int nt=0;                  /* number of input data time points */
+  int nxyz=0;                /* number of voxels */
   int num_stimts;          /* number of stimulus time series arrays */
   int * min_lag;           /* minimum time delay for impulse response */
   int * max_lag;           /* maximum time delay for impulse response */

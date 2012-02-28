@@ -8,6 +8,7 @@
 #define _MCW_MRILIB_HEADER_
 
 #define MRILIB_7D
+#define _GNU_SOURCE             /* 23 Jun 2011 */
 
 #define COXEMAIL "rwcox@nih.gov"        /* or /dev/null, if you prefer */
 
@@ -738,6 +739,13 @@ extern MRI_IMAGE ** mri_stat_seq( MRI_IMAGE * ) ;
 #define NSTAT_FRANK       22      /* ZSS Jan 10 */
 #define NSTAT_P2SKEW      23      /* ZSS March 04 10*/
 #define NSTAT_KURT        24      /* ZSS Jan   04 11*/
+#define NSTAT_mMP2s0      25  
+#define NSTAT_mMP2s1      26
+#define NSTAT_mMP2s2      27
+#define NSTAT_mmMP2s0     28  
+#define NSTAT_mmMP2s1     29
+#define NSTAT_mmMP2s2     30
+#define NSTAT_mmMP2s3     31
 
 #define NSTAT_FWHMx      63   /*these should be after all other NSTAT_* values */
 #define NSTAT_FWHMy      64
@@ -810,6 +818,7 @@ extern int         mri_possibly_dicom( char * ) ;        /* 07 May 2003 */
 extern int         mri_siemens_slice_times( int *, int *, float ** ); 
 extern int         mri_sst_get_verb( void );
 extern int         mri_sst_set_verb( int );
+extern char *      mri_dicom_hdrinfo( char *fname, int natt, char **att , int dolast ) ;
 
 /*! Set the data pointer in an MRI_IMAGE to NULL. */
 
@@ -1072,6 +1081,7 @@ extern void isort_float( int , float * ) ;
 extern void isort_pair ( int , float * , int * ) ;
 
 extern void mri_xsort_inplace( MRI_IMAGE *im , int rev ) ;
+extern void mri_csort_inplace( MRI_IMAGE *im , int rev , int jc ) ; /* 07 Oct 2011 */
 
 extern MRI_IMAGE * mri_nsize( MRI_IMAGE * ) ;
 
@@ -1351,6 +1361,8 @@ typedef struct { int nar ; double *ar , dx,x0 ; } doublevec ;
 extern float  interp_floatvec ( floatvec  *fv , float  x ) ;
 extern double interp_doublevec( doublevec *dv , double x ) ;
 
+extern float interp_inverse_floatvec( floatvec *fv , float y ) ;
+
 typedef struct { int nvec ; floatvec *fvar ; } floatvecvec ;
 
 /*----------*/
@@ -1468,6 +1480,8 @@ extern int SYM_expand_errcount(void) ; /* 03 May 2007 */
 
 #include "misc_math.h"        /* 21 Jun 2010 [rickr] */
 
+#include "thd_atlas.h"        /* 22 Feb 2012 [rickr] */
+
 THD_string_array * mri_read_1D_headerline( char *fname ) ; /* 18 May 2010 */
 
 /*------------------------------------------------------------------------*/
@@ -1544,6 +1558,7 @@ extern MRI_IMAGE * mri_matrix_evalrpn  ( char * ) ;
 extern char      * mri_matrix_evalrpn_help(void) ;
 extern void        mri_matrix_evalrpn_verb(int) ;
 extern float mri_matrix_size( MRI_IMAGE * ) ;
+extern MRI_IMARR * mri_matrix_psinv_ortproj( MRI_IMAGE *, int ) ; /* 13 Dec 2011 */
 
 extern MRI_IMARR * mri_matrix_psinv_pair( MRI_IMAGE *, float ) ;
 extern MRI_IMAGE * mri_matrix_singvals  ( MRI_IMAGE * ) ;
@@ -1981,6 +1996,7 @@ extern void mri_blur3D_inmask_speedy( MRI_IMAGE *, byte *,
                                       float,float,float,int );
 extern void mri_blur3D_addfwhm( MRI_IMAGE *, byte *, float ) ;
 extern void mri_blur3D_addfwhm_speedy( MRI_IMAGE *, byte *, float ) ;
+extern void mri_blur3D_inmask_NN( MRI_IMAGE *im, byte *mask, int  ) ;
 extern void mri_blur3D_getfac ( float, float, float, float,
                                 int *, float *, float *, float * ) ;
 
@@ -2120,6 +2136,55 @@ extern MRI_IMARR * THD_get_dset_nbhd_array( THD_3dim_dataset *dset, byte *mask,
 extern MRI_IMAGE * mri_svdproj( MRI_IMARR *imar , int nev ) ;
 extern MRI_IMAGE * mri_first_principal_vector( MRI_IMARR *imar ) ;
 extern int mri_principal_vectors( MRI_IMARR *imar, int nvec, float *sval, float *uvec ) ;
+
+/*----------------------------------------------------------------------------*/
+/* for mri_nwarp.c */
+
+typedef struct {
+  int    nx ,  ny ,  nz ;
+  float *xd , *yd , *zd , *hv ;
+  mat44 cmat , imat ;      /* cmat: i->x ; imat: x->i */
+  char *geomstring ;
+  int view ;
+} IndexWarp3D ;
+
+typedef struct {
+  int nwarp ;
+  IndexWarp3D **warp ;
+} IndexWarp3DArray ;
+
+extern IndexWarp3D * IW3D_create( int nx , int ny , int nz ) ;
+extern void IW3D_destroy( IndexWarp3D *AA ) ;
+extern float IW3D_normL1  ( IndexWarp3D *AA , IndexWarp3D *BB ) ;
+extern float IW3D_normL2  ( IndexWarp3D *AA , IndexWarp3D *BB ) ;
+extern float IW3D_normLinf( IndexWarp3D *AA , IndexWarp3D *BB ) ;
+extern IndexWarp3D * IW3D_empty_copy( IndexWarp3D *AA ) ;
+extern IndexWarp3D * IW3D_copy( IndexWarp3D *AA , float fac ) ;
+extern IndexWarp3D * IW3D_sum( IndexWarp3D *AA, float Afac, IndexWarp3D *BB, float Bfac ) ;
+extern void IW3D_scale( IndexWarp3D *AA , float fac ) ;
+extern IndexWarp3D * IW3D_from_dataset( THD_3dim_dataset *dset , int empty ) ;
+extern THD_3dim_dataset * IW3D_to_dataset( IndexWarp3D *AA , char *prefix ) ;
+extern float_pair IW3D_load_hexvol( IndexWarp3D *AA ) ;
+extern IndexWarp3D * IW3D_compose( IndexWarp3D *AA , IndexWarp3D *BB     , int icode ) ;
+extern IndexWarp3D * IW3D_invert ( IndexWarp3D *AA , IndexWarp3D *BBinit , int icode ) ;
+extern IndexWarp3D * IW3D_sqrtinv( IndexWarp3D *AA , IndexWarp3D *BBinit , int icode ) ;
+extern IndexWarp3D * IW3D_from_poly( int npar, float *par, IndexWarp3D *WW ) ;
+extern THD_3dim_dataset * NwarpCalcRPN( char *expr, char *prefix, int icode, int acode ) ;
+extern void NwarpCalcRPN_verb(int i) ;
+
+extern void THD_interp_floatim( MRI_IMAGE *fim ,
+                                int np , float *ip , float *jp , float *kp ,
+                                int code, float *outar ) ;
+extern MRI_IMARR * THD_setup_nwarp( MRI_IMARR *bimar, mat44 cmat_bim ,
+                                    int incode      , float wfac     ,
+                                    mat44 cmat_src  ,
+                                    mat44 cmat_out  ,
+                                    int nx_out      , int ny_out     , int nz_out  ) ;
+extern THD_3dim_dataset * THD_nwarp_dataset( THD_3dim_dataset *dset_nwarp ,
+                                             THD_3dim_dataset *dset_src  ,
+                                             THD_3dim_dataset *dset_mast ,
+                                             char *prefix , int interp_code ,
+                                             float dxyz_mast , float wfac ) ;
 
 /*----------------------------------------------------------------------------*/
 

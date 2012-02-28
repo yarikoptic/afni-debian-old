@@ -70,7 +70,7 @@ typedef struct {
       int disable_done ;      /* 21 Aug 2008 [rickr] */
 
       int yes_niml ;          /* 28 Feb 2002 */
-               
+
                /* port_niml no longer in use. ZSS June 2011 */
                /* int port_niml ;         10 Dec 2002 */
 
@@ -238,7 +238,7 @@ typedef struct {                             /* 29 Mar 1999 */
 
 typedef struct {
       int   i1 , j2 , k3 ;  /* integer coordinates of current point */
-      float xi , yj , zk ;  /* float (mm) coordinates (take priority) */
+      float xi , yj , zk ;  /* float (DICOM mm) coordinates (take priority) */
 
       int   i1_old , j2_old , k3_old ;  /* for jumpback */
 
@@ -368,7 +368,8 @@ typedef struct {
       Widget crosshair_frame , crosshair_rowcol , crosshair_label ;
 
       Widget crosshair_menu, crosshair_dicom_pb, crosshair_spm_pb ; /* 12 Mar 2004 */
-      Widget crosshair_ijk_pb ;   /* 04 Oct 2010 */
+      Widget crosshair_ijk_pb ;                                     /* 04 Oct 2010 */
+      Widget crosshair_jtxyz_pb , crosshair_jtijk_pb ;              /* 01 Aug 2011 */
 
       Widget        xhair_rowcol ;
       MCW_arrowval *crosshair_av ;
@@ -424,6 +425,8 @@ typedef struct {
   Widget top_menu , histrange_pb ;
   MCW_bbox *histsqrt_bbox ;
 
+  MCW_bbox *usemask_bbox ;  /* zero-th row of controls [01 Aug 2011] */
+
   MCW_arrowval *cmode_av ;  /* first row of controls */
   Widget clust3d_pb, savetable_pb, index_lab, prefix_tf, done_pb ;
   Widget savemask_pb ;      /* 01 May 2008 */
@@ -434,6 +437,7 @@ typedef struct {
 
   Widget dset_lab ;         /* label after second row */
 
+  Widget clusters_lab ;     /* label at top of clusters table */
   int nrow, nall, is_open ;
   Widget *clu_rc ;          /* rows of widgets */
   Widget *clu_lab ;
@@ -558,11 +562,13 @@ extern void AFNI_sesslab_EV( Widget, XtPointer, XEvent *, Boolean * ) ; /* 30 Ap
    {  XtManageChild( (iq)->vwid->  panel  ->frame ) ;                    \
       if( ! (iq)->vwid->view->  panel ## _pb_inverted ){                  \
          MCW_invert_widget( (iq)->vwid->view->define_ ## panel ## _pb ) ;  \
-         (iq)->vwid->view->  panel ## _pb_inverted = True ; }             \
-      XMapRaised( XtDisplay( (iq)->vwid->  panel  ->frame ) ,            \
+         (iq)->vwid->view->  panel ## _pb_inverted = True ;                \
+         (iq)->vwid->func->inten_pbar->update_me = 2 ;                     \
+         update_MCW_pbar((iq)->vwid->func->inten_pbar) ; }                 \
+      XMapRaised( XtDisplay( (iq)->vwid->  panel  ->frame ) ,              \
                    XtWindow( (iq)->vwid->  panel  ->frame )  ) ; }
 
-#define CLOSE_PANEL(iq,panel)                                            \
+#define CLOSE_PANEL(iq,panel)                                           \
    {  XtUnmanageChild( (iq)->vwid->  panel  ->frame ) ;                  \
       if( (iq)->vwid->view->  panel ## _pb_inverted ){                    \
          MCW_invert_widget( (iq)->vwid->view->define_ ## panel ## _pb ) ;  \
@@ -663,6 +669,8 @@ typedef struct {
       generic_func *pbar_transform2D_func ;
       int           pbar_transform2D_index ;
 
+      Widget pbar_flip_pb ;                     /* 08 Feb 2012 */
+
       Widget options_rowcol , options_top_rowcol , options_label ;
       MCW_arrowval *options_vedit_av ;
       Widget ulaclu_rowcol , vedit_frame ;
@@ -690,6 +698,7 @@ typedef struct {
       Widget bkgd_lab ;
 
       MCW_arrowval *range_rotate_av ;  /* 30 Mar 2001 */
+      Widget pbar_flip_pb2 ;           /* 08 Feb 2012 */
 
       MCW_bbox *see_ttatlas_bbox ;     /* 25 Jul 2001 */
 
@@ -788,6 +797,7 @@ typedef struct {
       Widget         misc_1dchain_pb ;  /* 07 Aug 2001 */
 #endif
 
+      MCW_bbox     * thr_lock_bbox;     /* 16 Nov 2011 */
       MCW_bbox     * ijk_lock_bbox ;    /* 11 Sep 2000 */
 
       Widget         misc_savelayout_pb ; /* 23 Sep 2000 */
@@ -881,6 +891,7 @@ typedef struct {
 
       Widget picture ;
       int    picture_index ;
+      Widget tips_pb ;                    /* 27 Jun 2011 */
 
       Widget file_dialog , file_sbox ;
       XtCallbackProc file_cb ;
@@ -899,6 +910,17 @@ typedef struct {
 
       int butx , buty ;        /* 17 May 2005 */
 } AFNI_widget_set ;
+
+#define TIPS_PLUS_SHIFT   2
+#define TIPS_MINUS_SHIFT -60
+#define TIPS_TOTAL_SHIFT -90
+
+#define SHIFT_TIPS(iq,xx)                                                 \
+ do{ if( (iq)->vwid->tips_pb != NULL ){                                   \
+       XtVaSetValues( (iq)->vwid->tips_pb, XmNleftOffset, (xx), NULL ) ;  \
+       XMapRaised( XtDisplay( (iq)->vwid->tips_pb) ,                      \
+                    XtWindow( (iq)->vwid->tips_pb)  ) ;                   \
+     } } while(0)
 
 /** picture controls **/
 
@@ -1058,6 +1080,7 @@ typedef struct Three_D_View {
       VEDIT_settings vedset ;                   /* 05 Sep 2006 */
       char *vedlabel ;                          /* 27 Mar 2007 */
       int   vedskip ;
+      int   vednomask ;                         /* 01 Aug 2011 */
 
       ICOR_setup   *iset ;                       /* 05 May 2009 */
       ICALC_setup  *icalc_setup ;                /* 18 Sep 2009 */
@@ -1092,6 +1115,7 @@ typedef struct Three_D_View {
      (iq)->vwid->func->clu_tabNN1 = NULL ;                                 \
       (iq)->vwid->func->clu_tabNN2 = NULL ;                                \
        (iq)->vwid->func->clu_tabNN3 = NULL ;                               \
+     (iq)->vednomask = 0 ;                                                 \
      if( (iq)->vedset.code ) redis++ ;                                     \
      (iq)->vedset.flags = (iq)->vedset.code = 0; AFNI_set_thr_pval((iq));  \
      if( (iq)->vinfo->func_visible && redis ) AFNI_redisplay_func((iq)) ;  \
@@ -1405,7 +1429,8 @@ typedef struct {
    MCW_function_list registered_fim ;            /* 30 Jan 2000 */
 
    int ijk_lock ;                                /* 11 Sep 2000 */
-
+   int thr_lock ;
+   
    THD_session *session ;                        /* 20 Dec 2001 */
 
    MCW_function_list registered_slice_proj ;     /* 31 Jan 2002 */
@@ -1423,12 +1448,10 @@ typedef struct {
    AFNI_library_type GLOBAL_library ;
    int GLOBAL_num_dsets = 0 ;
    char *GLOBAL_motd = NULL ;                     /* 29 Nov 2005 */
-   char *GLOBAL_browser = NULL ;                  /* 30 Dec 2005 */
 #else
    extern AFNI_library_type GLOBAL_library ;
    extern int GLOBAL_num_dsets ;
    extern char *GLOBAL_motd ;
-   extern char *GLOBAL_browser ;
 #endif
 
 extern void AFNI_display_motd( Widget w ) ;       /* 29 Nov 2005 */
@@ -1484,6 +1507,7 @@ extern void AFNI_quit_CB           ( Widget wcall , XtPointer cd , XtPointer cbs
 extern void AFNI_quit_timeout_CB   ( XtPointer , XtIntervalId * ) ;
 extern void AFNI_startup_timeout_CB( XtPointer , XtIntervalId * ) ;
 extern void AFNI_vcheck_flasher    ( Three_D_View * ) ;
+extern void AFNI_tips_CB           ( Widget , XtPointer , XtPointer ) ;
 
 extern void AFNI_startup_layout_CB  ( XtPointer, XtIntervalId * ) ;    /* 23 Sep 2000 */
 extern void AFNI_save_layout_CB     ( Widget, XtPointer, XtPointer ) ;
@@ -1517,6 +1541,9 @@ extern void AFNI_thrdrag_lock_carryout( Three_D_View * ) ;
 extern void AFNI_range_lock_carryout( Three_D_View * ) ;  /* 23 Feb 2004 */
 
 extern void AFNI_ijk_lock_change_CB( Widget , XtPointer , XtPointer ) ;
+extern int AFNI_thresh_lock_env_val( void );
+extern void AFNI_func_thrlock_change_CB( Widget , XtPointer , XtPointer );
+extern void AFNI_set_all_thrlock_bboxes(Three_D_View *im3d, int bval) ;
 
 extern XtPointer AFNI_brick_to_mri( int n , int type , FD_brick * br );
 
@@ -1585,6 +1612,7 @@ extern void AFNI_see_func_CB          ( Widget , XtPointer , XtPointer ) ;
 extern void AFNI_marks_edits_CB       ( Widget , XtPointer , XtPointer ) ;
 extern void AFNI_marks_transform_CB   ( Widget , XtPointer , XtPointer ) ;
 extern void AFNI_imag_pop_CB          ( Widget , XtPointer , XtPointer ) ;
+extern void AFNI_crosshair_pop_CB     ( Widget , XtPointer , XtPointer ) ; /* 01 Aug 2011 */
 extern void AFNI_define_CB            ( Widget , XtPointer , XtPointer ) ;
 extern void AFNI_underlay_CB          ( Widget , XtPointer , XtPointer ) ;
 extern void AFNI_choose_dataset_CB    ( Widget , XtPointer , XtPointer ) ;
@@ -1605,7 +1633,8 @@ extern int  AFNI_jumpto_ijk          ( Three_D_View * , int, int, int  ) ;
 extern void AFNI_jumpto_ijk_CB       ( Widget , XtPointer , MCW_choose_cbs * ) ;
 extern void AFNI_sumato_CB           ( Widget , XtPointer , MCW_choose_cbs * ) ;
 extern void AFNI_mnito_CB            ( Widget , XtPointer , MCW_choose_cbs * ) ;
-extern void AFNI_check_obliquity     ( Widget , THD_3dim_dataset * ) ;
+extern void AFNI_check_obliquity     ( Widget , THD_3dim_dataset * , 
+                                                THD_3dim_dataset * ) ;
 
 extern void AFNI_crosshair_pop_CB    ( Widget , XtPointer , XtPointer ) ; /* 12 Mar 2004 */
 extern void AFNI_crosshair_EV        ( Widget , XtPointer , XEvent * , Boolean * ) ;
@@ -1828,7 +1857,7 @@ extern MRI_IMAGE * AFNI_func_overlay( int , FD_brick * ) ;
 
 extern MRI_IMAGE * AFNI_newfunc_overlay( MRI_IMAGE *, float,float ,  /* 30 Jan 2003 */
                                          MRI_IMAGE *,
-                                         float,float, rgbyte * ) ;
+                                         float,float, rgbyte *, int ) ;
 
 extern void AFNI_syntax(void) ;
 
@@ -1955,6 +1984,8 @@ extern void AFNI_process_timeindex  ( Three_D_View * ) ; /* 29 Jan 2003 */
 extern void AFNI_do_bkgd_lab( Three_D_View * ) ;         /* 08 Mar 2002 */
 
 extern MRI_IMAGE * AFNI_ttatlas_overlay(Three_D_View *, int,int,int,int, MRI_IMAGE *) ;
+extern void reset_atlas_ovdset(void);
+extern THD_3dim_dataset *current_atlas_ovdset(void);
 
 extern void AFNI_3d_linefill( int  ,int * ,int * ,int * ,
                               int *,int **,int **,int ** ) ;
@@ -1981,7 +2012,7 @@ extern void TTRR_popup( Three_D_View * ) ;  /* 12 Jul 2001 */
 typedef struct {
    int num , meth , hemi ;
    byte *ttbrik ;
-   byte *ttval  ;
+   short *ttval  ;
    byte *ttovc  ;
 } TTRR_params ;
 
@@ -2139,7 +2170,7 @@ extern char * INIT_labovr[] ;
 /**********************************************/
 /***** Setup constants for the color pbar *****/
 
-extern void AFNI_setup_inten_pbar( Three_D_View * ) ;
+extern void AFNI_setup_inten_pbar( MCW_pbar * ) ;
 
 #define DEFAULT_PANES_POS  8
 #define DEFAULT_PANES_SGN  9
