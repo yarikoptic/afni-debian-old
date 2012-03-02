@@ -1403,14 +1403,13 @@ char * genx_Atlas_Query_to_String (ATLAS_QUERY *wami,
       }
    } else {
       /*- HTML -*/
-      /* TO_Daniel: A little crude formatting. */
+      /* To_Daniel: A little crude formatting. */
       rbuf =  THD_zzprintf(rbuf,"<head>\n"
                "<title>AFNI Whereami</title>\n"
                "</head>\n"
                "<body>\n"
                "<a name=\"top\"></a>\n"
-               "<center><h1>Vive l'amour -- <img src=\"afnigui_logo.jpg\"\n"
-               " align=middle>\n"
+               "<center><h1>Vive l'amour ! \n"
                " </h1></center>\n"
                "<hr><p>\n"
                "<ul>\n");
@@ -1434,7 +1433,7 @@ char * genx_Atlas_Query_to_String (ATLAS_QUERY *wami,
                  "<p><center><h2>%s\n"
                   "</h2></center>\n", sar->ar[ii]);
          } else {
-            rbuf =  THD_zzprintf(rbuf,"<p> %s \n", sar->ar[ii]);
+            rbuf =  THD_zzprintf(rbuf,"<p><li> %s \n", sar->ar[ii]);
          }
       }
       rbuf =  THD_zzprintf(rbuf,

@@ -66,6 +66,36 @@
 afni_history_struct ziad_history[] = {
 /*=====BELOW THIS LINE=====*/
 
+ { 1, MAR , 2012 , ZSS , "suma" , MINOR , TYPE_BUG_FIX,
+   "Fixed suma crash after a plot a certain plot freeze sequence",
+   "The sequence was: create plot, freeze it, get another open\n"
+   "then close the frozen one. At this point, suma lost control\n"
+   "of the still unfrozen one, so it is practically frozen.\n"
+   "Pressing Freeze twice on that remaining plot cause suma to crash.\n"
+   "None of that occurs anymore.\n"
+ },
+
+ { 1, MAR , 2012 , ZSS , "suma" , MINOR , TYPE_BUG_FIX,
+   "Fixed cutting plane motion while volume rendering under linux",
+   "On Macs, the scroll wheel gives out button 6 and 7, on linux\n"
+   "it is Buttons 4 and 5.\n"
+ },
+
+ { 1, MAR , 2012 , ZSS , "afni" , MINOR , TYPE_BUG_FIX,
+   "Some cleanups and tweaks of XmHTML library.",
+   "Refresh was not working well when scrolling so I ended up adding a mini\n"
+   "refresh routine that seems to do the trick. XmHTMLRefresh(Widget w)\n"
+   "It is called each time there is a repositioning. Perhaps that is overkill,\n"
+   "but no need to sweat this for now.\n"
+ },
+
+ { 29, FEB , 2012 , ZSS , "suma" , MINOR , TYPE_NEW_OPT,
+   "Added option to use html viewer for WAMI results.",
+   "This is to allow users to click on a URL if one is available for a certain\n"
+   "atlas result. For now the display is very crude and only accessible with\n"
+   "-DWEBBY_WAMI=YES.\n"
+ },
+
  { 29, FEB , 2012 , ZSS , "suma" , MINOR , TYPE_NEW_OPT,
    "Added 'ctrl+W' that allows saving results from interactive correlations.",
    "This allows for convenient saving of interactively created datasets\n"

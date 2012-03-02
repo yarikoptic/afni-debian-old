@@ -1,14 +1,14 @@
 #ifndef production
-static char rcsId[]="$Header: /share/cvs/AFNI/src/XmHTML/lib/common/parse.c,v 1.1 2011/06/30 16:10:38 rwcox Exp $";
+static char rcsId[]="$Header: /share/cvs/AFNI/src/XmHTML/lib/common/parse.c,v 1.2 2012/03/01 17:56:31 ziad Exp $";
 #endif
 /*****
 * parse.c : XmHTML HTML parser
 *
-* This file Version	$Revision: 1.1 $
+* This file Version	$Revision: 1.2 $
 *
 * Creation date:		Wed Nov 13 00:33:27 GMT+0100 1996
-* Last modification: 	$Date: 2011/06/30 16:10:38 $
-* By:					$Author: rwcox $
+* Last modification: 	$Date: 2012/03/01 17:56:31 $
+* By:					$Author: ziad $
 * Current State:		$State: Exp $
 *
 * Author:				newt
@@ -35,6 +35,9 @@ static char rcsId[]="$Header: /share/cvs/AFNI/src/XmHTML/lib/common/parse.c,v 1.
 /*****
 * ChangeLog 
 * $Log: parse.c,v $
+* Revision 1.2  2012/03/01 17:56:31  ziad
+* Cput
+*
 * Revision 1.1  2011/06/30 16:10:38  rwcox
 * Cadd
 *
@@ -1938,7 +1941,7 @@ parserWarning(Parser *parser, htmlEnum id, htmlEnum current, parserError error)
 			sprintf(msg, XMHTML_MSG_128, html_tokens[id], html_tokens[current]);
 			break;
 		case HTML_INTERNAL:
-			sprintf(msg, XMHTML_MSG_129);
+			sprintf(msg, XMHTML_MSG_129,"");
 			break;
 		case HTML_NOTIFY:	/* not reached */
 			return;

@@ -1,13 +1,13 @@
 #ifndef production
-static char rcsId[]="$Header: /share/cvs/AFNI/src/XmHTML/lib/common/layout.c,v 1.2 2011/11/10 14:37:55 ziad Exp $";
+static char rcsId[]="$Header: /share/cvs/AFNI/src/XmHTML/lib/common/layout.c,v 1.3 2012/03/01 17:56:31 ziad Exp $";
 #endif
 /*****
 * layout.c : XmHTML layout computation routines
 *
-* This file Version	$Revision: 1.2 $
+* This file Version	$Revision: 1.3 $
 *
 * Creation date:		Thu Nov  6 01:35:46 GMT+0100 1997
-* Last modification: 	$Date: 2011/11/10 14:37:55 $
+* Last modification: 	$Date: 2012/03/01 17:56:31 $
 * By:					$Author: ziad $
 * Current State:		$State: Exp $
 *
@@ -36,6 +36,9 @@ static char rcsId[]="$Header: /share/cvs/AFNI/src/XmHTML/lib/common/layout.c,v 1
 /*****
 * ChangeLog 
 * $Log: layout.c,v $
+* Revision 1.3  2012/03/01 17:56:31  ziad
+* Cput
+*
 * Revision 1.2  2011/11/10 14:37:55  ziad
 * Cput
 *
@@ -1728,7 +1731,7 @@ newline:
 				e_space = sw;
 
 			/* additional end-of-line spacing? */
-			if(e_space && words[i]->word[words[i]->len-1] == '.')
+			if(e_space && words[i]->len && words[i]->word[words[i]->len-1] == '.')
 				e_space += font->eol_sp;
 		}
 		/* no leading space if at left border */
