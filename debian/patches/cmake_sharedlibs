@@ -240,20 +240,20 @@ Last-Update: 2010-09-21
 +ENDIF(NOT AFNI_BUILD_CORELIBS_ONLY)
 --- /dev/null
 +++ b/CMakeLists_apps.txt
-@@ -0,0 +1,213 @@
+@@ -0,0 +1,216 @@
 +##
 +## This file is to be included in the toplevel CMakeLists.txt
 +##
 +
 +# 3rd-party stuff
 +# TODO there seesm to be stuff missing
-+SET(EXTRAS whirlgif myget Xphace rmz aiv)
++SET(EXTRAS whirlgif myget Xphace rmz aiv mycat)
 +
 +# Programs using only AFNI_LIBS
 +SET(PROGRAMS
 +  to3d from3d abut 3dclust nsize 3dinfo 3dproject 3dmerge count sfim tfim
 +  ftosh 3dttest 3ddup imrotate imreg imstat 3dnvals imand sqwave immask
-+  imdump imaver 3dhistog p2t cdf 2swap 4swap mritopgm 3dANOVA 3dANOVA2
++  imdump imaver 3dhistog cdf 2swap 4swap mritopgm 3dANOVA 3dANOVA2
 +  3dANOVA3 plugout_tta waver 3dnewid 3dcalc ccalc imcalc 1dmatcalc 3drefit
 +  3dbucket AlphaSim 3dFWHM plugout_tt 3dnoise plugout_ijk 3dMannWhitney
 +  3dWilcoxon 3dKruskalWallis 3dFriedman 3dmaskave 3dbuc2fim byteorder
@@ -280,7 +280,8 @@ Last-Update: 2010-09-21
 +  3dFFT 1dgenARMA11 3dPeriodogram 1dAstrip 3dLocalPV 3dBandpass
 +  3dSetupGroupInCorr 3dGroupInCorr 3dSatCheck 3dTcorr1D 3dSimARMA11
 +  3dClustSim 3dRetinoPhase 3dMaskToASCII 3dttest++ 3dDTtoDWI niccc
-+  3dRankizer 3dXYZcat 3dPolyfit 3dNwarpApply 1dCorrelate
++  3dRankizer 3dXYZcat 3dPolyfit 3dNwarpApply 1dCorrelate 3dCountSpikes
++  3dNwarpCalc dicom_hinfo apsearch 1dBport
 +  ${EXTRAS})
 +
 +SET(SCRIPTS
@@ -298,10 +299,12 @@ Last-Update: 2010-09-21
 +  @ShowDynamicRange AFNI_Batch_R @DO.examples
 +  @Spharm.examples @GetAfniBin @fast_roi
 +  @make_plug_diff @build_afni_Xlib @update.afni.binaries @ROI_Corr_Mat
-+  @FS_roi_label @demo_prompt @ScriptCheck @NoPound @Reorder 3dMEMA
++  @FS_roi_label @demo_prompt @ScriptCheck @NoPound @Reorder 3dSignatures 3dMEMA
 +  @DiceMetric @R_funclist @TimeDiff @FullPath @RetinoProc @ANATICOR
 +  @MakeLabelTable @ElectroGrid ExamineXmat 1dRplot @2dwarper.Allin
-+  @help.AFNI @1dDiffMag @FSlabel2dset @Install_InstaCorr_Demo)
++  @Shift_Volume @help.AFNI @1dDiffMag @FSlabel2dset @Install_InstaCorr_Demo
++  @Quiet_Talkers @radial_correlate @DeblankFileNames @clean_help_dir
++  @global_parse @AfniEnv @Atlasize)
 +
 +
 +##
@@ -334,7 +337,7 @@ Last-Update: 2010-09-21
 +TARGET_LINK_LIBRARIES(3dNLfim ${AFNI_LIBS} -ldl)
 +LIST(APPEND PROGRAMS 3dNLfim)
 +
-+ADD_EXECUTABLE(1dSEM 1dSEM.c sqrmat.c)
++ADD_EXECUTABLE(1dSEM 1dSEM.c sqrmat.c matrix.c)
 +TARGET_LINK_LIBRARIES(1dSEM ${AFNI_LIBS})
 +LIST(APPEND PROGRAMS 1dSEM)
 +
@@ -538,7 +541,7 @@ Last-Update: 2010-09-21
 +  cs_addto_args.c multivector.c afni_environ.c cs_qmed.c cl2.c
 +  cs_sort_fv.c cs_laguerre.c machdep.c cs_qhull.c afni_logger.c cl1.c
 +  cs_misc.c powell_int.c powell_newuoa.c afni_suma.c suma_afni_surface.c
-+  vol2surf.c cs_sort_dv.c rhdd.c)
++  vol2surf.c cs_sort_dv.c rhdd.c cs_fgets.c list_struct.c)
 +
 +# Assimilate NIfTI lib pieces into libmri, if we do not link against a
 +# system NIfTI lib
@@ -617,9 +620,9 @@ Last-Update: 2010-09-21
 +# libmrix
 +#
 +SET(IMSRC
-+  display.c imseq.c bbox.c xim.c xutil.c LiteClue.c)
++  display.c imseq.c bbox.c xim.c xutil.c LiteClue.c thd_xwebber.c)
 +ADD_LIBRARY(mrix ${IMSRC})
-+TARGET_LINK_LIBRARIES(mrix ${X11_LIBRARIES} ${MOTIF_LIBRARIES} mri coxplot)
++TARGET_LINK_LIBRARIES(mrix ${X11_LIBRARIES} ${MOTIF_LIBRARIES} mri coxplot XmHTML)
 +
 +#
 +# libafni_warp
@@ -839,7 +842,7 @@ Last-Update: 2010-09-21
 +  SurfMeasures FSread_annot SampBias volume_render 3dSurfMask SurfToSurf
 +  ROIgrow AnalyzeTrace DriveSuma SurfDist SpharmReco SpharmDeco SurfDsetInfo
 +  SurfLocalStat SurfFWHM NikoMap SurfInfo 3dSurf2Vol SurfRetinoMap ParseName
-+  RestSym)
++  RestSym SurfExtrema 3dinfill)
 +
 +# automatically add targets for all programs following to frequently used
 +# naming scheme
@@ -1215,7 +1218,7 @@ Last-Update: 2010-09-21
 +  ARCHIVE DESTINATION ${AFNI_INSTALL_LIB_DIR} COMPONENT Development)
 --- a/rickr/Dimon.c
 +++ b/rickr/Dimon.c
-@@ -119,6 +119,7 @@
+@@ -141,6 +141,7 @@
  #define IFM_PROG_NAME   "Dimon"
  
  #include "Imon.h"
@@ -1223,7 +1226,7 @@ Last-Update: 2010-09-21
  #include "mrilib.h"
  #include "realtime.h"
  
-@@ -129,7 +130,7 @@
+@@ -151,7 +152,7 @@
  #include "l_mcw_glob.h"
  #include "thd_iochan.h"
  #include "mri_image.h"
