@@ -1,3 +1,10 @@
+afni (0.20120224~dfsg.1-1) UNRELEASED; urgency=low
+
+  * New upstream code. Updated CMake build system.
+  * Added build-dependency on xmhtml1-dev for "new" tooltip system.
+
+ -- Michael Hanke <mih@debian.org>  Fri, 02 Mar 2012 16:14:08 +0100
+
 afni (0.20110610~dfsg.1-1) UNRELEASED; urgency=low
 
   [ Alex Waite ]
