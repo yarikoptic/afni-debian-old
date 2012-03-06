@@ -4229,10 +4229,11 @@ char **approx_str_sort_tfile(char *fname, int *N_ws, char *str,
 char **approx_str_sort_all_popts(char *prog, int *N_ws,  
                             byte ci, float **sorted_score,
                             APPROX_STR_DIFF_WEIGHTS *Dwi,
-                            APPROX_STR_DIFF **Dout)
+                            APPROX_STR_DIFF **Dout,
+                            int uopts, int verb)
 {
    int i, inn, c, *isrt=NULL;
-   char **ws=NULL, *dpun=NULL;
+   char **ws=NULL, *dpun=NULL, *blnk, *wild;
    char *str="-";
    float *sc=NULL, ff= 0.0;
    APPROX_STR_DIFF *D=NULL;
@@ -4243,8 +4244,14 @@ char **approx_str_sort_all_popts(char *prog, int *N_ws,
    Dwi->w[MWI]=1000; /* give a lot of weight to the order in the sentence */
    if (!(ws = approx_str_sort_phelp(prog, N_ws, str, 
                       ci, sorted_score,
-                      Dwi, Dout))) {
-      ERROR_message("Failed to get phelp for '%s', word '%s'", prog,str);
+                      Dwi, Dout, verb))) {
+      if (verb) {
+         if (THD_filesize(prog)) {
+            ERROR_message("Failed to get phelp for '%s', word '%s'", prog,str);
+         } else {
+            INFO_message("Empty help for '%s'", prog);
+         }
+      }
       RETURN(NULL);                  
    }
    free(Dwi); Dwi=NULL;
@@ -4260,11 +4267,20 @@ char **approx_str_sort_all_popts(char *prog, int *N_ws,
       if (dpun[0] != '-' || strlen(dpun) < 2 || isspace(dpun[1]) ||
           !strncmp(dpun,"-- ",3) || !strncmp(dpun,"--- ",4)) {
          free(dpun); dpun=NULL;
+      } else if ((wild = strchr(ws[i],'*')) || (wild = strchr(ws[i],'*'))){ 
+                        /* have wildcard, but is it in 1st word? */
+         blnk = strchr(ws[i],' ');
+         if (!blnk || blnk > wild) { /* wildcard in 1st word, ignore */
+            free(dpun); dpun=NULL;
+         }
       } else { 
          /* remove '----------' */
          c=1;
          while(dpun[c] !='\0' && dpun[c]=='-') ++c;
-         if (dpun[c] == '\0' || dpun[c] == ' ') {
+         if (dpun[c] == '\0'   || (
+               IS_BLANK(dpun[c]) || 
+               IS_PUNCT(dpun[c]) || 
+               IS_QUOTE(dpun[c]) && c > 3) ) {
             free(dpun); dpun=NULL;
          } 
       }
@@ -4290,16 +4306,44 @@ char **approx_str_sort_all_popts(char *prog, int *N_ws,
          ++inn;
       }
    }
+   
    /* alphabetically sort that thing */
    isrt = z_istrqsort (ws, inn );
    if (isrt) free(isrt); isrt=NULL;
+   
+   if(uopts && inn) { /* now get rid anything but the option and kill the dups */
+      for (i=0; i<inn; ++i) {
+         if (ws[i]) {
+            c = 0;
+            while (ws[i][c] != '\0' && !IS_BLANK(ws[i][c])) ++c;
+            ws[i][c]='\0'; 
+            ws[i] = (depunct_name(ws[i]));
+         }
+      }
+      c = 1;
+      for (i=1; i<inn; ++i) {
+         if (ws[i]){
+            if (strcmp(ws[i], ws[c-1])) {/* new string, keep it */
+               if (i != c) {
+                  if (ws[c]) free(ws[c]);
+                  ws[c] = ws[i];  
+                  ws[i]=NULL;
+               }
+               ++c;
+            } else { /* repeat, just delete it */
+               if (i != c) free(ws[i]); ws[i]=NULL;
+            }
+         }  
+      }
+   }
+   
    RETURN(ws);
 }
 
 char **approx_str_sort_phelp(char *prog, int *N_ws, char *str, 
                             byte ci, float **sorted_score,
                             APPROX_STR_DIFF_WEIGHTS *Dwi,
-                            APPROX_STR_DIFF **Dout)
+                            APPROX_STR_DIFF **Dout, int verb)
 {
    char **ws=NULL;
    APPROX_STR_DIFF_WEIGHTS *Dw = Dwi;
@@ -4315,14 +4359,15 @@ char **approx_str_sort_phelp(char *prog, int *N_ws, char *str,
    
    UNIQ_idcode_fill(uid);
    sprintf(tout,"/tmp/%s.%s.txt", APSEARCH_TMP_PREF, uid); 
-   snprintf(cmd,500*sizeof(char),"%s -help >& %s", prog, tout);
+   snprintf(cmd,500*sizeof(char),"\\echo '' 2>&1 | %s -help > %s 2>&1 ",
+             prog, tout);
    if (system(cmd)) {
       if (0) {/* many programs finish help and set status afterwards. Naughty. */
          ERROR_message("Failed to get help for %s\nCommand: %s\n", prog, cmd);
          return 0;
       }
    }
-   ws = approx_str_sort_tfile(tout, N_ws, str, ci, sorted_score, Dw, Dout, 1);
+   ws = approx_str_sort_tfile(tout, N_ws, str, ci, sorted_score, Dw, Dout, verb);
                                  
    snprintf(cmd,500*sizeof(char),"\\rm -f %s", tout);
    system(cmd);
@@ -4396,7 +4441,7 @@ void suggest_best_prog_option(char *prog, char *str)
    }
    ws = approx_str_sort_phelp(prog, &N_ws, str, 
                    1, &ws_score,
-                   NULL, &D);
+                   NULL, &D, 0);
    isug = 0; isuglog = 6;
    for (i=0; i<N_ws && (isug < 3 || isuglog < 6); ++i) {
       skip=0;
@@ -4460,10 +4505,53 @@ void suggest_best_prog_option(char *prog, char *str)
    return;
 }
 
+int prog_complete_command (char *prog, char *ofile) {
+   char **ws=NULL, *pvar=NULL;
+   int N_ws=0, i;
+   float *ws_score=NULL;
+   FILE *fout=NULL;
+   
+   if (!prog || !(ws = approx_str_sort_all_popts(prog, &N_ws,  
+                   1, &ws_score,
+                   NULL, NULL, 1, 0))) {
+      return;
+   }
+
+   if (ofile) {
+       if (!(fout = fopen(ofile,"w"))) {
+         ERROR_message("Failed to open %s for writing\n", ofile);
+         return(0);
+       }
+   
+   } else {
+      fout = fout;
+   }
+   
+   pvar = strdup(prog);
+   for (i=0; i<strlen(pvar); ++i) {
+      if (pvar[i] == '.' || pvar[i] == '@' || 
+          pvar[i] == '-' || pvar[i] == '+' ||
+          IS_PUNCT(pvar[i])) pvar[i]='_';
+   }
+   fprintf(fout,"set ARGS=(");
+   for (i=0; i<N_ws; ++i) {
+      if (ws[i]) {
+         fprintf(fout,"'%s' ", ws[i]);
+         free(ws[i]); ws[i]=NULL;
+      }
+   }
+   fprintf(fout,") ; "
+                  "complete %s \"p/*/($ARGS)/\" ; ##%s##\n",prog, prog);
+
+   if (ofile) fclose(fout); fout=NULL;
+   free(ws); ws = NULL; free(pvar);
+}
+
+
 char *get_updated_help_file(int force_recreate, byte verb, char *progname) 
 {
       static char hout[512]={""};
-      char scomm[1024], *etr=NULL, *hdir=NULL, *etm=NULL;
+      char scomm[1024], *etr=NULL, *hdir=NULL, *etm=NULL, houtc[128];
       long long ml, mn;
       int cnt = 0;
       
@@ -4484,8 +4572,13 @@ char *get_updated_help_file(int force_recreate, byte verb, char *progname)
       
       snprintf(hout, 500*sizeof(char),
                "%s/%s.%s.help", hdir, etr, etm);
+      snprintf(houtc, 120*sizeof(char),
+               "%s/%s.complete", hdir, etr);
       if (!force_recreate && THD_is_file(hout)) {
          if (verb) fprintf(stderr,"Reusing %s \n", hout); 
+         if (!THD_is_file(houtc)) {
+            prog_complete_command(etr, houtc);
+         }      
       } else {
          if (verb) fprintf(stderr,"Creating %s \n", hout); 
          /* The echo below is there to make programs that
@@ -4499,7 +4592,7 @@ char *get_updated_help_file(int force_recreate, byte verb, char *progname)
             system(scomm); 
          }
          snprintf(scomm, 1000*sizeof(char),
-               "echo '' | %s -help >& %s &", etr, hout);
+               "\\echo '' 2>&1 | %s -help > %s 2>&1 &", etr, hout);
          system(scomm); 
          
          /* wait a little to finish writing*/
@@ -4514,6 +4607,7 @@ char *get_updated_help_file(int force_recreate, byte verb, char *progname)
          snprintf(scomm, 1000*sizeof(char),
                "chmod a-w %s", hout);
          system(scomm); 
+         prog_complete_command(etr, houtc);
       }
       return(hout);
 }
@@ -4724,7 +4818,7 @@ void print_prog_options(char *prog)
 
    if (!(ws = approx_str_sort_all_popts(prog, &N_ws,  
                    1, &ws_score,
-                   NULL, NULL))) {
+                   NULL, NULL, 0, 1))) {
       return;
    }
    for (i=0; i<N_ws; ++i) {
@@ -6138,8 +6232,6 @@ THD_3dim_dataset *load_atlas_dset(char *dsetname)
    RETURN(dset) ;
 }
 
-
-#define IS_BLANK(c) ( ((c) == ' ' || (c) == '\t' || (c) == '\n' || (c) == '\v' || (c) == '\f' || (c) == '\r') ? 1 : 0 )
 
 char *AddLeftRight(char *name, char lr)
 {
@@ -8191,11 +8283,7 @@ char * deblank_name (char *name) {
 
    return(name);
 }
-#define IS_PUNCT(m) (   m=='[' || m==']' || \
-                        m=='<' || m=='>' || \
-                        m==':' || m==';' || \
-                        m=='(' || m==')' || \
-                        m=='*' ) 
+
 char * depunct_name (char *name) {
    int nch = 0, bb=0, ibb=0, BB=0;
    

@@ -8,7 +8,18 @@
 /*----------------- be in afni.h. ZSS Feb. 06----------------*/
 #define TTO_LMAX    (ATLAS_CMAX+16)
 #define TTO_FORMAT  "%s [%3.0f,%3.0f,%3.0f]"
+#define IS_BLANK(c) ( ( (c) == ' '  || (c) == '\t' || \
+                        (c) == '\n' || (c) == '\v' || \
+                        (c) == '\f' || (c) == '\r') ? 1 : 0 )
 
+#define IS_PUNCT(m) (   m=='[' || m==']' || \
+                        m=='<' || m=='>' || \
+                        m==':' || m==';' || \
+                        m=='(' || m==')' || \
+                        m=='*' || m==',' || \
+                        m=='?') 
+      
+#define IS_QUOTE(m) (   m=='"' || m=='\'' )
 
 #ifdef MAIN
    /* Table moved to thd_ttatlas_query.c, access is no longer
@@ -320,14 +331,18 @@ THD_string_array *approx_str_sort_Ntfile(
 char **approx_str_sort_phelp(char *prog, int *N_ws, char *str, 
                             byte ci, float **sorted_score,
                             APPROX_STR_DIFF_WEIGHTS *Dwi,
-                            APPROX_STR_DIFF **Dout);
+                            APPROX_STR_DIFF **Dout, int verb);
 char **approx_str_sort_all_popts(char *prog, int *N_ws, 
                             byte ci, float **sorted_score,
                             APPROX_STR_DIFF_WEIGHTS *Dwi,
-                            APPROX_STR_DIFF **Dout);
+                            APPROX_STR_DIFF **Dout,
+                            int uopts, int verb);
+char *get_updated_help_file(int force_recreate, byte verb, char *progname);
+int prog_complete_command (char *prog, char *ofile);
 char **approx_str_sort_readmes(char *str, int *N_r);
 char *find_readme_file(char *str);
 int view_text_file(char *progname);
+void view_prog_help(char *prog);
 void web_prog_help(char *prog);
 void web_class_docs(char *prog);
 int view_web_link(char *link, char *browser);
