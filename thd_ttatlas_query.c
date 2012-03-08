@@ -4514,7 +4514,7 @@ int prog_complete_command (char *prog, char *ofile) {
    if (!prog || !(ws = approx_str_sort_all_popts(prog, &N_ws,  
                    1, &ws_score,
                    NULL, NULL, 1, 0))) {
-      return;
+      return 0;
    }
 
    if (ofile) {
@@ -4544,7 +4544,7 @@ int prog_complete_command (char *prog, char *ofile) {
          "complete %s \"C/-/($ARGS)/\" \"p/*/f:/\" ; ##%s##\n",prog, prog);
 
    if (ofile) fclose(fout); fout=NULL;
-   free(ws); ws = NULL; free(pvar);
+   free(ws); ws = NULL; free(pvar); return 0;
 }
 
 
