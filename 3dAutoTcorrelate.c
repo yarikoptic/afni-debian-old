@@ -19,14 +19,13 @@
   static int do_mmap = 0 ;
 #endif
 
-#if 0
-size_t ___builtin_object_size(void *ptr,int typ){ return __builtin_object_size(ptr,typ); }
-#endif
-
 /*----------------------------------------------------------------*/
 /**** Include these here for potential optimization for OpenMP ****/
 /*----------------------------------------------------------------*/
-/*! Pearson correlation of x[] and y[] (x and y are NOT modified. */
+/*! Pearson correlation of x[] and y[] (x and y are NOT modified.
+    And we know ahead of time that the time series have 0 mean
+    and L2 norm 1.
+*//*--------------------------------------------------------------*/
 
 float zm_THD_pearson_corr( int n, float *x , float *y ) /* inputs are */
 {                                                       /* zero mean  */
@@ -40,6 +39,9 @@ float zm_THD_pearson_corr( int n, float *x , float *y ) /* inputs are */
    }
    return xy ;
 }
+
+/*----------------------------------------------------------------*/
+/* General correlation calculation. */
 
 #if 0
 float my_THD_pearson_corr( int n, float *x , float *y )
@@ -243,6 +245,9 @@ int main( int argc , char *argv[] )
              "                 RAM on your system, this program will be very slow\n"
              "                 with or without '-mmap'.\n"
              "              ** This option won't work with NIfTI-1 (.nii) output!\n"
+#else
+             "\n"
+             "  -mmap is disabled at this time :-(\n"
 #endif
              "\n"
              "Notes:\n"
@@ -256,11 +261,15 @@ int main( int argc , char *argv[] )
              "        *** malloc error for dataset sub-brick\n"
              "      this means that the program ran out of memory when making\n"
              "      the output dataset.\n"
+#ifdef ALLOW_MMAP
+             "   ++ If this happens, you can try to use the '-mmap' option,\n"
+             "      and if you are lucky, the program may actually run.\n"
+#endif
              " * The program prints out an estimate of its memory usage\n"
              "    when it starts.  It also prints out a progress 'meter'\n"
              "    to keep you pacified.\n"
              " * This is a quick hack for Peter Bandettini. Now pay up.\n"
-             " * OpenMP-ized for Hang Joon Jo.  Where's my soju?\n"
+             " * OpenMP-ized for Hang Joon Jo.  Where's my baem-sul?\n"
              "\n"
              "-- RWCox - 31 Jan 2002 and 16 Jul 2010\n"
             ) ;
@@ -352,7 +361,7 @@ int main( int argc , char *argv[] )
 
    xset = THD_open_dataset(argv[nopt]); CHECK_OPEN_ERROR(xset,argv[nopt]);
    if( DSET_NVALS(xset) < 3 )
-      ERROR_exit("Input dataset %s does not have 3 or more sub-bricks!",argv[nopt]) ;
+     ERROR_exit("Input dataset %s does not have 3 or more sub-bricks!",argv[nopt]) ;
    DSET_load(xset) ; CHECK_LOAD_ERROR(xset) ;
 
    /*-- compute mask array, if desired --*/
@@ -443,6 +452,10 @@ int main( int argc , char *argv[] )
        "Memory required = %.1f Mbytes for %d output sub-bricks",nb,nmask);
      if( nb > 2000.0 && (sizeof(void *) < 8 || sizeof(size_t) < 8) )
        ERROR_exit("Can't run on a 32-bit system!") ;
+#ifdef ALLOW_MMAP
+     if( nb > 1000.0 && !do_mmap )
+       INFO_message("If you run out of memory, try using the -mmap option.") ;
+#endif
    }
 
    tross_Make_History( "3dAutoTcorrelate" , argc,argv , cset ) ;
@@ -560,8 +573,7 @@ AFNI_OMP_START ;
 #ifdef ALLOW_MMAP
       if( do_mmap ){  /* copy results to disk mmap now */
         short *cout = ((short *)(cbrik)) + (int64_t)(nvox)*(int64_t)(kout) ;
-#pragma omp critical
-        { memcpy( cout , car , sizeof(short)*nvox ) ; }
+        AAmemcpy( cout , car , sizeof(short)*nvox ) ;
       }
 #endif
 
