@@ -43,7 +43,24 @@
 
 afni_history_struct rwcox_history[] = {
 /*=====BELOW THIS LINE=====*/
-  { 19 , MAR , 2012 , RWC , "Makefiles" , MICRO , TYPE_GENERAL ,
+  { 3 , APR , 2012 , RWC , "3dDeconvolve" , MICRO , TYPE_GENERAL ,
+   "dmBLOCK now defaults to peak=0 ==> variable amplitude" ,
+   "Former behavior is now achieved with dmBLOCK(1) ==> fixed amplitude.\n"
+   "Also, the peak variable amplitude is now 1, rather than some annoying\n"
+   "value that means nothin to nobody nohow." } ,
+
+ { 2 , APR , 2012 , RWC , "3dDeconvolve" , MICRO , TYPE_GENERAL ,
+   "Add MIONN() function to repertoire (negative MION)" ,
+   NULL } ,
+
+ { 2 , APR , 2012 , RWC , "Lion build" , MICRO , TYPE_GENERAL ,
+   "Modify install process to include useful netpbm program binaries" ,
+   "The stuff that imseq.c uses to write images out (GIF, TIFF, PNG, BMP),\n"
+   "so that fink is not required.  Done via Makefile macro\n"
+   "EXTRA_INSTALL_COMMANDS and copying all files in directory EXTRAPROGS to\n"
+   "the output binaries." } ,
+
+ { 19 , MAR , 2012 , RWC , "Makefiles" , MICRO , TYPE_GENERAL ,
    "Remove -O3 and -ffast-math and -ftree-vectorize from all gcc cases" ,
    "Too many problems on Lion with -O3 make me suspicious of aggressive\n"
    "optimization in general." } ,
