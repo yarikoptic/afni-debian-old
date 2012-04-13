@@ -49,6 +49,17 @@
 
 afni_history_struct rickr_history[] = {
 
+ { 12, APR, 2012, RCR, "gen_ss_review_scripts.py", MICRO, TYPE_BUG_FIX,
+   "backport to python 2.2",
+   NULL
+ } ,
+
+ { 12, APR, 2012, RCR, "afni_proc.py", MINOR, TYPE_BUG_FIX,
+   "backport to python 2.2",
+   "For files that should work on 2.2, avoid sum() and enumerate().\n"
+   "Thanks to L Broster for noting problems on python 2.2."
+ } ,
+
  { 8, APR, 2012, RCR, "make_random_timing.py", MINOR, TYPE_ENHANCE,
    "-ordered_stimuli now takes labels",
    NULL
