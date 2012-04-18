@@ -1070,6 +1070,14 @@ mri_nstats.o:mri_nstats.c
 
 ## ------- Things to be compiled or linked with OpenMP -------
 
+3dDimRed.o: 3dDimRed.c
+	$(RM) $@
+	$(CCOMP) -c 3dDimRed.c $(INFLAGS)
+
+3dDimRed:3dDimRed.o
+	$(RM) $@
+	$(CCOMP) -o 3dDimRed 3dDimRed.o $(LFLAGS) $(LLIBS)
+
 3dSatCheck.o: 3dSatCheck.c thd_satcheck.c
 	$(RM) $@
 	$(CCOMP) -c 3dSatCheck.c $(INFLAGS)
@@ -1594,7 +1602,7 @@ backup:
 afni_src.tgz:
 	$(MKDIR) afni_src
 	$(CP) -p *.c *.f *.inc *.h *.hhh Makefile.* *.xbm $(MINDOCS) $(MISC)     ./afni_src
-	$(CP) -pr coxplot volpack moveup moveAFNI* eispack avovk                 ./afni_src
+	$(CP) -pr coxplot volpack moveup moveAFNI* eispack avovk ptaylor               ./afni_src
 	$(CP) -pr $(SCRIPTS) $(PY_DIR) $(R_DIR)                                  ./afni_src
 	$(CP) -pr gifsicledir qhulldir f2cdir mpeg_encodedir                     ./afni_src
 	$(CP) -pr 3DEdge netcdf-3.5.0 jpeg-6b niml Makefile_* nifti dlcompat     ./afni_src
@@ -2820,6 +2828,24 @@ libsegtools.a: avovk/cluster_floatNOMASK.c avovk/thd_segtools_fNM.c
 	$(MAKE) libsegtools.a  ;	\
 	$(CP) libsegtools.a ../;	\
 	cd ../	;		)
+
+
+#############
+#PTAYLOR directory
+
+ptaylor_all: 
+	( cd ptaylor ;	\
+	./@MakeLocalMake	;\
+	$(MAKE) all  ;	\
+	cd ../	;		)
+
+libtracktools.a: ptaylor/libtracktools.a
+	( cd ptaylor ;	\
+	./@MakeLocalMake	;\
+	$(MAKE) libtracktools.a  ;	\
+	$(CP) libtracktools.a ../;	\
+	cd ../	;		)
+
 
 #############
 #SUMA
