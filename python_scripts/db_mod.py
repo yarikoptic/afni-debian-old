@@ -98,13 +98,17 @@ def db_cmd_tcat(proc, block):
                     (proc.od_var, proc.prefix_form(block,run+1),
                      proc.dsets[run].rel_input(), first, final)
 
+    proc.reps   -= first+rmlast # update reps to account for removed TRs
+    proc.reps_all = [reps-first-rmlast for reps in proc.reps_all]
+
+    cmd = cmd + '\n'                                                    \
+                '# and make note of repetitions (TRs) per run\n'        \
+                'set tr_counts = ( %s )\n'%UTIL.int_list_string(proc.reps_all)
+
     cmd = cmd + '\n'                                                          \
                 '# -------------------------------------------------------\n' \
                 '# enter the results directory (can begin processing data)\n' \
                 'cd %s\n\n\n' % proc.od_var
-
-    proc.reps   -= first+rmlast # update reps to account for removed TRs
-    proc.reps_all = [reps-first-rmlast for reps in proc.reps_all]
 
     proc.bindex += 1            # increment block index
     proc.pblabel = block.label  # set 'previous' block label
@@ -692,16 +696,18 @@ def ricor_process_across_runs(proc, block, polort, solver, nsliregs, rdatum):
         "# final result: add REML errts to polynomial baseline\n" \
         "# (and separate back into individual runs)\n"          \
         "set startind = 0\n"                                    \
-        "foreach runlen ( %s )\n"                               \
+        "foreach rind ( `count -digits 1 1 $#runs` )\n"         \
+        "    set run = $runs[$rind]\n"                          \
+        "    set runlen = $tr_counts[$rind]\n"                  \
         "    @ endind = $startind + $runlen - 1\n"              \
+        "\n"                                                    \
         '    3dcalc -a %s.errts%s"[$startind..$endind]" \\\n'   \
         '           -b %s.polort%s"[$startind..$endind]" \\\n'  \
         '%s'                                                    \
         '           -expr a+b -prefix %s\n'                     \
         "    @ startind = $endind + 1\n"                        \
         'end\n\n'                                               \
-        % (UTIL.int_list_string(proc.reps_all),
-           prefix, proc.view, prefix, proc.view, dstr, cur_prefix)
+        % (prefix, proc.view, prefix, proc.view, dstr, cur_prefix)
 
     return cmd
 
@@ -1558,7 +1564,7 @@ def cmd_surf_align(proc):
           '@SUMA_AlignToExperiment -exp_anat %s \\\n'                         \
           '                        -surf_anat $%s/%s \\\n'                    \
           '                        -wd%s \\\n'                                \
-          '                        -atlas_followers \\\n'                     \
+          '                        -atlas_followers -overwrite_resp S\\\n'    \
           '                        -prefix ${subj}_SurfVol_Alnd_Exp \n\n'     \
         % (proc.anat_final.pv(), proc.surf_svd_var, proc.surf_sv.pv(), sstr)
 
@@ -2091,6 +2097,7 @@ def db_cmd_scale(proc, block):
         vsuff = suff             # where view might go
         istr = ' '*4             # extra indent, for foreach hemi loop
         bstr = '\\\n%s           ' % istr # extr line wrap since long names
+        mean_pre = "rm.$hemi.mean" # prefix for mean datasets
     else:
         feh_str = ''
         feh_end = ''
@@ -2098,6 +2105,7 @@ def db_cmd_scale(proc, block):
         vsuff = proc.view
         istr = ''
         bstr = ''
+        mean_pre = "rm.mean"    
 
     # choose a mask: either passed, extents, or none
     mset = None
@@ -2127,10 +2135,11 @@ def db_cmd_scale(proc, block):
     cmd += feh_str      # if surf, foreach hemi
 
     cmd += "%sforeach run ( $runs )\n"                                  \
-           "%s    3dTstat -prefix rm.mean_r$run%s %s\n"                 \
-           "%s    3dcalc -a %s %s-b rm.mean_r$run%s \\\n"               \
+           "%s    3dTstat -prefix %s_r$run%s %s\n"                      \
+           "%s    3dcalc -a %s %s-b %s_r$run%s \\\n"                    \
            "%s"                                                         \
-           % (istr, istr, suff, prev, istr, prev, bstr, vsuff, mask_str)
+           % (istr, istr, mean_pre, suff, prev,
+              istr, prev, bstr, mean_pre, vsuff, mask_str)
 
     cmd += "%s           -expr '%s' \\\n"                               \
            "%s           -prefix %s\n"                                  \
@@ -2486,7 +2495,13 @@ def db_mod_regress(block, proc, user_opts):
     uopt = user_opts.find_opt('-regress_motion_file')
     if uopt:
         # make sure we have labels
-        proc.mot_file = uopt.parlist[0]
+        try:
+            dname, fname = os.path.split(uopt.parlist[0])
+            proc.mot_file = fname
+        except:
+            print '** failed to parse directory/file from -regress_motion_file'
+            print '   (file is %s)' % uopt.parlist[0]
+            errs += 1
         proc.mot_extern = uopt.parlist[0]
         proc.mot_labs = ['roll', 'pitch', 'yaw', 'dS', 'dL', 'dP']
         # -volreg_regress_per_run should be okay  20 May 2011
@@ -2568,6 +2583,14 @@ def db_mod_regress(block, proc, user_opts):
 
     # possibly update cbucket option
     oname = '-regress_apply_ricor'
+    uopt = user_opts.find_opt(oname)
+    bopt = block.opts.find_opt(oname)
+    if uopt:
+        if bopt: bopt.parlist = uopt.parlist
+        else:    block.opts.add_opt(oname, 1, uopt.parlist, setpar=1)
+
+    # maybe do bandpass filtering in the regression
+    oname = '-regress_bandpass'
     uopt = user_opts.find_opt(oname)
     bopt = block.opts.find_opt(oname)
     if uopt:
@@ -2667,6 +2690,13 @@ def db_cmd_regress(proc, block):
         if newcmd: cmd = cmd + newcmd
 
     # ----------------------------------------
+    # bandpass?
+    if block.opts.find_opt('-regress_bandpass'):
+        err, newcmd = db_cmd_regress_bandpass(proc, block)
+        if err: return
+        if newcmd: cmd = cmd + newcmd
+
+    # ----------------------------------------
     # possibly use a mask
     if proc.mask and proc.regmask:
         mask = '    -mask %s%s' % (proc.mask.prefix, proc.view)
@@ -2711,15 +2741,22 @@ def db_cmd_regress(proc, block):
     if proc.censor_file: censor_str = '    -censor %s' % proc.censor_file
     else:                censor_str = ''
 
+    # check for regress_orts lines
+    reg_orts = []
+    for ort in proc.regress_orts:
+       reg_orts.append('    -ortvec %s %s' % (ort[0], ort[1]))
+
     # make actual 3dDeconvolve command as string c3d:
     #    init c3d, add O3dd elements, finalize c3d
     #    (O3dd = list of 3dd option lines, which may need an extra indent)
 
     O3dd = ['%s3dDeconvolve -input %s' % (istr, proc.prev_dset_form_wild()),
-            censor_str,
-            '    -polort %d%s' % (polort, datum),
-            mask, normall, times_type,
-            '    -num_stimts %d' % total_nstim]
+            mask,
+            censor_str]
+    O3dd.extend(reg_orts)
+    O3dd.extend([ '    -polort %d%s' % (polort, datum),
+                  normall, times_type,
+                  '    -num_stimts %d' % total_nstim])
 
     # verify labels (now that we know the list of stimulus files)
     opt = block.opts.find_opt('-regress_stim_labels')
@@ -2807,7 +2844,8 @@ def db_cmd_regress(proc, block):
     if nmotion > 0:
         nlabs = len(proc.mot_labs)
         nmf = len(proc.mot_regs)
-        for findex, mfile in enumerate(proc.mot_regs):
+        for findex in range(len(proc.mot_regs)):
+            mfile = proc.mot_regs[findex]
             for ind in range(nlabs):
                 if nmf > 1: mlab = '%s_%02d' % (proc.mot_labs[ind], findex+1)
                 else:       mlab = '%s'      % (proc.mot_labs[ind])
@@ -3311,11 +3349,11 @@ def blur_est_loop_str(proc, dname, mname, label, outfile):
     cmd = cmd +                                                 \
         'set b0 = 0     # first index for current run\n'        \
         'set b1 = -1    # will be last index for current run\n' \
-        'foreach reps ( %s )\n'                                 \
+        'foreach reps ( $tr_counts )\n'                         \
         '    @ b1 += $reps  # last index for current run\n'     \
         '    3dFWHMx -detrend -mask %s \\\n'                    \
         '        %s"[$b0..$b1]" >> %s\n'                        \
-        % (UTIL.int_list_string(proc.reps_all), mask, input, tmpfile)
+        % (mask, input, tmpfile)
 
     cmd = cmd +                                                 \
         '    @ b0 += $reps  # first index for next run\n'       \
@@ -3366,6 +3404,59 @@ def db_cmd_regress_sfiles2times(proc, block):
     if proc.verb > 0: print '++ new stim list: %s' % proc.stims
 
     return cmd
+
+def db_cmd_regress_bandpass(proc, block):
+    """apply bandpass filtering in 3dDeconvolve
+
+         - create bandpass files per run
+         - 1dcat them
+         - note resulting file to use as regress_ortvec [file, label] pair
+
+       to be dangerous, make the code differ in complexity:
+         - if 1 run ==> 1 command
+         - else if not proc.reps_vary: small foreach loop
+         - else, more complicated loop
+
+       return an error code (0=success) and command string
+    """
+
+    # maybe we shouldn't be here
+    oname = '-regress_bandpass'
+    opt = block.opts.find_opt(oname)
+    if not opt: return 0, ''
+
+    freq, err = block.opts.get_type_list(float, opt=opt)
+    if len(freq) != 2:
+        print '** %s requires 2 parameters, low and high frequencies' % oname
+        return 1, ''
+    if freq[0] >= freq[1]:
+        print '** %s: must have low freq < high freq' % oname
+        return 1, ''
+
+    bfile = 'bandpass_rall.1D'
+    tfile = 'rm.bpass.1D'
+
+    cmd = '# create bandpass regressors (instead of using 3dBandpass, say)\n'
+    if proc.runs != 1:
+        cmd += '# (make separate regressors per run, with all in one file)\n'
+
+    if proc.runs == 1: # simple case
+        cmd += '1dBport -nodata %s %s -band %g %g -invert -nozero' \
+               ' > %s\n\n' % (proc.reps, proc.tr, freq[0], freq[1], bfile)
+    else: # loop over 1dBport and 1d_tool.py
+        cmd += 'foreach index ( `count -digits 1 1 $#runs` )\n'               \
+               '    set nt = $tr_counts[$index]\n'                            \
+               '    set run = $runs[$index]\n'                                \
+               '    1dBport -nodata $nt %g -band %g %g -invert -nozero > %s\n'\
+               % (proc.tr, freq[0], freq[1], tfile)
+        cmd += '    1d_tool.py -infile %s -pad_into_many_runs $run $#runs \\\n'\
+               '               -write bpass%sr$run.1D\n'                      \
+               'end\n' % (tfile, proc.sep_char)
+        cmd += '1dcat bpass.r*1D > bandpass_rall.1D\n\n'
+
+    proc.regress_orts.append([bfile, 'bandpass'])
+
+    return 0, cmd
 
 def db_cmd_regress_motion_stuff(proc, block):
     """prepare motion parameters for regression
@@ -3737,17 +3828,18 @@ def valid_file_types(proc, stims, file_type):
             if ok: adata.file_type_warnings_global(run_lens=proc.reps_all,
                                                 tr=proc.tr)
         elif file_type == 10: # check both local and global
-            # first test as local
-            ok = adata.looks_like_local_times(run_lens=proc.reps_all,
-                                                tr=proc.tr, verb=0)
-            if ok: adata.file_type_warnings_local(run_lens=proc.reps_all,
-                                                tr=proc.tr)
-            # if not local, then check as global
+            # first test as global (a file that looks like global or local
+            # should be treated as global)
+            ok = adata.looks_like_global_times(run_lens=proc.reps_all,
+                                            tr=proc.tr,verb=0)
+            if ok:adata.file_type_warnings_global(run_lens=proc.reps_all,
+                                            tr=proc.tr)
+            # if not global, then check as local
             if not ok:
-                ok = adata.looks_like_global_times(run_lens=proc.reps_all,
-                                                tr=proc.tr,verb=0)
-                if ok:adata.file_type_warnings_global(run_lens=proc.reps_all,
-                                                tr=proc.tr)
+                ok = adata.looks_like_local_times(run_lens=proc.reps_all,
+                                                    tr=proc.tr, verb=0)
+                if ok: adata.file_type_warnings_local(run_lens=proc.reps_all,
+                                                    tr=proc.tr)
         else: # error
             print '** valid_file_types: bad type %d' % file_type
             return 0
@@ -3824,6 +3916,7 @@ def db_cmd_gen_review(proc):
     lopts = ' '
     if proc.mot_cen_lim > 0.0: lopts += '-mot_limit %s ' % proc.mot_cen_lim
     if proc.out_cen_lim > 0.0: lopts += '-out_limit %s ' % proc.out_cen_lim
+    if proc.mot_extern != '' : lopts += '-motion_dset %s ' % proc.mot_file
         
     cmd += '# generate scripts to review single subject results\n'      \
            '# (try with defaults, but do not allow bad exit status)\n'  \
@@ -4078,11 +4171,11 @@ g_help_string = """
            since degrees of freedom are not such a worry, regress the motion
            parameters per-run (each run gets a separate set of 6 regressors).
 
-           The regression will use 198 regressors (all of "no interest"):
+           The regression will use 81 basic regressors (all of "no interest"),
+           with 13 retroicor regressors being removed during pre-processing:
 
                  27 baseline  regressors ( 3 per run * 9 runs)
                  54 motion    regressors ( 6 per run * 9 runs)
-                117 RETROICOR regressors (13 per run * 9 runs)
 
            To example #3, add -do_block, -ricor_* and -regress_motion_per_run.
 
@@ -4092,7 +4185,6 @@ g_help_string = """
                         -tcat_remove_first_trs 3                \\
                         -ricor_regs_nfirst 3                    \\
                         -ricor_regs sb23/RICOR/r*.slibase.1D    \\
-                        -ricor_regress_method 'per-run'         \\
                         -regress_motion_per_run
 
            If tshift, blurring and masking are not desired, consider replacing
@@ -4124,6 +4216,32 @@ g_help_string = """
                         -regress_basis 'BLOCK(30,1)'                       \\
                         -regress_est_blur_epits                            \\
                         -regress_est_blur_errts
+
+           Also consider adding -regress_bandpass.
+
+        5c. RETROICOR example c: censoring and bandpass filtering.
+
+           Censoring due to motion has long been considered appropriate in
+           BOLD FMRI analysis, but is less common for those doing bandpass
+           filtering in RC FMRI because the FFT requires one to either break
+           the time axis (evil) or to replace the censored data with something
+           probably inapproprate.
+
+           Instead, it is slow (no FFT, but maybe SFT :) but effective to
+           regress frequencies within the regression model, where censored is
+           simple.
+
+           To example #5, add -regress_censor_motion and -regress_bandpass.
+
+                afni_proc.py -subj_id sb23.e5a.ricor            \\
+                        -dsets sb23/epi_r??+orig.HEAD           \\
+                        -do_block despike ricor                 \\
+                        -tcat_remove_first_trs 3                \\
+                        -ricor_regs_nfirst 3                    \\
+                        -ricor_regs sb23/RICOR/r*.slibase.1D    \\
+                        -regress_motion_per_run                 \\
+                        -regress_censor_motion 0.3              \\
+                        -regress_bandpass 0.01 0.1
 
         6. A modern example.  GOOD TO CONSIDER.
 
@@ -6179,6 +6297,43 @@ g_help_string = """
             in the final regression (mostly accounting for degrees of freedom).
             But since resting state analysis relies on a subsequent correlation
             analysis, it seems cleaner not to regress them (a second time).
+
+        -regress_bandpass lowf highf : bandpass the frequency range
+
+                e.g.  -regress_bandpass 0.01 0.1
+
+            This option is intended for use in resting state analysis.
+
+            Use this option to perform bandpass filtering during the linear
+            regression.  While such an operation is slow (much slower than the
+            FFT using 3dBandpass), doing it during the regression allows one to
+            perform (e.g. motion) censoring at the same time.
+
+            This option has a similar effect to running 3dBandpass, e.g. the
+            example of '-regress_bandpass 0.01 0.1' is akin to running:
+
+                3dBandpass -ort motion.1D -band 0.01 0.1
+
+            except that it is done in 3dDeconvolve using linear regression.
+            And censoring is easy in the context of regression.
+
+            Note that the Nyquist frequency is 0.5/TR.  That means that if the
+            TR were >= 5 seconds, there would be no frequencies within the band
+            range of 0.01 to 0.1 to filter.  So there is no point to such an
+            operation.
+
+            On the flip side, if the TR is 1.0 second or shorter, the range of
+            0.01 to 0.1 would remove about 80% of the degrees of freedom (since
+            everything above 0.1 is filtered/removed, up through 0.5).  This
+            might result in a model that is overfit, where there are almost as
+            many (or worse, more) regressors than time points to fit.
+
+            So a 0.01 to 0.1 bandpass filter might make the most sense for a
+            TR in [2.0, 3.0], or so.
+
+            A different filter range would affect this, of course.
+
+            See also -regress_censor_motion_file.
 
         -regress_basis BASIS    : specify the regression basis function
 

@@ -298,8 +298,8 @@ if ( $was_censored ) then
         set st = `1deval -a $xstim"[$index]" -expr 'bool(a)' | grep 1 | wc -l`
         set sc = `1deval -a $xstim"[$index]" -b $censor_dset -expr 'bool(a*b)'\
                          | grep 1 | wc -l`
-        set sc = `ccalc -i "$st-$sc"`      # change to num censored
-        set ff = `ccalc "$sc/$st"`         # and the fraction censored
+        set sc = `ccalc -i "$st-$sc"`           # change to num censored
+        set ff = `ccalc -form '%.3f' "$sc/$st"` # and the fraction censored
 
         # keep lists of reponse TRs, # censored and fractions censored
         # (across all stimulus regressors)
@@ -482,9 +482,14 @@ g_history = """
    0.16 Feb 10, 2012:
         - make tcat files optional (for J Britton)
         - apply prefix to driver commands
+   0.17 Mar 21, 2012:
+        - look harder for motion files
+        - use '3dinfo -ad3' for voxel resolution (so no negatives)
+        - use 3 decimal places for TR censor fractions
+   0.18 Apr 12, 2012: replace enumerate(), for backport to python 2.2
 """
 
-g_version = "gen_ss_review_scripts.py version 0.16, February 10, 2012"
+g_version = "gen_ss_review_scripts.py version 0.18, April 12, 2012"
 
 g_todo_str = """
    - figure out template_space
@@ -632,7 +637,8 @@ class MyInterface:
       # ------------------------------------------------------------
       # process options sequentially, to make them like a script
       errs = 0
-      for oind, opt in enumerate(uopts.olist):
+      for oind in range(len(uopts.olist)):
+         opt = uopts.olist[oind]
          uvar = opt.name[1:]
 
          # check for anything to skip
@@ -1059,8 +1065,7 @@ class MyInterface:
       glist = glob.glob(gform)
       if len(glist) == 0:
          # try a more general form
-         gform = 'pb*r01*volreg+%s.HEAD' \
-                 % (self.uvars.subj, self.uvars.final_view)
+         gform = 'pb*r01*volreg+%s.HEAD' % self.uvars.final_view
          glist = glob.glob(gform)
 
       if len(glist) == 0:
@@ -1270,6 +1275,15 @@ class MyInterface:
       gstr = 'dfile.rall.1D'
       if os.path.isfile(gstr):
          self.uvars.motion_dset = gstr
+         return 0
+
+      # else go 1D or text files with motion in the name
+      glist = glob.glob('*motion*.1D')
+      if len(glist) == 0: glist = glob.glob('*motion*.txt')
+      if len(glist) > 1:
+         self.uvars.motion_dset = glist[0]
+         if self.cvars.verb > 1:
+            print '-- guessing motion_dset = %s' % self.uvars.motion_dset
          return 0
 
       print '** failed to find motion parameter dset, continuing...'
@@ -1566,7 +1580,7 @@ class MyInterface:
       if sset != None:
          sstr = 'echo "final stats dset          : $stats_dset"\n' \
                 'echo "final voxel resolution    : '               \
-                                        '`3dAttribute DELTA $stats_dset`"\n'
+                                        '`3dinfo -ad3 $stats_dset`"\n'
       else: sstr = ''
 
       txt = g_overview_str + astr + sstr + 'echo ""\n' + g_mot_n_trs_str
@@ -1662,9 +1676,7 @@ class MyInterface:
       var = 'final_anat'
       if self.uvars.is_not_empty(var):
          txt += format % (var, self.uvars.val(var))
-      else:
-         print '** basic script: missing variable %s' % var
-         errs += 1
+      # else: okay - not required
 
       var = 'mask_dset'
       if self.uvars.is_not_empty(var):

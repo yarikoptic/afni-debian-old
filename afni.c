@@ -1429,8 +1429,8 @@ void AFNI_sigfunc_alrm(int sig)
      "Out of Cheese Error; Please Install Wensleydale and Try Again" ,
      "If at first you don't succeed -- call it version 1.0"          ,
      "Never trust a statistic you haven't faked yourself"            ,
-     "May your teeth never be replaced by woolen socks"              ,
-     "Hasta la vista and so long for now"                            ,
+     "May your teeth never be replaced by damp woolen socks"         ,
+     "Hasta la vista, Au revoir, and so long for now"                ,
      "Farewell, and may an elephant never sit on your computer"      ,
      "So long, and may the bluebird of happiness fly up your nose"   ,
      "Ta ta, and may an elephant caress you gently with his toes"    ,
@@ -1441,15 +1441,17 @@ void AFNI_sigfunc_alrm(int sig)
      "Are we there yet?"                                             ,
      "Never give up, never surrender"                                ,
      "Activate the Omega 13"                                         ,
-     "No time for pleasantries; we have a level-5 emergency!"        ,
+     "No time for pleasantries Kyle; we have a Level 5 emergency!"   ,
      "Digitize me, Fred"                                             ,
      "Drink to me only with thine eyes, and I will drink with mine"  ,
      "O Captain, My Captain, rise up and hear the bells"             ,
      "Ever returning spring, trinity sure to me you bring"           ,
+     "What a long strange trip it's been"                            ,
+     "Sometime the light shines on me, other times I can barely see" ,
 
      "May the Dark Side of the Force get lost on the way to your data"                ,
      "The Andromeda Galaxy is on a collision course with us -- be prepared"           ,
-     "AFNI is very user friendly -- we are just selective about who our friends are"  ,
+     "It is very user friendly -- we are just selective about who our friends are"    ,
      "May it be a light to you in dark places, when all other lights go out"          ,
      "No in elenath hilar nan had gin -- May the stars shine upon your path"          ,
      "There is a time for departure even when there is no place to go"                ,
@@ -1639,8 +1641,8 @@ int main( int argc , char *argv[] )
      AFNI_start_version_check() ;               /* 21 Nov 2002 */
 
 #ifdef DARWIN
-   if( !THD_is_directory("/sw/bin") )
-     WARNING_message("On Mac OS X, you should install the fink software:\n"
+   if( 0 && !THD_is_directory("/sw/bin") && !AFNI_noenv("AFNI_IMSAVE_WARNINGS") )
+     WARNING_message("On Mac OS X, it helps if you install the fink software:\n"
                      "            cf. http://fink.sourceforge.net/\n"
                      "            and then do\n"
                      "            fink install netpbm\n" ) ;
@@ -6633,23 +6635,20 @@ DUMP_IVEC3("             new_ib",new_ib) ;
      else          AFNI_process_redisplay( im3d ) ;
    }
 
-   if( !doflash && im3d->vwid->imag->pop_whereami_twin != NULL ){
+   if( !doflash && AFNI_HAVE_WAMI_WIDGET(im3d) ){
 
       char *tlab = AFNI_ttatlas_query( im3d ) ;
 
-      if( tlab == NULL ){
-         MCW_textwin_alter( im3d->vwid->imag->pop_whereami_twin ,
-                           "\n** Can't compute Talairach coordinates now **\n");
-      } else {
-         MCW_textwin_alter( im3d->vwid->imag->pop_whereami_twin , tlab ) ;
-         free(tlab) ;
-      }
+      AFNI_alter_wami_text(im3d, tlab);
+      
+      if (tlab) free(tlab) ;
    }
 
    EXRR ;
 }
 #undef EXRR
 
+                                       
 /*-------------------------------------------------------------------------
    get the n-th overlay as an MRI_IMAGE *
    (return NULL if none;  note that the result must be mri_freed by the user)
@@ -9223,6 +9222,8 @@ ENTRY("AFNI_imag_pop_CB") ;
             CAN_TALTO(im3d)                          ){
 
       char *tlab ;
+      tlab = AFNI_ttatlas_query( im3d ) ;
+      if (AFNI_wami_output_mode() == 0) { /* old spice */
 
       /*- if one is already open, kill it -*/
 
@@ -9234,7 +9235,6 @@ ENTRY("AFNI_imag_pop_CB") ;
 
       /*- get TT atlas location, if any -*/
 
-      tlab = AFNI_ttatlas_query( im3d ) ;
 
       /*- open a window to show it -*/
 
@@ -9296,9 +9296,11 @@ ENTRY("AFNI_imag_pop_CB") ;
           "    knowledge, skills, and abilities as well.\n"
           "* Do NOT use this feature for surgical or therapeutic planning!!!"
          ) ;
-
-         free(tlab) ;
       }
+      } else { /* web */
+         AFNI_alter_wami_text(im3d, tlab); 
+      } /* web */
+      if (tlab) free(tlab) ;
    }
 
    /*---- 12 Jul 2001 ----*/
@@ -9455,6 +9457,74 @@ void AFNI_pop_whereami_kill( Three_D_View *im3d )
    im3d->vwid->imag->pop_whereami_twin = NULL ;
    return ;
 }
+
+
+/*-------------------------------------------------------------------------
+   A newer output form for whereami 
+---------------------------------------------------------------------------*/
+static int htmlwami_open        = 0 ;
+
+void AFNI_htmlwami_killfun( XtPointer pp ){
+   Three_D_View *im3d = (Three_D_View *)pp;
+   
+   if (!im3d) return;
+
+   im3d->vwid->imag->pop_whereami_htmlwin=NULL;
+   /* not there yet 
+   MCW_unregister_hint( im3d->vwid->imag->pop_whereami_twin->wtext ) ;
+   MCW_unregister_help( im3d->vwid->imag->pop_whereami_twin->wtext ) ;
+   */
+
+   htmlwami_open = 0 ; return ;
+}
+ 
+void AFNI_htmlwami_CB( Widget w , XtPointer cd , XtPointer cbd )
+{
+   Three_D_View *im3d = (Three_D_View *)cd ;
+   char *uinf=(char *)cbd , *inf=NULL ; int ii ;
+   MCW_htmlwin *htmlwami_hw = im3d->vwid->imag->pop_whereami_htmlwin;
+   
+   ENTRY("AFNI_htmlwami_CB") ;
+   
+   if( uinf != NULL && *uinf != '\0' ){
+      inf = (char *)malloc(sizeof(char)*(strlen(uinf)+16)) ;
+      strcpy(inf,"wami:") ; strcat(inf,uinf) ; 
+   }
+   
+   if( htmlwami_open && htmlwami_hw != NULL ){
+     XMapRaised( XtDisplay(htmlwami_hw->wshell), XtWindow(htmlwami_hw->wshell)) ;
+     MCW_htmlwin_alter( htmlwami_hw , inf );
+     EXRETURN ;
+   } else {     
+     htmlwami_hw = new_MCW_htmlwin( im3d->vwid->imag->topper, inf,
+                               AFNI_htmlwami_killfun , im3d  , NULL, 0    ) ;
+     im3d->vwid->imag->pop_whereami_htmlwin = htmlwami_hw;
+   }
+   free(inf) ; inf = NULL ; htmlwami_open = 1 ; 
+
+   EXRETURN ;
+}
+
+void AFNI_alter_wami_text(Three_D_View *im3d, char *utlab) 
+{
+   char *tlab=NULL;
+   
+   ENTRY("AFNI_alter_wami_text");
+   
+   if (!im3d || !im3d->vwid || !im3d->vwid->imag) EXRETURN;
+   
+   if (!utlab) tlab = "\n** Can't compute Talairach coordinates now **\n";
+   else tlab = utlab;
+   
+   if (AFNI_wami_output_mode() == 0) {
+      if (!im3d->vwid->imag->pop_whereami_twin) EXRETURN;
+      MCW_textwin_alter( im3d->vwid->imag->pop_whereami_twin , tlab ) ;
+   } else {
+      AFNI_htmlwami_CB( NULL , (XtPointer)im3d , (XtPointer) tlab );
+   }
+   EXRETURN;
+}  
+
 
 /*-------------------------------------------------------------------------*/
 

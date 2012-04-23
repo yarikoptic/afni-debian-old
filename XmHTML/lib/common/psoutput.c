@@ -1,14 +1,14 @@
 #ifndef production
-static char rcsId[]="$Header: /share/cvs/AFNI/src/XmHTML/lib/common/psoutput.c,v 1.1 2011/06/30 16:10:38 rwcox Exp $";
+static char rcsId[]="$Header: /share/cvs/AFNI/src/XmHTML/lib/common/psoutput.c,v 1.2 2012/03/01 17:56:31 ziad Exp $";
 #endif
 /*****
 * psoutput.c : XmHTML Postscript output routines
 *
-* This file Version	$Revision: 1.1 $
+* This file Version	$Revision: 1.2 $
 *
 * Creation date:		Tue Nov 17 13:49:18 CET 1998
-* Last modification: 	$Date: 2011/06/30 16:10:38 $
-* By:					$Author: rwcox $
+* Last modification: 	$Date: 2012/03/01 17:56:31 $
+* By:					$Author: ziad $
 * Current State:		$State: Exp $
 *
 * Authors:				Scott Gregory, gregory@sccoast.net
@@ -77,6 +77,9 @@ static char rcsId[]="$Header: /share/cvs/AFNI/src/XmHTML/lib/common/psoutput.c,v
 /*****
 * ChangeLog 
 * $Log: psoutput.c,v $
+* Revision 1.2  2012/03/01 17:56:31  ziad
+* Cput
+*
 * Revision 1.1  2011/06/30 16:10:38  rwcox
 * Cadd
 *
@@ -1841,10 +1844,11 @@ pstkTextWidth(XmHTMLfont *font, const char* string, int count)
 	char *chPtr;
 	int width = 0;
 	int i = 0;
-
-	for(chPtr = string; i < count; chPtr++, i++)
+   fprintf(stderr,"Warning: This function does nothing, returning 0 width.\n");
+	for(chPtr = (char*)string; i < count; chPtr++, i++)
 	{
 	}
+   return(0); /* Looks like an incomplete function */
 }
 
 #if 0

@@ -3,7 +3,8 @@
 
 #ifdef DONT_USE_HTMLWIN  /*-------------------- dummy routines ------------------------------*/
 
-MCW_htmlwin * new_MCW_htmlwin( Widget w, char *m, void_func *kf, XtPointer kd ){ return NULL ; }
+MCW_htmlwin * new_MCW_htmlwin( Widget w, char *m, void_func *kf, XtPointer kd , 
+                               MCW_action_items *mai, int nact){ return NULL ; }
 void MCW_htmlwin_alter( MCW_htmlwin *hw, char *mmm ){ return ; }
 
 #else                    /*---------- non-dummy routines --------------------*/
@@ -156,6 +157,11 @@ ENTRY("htmlize") ;
        free(dnam) ;
      }
 
+   } else if( strncmp(msg,"wami:",5) == 0 ){      /* wami love */
+      mmm = (char *)malloc(sizeof(char)*(strlen(msg)+64)) ;
+      strcpy(mmm,"<html><body>\n") ;
+      strcat(mmm,msg+strlen("wami:")) ;
+      strcat(mmm,"\n</body></html>") ;
    } else {                                                 /* add HTML stuff */
      mmm = (char *)malloc(sizeof(char)*(strlen(msg)+64)) ;
      strcpy(mmm,"<html><body>\n") ;
@@ -176,17 +182,27 @@ ENTRY("htmlize") ;
    RETURN(mmm) ;
 }
 
+/* This is a callback to deal with some refresh problems
+   that should have been handled by the XmHTML library.
+   For now this call is not needed. It looks like the patching
+   of XmHTML did the trick ZSS March 2012 */
+void RefreshHTML_AtEvent( Widget w , XtPointer client_data ,
+                  XEvent * ev , Boolean * continue_to_dispatch )
+{
+    XmHTMLRefresh(client_data);
+}
+
 /*----------------------------------------------------------------------------*/
 /* Open a window with an XmHTML widget containing msg.
    If msg starts with "file:", then it indicates a file to read and display.
    Otherwise, it is the content of the page directly.
 *//*--------------------------------------------------------------------------*/
-
 MCW_htmlwin * new_MCW_htmlwin( Widget wpar , char *msg ,
-                               void_func *kill_func , XtPointer kill_data )
+                               void_func *kill_func , XtPointer kill_data,
+                               MCW_action_item *umai, int nact)
 
 {
-   int wx,hy,xx,yy , xp,yp , scr_width,scr_height , xr,yr , xpr,ypr , ii,nact ;
+   int wx,hy,xx,yy , xp,yp , scr_width,scr_height , xr,yr , xpr,ypr , ii ;
    int swid , shi ;
    Position xroot , yroot ;
    Screen *scr ;
@@ -194,6 +210,7 @@ MCW_htmlwin * new_MCW_htmlwin( Widget wpar , char *msg ,
    char *wtype = "help" ;
    MCW_htmlwin *hw ;
    char *mymsg ;
+   MCW_action_item *mai=NULL;
    static Pixel afg=(Pixel)0 , afgv=(Pixel)0 ;
 
 ENTRY("new_MCW_htmlwin") ;
@@ -202,7 +219,8 @@ ENTRY("new_MCW_htmlwin") ;
 
    if( wpar == NULL || !XtIsRealized(wpar) || msg == NULL || *msg == '\0' )
      RETURN(NULL) ;
-
+   
+   
    /*-- set position based on parent and screen geometry --*/
 
    MCW_widget_geom( wpar , &wx,&hy,&xx,&yy ) ;     /* geometry of parent */
@@ -253,14 +271,19 @@ ENTRY("new_MCW_htmlwin") ;
 
    /*-- create action area --*/
 
-   nact = 1 ;
-   for( ii=0 ; ii < nact ; ii++ ){
-     HWIN_act[ii].data     = (XtPointer)hw ;
-     HWIN_act[ii].make_red = 0 ;
+   if (!umai) { /* default action item */
+      mai = HWIN_act; nact = 1;
+      for( ii=0 ; ii < nact ; ii++ ){
+        mai[ii].data     = (XtPointer)hw ;
+        mai[ii].make_red = 0 ;
+      }
+      mai[nact-1].make_red = 1 ;
+   } else { 
+      /* use user preference */
+      mai = umai; 
    }
-   HWIN_act[nact-1].make_red = 1 ;
 
-   hw->wactar = MCW_action_area( hw->wtop , HWIN_act , nact ) ;
+   hw->wactar = MCW_action_area( hw->wtop , mai , nact ) ;
 
    XtVaSetValues( hw->wactar ,
                      XmNleftAttachment , XmATTACH_FORM ,
@@ -316,6 +339,23 @@ STATUS("create HTML widget") ;
                 NULL ) ;
    XtAddCallback( hw->whtml, XmNactivateCallback, (XtCallbackProc)anchorCB, NULL ) ;
    XtAddCallback( hw->whtml, XmNarmCallback     , (XtCallbackProc)armCB   , NULL ) ;
+   
+#if 0 /* This was needed to deal with some refreshing problems when the scrollbar
+         was moved. The patch in XmHTML seems to have do the trick. These are
+         left here should we need to reuse them someday */
+   XtInsertEventHandler( hw->whtml ,        /* notify when */
+                         LeaveWindowMask ,  /* pointer leaves */
+                         FALSE ,            /* this window */
+                         RefreshHTML_AtEvent,
+                         (XtPointer) hw->whtml ,
+                         XtListTail ) ;     /* last in queue */      
+   XtInsertEventHandler( hw->whtml ,        /* notify when */
+                         EnterWindowMask ,  /* pointer leaves */
+                         FALSE ,            /* this window */
+                         RefreshHTML_AtEvent,
+                         (XtPointer) hw->whtml ,
+                         XtListTail ) ;     /* last in queue */      
+#endif
 
 STATUS("manage HTML widgets") ;
 
@@ -364,7 +404,6 @@ void MCW_htmlwin_alter( MCW_htmlwin *hw , char *mmm )
 ENTRY("MCW_htmlwin_alter") ;
 
    if( hw == NULL || mmm == NULL || *mmm == '\0' ) EXRETURN ;
-
    msg = htmlize(mmm) ;
 
    XmHTMLTextSetString( hw->whtml , msg ) ;

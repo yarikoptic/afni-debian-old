@@ -365,6 +365,7 @@ printf("\njpeg_compress %d\n", jpeg_compress);
 
    pg  = THD_find_executable( "ppmtogif" ) ;
    pg2 = THD_find_executable( "ppmquant" ) ;
+   if( pg2 == NULL ) pg2 = THD_find_executable( "pnmquant" ) ;
    if( pg != NULL && pg2 != NULL ){
       int adel=20 ; char asuff[64] ;               /* 16 Jan 2003 */
 
@@ -418,14 +419,16 @@ printf("\njpeg_compress %d\n", jpeg_compress);
       str = AFMALL( char, strlen(pg)+32) ;
       sprintf(str,"%s -c none %%s",pg) ;
       bv <<= 1 ; ADDTO_PPMTO(str,"tif",bv) ;
-   } else {                                     /* 03 Jul 2001:      */
-      pg = THD_find_executable( "pnmtotiff" ) ; /* must use ppm2tiff */
-      if( pg != NULL ){                         /* and pnmtotiff     */
-         str = AFMALL( char, strlen(pg)+32) ;   /* differently       */
+   } else {                                      /* 03 Jul 2001:      */
+      pg = THD_find_executable( "pnmtotiff" ) ;
+      if( pg == NULL )
+        pg = THD_find_executable( "pamtotiff" ); /* must use ppm2tiff */
+      if( pg != NULL ){                          /* and pnmtotiff     */
+         str = AFMALL( char, strlen(pg)+32) ;    /* differently       */
          sprintf(str,"%s > %%s",pg) ;
          bv <<= 1 ; ADDTO_PPMTO(str,"tif",bv) ;
       }
-      else { CANT_FIND("ppm2tiff OR pnmtotiff","TIFF"); need_netpbm++; }
+      else { CANT_FIND("ppm2tiff OR pnmtotiff OR pamtotiff","TIFF"); need_netpbm++; }
    }
 
    /*-- write Windows BMP --*/
@@ -455,7 +458,9 @@ printf("\njpeg_compress %d\n", jpeg_compress);
       sprintf(str,"%s -noturn > %%s",pg) ;
       bv <<= 1 ; ADDTO_PPMTO(str,"eps",bv) ;
    }
+#if 0
    else { CANT_FIND("pnmtops","EPS"); need_netpbm++; }
+#endif
 
 #if 0
    /*-- write a PDF file (God only knows why) --*/
@@ -12775,7 +12780,7 @@ void ISQ_save_anim( MCW_imseq *seq, char *prefin, int bot, int top, int mode )
 {
    int ii , kf , ll ;
    MRI_IMAGE *tim , *flim ;
-   char fname[256] , *prefix ;
+   char *fnamep=NULL, *prefix ;
    THD_string_array *agif_list=NULL ;
    char tsuf[8] ;
    float dx,dy ;
@@ -12854,9 +12859,10 @@ ENTRY("ISQ_save_anim") ;
      ERROR_message("Bad image save filename '%s'\a",prefin) ; EXRETURN ;
    }
    ll = strlen(prefin) ;
-   prefix = (char*)malloc( sizeof(char) * (ll+8) ) ;
+   prefix = (char*)calloc( ll+16, sizeof(char)) ;
    strcpy( prefix , prefin ) ;
-
+   fnamep = (char*)calloc( ll+32,  sizeof(char)) ;
+   
    ppo = THD_trailname(prefix,0) ;               /* strip directory */
 
    if( prefix[ll-1] != '.' ){  /* add a . at the end */
@@ -13003,31 +13009,31 @@ ENTRY("ISQ_save_anim") ;
 
         switch( mode ){
           case AGIF_MODE:
-            sprintf( fname, "%s%s.%05d.gif" , prefix,tsuf, akk) ;
-            sprintf( filt , togif  , fname ) ;  /* free colormap */
+            sprintf( fnamep, "%s%s.%05d.gif" , prefix,tsuf, akk) ;
+            sprintf( filt , togif  , fnamep ) ;  /* free colormap */
             if( agif_list == NULL ) INIT_SARR(agif_list) ;
-            ADDTO_SARR(agif_list,fname) ;
+            ADDTO_SARR(agif_list,fnamep) ;
           break ;
 
           case MPEG_MODE:
-            sprintf( fname, "%s%s.%06d.ppm" , ppo,tsuf, akk) ;
-            sprintf( filt , ppmto_ppm_filter , fname ) ;
+            sprintf( fnamep, "%s%s.%06d.ppm" , ppo,tsuf, akk) ;
+            sprintf( filt , ppmto_ppm_filter , fnamep ) ;
             if( agif_list == NULL ) INIT_SARR(agif_list) ;
-            ADDTO_SARR(agif_list,fname) ;
+            ADDTO_SARR(agif_list,fnamep) ;
           break ;
 
           case JPEG_MODE:
-            sprintf( fname, "%s%05d.jpg" , prefix, kf) ;
-            sprintf( filt , ppmto_jpg95_filter , fname ) ;
+            sprintf( fnamep, "%s%05d.jpg" , prefix, kf) ;
+            sprintf( filt , ppmto_jpg95_filter , fnamep ) ;
             if( agif_list == NULL ) INIT_SARR(agif_list) ;
-            ADDTO_SARR(agif_list,fname) ;
+            ADDTO_SARR(agif_list,fnamep) ;
           break ;
 
           case PNG_MODE:
-            sprintf( fname, "%s%05d.png" , prefix, kf) ;
-            sprintf( filt , ppmto_png_filter , fname ) ;
+            sprintf( fnamep, "%s%05d.png" , prefix, kf) ;
+            sprintf( filt , ppmto_png_filter , fnamep ) ;
             if( agif_list == NULL ) INIT_SARR(agif_list) ;
-            ADDTO_SARR(agif_list,fname) ;
+            ADDTO_SARR(agif_list,fnamep) ;
           break ;
         }
 #ifndef CYGWIN
@@ -13171,5 +13177,5 @@ ENTRY("ISQ_save_anim") ;
 
    /*--- go home ---*/
 
-   DESTROY_SARR(agif_list) ; free(prefix) ; EXRETURN ;
+   DESTROY_SARR(agif_list) ; free(prefix) ; free(fnamep); EXRETURN ;
 }

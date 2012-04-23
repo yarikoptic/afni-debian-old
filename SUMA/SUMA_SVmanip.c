@@ -566,6 +566,7 @@ SUMA_SurfaceViewer *SUMA_Alloc_SurfaceViewer_Struct (int N)
       SV->CurGroupName = NULL;
       
       SV->PolyMode = SRM_Fill;
+      SV->DO_DrawMask = SDODM_All;
       
       #if SUMA_BACKFACE_CULL
          SV->BF_Cull = YUP;
@@ -1357,6 +1358,7 @@ char *SUMA_SurfaceViewer_StructInfo (SUMA_SurfaceViewer *SV, int detail)
    SS = SUMA_StringAppend_va(SS,"   Show Eye Axis %d\n", SV->ShowEyeAxis);
    SS = SUMA_StringAppend_va(SS,"   Show Cross Hair %d\n", SV->ShowCrossHair);
    SS = SUMA_StringAppend_va(SS,"   PolyMode %d\n", SV->PolyMode);
+   SS = SUMA_StringAppend_va(SS,"   DO_DrawMask %d\n", SV->DO_DrawMask);
    SS = SUMA_StringAppend_va(SS,"   Blend_Mode %d\n", SV->Blend_Mode);
    
    SS = SUMA_StringAppend_va(SS,"   Group Name %s, indexed %d\n", SV->CurGroupName, SV->iCurGroup);
@@ -2197,10 +2199,10 @@ SUMA_CommonFields * SUMA_Create_CommonFields ()
             fprintf (SUMA_STDERR,   
                "Warning %s:\n"
                "Bad value for environment variable SUMA_AllowDsetReplacement\n"
-               "Assuming default of NO", FuncName);
-            cf->Allow_Dset_Replace = NOPE;
+               "Assuming default of YES", FuncName);
+            cf->Allow_Dset_Replace = YUP;
          }
-      } else cf->Allow_Dset_Replace = NOPE;
+      } else cf->Allow_Dset_Replace = YUP;
    }
    
    cf->IgnoreVolreg = NOPE;
@@ -2269,6 +2271,7 @@ SUMA_CommonFields * SUMA_Create_CommonFields ()
    
    cf->autorecord = SUMA_SetAutoRecord(getenv("SUMA_AutoRecordPrefix"));
 
+   cf->SaveList = NULL;
    return (cf);
 
 }
@@ -2709,6 +2712,11 @@ SUMA_Boolean SUMA_Free_CommonFields (SUMA_CommonFields *cf)
    if (cf->autorecord) { 
       cf->autorecord = SUMA_Free_Parsed_Name(cf->autorecord);
    }
+   
+   if (cf->SaveList) {
+      dlist_destroy(cf->SaveList); SUMA_free(cf->SaveList);
+   }
+   
    /* if (cf) free(cf); */ /* don't free this stupid pointer since it is used
                         when main returns with SUMA_ RETURN 
                         (typo on purpose to avoid upsetting AnalyzeTrace. 
@@ -2896,6 +2904,9 @@ char * SUMA_CommonFieldsInfo (SUMA_CommonFields *cf, int detail)
    
    SS = SUMA_StringAppend_va(SS, "autorecord: %s\n", 
                   cf->autorecord ? cf->autorecord->FullName:"NULL");
+                  
+   SS = SUMA_StringAppend_va(SS, "SaveList: %d elements\n",
+                  cf->SaveList ? dlist_size(cf->SaveList):0);
                   
    /* clean up */
    SS = SUMA_StringAppend_va(SS, NULL);

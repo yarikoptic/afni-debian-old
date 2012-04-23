@@ -8,7 +8,18 @@
 /*----------------- be in afni.h. ZSS Feb. 06----------------*/
 #define TTO_LMAX    (ATLAS_CMAX+16)
 #define TTO_FORMAT  "%s [%3.0f,%3.0f,%3.0f]"
+#define IS_BLANK(c) ( ( (c) == ' '  || (c) == '\t' || \
+                        (c) == '\n' || (c) == '\v' || \
+                        (c) == '\f' || (c) == '\r') ? 1 : 0 )
 
+#define IS_PUNCT(m) (   m=='[' || m==']' || \
+                        m=='<' || m=='>' || \
+                        m==':' || m==';' || \
+                        m=='(' || m==')' || \
+                        m=='*' || m==',' || \
+                        m=='?') 
+      
+#define IS_QUOTE(m) (   m=='"' || m=='\'' )
 
 #ifdef MAIN
    /* Table moved to thd_ttatlas_query.c, access is no longer
@@ -104,6 +115,7 @@ typedef struct {
    char  **atname; /*!< Integer code of atlas */
    float *prob; /*!< probability, if applicable, of being of a particular label */
    float *radius;   /*!< distance, search distance for reported label.*/ 
+   char **webpage; /*!< webpages for a web-atlas for whereami location */
 } ATLAS_ZONE;
 
 typedef struct {
@@ -147,13 +159,13 @@ typedef struct {
 } ATLAS_XFORM;
 
 typedef struct {
-   char *atlas_dset_name;
-   char *atlas_space;
-   char *atlas_name;
-   char *atlas_description;
-   char *atlas_comment;
+   char *dset_name;
+   char *space;
+   char *name;
+   char *description;
+   char *comment;
    char *atlas_type;  /* web or NULL for now, for web type, dset is http webpage address */
-   char *atlas_orient;  /* string to specify xyz order requests - Elsevier's web version uses "RSA"*/
+   char *orient;  /* string to specify xyz order requests - Elsevier's web version uses "RSA"*/
    int atlas_found;
    ATLAS_DSET_HOLDER *adh;
 } ATLAS; /*!< All char * should be initialized when .niml file is loaded,
@@ -164,18 +176,18 @@ typedef struct {
 
 /* macro accessors for the atlas fields - first version is to pointer location, 
    second _S version is for default string if NULL string in structure */
-#define ATL_COMMENT(xa) ( ( (xa) && (xa)->atlas_comment) ?   \
-                           (xa)->atlas_comment : NULL )
+#define ATL_COMMENT(xa) ( ( (xa) && (xa)->comment) ?   \
+                           (xa)->comment : NULL )
 #define ATL_COMMENT_S(xa) ( (ATL_COMMENT(xa)) ? \
                               (ATL_COMMENT(xa)) : "None" )
 
-#define ATL_DESCRIPTION(xa) ( ( (xa) && (xa)->atlas_description ) ?   \
-                           (xa)->atlas_description : NULL )
+#define ATL_DESCRIPTION(xa) ( ( (xa) && (xa)->description ) ?   \
+                           (xa)->description : NULL )
 #define ATL_DESCRIPTION_S(xa) ( (ATL_DESCRIPTION(xa)) ? \
                                  (ATL_DESCRIPTION(xa)) : "None" )
 
-#define ATL_NAME(xa) ( ( (xa) && (xa)->atlas_name) ?   \
-                           (xa)->atlas_name : NULL )
+#define ATL_NAME(xa) ( ( (xa) && (xa)->name) ?   \
+                           (xa)->name : NULL )
 #define ATL_NAME_S(xa) ( (ATL_NAME(xa)) ? \
                                  (ATL_NAME(xa)) : "None" )
                                  
@@ -185,8 +197,8 @@ typedef struct {
 #define ATL_ADH_SET(xa) ( ( (xa) && (xa)->adh ) ? \
                            (xa)->adh->params_set : 0 )                            
 
-#define ATL_ORIENT(xa) ( ( (xa) && (xa)->atlas_orient) ?   \
-                           (xa)->atlas_orient : NULL )
+#define ATL_ORIENT(xa) ( ( (xa) && (xa)->orient) ?   \
+                           (xa)->orient : NULL )
 #define ATL_ORIENT_S(xa) ( (ATL_ORIENT(xa)) ? \
                               (ATL_ORIENT(xa)) : "RAI" )
 
@@ -214,8 +226,10 @@ typedef struct {
 } ATLAS_SPACE;
 
 typedef struct {
-   char *atlas_template;
-   char *atlas_space;
+   char *template;
+   char *space;
+   char *description;
+   char *comment;
 } ATLAS_TEMPLATE;
 
 typedef struct {
@@ -278,6 +292,7 @@ void Set_Whereami_Max_Rad(float n);
 THD_3dim_dataset * get_atlas(char *epath, char *aname) ;
 char * get_atlas_dirname(void) ; /* 31 Jan 2008 -- RWCox */
 char Is_Side_Label(char *str, char *opt);
+int qmode_int(int *iv, int ni);
 int *z_rand_order(int bot, int top, long int seed);
 int *z_iqsort (float *x , int nx );
 int *z_idoubleqsort (double *x , int nx );
@@ -319,14 +334,18 @@ THD_string_array *approx_str_sort_Ntfile(
 char **approx_str_sort_phelp(char *prog, int *N_ws, char *str, 
                             byte ci, float **sorted_score,
                             APPROX_STR_DIFF_WEIGHTS *Dwi,
-                            APPROX_STR_DIFF **Dout);
+                            APPROX_STR_DIFF **Dout, int verb);
 char **approx_str_sort_all_popts(char *prog, int *N_ws, 
                             byte ci, float **sorted_score,
                             APPROX_STR_DIFF_WEIGHTS *Dwi,
-                            APPROX_STR_DIFF **Dout);
+                            APPROX_STR_DIFF **Dout,
+                            int uopts, int verb);
+char *get_updated_help_file(int force_recreate, byte verb, char *progname);
+int prog_complete_command (char *prog, char *ofile);
 char **approx_str_sort_readmes(char *str, int *N_r);
 char *find_readme_file(char *str);
 int view_text_file(char *progname);
+void view_prog_help(char *prog);
 void web_prog_help(char *prog);
 void web_class_docs(char *prog);
 int view_web_link(char *link, char *browser);
@@ -339,7 +358,7 @@ char * Clean_Atlas_Label( char *lb);
 char * Clean_Atlas_Label_to_Prefix( char *lb);
 ATLAS_ZONE *Get_Atlas_Zone(ATLAS_QUERY *aq, int level);
 ATLAS_ZONE *Atlas_Zone(ATLAS_ZONE *zn, int level, char *label, int code, 
-                       float prob, float within, char *aname) ;
+                       float prob, float within, char *aname, char *webpage) ;
 ATLAS_ZONE *Free_Atlas_Zone(ATLAS_ZONE *zn);
 void Set_Show_Atlas_Mode(int md);
 void Show_Atlas_Zone(ATLAS_ZONE *zn, ATLAS_LIST *atlas_list);
@@ -416,6 +435,7 @@ int is_small_TT(ATLAS *atlas);
 int is_big_TT(ATLAS *atlas);
 char * TT_whereami_default_spc_name (void);
 int is_Dset_Space_Named(THD_3dim_dataset *dset, char *name);
+int is_Dset_Atlasy(THD_3dim_dataset *dset, ATLAS_LIST *atlas_alist);
 char *gen_space_str(char *space_str);
 int equivalent_space(char *inspace_str);
 char *get_out_space(void);
@@ -457,6 +477,9 @@ int get_wami_web_reqtype(void);
 void set_wami_webpage(char *url);
 char * get_wami_webpage(void);
 void open_wami_webpage(void);
+int AFNI_wami_output_mode(void);
+void set_AFNI_wami_output_mode(int webflag);
+
 
 /* Transforms for going from one space to another */
 #if 0

@@ -560,6 +560,29 @@ ENTRY("storage_mode_from_filename");
     RETURN(STORAGE_UNDEFINED);
 }
 
+/* ------------------------------------------------------------- */
+/* return whether the given storage mode suggests a surface type
+ *
+ * Note that 3D, 1D and NIML do not imply either way, life is hard.
+ * For now, return as true for them.
+ *
+ * returns 0 or 1 as boolean                 04 Apr 2012 [rickr] */
+int is_surface_storage_mode( int smode )
+
+{
+ENTRY("is_surface_storage_mode");
+
+    if ( smode == STORAGE_BY_1D           ||
+         smode == STORAGE_BY_3D           ||
+         smode == STORAGE_BY_NIML         ||
+         smode == STORAGE_BY_NI_SURF_DSET ||
+         smode == STORAGE_BY_GIFTI 
+       ) RETURN(1);
+
+    RETURN(0);
+}
+
+
 int storage_mode_from_prefix( char * fname )
 {
    int sm=STORAGE_UNDEFINED;
@@ -659,6 +682,33 @@ ENTRY("has_known_non_afni_extension");
         mode  > LAST_STORAGE_MODE ) RETURN(0);
 
     RETURN(1); /* otherwise, we recognize it as non-AFNI */
+}
+
+/* --------------------------------------------------------------- */
+/* return 1 if smode is for a writable format   5 Mar 2012 [rickr] */
+
+int is_writable_storage_mode( int smode )
+{
+ENTRY("has_writable_extension");
+
+   switch (smode) {
+      case STORAGE_UNDEFINED:           RETURN(0);
+      case STORAGE_BY_ANALYZE:          RETURN(0);  /* returns NIFTI */
+      case STORAGE_BY_CTFMRI:           RETURN(0);
+      case STORAGE_BY_CTFSAM:           RETURN(0);
+      case STORAGE_BY_MPEG:             RETURN(0);
+
+      case STORAGE_BY_BRICK:            RETURN(1);
+      case STORAGE_BY_VOLUMES:          RETURN(1);
+      case STORAGE_BY_1D:               RETURN(1);
+      case STORAGE_BY_3D:               RETURN(1);
+      case STORAGE_BY_NIFTI:            RETURN(1);
+      case STORAGE_BY_NIML:             RETURN(1);
+      case STORAGE_BY_NI_SURF_DSET:     RETURN(1);
+      case STORAGE_BY_GIFTI:            RETURN(1);
+   }
+
+   RETURN(0); /* not writable */
 }
 
 /* ---------------------------------------------------- */

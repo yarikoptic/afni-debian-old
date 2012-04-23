@@ -316,12 +316,28 @@ g_history = """
     3.10 Feb 10, 2012:
         - added -check_results_dir option for ZSS
         - changed -tcat_outlier_warn_limit to -tcat_preSS_warn_limit
+    3.11 Mar  2, 2012: fixed $runs use with ricor of multiple runs
+        - problem noted by I Mukai
+        - output afni -ver in script
+    3.12 Mar  9, 2012:
+        - added $hemi to rm.mean dset during scaling
+        - added new '-overwrite_resp S' to @SUMA_AlignToExperiement command
+    3.13 Mar 14, 2012:
+        - test for global timing before local
+          (global timing would look like bad local timing)
+        - problem noted by P Pallett
+    3.14 Mar 21, 2012:
+        - use run_lengths list for TRs per run
+        - removed path from external motion file
+    3.15 Apr 12, 2012: backport to python 2.2
+        - thanks to L Broster for noting 2.2 problems
+    3.16 Apr 16, 2012: added -regress_bandpass, to bandpass during regression
 """
 
-g_version = "version 3.10, February 10, 2012"
+g_version = "version 3.16, April 16, 2012"
 
 # version of AFNI required for script execution
-g_requires_afni = "27 Jan 2012"
+g_requires_afni = "9 Mar 2012"
 
 # ----------------------------------------------------------------------
 # dictionary of block types and modification functions
@@ -448,6 +464,7 @@ class SubjProcSream:
         self.bash_cmd   = ''            # bash formatted exec_cmd
         self.tcsh_cmd   = ''            # tcsh formatted exec_cmd
         self.regmask    = 0             # apply any full_mask in regression
+        self.regress_orts = []          # list of ortvec [file, label] pairs
         self.origview   = '+orig'       # view could also be '+tlrc'
         self.view       = '+orig'       # (starting and 'current' views)
         self.xmat       = 'X.xmat.1D'   # X-matrix file (might go uncensored)
@@ -721,6 +738,8 @@ class SubjProcSream:
         self.valid_opts.add_opt('-regress_apply_ricor', 1, [],
                         acplist=['yes','no'],
                         helpstr="apply ricor regs in regression (def no)")
+        self.valid_opts.add_opt('-regress_bandpass', 2, [],
+                        helpstr="bandpass in this range during regression")
         self.valid_opts.add_opt('-regress_basis', 1, [],
                         helpstr="basis function to use in regression")
         self.valid_opts.add_opt('-regress_basis_multi', -1, [],
@@ -1525,16 +1544,18 @@ class SubjProcSream:
         if not self.check_setup_errors: stat_inc = ''
         else: stat_inc = '@ nerrors += $status      # accumulate error count\n'
 
-        self.fp.write('# %s\n'
+        self.fp.write('# %s\n'  \
                       '# script setup\n\n' % block_header('auto block: setup'))
 
         if len(stat_inc) > 0:
-            self.fp.write("# prepare to count setup errors\n"
+            self.fp.write("# prepare to count setup errors\n" \
                           "set nerrors = 0\n\n")
 
         # possibly check the AFNI version (via afni_history)
         opt = self.user_opts.find_opt('-check_afni_version')
         if not opt or opt_is_yes(opt):
+          self.fp.write('# take note of the AFNI version\n' \
+                        'afni -ver\n\n')
           self.fp.write(                                                      \
           '# check that the current AFNI version is recent enough\n'          \
           'afni_history -check_date %s\n'                                     \

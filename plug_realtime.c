@@ -78,6 +78,7 @@
 /** 02 Jun 2009: added ability to merge multichannel data            [RWCox] **/
 /** 02 Jun 2010: added ability to register merged data, and to align
                  channels via the same merge registration parameters [rickr] **/
+/** 15 Mar 2012: added AR_Mask_Dset, for per-run mask control        [rickr] **/
 
 
 /**************************************************************************/
@@ -367,11 +368,17 @@ static char helpstring[] =
    " YR [y-axis]  = If a realtime graph is generated, this entry specifies\n"
    "                  the vertical range for each motion parameter.\n"
    "\n"
-   " Mask         = Turns on sending extra data to serial_helper port.\n"
+   " Mask         = Specify a mask for sending extra information to external\n"
+   "                port (e.g. to serial_helper or realtime_receiver.py),\n"
+   "                based on 'Vals to Send'.\n"
+   "\n"
+   " Vals to Send = Controls sending extra data to serial_helper port.\n"
+   "                * None              : do not send extra information\n"
    "                * Motion Only       : send only the 6 motion parameters\n"
    "                * ROI Means         : also send a mean for each Mask ROI\n"
    "                * All Data          : send all Mask voxel data\n"
    "\n"
+   "                  --> see 'Mask', above\n"
    "                  --> see example F from 'Dimon -help'\n"
    "\n"
    " ChannelMerge = Turn on method for merging multi-channel information.\n"
@@ -395,7 +402,7 @@ static char helpstring[] =
    "                MergeRegister values:\n"
    "                    none         ==> no merge registration\n"
    "                    reg merged   ==> register merged datasets\n"
-   "                    reg channels ==> apply merge xform to all channel,\n"
+   "                    reg channels ==> apply merge xform to all channels,\n"
    "                            i.e. create 'registered' dataset per channel\n"
    "\n"
    " Chan List    = Select a list of channels to merge (otherwise use all).\n"
@@ -407,6 +414,11 @@ static char helpstring[] =
    " RT Write     = Turns on real time writing of individual time point data\n"
    "                  sets (either the acquired or volume registered data) to\n"
    "                  disk.\n"
+   "                    Off        : do nothing [default]\n"
+   "                    Acquired   : write each volume as it is acquired\n"
+   "                    Registered : write each registered volume\n"
+   "                    Merged     : write each merged volume\n"
+   "                                 (after being merged across channels)\n"
    "\n"
    "MULTICHANNEL ACQUISITION [Aug 2002]:\n"
    " Multiple image channels can be acquired (e.g., from multi-coil and/or\n"
@@ -414,10 +426,12 @@ static char helpstring[] =
    "  * These datasets will have names like Root#007_03 (for the 3rd channel\n"
    "    in the 7th acquisition).\n"
    "  * Functional activation cannot be computed with multichannel acquisition.\n"
-   "  * Registration cannot be computed with multichannel acquisition (yet).\n"
+   "  * Registration CAN be computed with multichannel acquisition.\n"
    "\n"
    "HOW TO SEND DATA:\n"
-   " See file README.realtime for details; see program rtfeedme.c for an example.\n"
+   " See file README.realtime for details on control information.\n"
+   " See program rtfeedme.c for an example of how to send realtime data.\n"
+   " See program Dimon for another example of how to send realtime data.\n"
    "\n"
 ;
 
@@ -561,6 +575,7 @@ typedef struct {
   static int g_mask_val_type = 1 ;                /* RT_mask_strings index   */
   static int g_show_times = 0 ;                   /* show MP comm times      */
   static int g_MP_send_ver = 0 ;                  /* send MP version         */
+  static char * g_mask_dset_name = NULL ;         /* strcpy(), from env      */
   static THD_3dim_dataset * g_mask_dset = NULL ;  /* mask aves w/ MP vals    */
   static rt_string_list drive_wait_list = {0,NULL} ;      /* DRIVE_WAIT list */
 
@@ -611,12 +626,15 @@ static int  RT_mp_comm_init     ( RT_input * rtin );
 static int  RT_mp_comm_init_vars( RT_input * rtin );
 static int  RT_mp_comm_send_data( RT_input * rtin, float *mp[6],int nt,int sub);
 
+static int  RT_mp_check_env_for_mask( void );
+static int  RT_mp_rm_env_mask   ( void );
 static int  RT_mp_get_mask_aves ( RT_input * rtin, int sub );
 static int  RT_mp_set_mask_data ( RT_input * rtin, float * data, int sub );
 static int  RT_mp_mask_free     ( RT_input * rtin );  /* 10 Nov 2006 [rickr] */
 
 static int  RT_mp_getenv        ( void );
 static int  RT_mp_show_time     ( char * mesg ) ;
+static int  RT_show_duration    ( char * mesg ) ;
 
 /* string list functions (used for DRIVE_WAIT commands) */
 static int add_to_rt_slist    ( rt_string_list * slist, char * str );
@@ -1030,6 +1048,8 @@ char * RT_main( PLUGIN_interface * plint )
          if (verbose)
             fprintf(stderr,"RTM: %s mask dataset, method '%s'\n",
                  g_mask_dset ? "found":"no", RT_mask_strings[g_mask_val_type]);
+
+         RT_mp_rm_env_mask() ; /* delete any mask from env */
 
          continue ;
       }
@@ -1493,6 +1513,10 @@ Boolean RT_worker( XtPointer elvis )
                                      "*       Heads Up!         *\n"
                                      "* Incoming realtime data! *\n"
                                      "***************************\n" ) ;
+
+      g_show_times = AFNI_yesenv("AFNI_REALTIME_SHOW_TIMES") ;
+      if( verbose > 1 ) g_show_times = 1;
+      if( g_show_times ) RT_show_duration("starting to receive realtime data");
 
       /** process header info in the data channel;
           note that there must be SOME header info this first time **/
@@ -2577,6 +2601,33 @@ static int RT_mp_mask_free( RT_input * rtin )
 }
 
 /* show time at ms resolution, wrapping per hour */
+static int RT_show_duration( char * mesg )
+{
+   struct timeval  tval ;
+   struct timezone tzone ;
+   static int s_sec = 0, s_msec = -1;
+   int        sec = 0, msec = 0, sdiff, mdiff;
+
+   gettimeofday( &tval , &tzone ) ;
+   sec = ((int)tval.tv_sec)%3600;
+   msec = ((int)tval.tv_usec)/1000;
+   if ( s_msec < 0 ) mdiff = 0;
+   else {
+      sdiff = sec-s_sec;  if ( sdiff < 0 ) sdiff += 3600;
+      mdiff = 1000*sdiff + msec-s_msec;
+   }
+   s_sec = sec;
+   s_msec = msec;
+
+   if( mesg ) fprintf(stderr,"RT TIME (%s): ", mesg);
+   else       fprintf(stderr,"RT TIME : ");
+
+   fprintf(stderr,"%d sec, %d ms (%d ms passed)\n", sec, msec, mdiff);
+
+   return 0;
+}
+
+/* show time at ms resolution, wrapping per hour */
 static int RT_mp_show_time( char * mesg )
 {
    struct timeval  tval ;
@@ -2800,10 +2851,13 @@ static int RT_mp_comm_init_vars( RT_input * rtin )
     rtin->mp_host[len] = '\0';
     rtin->mp_tcp_use = 1;
 
-    /* now setup the mask data, if g_mask_dset is set */
+    RT_mp_check_env_for_mask(); /* possibly set the mask based on env var */
+
+    /* now set up the mask data, if g_mask_dset is set */
     if( g_mask_dset )
     {   int c, max;
-        if( verbose > 1 ) fprintf(stderr,"RTM: setting up mask...\n");
+        fprintf(stderr,"RTM MASK: applying mask dataset %s...\n",
+                DSET_FILECODE(g_mask_dset));
         if( rtin->mask ) free(rtin->mask) ; /* in case of change */
         if( thd_multi_mask_from_brick(g_mask_dset, 0, &rtin->mask) )
         {
@@ -2835,6 +2889,78 @@ static int RT_mp_comm_init_vars( RT_input * rtin )
     }
 
     return 0;
+}
+
+
+/*---------------------------------------------------------------------------
+   If AFNI_REALTIME_Mask_Dset is set, make sure g_mask_dset points to it.
+   Let NONE mean the same as not being set.
+
+   return   0 : on success
+          < 0 : on error                              14 Mar 2011 [rickr]
+-----------------------------------------------------------------------------*/
+int RT_mp_check_env_for_mask( void )
+{
+    char * ept = getenv("AFNI_REALTIME_Mask_Dset");
+    int    len = 0;
+    
+    /* if no env mask, nuke any that is set and return */
+    if( !ept || !strcmp(ept, "None") || !strcmp(ept, "NONE") || !strlen(ept) ){
+        RT_mp_rm_env_mask(); /* then clear if set */
+        return 0;
+    }
+
+    /*--- so ept should be applied ---*/
+
+    /* if old name is the same, just keep it and move on */
+    if( g_mask_dset_name && !strcmp(ept, g_mask_dset_name) ) {
+        if( verbose ) fprintf(stderr,"RTM: keeping AR_Mask_Dset %s\n",
+                              g_mask_dset_name);
+        return 0;
+    }
+
+    /*--- we need a mask dataset ---*/
+
+    RT_mp_rm_env_mask(); /* start by clearing any old one */
+
+    /* copy dset name with new memory */
+    g_mask_dset_name = strdup(ept);
+    if( ! g_mask_dset_name ) {
+        fprintf(stderr,"** dset mask name malloc failure\n");
+        return -1;
+    }
+
+    g_mask_dset = THD_open_dataset(g_mask_dset_name) ;
+    if( ! g_mask_dset ) {
+        fprintf(stderr,"** failed to open mask dset %s\n", g_mask_dset_name);
+        RT_mp_rm_env_mask();
+        return -1;
+    }
+    DSET_load(g_mask_dset);  /* just to be sure */
+
+    /* display this fact, regardless of verbose */
+    fprintf(stderr,"RTM: setting AR_Mask_Dset from env: %s\n",g_mask_dset_name);
+
+    return 0;
+}
+
+/* clear the g_mask_dset vars, if the name is set */
+int RT_mp_rm_env_mask( void )
+{
+   if( ! g_mask_dset_name ) return 0;
+
+   if( verbose ) fprintf(stderr,"RTM: clearing mask dataset name %s\n",
+                         g_mask_dset_name);
+
+   free(g_mask_dset_name); g_mask_dset_name = NULL;
+
+   if( g_mask_dset ) {
+      if( verbose ) fprintf(stderr,"RTM: clearing mask dataset\n");
+      DSET_delete(g_mask_dset);
+      g_mask_dset = NULL;
+   }
+
+   return 0;
 }
 
 
@@ -5550,7 +5676,12 @@ void RT_registration_3D_realtime( RT_input *rtin )
           RT_mp_comm_send_data( rtin, yar+1, ntt-ttbot, ttbot );
           if( verbose > 1 )
              fprintf(stderr,"RTM, sending TRs %d..%d\n",ttbot,ntt-1);
+      } else if( g_show_times ) {
+          char vmesg[64];
+          sprintf(vmesg,"registered %d vol(s), %d..%d",ntt-ttbot,ttbot,ntt-1);
+          RT_show_duration(vmesg);
       }
+
 
       if( ttbot > 0 )  /* modify yar after send_data, when ttbot > 0 */
       {

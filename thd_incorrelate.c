@@ -85,6 +85,27 @@ ENTRY("INCOR_2Dhist_xyclip") ;
 }
 
 /*--------------------------------------------------------------------------*/
+
+float_quad INCOR_2Dhist_minmax( int nval , float *xval , float *yval )
+{
+   float_quad xxyy={0.0f,0.0f,0.0f,0.0f} ;
+   int ii ; float xb,xt,yb,yt ;
+
+ENTRY("INCOR_2Dhist_minmax") ;
+
+   if( nval < 1 || xval == NULL || yval == NULL ) RETURN(xxyy) ;
+
+   xb = xt = xval[0] ; yb = yt = yval[0] ;
+   for( ii=1 ; ii < nval ; ii++ ){
+          if( xval[ii] < xb ) xb = xval[ii] ;
+     else if( xval[ii] > xt ) xt = xval[ii] ;
+          if( yval[ii] < yb ) yb = yval[ii] ;
+     else if( yval[ii] > yt ) yt = yval[ii] ;
+   }
+   xxyy.a = xb ; xxyy.b = xt ; xxyy.c = yb ; xxyy.d = yt ; RETURN(xxyy) ;
+}
+
+/*--------------------------------------------------------------------------*/
 /*! Load 2D histogram of x[0..n-1] and y[0..n-1], each point optionally
     weighted by w[0..n-1] (weights are all 1 if w==NULL).
     Used in the histogram-based measures of dependence between x[] and y[i].
@@ -99,12 +120,10 @@ ENTRY("INCOR_2Dhist_xyclip") ;
       - Histogram can be retrieved by retrieve_2Dhist() and can be
         erased by clear_2Dhist()
       - Default number of equal-spaced bins in each direction is n^(1/3)
-        - the exponent can be changed with set_2Dhist_hpower()
-        - you can set the number of bins with set_2Dhist_hbin()
-        - you can set unequal bins with set_2Dhist_xybin()
-      - x[] values outside the range xbot..xtop (inclusive) or outside
-        the unequal bins set in set_2Dhist_xybin() (if applicable) will
-        not be used in the histogram; mutatis mutandum for y[]
+        - the exponent can be changed with INCOR_set_2Dhist_hpower()
+        - you can set the number of bins with INCOR_set_2Dhist_hbin()
+      - x[] values outside the range xbot..xtop (inclusive) will not be
+        used in the histogram; mutatis mutandum for y[]
 *//*------------------------------------------------------------------------*/
 
 static void INCOR_addto_2Dhist( INCOR_2Dhist *tdh , int n ,
@@ -126,9 +145,13 @@ ENTRY("INCOR_addto_2Dhist") ;
 
    /* get the min..max range for x and y data? */
 
-   good = (byte *)malloc(sizeof(byte)*n) ;
-   for( ii=0 ; ii < n ; ii++ )
-     good[ii] = GOODVAL(x[ii]) && GOODVAL(y[ii]) && (WW(ii) > 0.0f) ;
+   good = (byte *)calloc(sizeof(byte),n) ;
+   for( ngood=ii=0 ; ii < n ; ii++ ){
+     if( GOODVAL(x[ii]) && GOODVAL(y[ii]) && (WW(ii) > 0.0f) ){
+       good[ii] = 1 ; ngood++ ;
+     }
+   }
+   if( ngood == 0 ) EXRETURN ;
 
    xxbot = tdh->xxbot ; xxtop = tdh->xxtop ;
    yybot = tdh->yybot ; yytop = tdh->yytop ;
@@ -158,13 +181,14 @@ ENTRY("INCOR_addto_2Dhist") ;
      tdh->xxbot = xxbot ; tdh->xxtop = xxtop ;
      tdh->yybot = yybot ; tdh->yytop = yytop ;
 
-     xcbot = ycbot = tdh->xcbot = tdh->ycbot =  WAY_BIG ;
-     xctop = yctop = tdh->xctop = tdh->yctop = -WAY_BIG ;
+     xcbot = ycbot = tdh->xcbot = tdh->ycbot =  WAY_BIG ;  /* disable */
+     xctop = yctop = tdh->xctop = tdh->yctop = -WAY_BIG ;  /* clipping */
    }
 
    /*-- count number of good values left in range (in both x and y) --*/
-#pragma omp critical (MEMCPY)
-   memset(good,0,n) ;
+
+   AAmemset(good,0,n) ;
+
    for( ngood=ii=0 ; ii < n ; ii++ ){
      if( RANGVAL(x[ii],xxbot,xxtop) && RANGVAL(y[ii],yybot,yytop) && (WW(ii) > 0.0f) ){
        good[ii] = 1 ; ngood++ ;
@@ -517,7 +541,7 @@ void INCOR_set_2Dhist_hpower( double hh )
 }
 
 static int nhbin = 0 ;
-void set_2Dhist_hbin( int nn ){ nhbin = nn; }
+void INCOR_set_2Dhist_hbin( int nn ){ nhbin = nn; }
 
 int INCOR_2Dhist_compute_nbin( int ndata )
 {
@@ -599,11 +623,9 @@ ENTRY("INCOR_copyover_2Dhist") ;
    tout->yc  = (float *)malloc(sizeof(float)*nbp) ;
    tout->xyc = (float *)malloc(sizeof(float)*nbp*nbp) ;
 
-#pragma omp critical (MEMCPY)
-   { memcpy( tout->xc , tin->xc , sizeof(float)*nbp ) ;
-     memcpy( tout->yc , tin->yc , sizeof(float)*nbp ) ;
-     memcpy( tout->xyc, tin->xyc, sizeof(float)*nbp*nbp ) ;
-   }
+   AAmemcpy( tout->xc , tin->xc , sizeof(float)*nbp ) ;
+   AAmemcpy( tout->yc , tin->yc , sizeof(float)*nbp ) ;
+   AAmemcpy( tout->xyc, tin->xyc, sizeof(float)*nbp*nbp ) ;
 
    EXRETURN ;
 }
@@ -661,7 +683,7 @@ static INCOR_pearson * INCOR_create_incomplete_pearson(void)
    inpear->sxy = 0.0 ; inpear->sw  = 0.0 ; inpear->npt = 0 ;
 
    inpear->meth = GA_MATCH_PEARSON_SCALAR ;
-   return ;
+   return inpear ;
 }
 
 /*----------------------------------------------------------------------------*/
@@ -684,10 +706,60 @@ static float INCOR_incomplete_pearson( INCOR_pearson *inpear )
 
 /*============================================================================*/
 /* Generic INCOR functions */
+/*============================================================================*/
+
+/*----------------------------------------------------------------------------*/
+/* Check if a method code is implemented. */
+
+int INCOR_check_meth_code( int meth )
+{
+  switch( meth ){
+     case GA_MATCH_PEARSON_SCALAR:
+     case GA_MATCH_MUTINFO_SCALAR:
+     case GA_MATCH_CORRATIO_SCALAR:
+     case GA_MATCH_NORMUTIN_SCALAR:
+     case GA_MATCH_HELLINGER_SCALAR:
+     case GA_MATCH_CRAT_SADD_SCALAR:
+     case GA_MATCH_CRAT_USYM_SCALAR:  return 1 ;
+  }
+
+  return 0 ;
+}
+
+/*----------------------------------------------------------------------------*/
+/* Create an INCOR object, return a pointer to it.
+     meth = method to use
+     mpar = floatvec with parameters:
+
+       For meth == GA_MATCH_PEARSON_SCALAR, mpar is not used.
+
+       For meth == 2D histogram method, mpar is used as follows:
+         mpar->ar[0] = nbin
+         mpar->ar[1] = xbot  mpar->ar[2] = xtop
+         mpar->ar[3] = ybot  mpar->ar[4] = ytop
+         mpar->ar[5] = xcbot mpar->ar[6] = xctop
+         mpar->ar[7] = ycbot mpar->ar[8] = yctop
+         * If you have a good idea of how many data points are coming in,
+           you can use function INCOR_2Dhist_compute_nbin() to compute
+           a useful nbin from the number of data points.
+         * If xbot >= xtop or if ybot >= ytop, then these values will be
+           computed from the first set of data input (and then fixed).
+         * If we have the relationships
+                 xbot < xcbot < xctop < xtop
+             AND ybot < ycbot < yctop < ytop
+           then the first and last bins are 'oddly' sized, and all the interior
+           bins are evenly spaced.  Otherwise, all the bins are evenly spaced.
+         * If you have some sample data to supply, you can use function
+           INCOR_2Dhist_minmax() to compute xbot, xtop, ybot, and ytop.
+           In addition, you can use function INCOR_2Dhist_xyclip() to compute
+           xcbot, xctop, ycbot, and yctop.
+
+      At this time, the local correlation methods are not supported by INCOR.
+*//*--------------------------------------------------------------------------*/
 
 void * INCOR_create( int meth , floatvec *mpar )
 {
-   void *vinc ;
+   void *vinc = NULL;
 
 ENTRY("INCOR_create") ;
 
@@ -708,7 +780,7 @@ ENTRY("INCOR_create") ;
        float xbot,xtop, ybot,ytop, xcbot,xctop, ycbot,yctop;
        nbin = (mpar == NULL) ? 0 : (int)mpar->ar[0] ;
        if( nbin < 0 ) nbin = INCOR_2Dhist_compute_nbin(-nbin) ;
-       if( nbin > 0 ){
+       if( nbin > 0 && mpar != NULL && mpar->nar > 9 ){
          xbot  = mpar->ar[1] ; xtop  = mpar->ar[2] ;
          ybot  = mpar->ar[3] ; ytop  = mpar->ar[4] ;
          xcbot = mpar->ar[5] ; xctop = mpar->ar[6] ;
@@ -730,6 +802,7 @@ ENTRY("INCOR_create") ;
 }
 
 /*----------------------------------------------------------------------------*/
+/* Erase an INCOR struct from the Macrocosmic All. */
 
 void INCOR_destroy( void *vp )
 {
@@ -737,7 +810,7 @@ ENTRY("INCOR_destroy") ;
 
    if( vp == NULL ) EXRETURN ;
 
-   switch( INCOR_methcod(vp) ){
+   switch( INCOR_methcode(vp) ){
 
      case GA_MATCH_PEARSON_SCALAR:
        INCOR_destroy_incomplete_pearson(vp) ;
@@ -757,18 +830,33 @@ ENTRY("INCOR_destroy") ;
 }
 
 /*----------------------------------------------------------------------------*/
+/* Copy the internal data of an INCOR struct 'vin' over that of 'vout'.
+   This is used for adding data to vin while keeping vout pristine for re-use.
+   If vin is NULL, then vout is cleared to the empty INCOR struct.
+*//*--------------------------------------------------------------------------*/
 
 void INCOR_copyover( void *vin , void *vout )
 {
+   int meth ;
+
 ENTRY("INCOR_copyover") ;
 
-   if( vin == NULL || vout == NULL || vin == vout ) EXRETURN ;
+   if( vout == NULL || vin == vout ) EXRETURN ;
 
-   switch( INCOR_methcode(vin) ){
+   if( vin != NULL ) meth = INCOR_methcode(vin) ;
+   else              meth = INCOR_methcode(vout) ;
+
+   switch( meth ){
 
      case GA_MATCH_PEARSON_SCALAR:
-#pragma omp critical (MEMCPY)
-       memcpy( vout , vin , sizeof(INCOR_pearson) ) ;
+       if( vin != NULL ){
+         AAmemcpy( vout , vin , sizeof(INCOR_pearson) ) ;
+       } else {
+         INCOR_pearson *vp = (INCOR_pearson *)vout ;
+         vp->sx  = 0.0 ; vp->sxx = 0.0 ;
+         vp->sy  = 0.0 ; vp->syy = 0.0 ;
+         vp->sxy = 0.0 ; vp->sw  = 0.0 ; vp->npt = 0 ;
+       }
      break ;
 
      case GA_MATCH_MUTINFO_SCALAR:
@@ -777,7 +865,15 @@ ENTRY("INCOR_copyover") ;
      case GA_MATCH_HELLINGER_SCALAR:
      case GA_MATCH_CRAT_SADD_SCALAR:
      case GA_MATCH_CRAT_USYM_SCALAR:
-       INCOR_copyover_2Dhist( vin , vout ) ;
+       if( vin != NULL ){
+         INCOR_copyover_2Dhist( vin , vout ) ;
+       } else {
+         INCOR_2Dhist *tdh=(INCOR_2Dhist *)vout ; int nbp=1+tdh->nbin ;
+         AAmemset(tdh->xc ,0,sizeof(float)*nbp) ;
+         AAmemset(tdh->yc ,0,sizeof(float)*nbp) ;
+         AAmemset(tdh->xyc,0,sizeof(float)*nbp*nbp) ;
+         tdh->nww = 0.0f ;
+       }
      break ;
 
    }
@@ -786,6 +882,7 @@ ENTRY("INCOR_copyover") ;
 }
 
 /*----------------------------------------------------------------------------*/
+/* Add data to an INCOR struct, for use in computing the 'correlation' later. */
 
 void INCOR_addto( void *vin , int n , float *x , float *y , float *w )
 {
@@ -814,17 +911,23 @@ ENTRY("INCOR_addto") ;
 }
 
 /*----------------------------------------------------------------------------*/
+/* Evaluate the value of an INCOR struct, as currently constituted.
+   * The data specified in arguments {n,x,y,w} is used (if n > 0), but is not
+     added into the vin INCOR struct.
+   * This feature lets you do correlations with a base set of unchanging
+     data, plus a set of data that changes, and thence let you optimize the
+     correlation as that varying data is munged around.
+*//*--------------------------------------------------------------------------*/
 
-float INCOR_evaluate( void *vin , void *vvv ,
-                      int n , float *x , float *y , float *w )
+float INCOR_evaluate( void *vin , int n , float *x , float *y , float *w )
 {
-   void *vtmp=vvv ; float val=0.0f ;
+   void *vtmp ; float val=0.0f ;
 
 ENTRY("INCOR_evaluate") ;
 
    if( vin == NULL ) RETURN(val) ;
 
-   if( vtmp == NULL ) vtmp = INCOR_create( INCOR_methcode(vin) , NULL ) ;
+   vtmp = INCOR_create( INCOR_methcode(vin) , NULL ) ;
    INCOR_copyover( vin , vtmp ) ;
    INCOR_addto( vtmp , n , x , y , w ) ;
 
@@ -838,6 +941,6 @@ ENTRY("INCOR_evaluate") ;
      case GA_MATCH_CRAT_USYM_SCALAR: val = INCOR_corr_ratio(vtmp,1) ;      break;
    }
 
-   if( vtmp != vvv ) INCOR_destroy(vtmp) ;
+   INCOR_destroy(vtmp) ;
    RETURN(val) ;
 }

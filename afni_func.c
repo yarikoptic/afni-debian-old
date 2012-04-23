@@ -1656,7 +1656,7 @@ STATUS("create output image") ;
    im_ov = mri_new_conforming( im_fim , MRI_rgb ) ;
    ovar  = MRI_RGB_PTR(im_ov) ;
    npix  = im_ov->nvox ;
-   fac   = (NPANE_BIG-0.01f) / (fimtop-fimbot) ; /* scale from data value to color index */
+   fac   = NPANE_BIG / (fimtop-fimbot) ; /* scale from data value to color index */
 
    kk = (int)im_fim->kind ;
    switch( kk ){
@@ -1733,12 +1733,11 @@ MRI_IMAGE * AFNI_ttatlas_overlay( Three_D_View *im3d ,
 {
    THD_3dim_dataset *dseTT ;
    TTRR_params *ttp ;
-   byte *b0=NULL , *b1 , *brik,  *ovc , g_ov,a_ov,final_ov ;
+   byte *b0=NULL , *brik,  *ovc  ;
    short *s0=NULL, *ovar, *val, *fovar ;
    float *f0=NULL;
    MRI_IMAGE *ovim=NULL , *b0im, *fovim=NULL;
    int gwin , fwin , nreg , ii,jj , nov ;
-   float fimfac;
    int at_sbi, fim_type, at_vox, at_nsb;
 
 ENTRY("AFNI_ttatlas_overlay") ;
@@ -5721,7 +5720,8 @@ ENTRY("AFNI_tips_CB") ;
        inf = (char *)malloc(sizeof(char)*(strlen(fpt)+16)) ;
        strcpy(inf,"file:") ; strcat(inf,fpt) ; free(fpt) ;
        tips_hw = new_MCW_htmlwin( im3d->vwid->imag->topper, inf,
-                                  AFNI_tips_killfun , NULL      ) ;
+                                  AFNI_tips_killfun , NULL  ,
+                                  NULL, 0   ) ;
        free(inf) ; tips_open = 1 ; EXRETURN ;
      }
    }

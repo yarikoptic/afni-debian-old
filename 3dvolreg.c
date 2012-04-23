@@ -69,6 +69,14 @@ static char  VL_dmaxfile[256] = "\0" ;
 static float *VL_dmaxar  = NULL ;
 static char *VL_commandline = NULL ;
 
+static char *VL_savedisp          = NULL ;  /* 04 Apr 2012: save all displacements */
+static int   VL_savedisp19        = 0    ;
+static char *VL_savedisp_prA      = NULL ;
+static char *VL_savedisp_prB      = NULL ;
+static THD_3dim_dataset *VL_xdset = NULL ;
+static THD_3dim_dataset *VL_ydset = NULL ;
+static THD_3dim_dataset *VL_zdset = NULL ;
+
 static THD_3dim_dataset *VL_rotpar_dset =NULL ,  /* 14 Feb 2001 */
                         *VL_gridpar_dset=NULL ;
 
@@ -98,6 +106,15 @@ float new_get_best_shiftrot( THD_3dim_dataset *dset ,
                              MRI_IMAGE *base , MRI_IMAGE *vol ,
                              float *roll , float *pitch , float *yaw ,
                              int   *dxp  , int   *dyp   , int   *dzp  ) ;
+
+float ** VL_get_displacments( THD_3dim_dataset *, THD_dmat33, THD_dfvec3 ) ;
+
+void VL_normalize_timeseries( THD_3dim_dataset *dset ) ;
+
+void * VL_create_disprod( THD_3dim_dataset *tdset ,
+                          THD_3dim_dataset *xdset , int xp ,
+                          THD_3dim_dataset *ydset , int yp ,
+                          THD_3dim_dataset *zdset , int zp  ) ;
 
 /**********************************************************************/
 /***************************** the program! ***************************/
@@ -1069,6 +1086,34 @@ int main( int argc , char *argv[] )
                "# 3dvolreg matrices (DICOM-to-DICOM, row-by-row):\n") ;
      }
 
+#undef  SDAPP
+#define SDAPP(aa) \
+ do{ strcpy(pr,VL_savedisp_prA); strcat(pr,(aa)); strcat(pr,VL_savedisp_prB); } while(0)
+
+     if( VL_savedisp != NULL ){             /* 04 Apr 2012: create -savedisp datasets */
+       char *pr = malloc(sizeof(char)*THD_MAX_NAME) ;
+
+       VL_xdset = EDIT_empty_copy( new_dset ) ;
+       tross_Copy_History( new_dset , VL_xdset ) ;
+       SDAPP("_DX") ;
+       EDIT_dset_items( VL_xdset , ADN_prefix , pr , ADN_none ) ;
+       tross_Append_History( VL_xdset , "-- _DX savedisp output" ) ;
+
+       VL_ydset = EDIT_empty_copy( new_dset ) ;
+       tross_Copy_History( new_dset , VL_ydset ) ;
+       SDAPP("_DY") ;
+       EDIT_dset_items( VL_ydset , ADN_prefix , pr , ADN_none ) ;
+       tross_Append_History( VL_ydset , "-- _DY savedisp output" ) ;
+
+       VL_zdset = EDIT_empty_copy( new_dset ) ;
+       tross_Copy_History( new_dset , VL_zdset ) ;
+       SDAPP("_DZ") ;
+       EDIT_dset_items( VL_zdset , ADN_prefix , pr , ADN_none ) ;
+       tross_Append_History( VL_zdset , "-- _DZ savedisp output" ) ;
+
+       free(pr) ;
+     }
+
      for( kim=0 ; kim < imcount ; kim++ ){
         sprintf(anam,"VOLREG_ROTCOM_%06d",kim) ;
         sprintf(sbuf,"-rotate %.4fI %.4fR %.4fA -ashift %.4fS %.4fL %.4fP" ,
@@ -1098,10 +1143,9 @@ int main( int argc , char *argv[] )
         if( VL_msfp != NULL ){  /* 24 Jul 2007 */
           THD_dvecmat vm , ivm ;
           float xd=matar[3] , yd=matar[7] , zd=matar[11] ;
-          #if 0 /* ZSS: That's not good enough 
-                        One has to do the dance
-                        even if dist is 0.0, just like
-                        in cat_matvec*/
+#if 0 /* ZSS: That's not good enough
+               One has to do the dance
+               even if dist is 0.0, just like in cat_matvec */
           if( VL_cen_dist > 0.01f ){  /* 11 Mar 2008 */
             THD_fvec3 dv , ev ;
             dv = MATVEC(rmat,VL_cen_inp) ;
@@ -1110,7 +1154,7 @@ int main( int argc , char *argv[] )
           }
           LOAD_DFVEC3(vm.vv,xd,yd,zd) ;
           vm.mm = rmat ; ivm = invert_dvecmat(vm) ;
-          #else
+#else
           {
             THD_fvec3 dv , ev ;
             dv = MATVEC(rmat, VL_cen_inp) ;
@@ -1120,13 +1164,25 @@ int main( int argc , char *argv[] )
             LOAD_DFVEC3(vm.vv,xd,yd,zd) ;
             vm.mm = rmat ; ivm = invert_dvecmat(vm) ;
           }
-          #endif
+#endif
           fprintf(VL_msfp,"%13.6g %13.6g %13.6g %13.6g "
                           "%13.6g %13.6g %13.6g %13.6g "
                           "%13.6g %13.6g %13.6g %13.6g\n" ,
           ivm.mm.mat[0][0], ivm.mm.mat[0][1], ivm.mm.mat[0][2], ivm.vv.xyz[0],
           ivm.mm.mat[1][0], ivm.mm.mat[1][1], ivm.mm.mat[1][2], ivm.vv.xyz[1],
           ivm.mm.mat[2][0], ivm.mm.mat[2][1], ivm.mm.mat[2][2], ivm.vv.xyz[2] ) ;
+        }
+
+        /* 04 Apr 2012: save all displacements into _D{XYZ} datasets */
+
+        if( VL_savedisp != NULL ){
+          float **dispar ;
+          LOAD_DFVEC3(tvec,matar[3],matar[7],matar[11]) ;
+          dispar = VL_get_displacments( VL_xdset , rmat , tvec ) ;
+          EDIT_substitute_brick( VL_xdset , kim , MRI_float , dispar[0] ) ;
+          EDIT_substitute_brick( VL_ydset , kim , MRI_float , dispar[1] ) ;
+          EDIT_substitute_brick( VL_zdset , kim , MRI_float , dispar[2] ) ;
+          free(dispar) ;
         }
 
         /* 04 Aug 2006: max displacement calculation */
@@ -1151,8 +1207,11 @@ int main( int argc , char *argv[] )
           if( VL_verbose ) fprintf(stderr," %.2f",dmax) ;
           if( VL_dmaxar != NULL ) VL_dmaxar[kim] = dmax ;
         }
-     }
+
+     }  /*--- end of loop over registered sub-bricks ---*/
+
      if( VL_msfp != NULL ) fclose(VL_msfp) ;  /* 24 Jul 2007 */
+
      if( VL_maxdisp > 0 ){
        if( VL_verbose ) fprintf(stderr,"\n") ;
        INFO_message("Max displacement in automask = %.2f (mm) at sub-brick %d",VL_dmax,VL_dmaxi);
@@ -1190,9 +1249,48 @@ int main( int argc , char *argv[] )
    if( !null_output ){
      DSET_write(new_dset) ;
      if( VL_verbose )
-       fprintf(stderr,"++ Wrote dataset to disk in %s",DSET_BRIKNAME(new_dset));
-     if( VL_verbose ) fprintf(stderr,"\n") ;
+       INFO_message("Wrote dataset to disk in %s",DSET_BRIKNAME(new_dset));
    }
+   DSET_unload(new_dset) ;
+
+
+   if( VL_xdset != NULL ){    /* 04 Apr 2012 */
+     if( VL_savedisp19 ) VL_normalize_timeseries(VL_xdset) ;
+     DSET_write(VL_xdset) ;
+     if( VL_verbose ) INFO_message("Wrote dataset to disk in %s",DSET_BRIKNAME(VL_xdset));
+   }
+   if( VL_ydset != NULL ){
+     if( VL_savedisp19 ) VL_normalize_timeseries(VL_ydset) ;
+     DSET_write(VL_ydset) ;
+     if( VL_verbose ) INFO_message("Wrote dataset to disk in %s",DSET_BRIKNAME(VL_ydset));
+   }
+   if( VL_zdset != NULL ){
+     if( VL_savedisp19 ) VL_normalize_timeseries(VL_zdset) ;
+     DSET_write(VL_zdset) ;
+     if( VL_verbose ) INFO_message("Wrote dataset to disk in %s",DSET_BRIKNAME(VL_zdset));
+   }
+
+#if 1
+   if( VL_savedisp19 && VL_xdset != NULL && VL_ydset != NULL && VL_zdset != NULL ){
+     VL_create_disprod( new_dset , VL_xdset,2 , VL_ydset,0 , VL_zdset,0 ) ;  /* DXX */
+     VL_create_disprod( new_dset , VL_xdset,0 , VL_ydset,2 , VL_zdset,0 ) ;  /* DYY */
+     VL_create_disprod( new_dset , VL_xdset,0 , VL_ydset,0 , VL_zdset,2 ) ;  /* DZZ */
+     VL_create_disprod( new_dset , VL_xdset,1 , VL_ydset,1 , VL_zdset,0 ) ;  /* DXY */
+     VL_create_disprod( new_dset , VL_xdset,1 , VL_ydset,0 , VL_zdset,1 ) ;  /* DXZ */
+     VL_create_disprod( new_dset , VL_xdset,0 , VL_ydset,1 , VL_zdset,1 ) ;  /* DYZ */
+     VL_create_disprod( new_dset , VL_xdset,3 , VL_ydset,0 , VL_zdset,0 ) ;  /* DXXX */
+     VL_create_disprod( new_dset , VL_xdset,0 , VL_ydset,3 , VL_zdset,0 ) ;  /* DYYY */
+     VL_create_disprod( new_dset , VL_xdset,0 , VL_ydset,0 , VL_zdset,3 ) ;  /* DZZZ */
+     VL_create_disprod( new_dset , VL_xdset,2 , VL_ydset,1 , VL_zdset,0 ) ;  /* DXXY */
+     VL_create_disprod( new_dset , VL_xdset,2 , VL_ydset,0 , VL_zdset,1 ) ;  /* DXXZ */
+     VL_create_disprod( new_dset , VL_xdset,1 , VL_ydset,2 , VL_zdset,0 ) ;  /* DXYY */
+     VL_create_disprod( new_dset , VL_xdset,1 , VL_ydset,0 , VL_zdset,2 ) ;  /* DXZZ */
+     VL_create_disprod( new_dset , VL_xdset,0 , VL_ydset,2 , VL_zdset,1 ) ;  /* DYYZ */
+     VL_create_disprod( new_dset , VL_xdset,0 , VL_ydset,1 , VL_zdset,2 ) ;  /* DYZZ */
+     VL_create_disprod( new_dset , VL_xdset,1 , VL_ydset,1 , VL_zdset,1 ) ;  /* DXYZ */
+   }
+   DSET_delete(VL_xdset) ; DSET_delete(VL_ydset) ; DSET_delete(VL_zdset) ;
+#endif
 
    /*-- save movement parameters to disk --*/
 
@@ -1370,6 +1468,33 @@ void VL_syntax(void)
     "                    You may find that graphing this file (cf. 1dplot)\n"
     "                    is a useful diagnostic tool for your FMRI datasets.\n"
     "                    [the 'mm' filename can be '-', which means stdout]\n"
+    "\n"
+    "  -savedisp sss = Save 3 3D+time datasets with the x,y,z displacments at each\n"
+    "                  voxel at each time point.  The prefix for the x displacement\n"
+    "                  dataset will be the string 'sss' with '_DX' appended, etc.\n"
+    "                  This option is intended for use with various processing\n"
+    "                  scripts now under construction, and is probably otherwise\n"
+    "                  completely useless.\n"
+#if 0
+    "               ** If you use '-SAVEDISP', then you will get 19 datasets instead\n"
+    "                  of just 3.  These are various powers of the displacements:\n"
+    "                    _DX   = x       _DY   = y      _DZ   = z\n"
+    "                    _DXX  = x*x     _DYY  = y*y    _DZZ  = z*z\n"
+    "                    _DXY  = x*y     _DXZ  = x*z    _DYZ  = y*z\n"
+    "                    _DXXX = x*x*x   _DYYY = y*y*y  _DZZZ = z*z*z\n"
+    "                    _DXXY = x*x*y   _DXXZ = x*x*z  _DXYY = x*x*y\n"
+    "                    _DXZZ = x*x*z   _DYYZ = y*y*z  _DYZZ = y*z*z  _DXYZ = x*y*z\n"
+    "                  and are intended for use in regressing out per-voxel\n"
+    "                  movements at a higher order (currently under construction).\n"
+    "               ** To be precise, by 'x*x' and 'x*x*x', I actually mean\n"
+    "                    Pleg2(x) = 1.5*x*x-0.5     = 2nd order Legendre polynomial\n"
+    "                    Pleg3(x) = (2.5*x*x-1.5)*x = 3rd order Legendre polynomial\n"
+    "               ** Also, '-SAVEDISP' will cause all 19 output datasets to be\n"
+    "                  normalized, with the mean and linear trend removed, and then\n"
+    "                  scaled so that the peak absolute value in each voxel's time\n"
+    "                  series is 1.  These operations are for use in the mythical\n"
+    "                  processing script in mythical preparation.\n"
+#endif
     "\n"
     "  -tshift ii      If the input dataset is 3D+time and has slice-dependent\n"
     "                  time-offsets (cf. the output of 3dinfo -v), then this\n"
@@ -1574,6 +1699,38 @@ void VL_command_line(void)
       }
       if( strcmp(Argv[Iarg],"-maxdisp1D") == 0 ){
         VL_maxdisp = 1 ; strcpy(VL_dmaxfile,Argv[++Iarg]) ;
+        Iarg++ ; continue ;
+      }
+
+      /** -savedisp sss [04 Apr 2012] **/
+
+      if( strcmp(Argv[Iarg],"-savedisp") == 0 || strcmp(Argv[Iarg],"-SAVEDISP") == 0 ){
+        int lll ;
+        if( ++Iarg > Argc ) ERROR_exit("need argument after %s",Argv[Iarg-1]) ;
+        VL_savedisp = strdup(Argv[Iarg]) ;
+        if( !THD_filename_ok(VL_savedisp) )
+          ERROR_exit("%s '%s' is invalid output dataset name",Argv[Iarg-1],VL_savedisp) ;
+        VL_savedisp19 = (strcmp(Argv[Iarg-1],"-SAVEDISP") == 0) ;
+
+        VL_savedisp_prA = strdup(VL_savedisp) ; lll = strlen(VL_savedisp_prA ) ;
+
+        /* prA = first part of output prefix (to be appended with "_DX" etc.),
+           prB = last part of output prefix (".nii" or ".nii.gz" or nothing at all) */
+
+        if( STRING_HAS_SUFFIX(VL_savedisp_prA,".nii") ){
+          if( lll < 5 )
+            ERROR_exit("%s '%s' is invalid output dataset name",Argv[Iarg-1],VL_savedisp) ;
+          VL_savedisp_prA[lll-4] = '\0' ;
+          VL_savedisp_prB        = strdup(".nii") ;
+        } else if( STRING_HAS_SUFFIX(VL_savedisp_prA,".nii.gz") ){
+          if( lll < 8 )
+            ERROR_exit("%s '%s' is invalid output dataset name",Argv[Iarg-1],VL_savedisp) ;
+          VL_savedisp_prA[lll-7] = '\0' ;
+          VL_savedisp_prB        = strdup(".nii.gz") ;
+        } else {
+          VL_savedisp_prB = strdup("\0") ;
+        }
+
         Iarg++ ; continue ;
       }
 
@@ -2473,4 +2630,102 @@ float new_get_best_shiftrot( THD_3dim_dataset *dset ,   /* template */
    *dxp  = bsx; *dyp   = bsy; *dzp = bsz ;
 
    return bsum ;
+}
+
+/*----------------------------------------------------------------------------*/
+
+float ** VL_get_displacments( THD_3dim_dataset *dset, THD_dmat33 rmat, THD_dfvec3 tvec )
+{
+   int nx=DSET_NX(dset), ny=DSET_NY(dset), nz=DSET_NZ(dset), nxy=nx*ny, nxyz=nxy*nz ;
+   float xo=DSET_XCEN(dset), yo=DSET_YCEN(dset), zo=DSET_ZCEN(dset) ;
+   THD_fvec3 fv , gv , cv ; THD_ivec3 iv ;
+   THD_dmat33 pp,ppt ; THD_dfvec3 dv,qv,vorg ;
+   int mm , ii , jj , kk ;
+   float **dispar ;
+
+   pp   = DBLE_mat_to_dicomm( dset ) ; /* convert rmat to dataset coord order */
+   ppt  = TRANSPOSE_DMAT(pp);
+   rmat = DMAT_MUL(ppt,rmat); rmat = DMAT_MUL(rmat,pp); tvec = DMATVEC(ppt,tvec);
+   LOAD_DFVEC3(vorg,xo,yo,zo) ;          /* rotation is around dataset center */
+
+   dispar    = (float **)malloc(sizeof(float *)*3) ;
+   dispar[0] = (float * )calloc(sizeof(float),nxyz) ;
+   dispar[1] = (float * )calloc(sizeof(float),nxyz) ;
+   dispar[2] = (float * )calloc(sizeof(float),nxyz) ;
+
+   for( mm=0 ; mm < nxyz ; mm++ ){
+     ii = mm % nx ; kk = mm / nxy ; jj = (mm%nxy) / nx ;
+     iv.ijk[0] = ii ; iv.ijk[1] = jj ; iv.ijk[2] = kk ;
+     fv = THD_3dind_to_3dmm_no_wod( VL_dset , iv ) ;
+     FVEC3_TO_DFVEC3( fv , dv );
+     qv = SUB_DFVEC3(dv,vorg); qv = DMATVEC_ADD(rmat,qv,tvec); qv = ADD_DFVEC3(qv,vorg);
+     qv = SUB_DFVEC3(dv,qv);
+
+     dispar[0][mm] = qv.xyz[0] ; dispar[1][mm] = qv.xyz[1] ; dispar[2][mm] = qv.xyz[2] ;
+   }
+
+   return dispar ;
+}
+
+/*----------------------------------------------------------------------------*/
+
+void VL_normalize_timeseries( THD_3dim_dataset *dset )
+{
+   int nvox=DSET_NVOX(dset) , nvals=DSET_NVALS(dset) , ii , jj ;
+   float *tar=(float *)malloc(sizeof(float)*nvals) ;
+
+   for( ii=0 ; ii < nvox ; ii++ ){
+     THD_extract_float_array( ii , dset , tar ) ;
+     THD_linear_detrend( nvals , tar , NULL,NULL ) ;
+     THD_normmax( nvals , tar ) ;
+     THD_insert_series( ii , dset , nvals , MRI_float , tar , 0 ) ;
+   }
+   free(tar) ; return ;
+}
+
+/*----------------------------------------------------------------------------*/
+
+#undef  Pleg2
+#undef  Pleg3
+#define Pleg2(x) (1.5f*(x)*(x)-0.5f)
+#define Pleg3(x) ((2.5f*(x)*(x)-1.5f)*(x))
+
+#undef  Pleg
+#define Pleg(n,x) ( ((n)==0) ? 1 : ((n)==1) ? (x) : ((n)==2) ? Pleg2(x) : Pleg3(x) )
+
+void * VL_create_disprod( THD_3dim_dataset *tdset ,
+                          THD_3dim_dataset *xdset , int xp ,
+                          THD_3dim_dataset *ydset , int yp ,
+                          THD_3dim_dataset *zdset , int zp  )
+{
+   char *pr = malloc(sizeof(char)*THD_MAX_NAME) ;
+   char lab[8] ,
+       *xlab[4] = { "\0" , "X" , "XX" , "XXX" } ,
+       *ylab[4] = { "\0" , "Y" , "YY" , "YYY" } ,
+       *zlab[4] = { "\0" , "Z" , "ZZ" , "ZZZ" }  ;
+   THD_3dim_dataset *ddset ;
+   int nvox=DSET_NVOX(tdset) , nvals=DSET_NVALS(tdset) , ii,iv ;
+   float *xd , *yd , *zd , *dd ;
+                                    
+   ddset = EDIT_empty_copy(tdset) ;
+   tross_Copy_History(tdset,ddset) ;
+   strcpy(lab,"_D") ; strcat(lab,xlab[xp]) ; strcat(lab,ylab[yp]) ; strcat(lab,zlab[zp]) ;
+   SDAPP(lab) ;
+   EDIT_dset_items(ddset,ADN_prefix,pr,ADN_none) ;
+   sprintf(pr,"-- %s savedisp output",lab) ; tross_Append_History(ddset,pr) ;
+   
+   for( iv=0 ; iv < nvals ; iv++ ){
+     EDIT_substitute_brick( ddset , iv , MRI_float , NULL ) ;
+     dd = DSET_BRICK_ARRAY(ddset,iv) ;
+     xd = DSET_BRICK_ARRAY(xdset,iv) ;
+     yd = DSET_BRICK_ARRAY(ydset,iv) ;
+     zd = DSET_BRICK_ARRAY(zdset,iv) ;
+     for( ii=0 ; ii < nvox ; ii++ ){
+       dd[ii] = Pleg(xp,xd[ii]) * Pleg(yp,yd[ii]) * Pleg(zp,zd[ii]) ;
+     }
+   }
+   VL_normalize_timeseries(ddset) ;
+   DSET_write(ddset) ;
+   if( VL_verbose ) INFO_message("Wrote dataset to disk in %s",DSET_BRIKNAME(ddset)) ;
+   DSET_delete(ddset) ; free(pr) ;
 }

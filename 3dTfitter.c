@@ -366,6 +366,8 @@ int main( int argc , char *argv[] )
       "              ++ In deconvolution ('-FALTUNG'), all baseline parameters\n"
       "                 (from '-LHS' and/or '-polort') are automatically non-penalized,\n"
       "                 so there is no point to using this un-penalizing feature.\n"
+      "              ++ If you are NOT doing deconvolution, then you'll need this\n"
+      "                 option to un-penalize the '-polort' parameters (if desired).\n"
       "            ** LASSO-ing herein should be considered experimental, and its\n"
       "               implementation is subject to change!  You should definitely\n"
       "               play with different 'lam' values to see how well they work\n"
@@ -385,7 +387,7 @@ int main( int argc , char *argv[] )
       "              ++ A Belloni, V Chernozhukov, and L Wang.\n"
       "                 Square-root LASSO: Pivotal recovery of sparse signals via\n"
       "                 conic programming (2010).  http://arxiv.org/abs/1009.5689\n"
-      "              ++ A coordinate descent algorithm is for this optimization.\n"
+      "              ++ A coordinate descent algorithm is also used for this optimization.\n"
       "            ** A reasonable range of 'lam' to use is from 1 to 10 (or so);\n"
       "               I suggest you start with 2 and see how well that works.\n"
       "              ++ Unlike the pure LASSO option above, you do not need to give\n"
@@ -406,6 +408,9 @@ int main( int argc , char *argv[] )
       "               to zero.  This feature can be useful when doing deconvolution,\n"
       "               if you expect the result to be zero over large-ish intervals.\n"
       "              ++ L1 regression ('-l1fit') has a similar property, of course.\n"
+      "              ++ This difficult-to-estimate bias in the LASSO-computed coefficients\n"
+      "                 makes it nearly impossible to provide reliable estimates of statistical\n"
+      "                 significance for the fit (e.g., R^2, F, ...).\n"
       "             * The actual penalty factor lambda used for a given coefficient\n"
       "               is lam scaled by the the L2 norm of the corresponding regression\n"
       "               column. The purpose of this is to keep the penalties scale-free:\n"
@@ -429,9 +434,11 @@ int main( int argc , char *argv[] )
       "             * Data with a smaller signal-to-noise ratio will probably need\n"
       "               larger values of lam -- you'll have to experiment.\n"
       "             * The number of iterations used for the LASSO solution will be\n"
-      "               printed out for the first voxel solved -- this is mostly\n"
-      "               for my personal edification and illumination.\n"
+      "               printed out for the first voxel solved, and for ever 10,000th\n"
+      "               one following -- this is mostly for my personal edification.\n"
       "        -->>** Recall: \"3dTfitter is not for the casual user!\"\n"
+      "               This statement especially applies when using LASSO, which is a\n"
+      "               powerful tool -- and as such, can be dangerous if not used wisely.\n"
       "\n"
       "---------------------\n"
       "SOLUTION CONSTRAINTS:\n"
@@ -1065,6 +1072,8 @@ int main( int argc , char *argv[] )
    }
    nlhs = dsar->num ;                    /* number of -LHS inputs */
 
+   /* deconvolution stuff */
+
    if( fal_klen > 0 ){
      if( fal_set != NULL ){
        if( DSET_NX(fal_set) != nx ||
@@ -1247,14 +1256,14 @@ int main( int argc , char *argv[] )
    /*-- finalize LASSO setup? --*/
 
    if( meth == -2 || meth == -1 ){
-     if( nvoff > 0 ){
+     if( nvoff > 0 ){                                   /* deconvolution */
        float *lam = (float *)malloc(sizeof(float)*(nvar+nvoff)) ;
        for( ii=0 ; ii < nvar+nvoff ; ii++ )
          lam[ii] = (ii < nvoff) ? lasso_flam : 0.0f ;
        THD_lasso_setlamvec( nvar+nvoff , lam ) ; free(lam) ;
        if( verb && nvar > 0 && lasso_ivec != NULL )
          ININFO_message("-FALTUNG ==> All LHS and polort parameters are non-penalized") ;
-     } else if( lasso_ivec != NULL ){
+     } else if( lasso_ivec != NULL ){                    /* standard regression */
        float *lam = (float *)malloc(sizeof(float)*nvar) ;
        for( ii=0 ; ii < nvar ; ii++ ) lam[ii] = lasso_flam ;
        for( jj=0 ; jj < lasso_ivec->nar ; jj++ ){

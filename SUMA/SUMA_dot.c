@@ -468,7 +468,8 @@ void SUMA_dot_product_CB( void *params)
    static char FuncName[]={"SUMA_dot_product_CB"};
 
    char *SO_idcode=NULL, *ts_dset_id=NULL, 
-         *dot_dset_id=NULL, stmp[300];
+         *dot_dset_id=NULL, stmp[300], ident[300], prefix[300], 
+         *p1=NULL, *p2=NULL, *Cside;
    SUMA_DSET *in_dset=NULL, *ts_src_dset=NULL; 
    double TR = 0;
    double *ts=NULL; 
@@ -673,6 +674,20 @@ void SUMA_dot_product_CB( void *params)
       if (!SUMA_dot_product(in_dset,ts,&out_dset,dotopts)) {
          SUMA_S_Err("Failed to compute dot product");
          SUMA_RETURNe;
+      }
+      snprintf(ident,298*sizeof(char), "filename:%s", SDSET_FILENAME(out_dset));
+      p1 = SUMA_RemoveDsetExtension_s(SDSET_FILENAME(in_dset),
+                                        SUMA_NO_DSET_FORMAT);
+      p2 = SUMA_RemoveDsetExtension_s(SDSET_FILENAME(ts_src_dset),
+                                        SUMA_NO_DSET_FORMAT);
+      if (SO->Side == SUMA_LEFT) Cside = "L";
+      else if (SO->Side == SUMA_RIGHT) Cside = "R";
+      else Cside = "";
+      snprintf(prefix,298*sizeof(char),"seed_%d%s.DOT.%s", 
+                  ts_node, Cside, p1);
+      SUMA_free(p1); SUMA_free(p2);
+      if (!(SUMA_Add_to_SaveList(&SUMAg_CF->SaveList, "sdset", ident, prefix))) {
+         SUMA_S_Warnv("Failed to add to save list %s %s\n", ident, prefix);
       }
    }
    
@@ -1286,6 +1301,7 @@ SUMA_Boolean SUMA_GICOR_process_dataset( NI_element *nel  )
    GICOR_setup *giset = SUMAg_CF->giset ;
    int vmul ; float thr ;
    int id=0, ic=0;
+   char *seedstr=NULL, *Cside=NULL, ident[300]={""}, prefix[300]={""};
    SUMA_SurfaceObject *SOv[2]={NULL,NULL};
    SUMA_DSET *sdsetv[2]={NULL, NULL};
    SUMA_OVERLAYS *ov[2]={NULL, NULL};
@@ -1333,7 +1349,26 @@ SUMA_Boolean SUMA_GICOR_process_dataset( NI_element *nel  )
       SUMA_S_Err("Failed to populate. Not fun.");
       SUMA_RETURN(NOPE);
    }  
-
+   
+   /* Add dsets to autosave list */
+   if (!(seedstr = NI_get_attribute(nel,"boomerang_msg"))) {
+      seedstr = "seed_XXXX";
+   }
+   for (id=0; id<2; ++id) {
+      if (sdsetv[id] && SOv[id]) {   
+         snprintf(ident,298*sizeof(char), "filename:%s", 
+                                          SDSET_FILENAME(sdsetv[id]));
+         if (SOv[id]->Side == SUMA_LEFT) Cside = ".lh";
+         else if (SOv[id]->Side == SUMA_RIGHT) Cside = ".rh";
+         else Cside = "";
+         snprintf(prefix,298*sizeof(char),"seed_%s.GIC%s", 
+                     seedstr, Cside);
+         if (!(SUMA_Add_to_SaveList(&SUMAg_CF->SaveList, "sdset", 
+                                    ident, prefix))) {
+            SUMA_S_Warnv("Failed to add to save list %s %s\n", ident, prefix);
+         }
+      }
+   }
 
    /* colorize and redisplay */
    for (id=0; id<2; ++id) {
@@ -1426,7 +1461,7 @@ int SUMA_AFNI_gicor_setref( SUMA_SurfaceObject *SO, int node )
 {
    static char FuncName[]={"SUMA_AFNI_gicor_setref"};
    NI_element *nel=NULL;
-   char buf[256]={"bise"};
+   char buf[256]={"bise"}, boom[64]={""}, *cside=NULL;
    GICOR_setup *giset = SUMAg_CF->giset ;
    THD_fvec3 iv,jv; THD_ivec3 kv; 
    int ijk=-1,ii=0;
@@ -1458,6 +1493,7 @@ int SUMA_AFNI_gicor_setref( SUMA_SurfaceObject *SO, int node )
       SUMA_S_Err("Failed to find surfaces for giset");
       SUMA_RETURN(-1);
    }
+   
    if (SUMA_isRelated(SO, SOv[0],1)) {
       ijk = node;
    } else if (SUMA_isRelated(SO, SOv[1],1)) {
@@ -1466,6 +1502,11 @@ int SUMA_AFNI_gicor_setref( SUMA_SurfaceObject *SO, int node )
       SUMA_SLP_Warn("Cannot change node to ijk");
       SUMA_RETURN(-1);
    }  
+   
+   cside = "";
+   if (SO->Side == SUMA_LEFT) cside = "L";
+   else if (SO->Side == SUMA_RIGHT) cside = "R";
+   sprintf(boom,"%d%s", node, cside);
    SUMA_LHv("Node %d --> ijk %d\n", node, ijk);
 
    /* if socket has gone bad, we're done */
@@ -1491,7 +1532,8 @@ int SUMA_AFNI_gicor_setref( SUMA_SurfaceObject *SO, int node )
 
    /* send ijk node index to 3dGroupInCorr */
    nel = NI_new_data_element( "SETREF_ijk" , 0 ) ;
-
+   NI_set_attribute(nel, "boomerang_msg", boom);
+   
    sprintf( buf , "%d" , ijk ) ;
    NI_set_attribute( nel , "index" , buf ) ;
 

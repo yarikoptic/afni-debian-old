@@ -649,6 +649,9 @@ const char * SUMA_SurfaceTypeString (SUMA_SO_File_Type tp)
       case SUMA_OPENDX_MESH:
          SUMA_RETURN("OpenDX");
          break;
+      case SUMA_PREDEFINED:
+         SUMA_RETURN("Predefined");
+         break;
       case SUMA_FT_ERROR:
          SUMA_RETURN("Error");     
       default:        
@@ -694,6 +697,10 @@ SUMA_SO_File_Type SUMA_SurfaceTypeCode (char *cd)
          !strcmp(cd, "OpenDX") || !strcmp(cd, "opendx")) { 
       SUMA_RETURN( SUMA_OPENDX_MESH); 
    }
+   if (  !strcmp(cd, "Predefined") || !strcmp(cd, "PREDEFINED") || 
+         !strcmp(cd, "pre") || !strcmp(cd, "Pre")) { 
+      SUMA_RETURN( SUMA_PREDEFINED); 
+   }
    if (  !strcmp(cd, "BrainVoyager") || !strcmp(cd, "BV") || 
          !strcmp(cd, "bv")) { 
       SUMA_RETURN( SUMA_BRAIN_VOYAGER); 
@@ -716,6 +723,70 @@ SUMA_SO_File_Type SUMA_SurfaceTypeCode (char *cd)
    SUMA_RETURN(SUMA_FT_ERROR); 
    
 }
+
+char *SUMA_DO_DrawMaskCode2Name_human(SUMA_DO_DRAW_MASK dd) {
+   switch(dd) {
+      case SDODM_Error:
+         return("err");
+      case SDODM_All:
+         return("All DOs");
+      case SDODM_n3CrossHair:
+         return("node + 3 Neighb. Layers");
+      case SDODM_n2CrossHair:
+         return("node + 2 Neighb. Layers");
+      case SDODM_n1CrossHair:
+         return("node + 1 Neighb. Layer");
+      case SDODM_n0CrossHair:
+         return("node");
+      case SDODM_Hide:
+         return("no DOs");
+      case SDODM_N_DO_DrawMasks:
+         return("Number of mask modes");
+      default:
+         return("errerrerr");
+   }
+}
+
+char *SUMA_DO_DrawMaskCode2Name(SUMA_DO_DRAW_MASK dd) {
+   switch(dd) {
+      case SDODM_Error:
+         return("err");
+      case SDODM_All:
+         return("all");
+      case SDODM_n3CrossHair:
+         return("node+3");
+      case SDODM_n2CrossHair:
+         return("node+2");
+      case SDODM_n1CrossHair:
+         return("node+1");
+      case SDODM_n0CrossHair:
+         return("node");
+      case SDODM_Hide:
+         return("nothing");
+      case SDODM_N_DO_DrawMasks:
+         return("n_mask_modes");
+      default:
+         return("errerrerr");
+   }
+}
+
+SUMA_DO_DRAW_MASK SUMA_DO_DrawMaskName2Code (char *name) {
+   if (!name) return(SDODM_Error);
+   if (!strcmp(name,"err")) return(SDODM_Error);
+   if (!strcmp(name,"all") || !strcmp(name,"All DOs")) return(SDODM_All);
+   if (!strcmp(name,"node+3") || !strcmp(name,"node + 3 Neighb. Layers"))
+      return(SDODM_n3CrossHair);
+   if (!strcmp(name,"node+2") || !strcmp(name,"node + 2 Neighb. Layers")) 
+      return(SDODM_n2CrossHair);
+   if (!strcmp(name,"node+1") || !strcmp(name,"node + 1 Neighb. Layer")) 
+      return(SDODM_n1CrossHair);
+   if (!strcmp(name,"node")) return(SDODM_n0CrossHair);
+   if (!strcmp(name,"nothing") || !strcmp(name,"no DOs")) return(SDODM_Hide);
+   if (!strcmp(name,"n_mask_modes") || !strcmp(name,"Number of mask modes")) 
+      return(SDODM_N_DO_DrawMasks);
+   return(SDODM_Error);
+}
+
 /*!**
    
 Purpose : 
@@ -2801,6 +2872,8 @@ SUMA_SO_File_Type SUMA_guess_surftype_argv(char *str)
       SUMA_RETURN( SUMA_INVENTOR_GENERIC );
    if (SUMA_iswordin_ci(str, "dx")  == 1 ) 
       SUMA_RETURN( SUMA_OPENDX_MESH );
+   if (SUMA_iswordin_ci(str, "pre")  == 1 ) 
+      SUMA_RETURN( SUMA_PREDEFINED );
    if (SUMA_iswordin_ci(str, "ply")  == 1 ) 
       SUMA_RETURN( SUMA_PLY );
    if (SUMA_iswordin_ci(str, "mni")  == 1 ) 
@@ -2834,8 +2907,8 @@ SUMA_SO_File_Type SUMA_GuessSurfFormatFromExtension_core(char *Name)
    SUMA_SO_File_Type form=SUMA_FT_NOT_SPECIFIED;
      
    SUMA_ENTRY;
-   
    if (!Name) { SUMA_RETURN(form); }
+   if ( SUMA_is_predefined_SO_name(Name, NULL) ) SUMA_RETURN(SUMA_PREDEFINED);  
    if (  SUMA_isExtension(Name, ".1D.coord") ||
          SUMA_isExtension(Name, ".1D.topo")) SUMA_RETURN(SUMA_VEC);
    if (  SUMA_isExtension(Name, ".1D") ) SUMA_RETURN(SUMA_VEC);
@@ -4074,6 +4147,9 @@ SUMA_GENERIC_ARGV_PARSE *SUMA_Parse_IO_Args (int argc, char *argv[],
                   break;
                case SUMA_CMAP_SO:
                   break;
+               case SUMA_PREDEFINED:
+                  tmp_i = SUMA_copy_string("-i_pre");
+                  break;
                default:
                   tmp_i = SUMA_copy_string(argv[kar]);
                   break;
@@ -4273,6 +4349,25 @@ SUMA_GENERIC_ARGV_PARSE *SUMA_Parse_IO_Args (int argc, char *argv[],
             }
             ps->i_surfnames[ps->i_N_surfnames] = SUMA_copy_string(argv[kar]);
             ps->i_FT[ps->i_N_surfnames] = SUMA_OPENDX_MESH;
+            ps->i_FF[ps->i_N_surfnames] = SUMA_ASCII;
+            ++ps->i_N_surfnames;
+            brk = YUP;
+         }
+         if (!brk && (  (strcmp(tmp_i, "-i_PRE") == 0) || 
+                        (strcmp(tmp_i, "-i_pre") == 0) 
+                     || (strcmp(tmp_i, "-i_Pre") == 0))) {
+            ps->arg_checked[kar]=1;
+            kar ++; ps->arg_checked[kar]=1;
+            if (kar >= argc)  {
+	            SUMA_S_Err( "need argument after -i_pre ");
+	            exit (1);
+            }
+            if (ps->i_N_surfnames >= SUMA_MAX_SURF_ON_COMMAND) {
+               SUMA_S_Err("Exceeding maximum number of allowed surfaces...");
+               exit(1);   
+            }
+            ps->i_surfnames[ps->i_N_surfnames] = SUMA_copy_string(argv[kar]);
+            ps->i_FT[ps->i_N_surfnames] = SUMA_PREDEFINED;
             ps->i_FF[ps->i_N_surfnames] = SUMA_ASCII;
             ++ps->i_N_surfnames;
             brk = YUP;

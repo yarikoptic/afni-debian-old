@@ -43,7 +43,79 @@
 
 afni_history_struct rwcox_history[] = {
 /*=====BELOW THIS LINE=====*/
-  { 23 , FEB , 2012 , RWC , "afni" , MINOR , TYPE_MODIFY ,
+  { 18 , APR , 2012 , RWC , "3dDeconvolve" , MINOR , TYPE_BUG_FIX ,
+   "Patch BLOCK and dmBLOCK to have their old non-unit-peak behavior" ,
+   "New functions UBLOCK and dmUBLOCK now have the unit-peak behavior." } ,
+
+ { 5 , APR , 2012 , RWC , "3dTstat" , MICRO , TYPE_NEW_OPT ,
+   "Add -zcount option: count number of zero values in a voxel" ,
+   NULL } ,
+
+ { 5 , APR , 2012 , RWC , "3dTnorm" , MINOR , TYPE_NEW_PROG ,
+   "Normalize each time series in a dataset" ,
+   "Like 1dnorm for 3D+time datasets" } ,
+
+ { 3 , APR , 2012 , RWC , "3dDeconvolve" , MICRO , TYPE_GENERAL ,
+   "dmBLOCK now defaults to peak=0 ==> variable amplitude" ,
+   "Former behavior is now achieved with dmBLOCK(1) ==> fixed amplitude.\n"
+   "Also, the peak variable amplitude is now 1, rather than some annoying\n"
+   "value that means nothin to nobody nohow." } ,
+
+ { 2 , APR , 2012 , RWC , "3dDeconvolve" , MICRO , TYPE_GENERAL ,
+   "Add MIONN() function to repertoire (negative MION)" ,
+   NULL } ,
+
+ { 2 , APR , 2012 , RWC , "Lion build" , MICRO , TYPE_GENERAL ,
+   "Modify install process to include useful netpbm program binaries" ,
+   "The stuff that imseq.c uses to write images out (GIF, TIFF, PNG, BMP),\n"
+   "so that fink is not required.  Done via Makefile macro\n"
+   "EXTRA_INSTALL_COMMANDS and copying all files in directory EXTRAPROGS to\n"
+   "the output binaries." } ,
+
+ { 19 , MAR , 2012 , RWC , "Makefiles" , MICRO , TYPE_GENERAL ,
+   "Remove -O3 and -ffast-math and -ftree-vectorize from all gcc cases" ,
+   "Too many problems on Lion with -O3 make me suspicious of aggressive\n"
+   "optimization in general." } ,
+
+ { 14 , MAR , 2012 , RWC , "AFNI package" , MICRO , TYPE_GENERAL ,
+   "Add Makefile for Mac OS X 10.7 == Lion" ,
+   "No thanks to Apple, by the way -- breaking OpenMP -- what a bunch of\n"
+   "maroons." } ,
+
+ { 8 , MAR , 2012 , RWC , "OpenMP program" , MICRO , TYPE_BUG_FIX ,
+   "Replace memcpy/memset with AAmemcpy/AAmemset" ,
+   "OpenMP has trouble with these, particularly on Mac Lion.  Files affected\n"
+   "include:\n"
+   "\n"
+   "3dAutoTcorrelate.c  3dDespike.c  3dREMLfit.c\n"
+   "3ddata.h            cs_qmed.c    mri_blur3d_variable.c\n"
+   "mri_nwarp.c         mrilib.h     rcmat.c\n"
+   "thd_incorrelate.c\n"
+   "\n"
+   "AAmemcpy and AAmemset are defined in mrilib.h.  In particular, this gets\n"
+   "rid of the vastly annoying ___builtin_object_size undefined symbol error\n"
+   "message when linking an OpenMP program with llvm-gcc-4.2 on Lion." } ,
+
+ { 7 , MAR , 2012 , RWC , "many" , MICRO , TYPE_GENERAL ,
+   "Many small changes to fix problems caught with the llvm compiler." ,
+   NULL } ,
+
+ { 6 , MAR , 2012 , RWC , "3dNormalityTest" , MINOR , TYPE_NEW_PROG ,
+   "Test voxel values for normality (Gaussianity)." ,
+   "Uses the Anderson-Darling test." } ,
+
+ { 1 , MAR , 2012 , RWC , "1dBport" , MINOR , TYPE_NEW_OPT ,
+   "Several things to keep Rick happy" ,
+   "Option '-band fbot ftop' can now be used more than once.\n"
+   "\n"
+   "New option '-nozero' means to NOT include the 0 frequency.\n"
+   "\n"
+   "New option '-invert' means to calculate the frequency indexes to remove\n"
+   "from the various '-band' options, then invert them to KEEP only those\n"
+   "frequencies instead.  That is, only the frequencies NOT specified via\n"
+   "'-band' will be output in the resultant 1D file." } ,
+
+ { 23 , FEB , 2012 , RWC , "afni" , MINOR , TYPE_MODIFY ,
    "Enable 'bigthree' mode for color pbar" ,
    "If AFNI_PBAR_THREE is YES, the color pbar in the AFNI GUI (but not the\n"
    "renderer) will start in 'bigthree' mode, with 3 panes -- the colorscale\n"

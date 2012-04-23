@@ -49,6 +49,162 @@
 
 afni_history_struct rickr_history[] = {
 
+ { 17, APR, 2012, RCR, "afni-general", MINOR, TYPE_ENHANCE,
+   "added atlas/ROI label use with <> range selectors (MCW_get_angle_range)",
+   NULL
+ } ,
+
+ { 16, APR, 2012, RCR, "afni_proc.py", MICRO, TYPE_NEW_OPT,
+   "added -regress_bandpass, for bandpass filtering via regression",
+   NULL
+ } ,
+
+ { 13, APR, 2012, RCR, "@radial_correlate.py", MICRO, TYPE_ENHANCE,
+   "accept +tlrc datasets",
+   NULL
+ } ,
+
+ { 12, APR, 2012, RCR, "gen_ss_review_scripts.py", MICRO, TYPE_BUG_FIX,
+   "backport to python 2.2",
+   NULL
+ } ,
+
+ { 12, APR, 2012, RCR, "afni_proc.py", MINOR, TYPE_BUG_FIX,
+   "backport to python 2.2",
+   "For files that should work on 2.2, avoid sum() and enumerate().\n"
+   "Thanks to L Broster for noting problems on python 2.2."
+ } ,
+
+ { 8, APR, 2012, RCR, "make_random_timing.py", MINOR, TYPE_ENHANCE,
+   "-ordered_stimuli now takes labels",
+   NULL
+ } ,
+
+ { 4, APR, 2012, RCR, "afni-general", MINOR, TYPE_MODIFY,
+   "if prefix shows STORAGE_UNDEFINED, use BRIK only if not potential surface",
+   NULL
+ } ,
+
+ { 3, APR, 2012, RCR, "plug_realtime", MICRO, TYPE_MODIFY,
+   "always print the name of the mask dataset in use (via GUI or env)",
+   NULL
+ } ,
+
+ { 30, MAR, 2012, RCR, "plug_realtime", MICRO, TYPE_MODIFY,
+   "let user know when AFNI_REALTIME_Mask_Dset is applied",
+   NULL
+ } ,
+
+ { 30, MAR, 2012, RCR, "@auto_tlrc", MICRO, TYPE_NEW_OPT,
+   "added option -inweight\n",
+   "Added for S Horovitz and S Tinaz."
+ } ,
+
+ { 22, MAR, 2012, RCR, "plug_realtime", MINOR, TYPE_ENHANCE,
+   "apply AFNI_REALTIME_SHOW_TIMES in non-RT feedback case",
+   NULL
+ } ,
+
+ { 22, MAR, 2012, RCR, "Dimon", MICRO, TYPE_ENHANCE,
+   "if RT comm fails with afni, show iochan_error_string()",
+   "It occasionally fails at TR=0.125 s."
+ } ,
+
+ { 21, MAR, 2012, RCR, "afni_proc.py", MICRO, TYPE_ENHANCE,
+   "use run_lengths for TR list; removed path from external motion file",
+   NULL
+ } ,
+
+ { 21, MAR, 2012, RCR, "gen_ss_review_scripts.py", MICRO, TYPE_ENHANCE,
+   "look for more motion files; minor changes to output format",
+   NULL
+ } ,
+
+ { 21, MAR, 2012, RCR, "3dcalc", MICRO, TYPE_ENHANCE,
+   "added -help description to -help output",
+   "To get apsearch to enable <tab> completion of -help option."
+ } ,
+
+ { 15, MAR, 2012, RCR, "plug_realtime", MINOR, TYPE_ENHANCE,
+   "added AFNI_REALTIME_Mask_Dset for per-run control over Mask",
+   "Also added some missing vars to README.environment.\n"
+   "Done for J Evans."
+ } ,
+
+ { 14, MAR, 2012, RCR, "Dimon", MINOR, TYPE_NEW_OPT,
+   "added -num_chan and -max_quiet_trs; default sleep = 1.1*TR, max of 2",
+   "Added for J Evans and V Roopchansingh."
+ } ,
+
+ { 14, MAR, 2012, RCR, "afni_proc.py", MICRO, TYPE_BUG_FIX,
+   "test for global timing before local, as it looks like bad local",
+   "Thanks to P Pallett for noting the problem."
+ } ,
+
+ { 13, MAR, 2012, RCR, "lib_qt_gui.py", MICRO, TYPE_MODIFY,
+   "has main, so added trivial -help option",
+   NULL
+ } ,
+
+ { 12, MAR, 2012, RCR, "@SUMA_AlignToExperiment", MICRO, TYPE_NEW_OPT,
+   "added -overwrite_resp, so that processing does not have to stop and wait",
+   "Also, used 'find' grab *.nii, to fix the failure reported by R Ray.\n"
+   "Forgot to put this in with the afni_proc.py change..."
+ } ,
+
+ {  9, MAR, 2012, RCR, "afni_proc.py", MICRO, TYPE_BUG_FIX,
+   "added $hemi to rm.mean dset during scaling; added -overwrite_resp to SATE",
+   "Surface analysis would fail on 2nd hemi, as rm.mean dset would exist."
+   "Also, added new '-overwrite_resp S' to @SUMA_AlignToExperiement command."
+ } ,
+
+ {  7, MAR, 2012, RCR, "@update.afni.binaries", MINOR, TYPE_ENHANCE,
+   "existing package and install dir no longer required for -defaults",
+   NULL
+ } ,
+
+ {  7, MAR, 2012, RCR, "GIFTI", MICRO, TYPE_BUG_FIX,
+   "fixed sizeof in memset of gim (noted by B Cox)",
+   NULL
+ } ,
+
+ {  6, MAR, 2012, RCR, "uber_subject.py", MICRO, TYPE_MODIFY,
+   "move nokia help to -help_install_nokia (since it is not recommended)",
+   NULL
+ } ,
+
+ {  5, MAR, 2012, RCR, "apsearch", MICRO, TYPE_MODIFY,
+   "do not set shell variables",
+   NULL
+ } ,
+
+ {  5, MAR, 2012, RCR, "uber_proc.py", MICRO, TYPE_MODIFY,
+   "trivially apply -help option, for apsearch",
+   NULL
+ } ,
+
+ {  5, MAR, 2012, RCR, "afni-general", MINOR, TYPE_BUG_FIX,
+   "EDIT_empty: only propagate writable storage_modes",
+   "Added is_writable_storage_mode and DSET_STORAGE_MODE.\n"
+   "Thanks to Eli for noting the problem."
+ } ,
+
+ {  2, MAR, 2012, RCR, "afni_proc.py", MINOR, TYPE_MODIFY,
+   "fixed $runs in multi-run ricor",
+   "Thanks to I Mukai for noting the problem."
+ } ,
+
+ { 27, FEB, 2012, RCR, "@update.afni.binaries", MINOR, TYPE_ENHANCE,
+   "made a little more intelligent, e.g. make one backup by default",
+   "Note: can run this without any existing AFNI binaries, e.g.\n"
+   "      @update.afni.binaries -bindir ~/abin -package linux_openmotif"
+ } ,
+
+ { 24, FEB, 2012, RCR, "1d_tool.py", MINOR, TYPE_MODIFY,
+   "added -moderate_mask, fixed -extreme_mask help",
+   "Thanks to R Kuplicki for noting help inconsistency."
+ } ,
+
  { 22, FEB, 2012, RCR, "afni-general", MINOR, TYPE_MODIFY,
    "moved GLOBAL_browser def from afni.h to thd_ttatlas_query.c",
    "- declared in TTQ.h\n"

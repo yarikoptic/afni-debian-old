@@ -294,6 +294,22 @@ int meth_name_to_code( char *nam )  /* 15 Dec 2010 */
 
 /*---------------------------------------------------------------------------*/
 
+char * INTERP_methname( int iii )
+{
+   switch( iii ){
+     default:          return "UNKNOWN" ;
+     case MRI_NN:      return "NN"      ;
+     case MRI_LINEAR:  return "linear"  ;
+     case MRI_CUBIC:   return "cubic"   ;
+     case MRI_QUINTIC: return "quintic" ;
+     case MRI_HEPTIC:  return "heptic"  ;
+     case MRI_WSINC5:  return "wsinc5"  ;
+   }
+   return "MYSTERIOUS" ; /* unreachable */
+}
+
+/*---------------------------------------------------------------------------*/
+
 int main( int argc , char *argv[] )
 {
    THD_3dim_dataset *dset_out=NULL ;
@@ -360,8 +376,10 @@ int main( int argc , char *argv[] )
    char *matrix_save_1D        = NULL ;         /* 23 Jul 2007 */
    char *apply_1D              = NULL ;         /* off by default */
    int interp_code             = MRI_LINEAR ;
+   int got_interp              = 0 ;
    int npt_match               = -47 ;          /* 47%, that is */
    int final_interp            = MRI_CUBIC ;
+   int got_final               = 0 ;
    int warp_code               = WARP_AFFINE ;
    char warp_code_string[64]   = "\0" ;         /* 22 Feb 2010 */
    int warp_freeze             = 0 ;            /* off by default */
@@ -593,11 +611,17 @@ int main( int argc , char *argv[] )
 "                         3dAllineate -input dataset+orig         \\\n"
 "                                     -master template+orig       \\\n"
 "                                     -prefix newdataset          \\\n"
-"                                     -final quintic              \\\n"
+"                                     -final wsinc5               \\\n"
 "                                     -1Dparam_apply '1D: 12@0'\\'  \n"
 "                       Here, the identity transformation is specified\n"
 "                       by giving all 12 affine parameters as 0 (note\n"
 "                       the extra \\' at the end of the '1D: 12@0' input!).\n"
+"            ****N.B.: The interpolation method used to produce a dataset\n"
+"                       is always given via the '-final' option, NOT via\n"
+"                       '-interp'.  If you forget this and use '-interp'\n"
+"                       along with one of the 'apply' options, this program\n"
+"                       will chastise you (gently) and change '-final'\n"
+"                       to match what the '-interp' input.\n"
 "\n"
 " -1Dmatrix_save ff  = Save the transformation matrix for each sub-brick into\n"
 "                      file 'ff' (1 row per sub-brick in the source dataset).\n"
@@ -666,6 +690,9 @@ int main( int argc , char *argv[] )
 "                     alignment pass; the selection here only affects\n"
 "                     the interpolation method used during the second\n"
 "                     (fine) alignment pass.\n"
+"            ** N.B.: '-interp' does NOT define the final method used\n"
+"                     to produce the output dataset as warped from the\n"
+"                     input dataset.  If you want to do that, use '-final'.\n"
 "\n"
 " -final iii  = Defines the interpolation mode used to create the\n"
 "               output dataset.  [Default == 'cubic']\n"
@@ -2207,23 +2234,23 @@ int main( int argc , char *argv[] )
      /*-----*/
 
      if( strcmp(argv[iarg],"-NN") == 0 || strncmp(argv[iarg],"-nearest",6) == 0 ){
-       interp_code = MRI_NN ; iarg++ ; continue ;
+       interp_code = MRI_NN ; iarg++ ; got_interp = 1 ;continue ;
      }
      if( strncmp(argv[iarg],"-linear",4)==0 || strncmp(argv[iarg],"-trilinear",6)==0 ){
-       interp_code = MRI_LINEAR ; iarg++ ; continue ;
+       interp_code = MRI_LINEAR ; iarg++ ; got_interp = 1 ;continue ;
      }
      if( strncmp(argv[iarg],"-cubic",4)==0 || strncmp(argv[iarg],"-tricubic",6)==0 ){
-       interp_code = MRI_CUBIC ; iarg++ ; continue ;
+       interp_code = MRI_CUBIC ; iarg++ ; got_interp = 1 ;continue ;
      }
      if( strncmp(argv[iarg],"-quintic",4)==0 || strncmp(argv[iarg],"-triquintic",6)==0 ){
-       interp_code = MRI_QUINTIC ; iarg++ ; continue ;
+       interp_code = MRI_QUINTIC ; iarg++ ; got_interp = 1 ;continue ;
      }
 #if 0
      if( strcasecmp(argv[iarg],"-VARP1") == 0 ){
-       interp_code = MRI_VARP1 ; iarg++ ; continue ;
+       interp_code = MRI_VARP1 ; iarg++ ; got_interp = 1 ;continue ;
      }
      if( strncasecmp(argv[iarg],"-WSINC") == 0 ){
-       interp_code = MRI_WSINC5 ; iarg++ ; continue ;
+       interp_code = MRI_WSINC5 ; iarg++ ; got_interp = 1 ;continue ;
      }
 #endif
      if( strncmp(argv[iarg],"-interp",5)==0 ){
@@ -2249,8 +2276,9 @@ int main( int argc , char *argv[] )
 #endif
        else
          ERROR_exit("Unknown code '%s' after '%s' :-(",argv[iarg],argv[iarg-1]) ;
-       iarg++ ; continue ;
+       iarg++ ; got_interp = 1 ;continue ;
      }
+
      if( strncmp(argv[iarg],"-final",5) == 0 ){
        if( ++iarg >= argc ) ERROR_exit("no argument after '%s' :-(",argv[iarg-1]) ;
        if( strcmp(argv[iarg],"NN") == 0 || strncmp(argv[iarg],"nearest",5) == 0 )
@@ -2274,7 +2302,7 @@ int main( int argc , char *argv[] )
          final_interp = MRI_WSINC5 ;
        else
          ERROR_exit("Unknown code '%s' after '%s' :-(",argv[iarg],argv[iarg-1]) ;
-       iarg++ ; continue ;
+       iarg++ ; got_final = 1 ;continue ;
      }
 
      /*-----*/
@@ -2925,7 +2953,20 @@ int main( int argc , char *argv[] )
      skip_first = 1 ;  /* don't register sub-brick #0 of targ to itself! */
    }
 
-   if( final_interp < 0 ) final_interp = interp_code ;  /* default */
+   if( final_interp < 0 ) final_interp = interp_code ;  /* not used */
+
+   if( got_interp && !got_final && apply_mode > 0 ){
+     WARNING_message("you are applying a warp, AND you gave a -interp code;\n"
+                     "            BUT for applying a warp to produce a dataset, it is\n"
+                     "            always -final that matters ==> setting -final to %s" ,
+                     INTERP_methname(interp_code) ) ;
+     final_interp = interp_code ;
+   }
+
+   if( (interp_code == MRI_NN       && final_interp != MRI_NN)       ||
+       ( MRI_HIGHORDER(interp_code) && !MRI_HIGHORDER(final_interp) )  )
+     WARNING_message("-interp is %s but -final is %s -- are you sure?",
+                     INTERP_methname(interp_code) , INTERP_methname(final_interp) ) ;
 
    /*--- load input datasets ---*/
 

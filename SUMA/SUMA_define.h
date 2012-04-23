@@ -160,6 +160,7 @@ typedef enum  { SUMA_FT_ERROR = -1, SUMA_FT_NOT_SPECIFIED,
                SUMA_INVENTOR_GENERIC, SUMA_PLY, SUMA_VEC, SUMA_CMAP_SO,
                SUMA_BRAIN_VOYAGER , 
                SUMA_OPENDX_MESH, SUMA_BYU, SUMA_GIFTI, SUMA_MNI_OBJ,
+               SUMA_PREDEFINED,
                   SUMA_N_SO_FILE_TYPE} SUMA_SO_File_Type; /* add types always between SUMA_FT_NOT_SPECIFIED AND SUMA_N_SO_FILE_TYPE */
 typedef enum { SUMA_FF_ERROR = -1, SUMA_FF_NOT_SPECIFIED, SUMA_ASCII, SUMA_BINARY, SUMA_BINARY_BE, SUMA_BINARY_LE, SUMA_XML_SURF, SUMA_XML_ASCII_SURF,  SUMA_XML_B64_SURF, SUMA_XML_B64GZ_SURF } SUMA_SO_File_Format;
 typedef enum { type_not_set = -1,
@@ -169,7 +170,7 @@ typedef enum { type_not_set = -1,
                NBSP_type, PL_type, VO_type,
                NBT_type, SBT_type, DBT_type, /*!< Those three will 
                                                    likely not be used */
-               NIDO_type, 
+               NIDO_type, SDSET_type,
                N_DO_TYPES } SUMA_DO_Types;   
 
 /*!< Displayable Object Types 
@@ -356,6 +357,8 @@ typedef enum { SW_CoordBias,
 
 typedef enum { SW_LinkMode,
                SW_LinkMode_None,
+               SW_LinkMode_Pls1,
+               SW_LinkMode_Same,
                SW_LinkMode_Stat,  
                SW_N_LinkMode } SUMA_WIDGET_LINK_MODE;
 
@@ -433,6 +436,15 @@ typedef enum { SUMA_ROI_Undefined,
 typedef enum { SXR_default, SXR_Euro, SXR_Afni , SXR_Bonaire} SUMA_XRESOURCES;   /* flags for different X resources */
 
 typedef enum { SRM_ViewerDefault, SRM_Fill, SRM_Line, SRM_Points , SRM_Hide, SRM_N_RenderModes} SUMA_RENDER_MODES; /*!< flags for various rendering modes */
+
+
+typedef enum { 
+               SDODM_Error=-1,
+               SDODM_All, 
+               SDODM_n3CrossHair,  
+               SDODM_n2CrossHair, SDODM_n1CrossHair, SDODM_n0CrossHair, 
+               SDODM_Hide,  
+               SDODM_N_DO_DrawMasks}  SUMA_DO_DRAW_MASK;
 
    /*!< number of useful views enumerated in SUMA_STANDARD_VIEWS */
 typedef enum {    SUMA_2D_Z0, SUMA_2D_Z0L, 
@@ -883,8 +895,10 @@ typedef struct {
 
 /*! structure that contains faceset's first order neighbors */
 typedef struct {
-   int N_FaceSet; /*!< Number of nodes whos neighbors are listed in this structure */
-   int **FirstNeighb; /*!< N_Node x N_Neighb_max matrix with each row specifying the indices of neighboring facesets */
+   int N_FaceSet; /*!< Number of nodes whos neighbors are listed in 
+                       this structure */
+   int **FirstNeighb; /*!< N_Node x N_Neighb_max matrix with each row 
+                        specifying the indices of neighboring facesets */
    int *N_Neighb; /*!< maximum number of neighbors for a particular faceset */
    int N_Neighb_max; /*!< maximum number of neighbors of all facesets */
    int N_Neighb_min; /*!< minimum number of neighbors of all facesets */
@@ -895,11 +909,16 @@ typedef struct {
 */
 typedef struct {
    int N_Node; /*!< Number of nodes in the surface */
-   float **T1; /*!< N_Node x 3 matrix with each row specifying the 1st principal direction of the surface */
-   float **T2; /*!< N_Node x 3 matrix with each row specifying the 2nd principal direction of the surface */
-   float *Kp1; /*!< N_Node x 1 vector with each row specifying the curvature along the 1st principal direction */
-   float *Kp2; /*!< N_Node x 1 vector with each row specifying the curvature along the 2nd principal direction */
-   int N_SkipNode; /*!< number of nodes for which the curvature could not be computed */
+   float **T1; /*!< N_Node x 3 matrix with each row specifying the 
+                     1st principal direction of the surface */
+   float **T2; /*!< N_Node x 3 matrix with each row specifying the 
+                     2nd principal direction of the surface */
+   float *Kp1; /*!< N_Node x 1 vector with each row specifying the 
+                     curvature along the 1st principal direction */
+   float *Kp2; /*!< N_Node x 1 vector with each row specifying the 
+                     curvature along the 2nd principal direction */
+   int N_SkipNode; /*!< number of nodes for which the curvature could 
+                        not be computed */
 } SUMA_SURFACE_CURVATURE;
 
 
@@ -988,10 +1007,12 @@ typedef struct {
 /*! Displayable Object Type */
 typedef struct {
    void *OP;   /*!< Object Pointer */
-   SUMA_DO_Types ObjectType; /*!< Type of displayable object (redundant with OP->type) */
-   SUMA_DO_CoordType CoordType; /*!< Type of coordinate system that the object is attached to
-                                    This is used to determine whether the object is drawn before or 
-                                    or after the shift and rotation matrices are applied */
+   SUMA_DO_Types ObjectType; 
+         /*!< Type of displayable object (redundant with OP->type) */
+   SUMA_DO_CoordType CoordType; 
+      /*!< Type of coordinate system that the object is attached to
+         This is used to determine whether the object is drawn before or 
+         or after the shift and rotation matrices are applied */
 } SUMA_DO;
 
 
@@ -1797,7 +1818,7 @@ typedef struct {
             allow independent control for each surface. If the rendering mode
             is specified for a certain surface, it takes precedence over the
             one specified here*/
-
+   SUMA_DO_DRAW_MASK DO_DrawMask; /*!< What to draw of displayable objects */
    float Back_Modfact; /*!< Factor to apply when modulating foreground 
                color with background intensity
                background does not modulate foreground, 
@@ -2010,10 +2031,13 @@ typedef struct {
    int N_el; /*!< Number of elements in each vector */
    SUMA_Boolean *isHit;   /*!< Is the triangle hit ? */
    float *t;   /*!< SIGNED Distance from ray source to triangle */
-   float *u;   /*!< location of intersection in triangle in Barycentric coordinates, V0P = u V0V1 + vV0V2*/
+   float *u;   /*!< location of intersection in triangle in 
+                   Barycentric coordinates, V0P = u V0V1 + vV0V2*/
    float *v;   /*!< location of intersection in triangle */
-   int ifacemin; /*!< index of the faceset closest (NOT SIGNED, abs(t)) to the ray's origin */
-   int ifacemax; /*!< index of the faceset farthest (NOT SIGNED, abs(t)) from the ray's origin */
+   int ifacemin; /*!< index of the faceset closest (NOT SIGNED, abs(t)) 
+                      to the ray's origin */
+   int ifacemax; /*!< index of the faceset farthest (NOT SIGNED, abs(t)) 
+                      from the ray's origin */
    int N_hits; /*!< Number of intersections between ray and surface */
    int N_poshits; /*!< Number of intersections such that t is positive */
    float P[3]; /*!< XYZ of intersection with ifacemin */
@@ -2629,36 +2653,44 @@ typedef struct {
 } SUMA_OFFSET_STRUCT;      /*!< The structure returned by SUMA_FormNeighbOffset */
 
 typedef struct {
-   int *NodesInLayer;      /*!< Vector containing nodes that are neighbors to node n 
-                               (Vector contains N_NodesInLayer useful values but has N_AllocNodesInLayer allocated spots)
-                               Those neighbors can be of any order (see below and structure SUMA_GET_OFFSET_STRUCT) */
+   int *NodesInLayer;   /*!< Vector containing nodes that are neighbors to node n
+                            (Vector contains N_NodesInLayer useful values but has
+                             N_AllocNodesInLayer allocated spots)
+                            Those neighbors can be of any order (see below and
+                             structure SUMA_GET_OFFSET_STRUCT) */
    int N_NodesInLayer;     /*!< Number of nodes in this layer */
-   int N_AllocNodesInLayer;   /*!< Number of nodes allocated for in this layer. Allocation is done in chunks of 200 at a time */
-} SUMA_NODE_NEIGHB_LAYER;  /*!< Structure containing the layers neighboring a node n.
+   int N_AllocNodesInLayer;   /*!< Number of nodes allocated for in this layer.
+                                 Allocation is done in chunks of 200 at a time */
+} SUMA_NODE_NEIGHB_LAYER;  /*!< Structure containing the layers neighboring 
+                                 a node n.
                                 The 0th order layer contain n only
-                                The 1st order layer contains the first order neighbors of n
+                                The 1st order layer contains the first 
+                                order neighbors of n
                                 etc.. */
 
 typedef struct {
-   int N_layers;           /*!< Number of node neighborhoods of a certain node n 
-                                The 0th order layer contain n only
-                                The 1st order layer contains the first order neighbors of n
+   int N_layers;    /*!< Number of node neighborhoods of a certain node n. 
+                    The 0th order layer contain n only.
+                    The 1st order layer contains the first order neighbors of n.
                                 etc.. */
    SUMA_NODE_NEIGHB_LAYER *layers;  /*!<  layers[0] is the zeroth order layer
                                           layers[1] is the 1st order layer, etc.
                                           See  SUMA_NODE_NEIGHB_LAYER */
    
    int N_Nodes;            /*!< Number of nodes in mesh */
-   int *LayerVect;         /*!< vector containing the neighborhood layer of a certain node from node n
-                                 LayerVect[5] = 2; means node 5 is a 2nd order neighbor to node n
-                                 LayerVect[5] = -1; means node 5 is not within the limit distance from node n
-                                 All values in LayerVect are initialized to -1 */
-   float *OffVect;         /*!< vector containing the distance of nodes in the mesh from node n
-                                 d = OffVect[5]; is the geodesic distance of node 5 from node n
-                                 OffVect is N_Nodes long. 
-                                 OffVect[k] is meaningless if LayerVect[k] < 0 */
-} SUMA_GET_OFFSET_STRUCT;  /*!< Structure containing nodes that are within a certain geodesic distance (lim) from 
-                                a certain node. */
+   int *LayerVect;         /*!< vector containing the neighborhood layer of a 
+                                certain node from node n.
+              LayerVect[5] = 2; means node 5 is a 2nd order neighbor to node n.
+              LayerVect[5] = -1; means node 5 is not within the limit distance
+                                 from node n.
+              All values in LayerVect are initialized to -1 */
+   float *OffVect;         /*!< vector containing the distance of nodes in the 
+                                 mesh from node n.
+                d = OffVect[5]; is the geodesic distance of node 5 from node n.
+                OffVect is N_Nodes long. 
+                OffVect[k] is meaningless if LayerVect[k] < 0 */
+} SUMA_GET_OFFSET_STRUCT;  /*!< Structure containing nodes that are within a
+               certain geodesic distance (lim) from a certain node n. */
 
 typedef struct {
    int talk_suma;
@@ -2844,6 +2876,8 @@ typedef struct {
    GICOR_setup *giset; /*!< parameters for group icorr setup */
    
    SUMA_PARSED_NAME *autorecord; /*!< Autorecord prefix */
+   
+   DList *SaveList; /*!< List of objects set to be saved when user chooses to */
 } SUMA_CommonFields;
 
 

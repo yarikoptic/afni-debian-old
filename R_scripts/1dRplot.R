@@ -4,21 +4,6 @@
 #Clean up
 rm(list = ls())
 
-libLoad <- function(myLib) {
-   sucLoad <- FALSE
-   sucCheck <- FALSE
-   try(sucLoad <- library(myLib, character.only = TRUE, logical.return = TRUE))
-   if (sucLoad) {
-      print(sprintf("Package %s successfully loaded!", myLib)); sucCheck <- TRUE
-   } else {
-	  	try(install.packages(myLib))
-      try(sucLoad <- library(myLib, character.only = TRUE, 
-                              logical.return = TRUE))
-      if (sucLoad) print(sprintf("Package %s successfully loaded...", myLib)) 
-   	}
-}
-
-
 first.in.path <- function(file) {
    ff <- paste(strsplit(Sys.getenv('PATH'),':')[[1]],'/', file, sep='')
    ff<-ff[lapply(ff,file.exists)==TRUE];
@@ -349,9 +334,11 @@ read.1dRplot.opts.batch <- function (args=NULL, verb = 0) {
                      ) ),
                      
       '-save.Rdat' = apl(n = 0, d = NA,  h = paste(
-   "-save.Rdat : Save data list for reproducing plot.\n",
+   "-save.Rdat : Save data list for reproducing plot in R.\n",
    "             You need to specify -prefix or -save\n",
-   "             along with this option to set the prefix."
+   "             along with this option to set the prefix.\n",
+   "    For example, say you have dice.Rdat saved from a previous command\n",
+   "    load('dice.Rdat'); P$nodisp <- TRUE; plot.1D.eng(P)\n"
                      ) ),
       
       '-save.size' = apl(n = 2, d = c(2000,2000),  h = paste(

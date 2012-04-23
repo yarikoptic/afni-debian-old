@@ -232,7 +232,7 @@ typedef struct {
          off is most easily computed with XtOffsetOf       */
 
 #define COPY_INTO_STRUCT(str,off,type,ptr,n) \
-   (void) memcpy( (char *)(&(str))+(off), (char *)(ptr), (n)*sizeof(type) )
+   AAmemcpy( (char *)(&(str))+(off), (char *)(ptr), (n)*sizeof(type) )
 
 /*! Copy n units of the given type "type * ptr", from a structure "str",
      starting at byte offset "off";
@@ -240,7 +240,7 @@ typedef struct {
          off is most easily computed with XtOffsetOf       */
 
 #define COPY_FROM_STRUCT(str,off,type,ptr,n) \
-   (void) memcpy( (char *)(ptr), (char *)(&(str))+(off), (n)*sizeof(type) )
+   AAmemcpy( (char *)(ptr), (char *)(&(str))+(off), (n)*sizeof(type) )
 
 /*! Safe version of strncpy, which always leaves a NUL at the end.
 
@@ -262,10 +262,10 @@ typedef struct {
 /*! Dynamically extendable array of XtPointer. */
 
 typedef struct {
-      int num ;          /*!< Number currently in use */
-      int nall ;         /*!< Number currently allocated */
-      XtPointer * ar ;   /*!< Array of pointers: [0..num-1] are valid */
-      int * ic ;         /*!< added 26 Mar 2001 */
+      int num ;         /*!< Number currently in use */
+      int nall ;        /*!< Number currently allocated */
+      XtPointer *ar ;   /*!< Array of pointers: [0..num-1] are valid */
+      int *ic ;         /*!< added 26 Mar 2001 */
 } XtPointer_array ;
 
 /*! Increment for extending XtPointer_array allocation */
@@ -1439,6 +1439,10 @@ typedef struct {
 /*! Center of grid in z-direction. */
 #define DAXES_ZCEN(dax) ((dax)->zzorg + 0.5*((dax)->nzz - 1) * (dax)->zzdel)
 
+#define DSET_XCEN(ds) DAXES_XCEN((ds)->daxes)
+#define DSET_YCEN(ds) DAXES_YCEN((ds)->daxes)
+#define DSET_ZCEN(ds) DAXES_ZCEN((ds)->daxes)
+
 #if 1
 #define DAXES_NUM(dax,ori) \
    ( (ORIENT_xyzint[(ori)] == ORIENT_xyzint[(dax)->xxorient]) ? (dax)->nxx : \
@@ -1466,7 +1470,9 @@ typedef struct {
 
 #define ISVALID_DATAXES(dax) ( (dax) != NULL && (dax)->type == DATAXES_TYPE )
 
-/*! Check if two THD_dataxes are essential equivalent. */
+/*! Check if two THD_dataxes are essential equivalent.
+    ***** SEE ALSO ********
+    THD_dataset_mismatch ()               */
 
 #define EQUIV_DATAXES(cax,dax)                     \
   ( ISVALID_DATAXES((cax))                      && \
@@ -2887,10 +2893,14 @@ extern int    THD_deconflict_prefix( THD_3dim_dataset * ) ;          /* 23 Mar 2
 
 #define DSET_IDCODE_STR(ds) ((ds)->idcode.str)
 
+/*! Return the storage mode     5 Mar 2012 [rickr] */
+#define DSET_STORAGE_MODE(ds) ( ((ds) && (ds)->dblk && (ds)->dblk->diskptr)\
+   ? (ds)->dblk->diskptr->storage_mode:STORAGE_UNDEFINED )
+
 /*! Return the storage mode string */
 #define DSET_STORAGE_MODE_STR(ds) ( ((ds) && (ds)->dblk && (ds)->dblk->diskptr)\
    ? storage_mode_str((ds)->dblk->diskptr->storage_mode):"NULL" )
-   
+
 /* 25 April 1998 */
 
 #define DBLK_BYTEORDER(db)  ((db)->diskptr->byte_order)
@@ -3930,11 +3940,11 @@ extern int THD_copy_labeltable_atr( THD_datablock *d1,  THD_datablock *d2);
 extern void THD_store_dataset_keywords ( THD_3dim_dataset * , char * ) ;
 extern void THD_append_dataset_keywords( THD_3dim_dataset * , char * ) ;
 extern char * THD_dataset_info( THD_3dim_dataset * , int ) ;
-extern int THD_subbrick_minmax( THD_3dim_dataset *dset, int isb, int scl, 
+extern int THD_subbrick_minmax( THD_3dim_dataset *dset, int isb, int scl,
                                  float *min, float *max);
 extern float THD_subbrick_max(THD_3dim_dataset *dset, int isb, int scl);
 extern float THD_subbrick_min(THD_3dim_dataset *dset, int isb, int scl);
-extern int THD_dset_minmax( THD_3dim_dataset *dset, int scl, 
+extern int THD_dset_minmax( THD_3dim_dataset *dset, int scl,
                                  float *min, float *max);
 extern float THD_dset_max(THD_3dim_dataset *dset, int scl);
 extern float THD_dset_min(THD_3dim_dataset *dset, int scl);
@@ -4000,8 +4010,9 @@ extern int storage_mode_from_filename( char * fname );      /* 20 Apr 2006 */
 int storage_mode_from_prefix( char * fname );
 extern char *storage_mode_name(int mode);
 extern int has_known_non_afni_extension( char * fname ) ;   /*     [rickr] */
+extern int is_writable_storage_mode( int smode ) ;          /* 05 Mar 2012 */
 extern char * find_filename_extension( char * fname );
-extern char * without_afni_filename_extension( char *fname); 
+extern char * without_afni_filename_extension( char *fname);
 
 extern void THD_datablock_apply_atr( THD_3dim_dataset * ) ; /* 09 May 2005 */
 
@@ -4016,6 +4027,8 @@ extern int * MCW_get_intlist( int , char * ) ;
 extern int * MCW_get_labels_intlist( char ** , int,  char * ); /* ZSS Dec 09 */
 extern int * MCW_get_thd_intlist( THD_3dim_dataset * , char * ); /* ZSS Dec 09 */
 extern void MCW_intlist_allow_negative( int ) ;             /* 22 Nov 1999 */
+extern int  MCW_get_angle_range(THD_3dim_dataset *, char *, float *, float *);
+
 
 /* copy a dataset, given a list of sub-bricks          [rickr] 26 Jul 2004 */
 extern THD_3dim_dataset * THD_copy_dset_subs( THD_3dim_dataset * , int * ) ;
@@ -4243,12 +4256,23 @@ extern THD_ivec3 THD_3dmm_to_3dind( THD_3dim_dataset * , THD_fvec3 ) ;
 extern THD_ivec3 THD_3dmm_to_3dind_warn( THD_3dim_dataset * , THD_fvec3, int * ) ;
 extern THD_ivec3 THD_3dmm_to_3dind_no_wod( THD_3dim_dataset * , THD_fvec3 ) ;
                                                    /* 28 Sep 2004  [rickr] */
+extern THD_fvec3 THD_3dind_to_dicomm_no_wod( THD_3dim_dataset *dset, THD_ivec3 iv ) ;
 
 extern THD_fvec3 THD_3dfind_to_3dmm( THD_3dim_dataset * , THD_fvec3 ) ;
 extern THD_fvec3 THD_3dmm_to_3dfind( THD_3dim_dataset * , THD_fvec3 ) ;
 
 extern THD_fvec3 THD_3dmm_to_dicomm( THD_3dim_dataset * , THD_fvec3 ) ;
 extern THD_fvec3 THD_dicomm_to_3dmm( THD_3dim_dataset * , THD_fvec3 ) ;
+#define AFNI_3D_to_1D_index(i, j, k, ni, nij) \
+      ( (int)(i) + (int)(j) * (ni) + (int)(k) * (nij) )
+
+#define AFNI_1D_to_3D_index(ijk, i, j, k, ni, nij){  \
+   k = ((ijk) / (nij)); \
+   j = ((ijk) % (nij));   \
+   i = ((j) % (ni));  \
+   j = ((j) / (ni)); \
+}
+
 
 extern THD_fvec3 THD_tta_to_mni( THD_fvec3 ) ;  /* 29 Apr 2002 */
 extern THD_fvec3 THD_mni_to_tta( THD_fvec3 ) ;
@@ -4263,7 +4287,8 @@ extern float * TS_parse_tpattern( int, float, char * ) ;  /* 11 Dec 2007 */
 
 extern THD_fvec3 THD_dataset_center( THD_3dim_dataset * ) ;  /* 01 Feb 2001 */
 extern int THD_dataset_mismatch(THD_3dim_dataset *, THD_3dim_dataset *) ;
-
+extern double THD_diff_vol_vals(THD_3dim_dataset *d1, THD_3dim_dataset *d2,
+                                int scl);
 extern int THD_dataset_tshift( THD_3dim_dataset * , int ) ; /* 15 Feb 2001 */
 
 #define MISMATCH_CENTER  (1<<0)  /* within 0.2 voxel */
@@ -4369,11 +4394,11 @@ typedef struct {
 
 #undef  VECTIM_extract
 #define VECTIM_extract(mv,j,aa) \
-  memcpy( (aa) , VECTIM_PTR((mv),(j)) , sizeof(float)*(mv)->nvals )
+  AAmemcpy( (aa) , VECTIM_PTR((mv),(j)) , sizeof(float)*(mv)->nvals )
 
 #undef  VECTIM_insert
 #define VECTIM_insert(mv,j,aa) \
-  memcpy( VECTIM_PTR((mv),(j)) , (aa) , sizeof(float)*(mv)->nvals )
+  AAmemcpy( VECTIM_PTR((mv),(j)) , (aa) , sizeof(float)*(mv)->nvals )
 
 #undef  VECTIM_destroy
 #define VECTIM_destroy(mv)                       \
@@ -4455,6 +4480,11 @@ extern int THD_extract_array      ( int, THD_3dim_dataset *, int, void * ) ;
 extern int THD_extract_float_array( int, THD_3dim_dataset *, float * ) ;
 
 extern MRI_IMAGE * THD_extract_float_brick( int , THD_3dim_dataset * ) ;
+extern MRI_IMAGE * THD_extract_double_brick( int , THD_3dim_dataset * ) ;
+extern MRI_IMAGE * THD_extract_int_brick( int , THD_3dim_dataset * ) ;
+extern float * THD_extract_to_float( int , THD_3dim_dataset * ) ;
+extern double * THD_extract_to_double( int , THD_3dim_dataset * ) ;
+extern int * THD_extract_to_int( int , THD_3dim_dataset * ) ;
 
 extern void THD_insert_series( int, THD_3dim_dataset *, int, int, void *, int );
 
@@ -4598,6 +4628,10 @@ extern int *THD_unique_rank( THD_3dim_dataset *mask_dset ,
                         byte *cmask,
                         char *mapname,
                         int **unqp, int *N_unq);
+extern int THD_unique_rank_edit( THD_3dim_dataset *mask_dset ,
+                           int miv,
+                           byte *cmask,
+                           char *mapname, int **unqp, int *N_unq) ;
 int is_integral_dset ( THD_3dim_dataset *dset, int check_data);
 int is_integral_sub_brick ( THD_3dim_dataset *dset, int isb, int check_data);
 extern int THD_mask_remove_isolas( int nx, int ny, int nz , byte *mmm ) ;

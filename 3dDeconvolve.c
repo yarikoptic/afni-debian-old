@@ -1157,8 +1157,8 @@ void display_help_menu(int detail)
     "        duration is a parameter you give (duration is NOT a parameter  \n"
     "        that will be estimated).  Read the descriptions below carefully:\n"
     "        not all functions are (or can be) convolved in this way:       \n"
-    "        * ALWAYS convolved:      BLOCK  dmBLOCK  MION                  \n"
-    "        * NEVER convolved:       TENT   CSPLIN   POLY  SIN  EXPR       \n"
+    "        * ALWAYS convolved:      BLOCK  dmBLOCK  MION  MIONN           \n"
+    "        * NEVER convolved:       TENT   CSPLIN   POLY  SIN   EXPR      \n"
     "        * OPTIONALLY convolved:  GAM    SPMGx    WAV                   \n"
     "                                                                       \n"
     "     'BLOCK(d,p)'  = 1 parameter block stimulus of duration 'd'        \n"
@@ -1177,6 +1177,17 @@ void display_help_menu(int detail)
     "                       If 'p' is omitted, the amplitude will depend on \n"
     "                       the duration 'd', which is useful only in       \n"
     "                       special circumstances!!                         \n"
+    "                    ** For bad historical reasons, the peak amplitude  \n"
+    "                       'BLOCK' without the 'p' parameter does not go to\n"
+    "                       1 as the duration 'd' gets large.  Correcting   \n"
+    "                       this oversight would break some people's lives, \n"
+    "                       so that's just the way it is.                   \n"
+    "                    ** The 'UBLOCK' function (U for Unit) is the same  \n"
+    "                       as the 'BLOCK' function except that when the    \n"
+    "                       'p' parameter is missing (or 0), the peak       \n"
+    "                       amplitude goes to 1 as the duration gets large. \n"
+    "                       If p > 0, 'UBLOCK(d,p)' and 'BLOCK(d,p)' are    \n"
+    "                       identical.                                      \n"
     "     'TENT(b,c,n)' = n parameter tent function expansion from times    \n"
     "                       b..c after stimulus time [piecewise linear]     \n"
     "                       [n must be at least 2; time step is (c-b)/(n-1)]\n"
@@ -1288,6 +1299,8 @@ void display_help_menu(int detail)
     "                  ** Note that this is a positive function, but MION   \n"
     "                     produces a negative response to activation, so the\n"
     "                     beta and t-statistic for MION are usually negative.\n"
+    "               ***** If you want a negative MION function (so you get  \n"
+    "                     a positive beta), use the name 'MIONN' instead.   \n"
     "                  ** After convolution with a square wave 'd' seconds  \n"
     "                     long, the resulting single-trial waveform is      \n"
     "                     scaled to have magnitude 1.  For example, try     \n"
@@ -1416,13 +1429,13 @@ void display_help_menu(int detail)
     "   a block starting at 30 s,                                           \n"
     "   with amplitude modulation parameters 5 and 3,                       \n"
     "   and with duration 12 s.                                             \n"
-    " The unmodulated peak response of dmBLOCK is normally set to 1.        \n"
-    " If you want the peak response to be a different value, use            \n"
+    " The unmodulated peak response of dmBLOCK depends on the duration      \n"
+    " of the stimulus, as the BOLD response accumulates.                    \n"
+    " If you want the peak response to be a set to a fixed value, use       \n"
     "   dmBLOCK(p)                                                          \n"
-    " where p = the desired peak value.  As a special case, if you set      \n"
-    " p = 0, then the peak response will vary with the duration, as         \n"
-    " the simulated BOLD response accumulates.  Understand what you         \n"
-    " are doing in this case, and look at the regression matrix!            \n"
+    " where p = the desired peak value (e.g., 1).                           \n"
+    " *** Understand what you doing when you use dmBLOCK, and look at  ***  \n"
+    " *** the regression matrix!  Otherwise, you will end up confused. ***  \n"
     " *N.B.: The maximum allowed dmBLOCK duration is 999 s.                 \n"
     " *N.B.: You cannot use '-iresp' or '-sresp' with dmBLOCK!              \n"
     " *N.B.: If you are NOT doing amplitude modulation at the same time     \n"
@@ -1434,18 +1447,33 @@ void display_help_menu(int detail)
     "        there is only 1 'married' parameter, the program will print    \n"
     "        a warning message, then convert to '-stim_times_AM1', and      \n"
     "        continue -- so nothing bad will happen to your analysis!       \n"
+    "        (But you will be embarassed in front of your friends.)         \n"
+    " *N.B.: If you are using AM2 (amplitude modulation) with dmBLOCK, you  \n"
+    "        might want to use 'dmBLOCK(1)' to make each block have native  \n"
+    "        amplitude 1 before it is scaled by the amplitude parameter.    \n"
+    "        Or maybe not -- this is a matter for fine judgment.            \n"
     " *N.B.: You can also use dmBLOCK with -stim_times_IM, in which case    \n"
     "        each time in the 'tname' file should have just ONE extra       \n"
     "        parameter -- the duration -- married to it, as in '30:15',     \n"
     "        meaning a block of duration 15 seconds starting at t=30 s.     \n"
+    " *N.B.: For bad historical reasons, the peak amplitude dmBLOCK without \n"
+    "        the 'p' parameter does not go to 1 as the duration gets large. \n"
+    "        Correcting this oversight would break some people's lives, so  \n"
+    "        that's just the way it is.                                     \n"
+    " *N.B.: The 'dmUBLOCK' function (U for Unit) is the same as the        \n"
+    "        'dmBLOCK' function except that when the 'p' parameter is       \n"
+    "        missing (or 0), the peak amplitude goes to 1 as the duration   \n"
+    "        gets large.  If p > 0, 'dmUBLOCK(p)' and 'dmBLOCK(p)' are      \n"
+    "        identical                                                      \n"
     " For some graphs of what dmBLOCK regressors look like, see             \n"
     "   http://afni.nimh.nih.gov/pub/dist/doc/misc/Decon/AMregression.pdf   \n"
     " and/or try the following command:                                     \n"
-    "    3dDeconvolve -nodata 100 1 -polort -1 -num_stimts 1 \\             \n"
-    "                 -stim_times_AM1 1 q.1D 'dmBLOCK(1)'    \\             \n"
+    "    3dDeconvolve -nodata 350 1 -polort -1 -num_stimts 1 \\             \n"
+    "                 -stim_times_AM1 1 q.1D 'dmBLOCK'       \\             \n"
     "                 -x1D stdout: | 1dplot -stdin -thick -thick            \n"
     " where file q.1D contains the single line                              \n"
-    "    15:10 50:30                                                        \n"
+    "   10:1 40:2 70:3 100:4 130:5 160:6 190:7 220:8 250:9 280:30           \n"
+    " Change 'dmBLOCK' to 'dmBLOCK(1)' and see how the matrix plot changes. \n"
     "                                                                       \n"
     "[-stim_times_IM k tname Rmodel]                                        \n"
     "   Similar, but each separate time in 'tname' will get a separate      \n"
@@ -10084,6 +10112,18 @@ static float basis_mion( float x, float b, float c, float top, void *q )
 }
 
 /*--------------------------------------------------------------------------*/
+/* MIONN basis function [02 Apr 2012] */
+
+static float basis_mionn( float x, float b, float c, float top, void *q )
+{
+   if( x <= 0.0f || x > 60.0f ) return 0.0f ;
+
+   return -16.4486f * ( -0.184f/ 1.5f * expf(-x/ 1.5f)
+                        +0.330f/ 4.5f * expf(-x/ 4.5f)
+                        +0.670f/13.5f * expf(-x/13.5f) ) ;
+}
+
+/*--------------------------------------------------------------------------*/
 /* SPMG basis functions (corrected 29 May 2007, I hope) */
 
 #undef  SPM_A1
@@ -10135,6 +10175,7 @@ static float waveform_SPMG1( float t ){ return basis_spmg1(t,0.0f,0.0f,0.0f,NULL
 static float waveform_SPMG2( float t ){ return basis_spmg2(t,0.0f,0.0f,0.0f,NULL); }
 static float waveform_SPMG3( float t ){ return basis_spmg3(t,0.0f,0.0f,0.0f,NULL); }
 static float waveform_MION ( float t ){ return basis_mion (t,0.0f,0.0f,0.0f,NULL); }
+static float waveform_MIONN( float t ){ return basis_mionn(t,0.0f,0.0f,0.0f,NULL); }
 
 static float GAM_p , GAM_q , GAM_top ;
 static float waveform_GAM( float t ){ return basis_gam(t,GAM_p,GAM_q,GAM_top,NULL); }
@@ -10182,15 +10223,34 @@ static float basis_block_hrf4( float tt , float TT )
 
 /*--------------------------------------------------------------------------*/
 
-static float basis_block4( float t, float T, float peak, float junk, void *q )
+
+static float basis_block4_NEW( float t, float T, float peak, float junk, void *q )
+{
+   float w , tp , pp , TT ;
+
+   w = basis_block_hrf4(t,T) ;
+
+   if( w > 0.0f ){
+     if( peak != 0.0f ){ TT = T ; }
+     else              { TT = 99.9f ; peak = 1.0f ; }
+     tp = TPEAK4(TT) ; pp = basis_block_hrf4(tp,TT) ;
+     if( pp > 0.0f ) w *= peak / pp ;
+   }
+
+   return w ;
+}
+
+static float basis_block4_OLD( float t, float T, float peak, float junk, void *q )
 {
    float w , tp , pp ;
 
    w = basis_block_hrf4(t,T) ;
+
    if( w > 0.0f && peak > 0.0f ){
-     tp = TPEAK4(T) ;  pp = basis_block_hrf4(tp,T) ;
+     tp = TPEAK4(T) ; pp = basis_block_hrf4(tp,T) ;
      if( pp > 0.0f ) w *= peak / pp ;
    }
+
    return w ;
 }
 
@@ -10248,15 +10308,34 @@ static float basis_block_hrf5( float tt, float TT )
 
 /*--------------------------------------------------------------------------*/
 
-static float basis_block5( float t, float T, float peak, float junk, void *q )
+
+static float basis_block5_NEW( float t, float T, float peak, float junk, void *q )
+{
+   float w , tp , pp , TT ;
+
+   w = basis_block_hrf5(t,T) ;
+
+   if( w > 0.0f ){
+     if( peak != 0.0f ){ TT = T ; }
+     else              { TT = 99.9f ; peak = 1.0f ; }
+     tp = TPEAK5(TT) ; pp = basis_block_hrf5(tp,TT) ;
+     if( pp > 0.0f ) w *= peak / pp ;
+   }
+
+   return w ;
+}
+
+static float basis_block5_OLD( float t, float T, float peak, float junk, void *q )
 {
    float w , tp , pp ;
 
    w = basis_block_hrf5(t,T) ;
+
    if( w > 0.0f && peak > 0.0f ){
-     tp = TPEAK5(T) ;  pp = basis_block_hrf5(tp,T) ;
+     tp = TPEAK5(T) ; pp = basis_block_hrf5(tp,T) ;
      if( pp > 0.0f ) w *= peak / pp ;
    }
+
    return w ;
 }
 
@@ -10480,6 +10559,7 @@ static float waveform_WAV( float t )
 #define WTYPE_GAM   7
 #define WTYPE_MION  8
 #define WTYPE_WAV   9
+#define WTYPE_MIONN 10
 
 typedef struct {
   int wtype , nfun ;
@@ -10576,6 +10656,11 @@ ENTRY("setup_WFUN_function") ;
      case WTYPE_MION:
        wavfun = waveform_MION  ;
        sprintf(msg,"waveform setup: MION(dur=%g)",dur) ;
+     break ;
+
+     case WTYPE_MIONN:
+       wavfun = waveform_MIONN  ;
+       sprintf(msg,"waveform setup: MIONN(dur=%g)",dur) ;
      break ;
 
      case WTYPE_GAM:
@@ -11017,7 +11102,7 @@ ENTRY("basis_parser") ;
    /*--- dmBLOCKn for n=4 or 5 ; the first 'vfun' function [08 Dec 2008] ---*/
 
    } else if( strncmp(scp,"dmBLOCK",7) == 0 ){
-     int nb=4 ; float peak=1.0f ;
+     int nb=4 ; float peak=0.0f ;  /* 03 Apr 2012: alter default peak from 1 to 0 */
 
      if( scp[7] != '\0' ){
        nb = strtol( scp+7 , NULL , 10 ) ;
@@ -11032,8 +11117,33 @@ ENTRY("basis_parser") ;
      be->nfunc = 1 ;
      be->tbot  = 0.0f ; be->ttop = BASIS_MAX_DURATION+15.0f ;
      be->bfunc = (basis_func *)calloc(sizeof(basis_func),be->nfunc) ;
-     be->bfunc[0].f = (nb==5) ? basis_block5 : basis_block4 ;
-     be->bfunc[0].a = 1.0f;   /* duration; will come from timing file */
+     be->bfunc[0].f = (nb==5) ? basis_block5_OLD : basis_block4_OLD ;
+     be->bfunc[0].a = 1.0f;   /* duration: will actually come from timing file */
+     be->bfunc[0].b = peak ;
+     be->bfunc[0].c = 0.0f ;
+     be->vfun       = 1 ;     /* needs 1 param from timing file */
+     be->no_iresp   = 1 ;     /* 07 Nov 2011 */
+
+   /*--- dmUBLOCKn for n=4 or 5 ; the first 'vfun' function [08 Dec 2008] ---*/
+
+   } else if( strncmp(scp,"dmUBLOCK",8) == 0 ){
+     int nb=4 ; float peak=0.0f ;  /* 03 Apr 2012: alter default peak from 1 to 0 */
+
+     if( scp[8] != '\0' ){
+       nb = strtol( scp+8 , NULL , 10 ) ;
+       if( nb != 4 && nb != 5 ){
+         ERROR_message("'%s' has illegal power: only 4 or 5 allowed",scp) ;
+         free((void *)be); free(scp); RETURN(NULL);
+       }
+     }
+
+     if( cpt != NULL ) sscanf(cpt,"%f",&peak) ; /* 30 Sep 2009: get peak param */
+
+     be->nfunc = 1 ;
+     be->tbot  = 0.0f ; be->ttop = BASIS_MAX_DURATION+15.0f ;
+     be->bfunc = (basis_func *)calloc(sizeof(basis_func),be->nfunc) ;
+     be->bfunc[0].f = (nb==5) ? basis_block5_NEW : basis_block4_NEW ;
+     be->bfunc[0].a = 1.0f;   /* duration: will actually come from timing file */
      be->bfunc[0].b = peak ;
      be->bfunc[0].c = 0.0f ;
      be->vfun       = 1 ;     /* needs 1 param from timing file */
@@ -11072,12 +11182,83 @@ ENTRY("basis_parser") ;
      be->nfunc = 1 ;
      be->tbot  = 0.0f ; be->ttop = top+15.0f ;
      be->bfunc = (basis_func *)calloc(sizeof(basis_func),be->nfunc) ;
-     be->bfunc[0].f = (nb==5) ? basis_block5 : basis_block4 ;
+     be->bfunc[0].f = (nb==5) ? basis_block5_OLD : basis_block4_OLD ;
      be->bfunc[0].a = top ;
      be->bfunc[0].b = bot ;
      be->bfunc[0].c = 0.0f ;
 
      /* 04 May 2007: check for consistency in BLOCK-izing */
+
+     { static float first_block_peakval = 0.0f ;
+       static char *first_block_peaksym = NULL ;
+       static int   num_block           = 0 ;
+       static float first_len_pkzero    = 0.0f ;
+       static char *first_sym_pkzero    = NULL ;
+
+       if( num_block == 0 ){
+         first_block_peakval = bot ;
+         first_block_peaksym = strdup(sym) ;
+       } else if( FLDIF(bot,first_block_peakval) ){
+         WARNING_message(
+          "%s has different peak value than first %s\n"
+          "            We hope you know what you are doing!" ,
+          sym , first_block_peaksym ) ;
+       }
+
+       if( bot == 0.0f ){
+         if( first_len_pkzero == 0.0f ){
+           first_len_pkzero = top ;
+           first_sym_pkzero = strdup(sym) ;
+         } else if( FLDIF(top,first_len_pkzero) ){
+           WARNING_message(
+            "%s has different duration than first %s\n"
+            "       ==> Amplitudes will differ.  We hope you know what you are doing!" ,
+            sym , first_sym_pkzero ) ;
+         }
+       }
+
+       num_block++ ;
+     }
+
+   /*--- UBLOCKn(duration,peak) for n=4 or 5 ---*/
+
+   } else if( strncmp(scp,"UBLOCK",6) == 0 ){
+     int nb=4 ;
+
+     if( scp[6] != '\0' ){
+       nb = strtol( scp+6 , NULL , 10 ) ;
+       if( nb != 4 && nb != 5 ){
+         ERROR_message("'%s' has illegal power: only 4 or 5 allowed",scp) ;
+         free((void *)be); free(scp); RETURN(NULL);
+       }
+     }
+
+     if( cpt == NULL ){
+       ERROR_message("'%s' by itself is illegal",scp) ;
+       ERROR_message(
+        " Correct format: 'UBLOCKn(dur)' with dur > 0, n=4 or 5\n"
+        "                     *OR* 'UBLOCKn(dur,peak)' with peak > 0 too.") ;
+       free((void *)be); free(scp); RETURN(NULL);
+     }
+     sscanf(cpt,"%f,%f",&top,&bot) ;  /* top = duration, bot = peak */
+     if( top <= 0.0f ){
+       ERROR_message("'%s(%s' is illegal",scp,cpt) ;
+       ERROR_message(
+        " Correct format: 'UBLOCKn(dur)' with dur > 0, n=4 or 4\n"
+        "                      or: 'UBLOCKn(dur,peak)' with peak > 0 too.") ;
+       free((void *)be); free(scp); RETURN(NULL);
+     }
+     if( bot < 0.0f ) bot = 0.0f ;
+
+     be->nfunc = 1 ;
+     be->tbot  = 0.0f ; be->ttop = top+15.0f ;
+     be->bfunc = (basis_func *)calloc(sizeof(basis_func),be->nfunc) ;
+     be->bfunc[0].f = (nb==5) ? basis_block5_NEW : basis_block4_NEW ;
+     be->bfunc[0].a = top ;
+     be->bfunc[0].b = bot ;
+     be->bfunc[0].c = 0.0f ;
+
+     /* 04 May 2007: check for consistency in UBLOCK-izing */
 
      { static float first_block_peakval = 0.0f ;
        static char *first_block_peaksym = NULL ;
@@ -11212,7 +11393,7 @@ ENTRY("basis_parser") ;
 
    /*--- MION ---*/
 
-   } else if( strcmp(scp,"MION") == 0 ){   /* 28 Aug 2004 */
+   } else if( strcmp(scp,"MION") == 0 ){
      float dur=-1.0f ; int iwav ;
 
      if( cpt != NULL ) sscanf(cpt,"%f",&dur) ; /* 28 Apr 2009: get duration param */
@@ -11238,6 +11419,36 @@ ENTRY("basis_parser") ;
         be->bfunc[0].c = 0.0f ;
         be->tbot = 0.0f ; be->ttop = WFUNDT * WFUNS[iwav].nfun ;
      }
+
+   /*--- MIONN ---*/
+
+   } else if( strcmp(scp,"MIONN") == 0 ){
+     float dur=-1.0f ; int iwav ;
+
+     if( cpt != NULL ) sscanf(cpt,"%f",&dur) ; /* 28 Apr 2009: get duration param */
+
+     be->nfunc = 1 ;
+     be->bfunc = (basis_func *)calloc(sizeof(basis_func),be->nfunc) ;
+
+     if( dur < 0.0f ){            /* impulse response */
+       be->bfunc[0].f = basis_mionn ;
+       be->bfunc[0].a = 0.0f ;    /* no parameters */
+       be->bfunc[0].b = 0.0f ;
+       be->bfunc[0].c = 0.0f ;
+       be->tbot = 0.0f ; be->ttop = 60.0f ;
+     } else {                     /* convolve with square wave */
+        iwav = setup_WFUN_function( WTYPE_MIONN , dur , NULL ) ;
+        if( iwav < 0 ){
+          ERROR_message("Can't setup MION(%f) for some reason?!",dur) ;
+          free((void *)be); free(scp); RETURN(NULL);
+        }
+        be->bfunc[0].f = basis_WFUN ;
+        be->bfunc[0].a = (float)iwav ;
+        be->bfunc[0].b = 0.0f ;
+        be->bfunc[0].c = 0.0f ;
+        be->tbot = 0.0f ; be->ttop = WFUNDT * WFUNS[iwav].nfun ;
+     }
+
 
    /*--- NO MORE BASIS FUNCTION CHOICES ---*/
 

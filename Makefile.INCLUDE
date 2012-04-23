@@ -5,7 +5,8 @@
 
 # for compiling with OpenMP, if available
 
-CCOMP = $(CCFAST) $(OMPFLAG)
+CCOMP   = $(CCFAST) $(OMPFLAG)
+EXINCOM = echo '..... Extra install commands (if any) .....' ; $(EXTRA_INSTALL_COMMANDS)
 
 F2C = f2c -A
 
@@ -83,13 +84,14 @@ PROGRAMS = afni to3d from3d abut 3dclust nsize 3dinfo 3dproject 3dmerge count   
            3dTwotoComplex 3dInvFMRI 3dmatcalc 3dAcost 3dLocalBistat 3dFWHMx     \
            3dBlurToFWHM 1dSEM 3dDFT 3dSynthesize 1dMarry 3dEmpty 3dsvm          \
            1dFlagMotion 3dTsort 1dTsort 3dTfitter afni_history 1dUpsample       \
-           3dLocalSVD  niml_feedme  3dErrtsCormat 3dUndump 3dREMLfit            \
+           3dLocalSVD  niml_feedme  3dErrtsCormat 3dUndump 3dREMLfit 3dTnorm    \
            3dUpsample 3dTcorrMap 3dmatmult 3dABoverlap 3dmaskSVD 1dBandpass     \
            3dBlurInMask 3dRank 3dFFT 1dgenARMA11 3dPeriodogram 1dAstrip         \
            3dLocalPV 3dBandpass 3dSetupGroupInCorr 3dGroupInCorr 3dTcorr1D      \
            3dClustSim 3dRetinoPhase 3dMaskToASCII 3dttest++ 3dDTtoDWI           \
            niccc rbox qdelaunay 3dkmeans 3dXYZcat 3dPolyfit 3dNwarpApply        \
            1dCorrelate 3dCountSpikes 3dNwarpCalc dicom_hinfo apsearch 1dBport   \
+           3dNormalityTest                                                      \
            $(EXTRAS)
 
 PROGRAMS_NOPLUG = afni to3d from3d abut 3dclust nsize 3dinfo 3dproject 3dmerge      \
@@ -111,9 +113,9 @@ PROGRAMS_NOPLUG = afni to3d from3d abut 3dclust nsize 3dinfo 3dproject 3dmerge  
                   mayo_analyze 3dAutoTcorrelate 3dFDR 3dAutomask 3dAFNItoMINC       \
                   3dThreetoRGB Ifile 3dresample 3dAutobox 3dLRflip 3dANALYZEtoAFNI  \
                   dicom_hdr 3dDespike dicom_to_raw file_tool rotcom 3dUniformize    \
-                  3dWarp nicat 3dSpatNorm 3dWarpDrive 3dretroicor ge_header         \
+                  3dWarp nicat 3dSpatNorm 3dWarpDrive 3dretroicor ge_header 3dTnorm \
                   3dAFNItoRaw DTIStudioFibertoSegments im2niml 3dLocalstat 3dGetrow \
-                  nifti_tool 3dAllineate nifti1_test Dimon 3danisosmooth       \
+                  nifti_tool 3dAllineate nifti1_test Dimon 3danisosmooth            \
                   3dmaxima 3dTwotoComplex 3dInvFMRI 1dmatcalc 3dmatcalc 3dAcost     \
                   3dLocalBistat 3dFWHMx 3dBlurToFWHM 1dSEM 3dDFT 3dSynthesize       \
                   1dMarry 3dEmpty 3dTsort 1dTsort 1dFlagMotion 3dTfitter 1dBport    \
@@ -122,7 +124,7 @@ PROGRAMS_NOPLUG = afni to3d from3d abut 3dclust nsize 3dinfo 3dproject 3dmerge  
                   3dmaskSVD 3dRank 3dLocalPV 3dTcorr1D 3dClustSim 3dRetinoPhase     \
                   3dMaskToASCII 3dttest++ 3dDTtoDWI niccc 3dXYZcat 3dPolyfit        \
                   3dNwarpApply 1dCorrelate 3dCountSpikes 3dNwarpCalc dicom_hinfo    \
-                  apsearch   \
+                  apsearch 3dNormalityTest                                          \
                   $(EXTRAS)
 
 # For CYGWIN (look for "exe" to find various places below)
@@ -203,7 +205,7 @@ vastness:all plugins install install_plugins install_lib
 
 ### Make many things
 
-all:$(LIBDL) libmri.a libmrix.a libcoxplot.a libvolpack.a programs
+all:$(LIBDL) libmri.a libmrix.a libcoxplot.a libvolpack.a R_io.so programs
 
 ### Make afni binaries
 
@@ -504,6 +506,10 @@ dsetdup:dsetdup.o
 3dTshift:3dTshift.o
 	$(RM) $@
 	$(CC) -o 3dTshift 3dTshift.o $(LFLAGS) $(LLIBS)
+
+3dTnorm:3dTnorm.o
+	$(RM) $@
+	$(CC) -o 3dTnorm 3dTnorm.o $(LFLAGS) $(LLIBS)
 
 3dTstat:3dTstat.o parser.o parser_int.o
 	$(RM) $@
@@ -826,6 +832,14 @@ strblast:strblast.o
 	$(RM) $@
 	$(CC) -o 3dABoverlap 3dABoverlap.o $(LFLAGS) $(LLIBS)
 
+3dNormalityTest.o:3dNormalityTest.c
+	$(RM) $@
+	$(CCFAST) -c 3dNormalityTest.c $(INFLAGS)
+
+3dNormalityTest:3dNormalityTest.o
+	$(RM) $@
+	$(CCFAST) -o 3dNormalityTest 3dNormalityTest.o $(LFLAGS) $(LLIBS)
+
 3dClipLevel:3dClipLevel.o
 	$(RM) $@
 	$(CC) -o 3dClipLevel 3dClipLevel.o $(LFLAGS) $(LLIBS)
@@ -1055,6 +1069,14 @@ mri_nstats.o:mri_nstats.c
 	$(CC) -o 3dLocalSVD 3dLocalSVD.o $(LFLAGS) $(LLIBS)
 
 ## ------- Things to be compiled or linked with OpenMP -------
+
+3dDimRed.o: 3dDimRed.c
+	$(RM) $@
+	$(CCOMP) -c 3dDimRed.c $(INFLAGS)
+
+3dDimRed:3dDimRed.o
+	$(RM) $@
+	$(CCOMP) -o 3dDimRed 3dDimRed.o $(LFLAGS) $(LLIBS)
 
 3dSatCheck.o: 3dSatCheck.c thd_satcheck.c
 	$(RM) $@
@@ -1580,7 +1602,7 @@ backup:
 afni_src.tgz:
 	$(MKDIR) afni_src
 	$(CP) -p *.c *.f *.inc *.h *.hhh Makefile.* *.xbm $(MINDOCS) $(MISC)     ./afni_src
-	$(CP) -pr coxplot volpack moveup moveAFNI* eispack avovk                 ./afni_src
+	$(CP) -pr coxplot volpack moveup moveAFNI* eispack avovk ptaylor               ./afni_src
 	$(CP) -pr $(SCRIPTS) $(PY_DIR) $(R_DIR)                                  ./afni_src
 	$(CP) -pr gifsicledir qhulldir f2cdir mpeg_encodedir                     ./afni_src
 	$(CP) -pr 3DEdge netcdf-3.5.0 jpeg-6b niml Makefile_* nifti dlcompat     ./afni_src
@@ -1617,11 +1639,14 @@ install: $(INSTALLDIR) $(INSTALL_PREREQ)
 	$(MV) $(PROGRAMS) $(INSTALLDIR)
 	$(CP) $(SCRIPTS)  $(INSTALLDIR)
 	$(CP) $(PY_DIR)/*.py  $(R_DIR)/*.R $(INSTALLDIR)
-	$(CP) html/??*.* $(INSTALLDIR)
+	$(CP) html/??*.* $(EXTRA_INSTALL_FILES) $(INSTALLDIR)
 	if [ -f README.environment ]; then $(CP) README.*    $(INSTALLDIR); fi;
 	if [ -f AFNI.afnirc        ]; then $(CP) AFNI.afnirc $(INSTALLDIR); fi;
 	if [ -f AFNI.sumarc        ]; then $(CP) AFNI.sumarc $(INSTALLDIR); fi;
+	if [ -f R_io.so            ]; then $(CP) R_io.so     $(INSTALLDIR); fi;
 	if [ -f AFNI_atlas_spaces.niml ]; then $(CP) AFNI_atlas_spaces.niml $(INSTALLDIR); fi;
+	$(EXINCOM)
+	echo "===== AFNI install finished (fondly do we hope, fervently we do pray) ====="
 
 install_noplug: $(INSTALLDIR)
 	$(MV) $(PROGRAMS_NOPLUG) $(INSTALLDIR)
@@ -1888,7 +1913,7 @@ MRI_OBJS = mri_cfft.o mri_complex_arith.o mri_fft_complex.o mri_free.o    \
            mri_warpfield.o mri_dicom_stuff.o mri_check.o mri_allzero.o         \
            mri_subset.o mri_to_fvect.o mri_genalign_util.o rcmat.o dmat44.o    \
            mri_rbfinterp.o mri_genARMA11.o mri_catvol.o mri_polyfit.o          \
-           mri_nwarp.o
+           mri_nwarp.o mri_extract.o
 
 THD_OBJS = thd_atr.o thd_dsetto1D.o thd_initalldir.o thd_reconpar.o \
            thd_auxdata.o thd_editdaxes.o thd_initdblk.o thd_sarr.o  \
@@ -1937,7 +1962,8 @@ EDT_OBJS = edt_addbrick.o edt_blur.o edt_buildmask.o edt_checkargv.o \
            edt_emptycopy.o edt_filtervol.o edt_help.o edt_onedset.o  \
            edt_scl2max.o edt_substbrick.o edt_volamax.o edt_zscore.o \
            edt_fullcopy.o edt_calcmask.o edt_volpad.o edt_sortmask.o \
-           edt_clust2.o edt_wodcopy.o edt_clustalpha.o edt_geomcon.o
+           edt_clust2.o edt_wodcopy.o edt_clustalpha.o edt_geomcon.o \
+           edt_floatize.o
 
 CS_OBJS  = cs_sort_fi.o cs_sort_di.o cs_symeig.o cs_sort_ii.o cs_sort_ff.o \
            cs_addto_args.o multivector.o afni_environ.o cs_qmed.o cl2.o    \
@@ -2803,6 +2829,24 @@ libsegtools.a: avovk/cluster_floatNOMASK.c avovk/thd_segtools_fNM.c
 	$(CP) libsegtools.a ../;	\
 	cd ../	;		)
 
+
+#############
+#PTAYLOR directory
+
+ptaylor_all: 
+	( cd ptaylor ;	\
+	./@MakeLocalMake	;\
+	$(MAKE) all  ;	\
+	cd ../	;		)
+
+libtracktools.a: ptaylor/libtracktools.a
+	( cd ptaylor ;	\
+	./@MakeLocalMake	;\
+	$(MAKE) libtracktools.a  ;	\
+	$(CP) libtracktools.a ../;	\
+	cd ../	;		)
+
+
 #############
 #SUMA
 
@@ -3107,3 +3151,12 @@ toyR: toyR.c AFNI_embeddedRCall.o
 	$(CC) $(RccCOMopt) -c toyR.c $(INFLAGS)
 	$(CC) -o toyR toyR.o $(LFLAGS) \
          $(LLIBS) $(RccCOMlfl) AFNI_embeddedRCall.o
+
+####
+R_io.so:R_io.c libmri.a
+	( if which R >/dev/null ; then \
+	echo PKG_CPPFLAGS = $(INFLAGS)  > Makevars ;\
+	echo PKG_LIBS =  $(LFLAGS) $(LLIBS) >> Makevars ;\
+	R CMD SHLIB R_io.c ; \
+	else echo WARNING: Cannot build R_io.so because R is not installed;\
+	fi ; )

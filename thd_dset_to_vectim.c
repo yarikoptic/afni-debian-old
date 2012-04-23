@@ -91,13 +91,59 @@ ENTRY("THD_dset_to_vectim") ;
    if( mrv->dt <= 0.0f ) mrv->dt = 1.0f ;
 
    if( mmm != mask ) free(mmm) ;
-
    VECTIM_scan(mrv) ; /* 09 Nov 2010 */
+   RETURN(mrv) ;
+}
+
+/*--------------------------------------------------------------------------*/
+
+MRI_vectim * THD_dset_to_vectim_byslice( THD_3dim_dataset *dset, byte *mask ,
+                                         int ignore , int kzbot , int kztop  )
+{
+   byte *mmm ;
+   MRI_vectim *mrv=NULL ;
+   int kk,iv , nvals , nvox , nmask , nxy , nz ;
+
+ENTRY("THD_dset_to_vectim_byslice") ;
+
+                     if( !ISVALID_DSET(dset) ) RETURN(NULL) ;
+   DSET_load(dset) ; if( !DSET_LOADED(dset)  ) RETURN(NULL) ;
+
+   nvals = DSET_NVALS(dset) ; if( nvals <= 0 ) RETURN(NULL) ;
+   nvox  = DSET_NVOX(dset) ;
+
+   nxy = DSET_NX(dset) * DSET_NY(dset) ; nz = DSET_NZ(dset) ;
+
+   if( kzbot <  0  ) kzbot = 0 ;
+   if( kztop >= nz ) kztop = nz-1 ;
+   if( kztop < kzbot ) RETURN(NULL) ;
+   if( kzbot == 0 && kztop == nz-1 ){
+     mrv = THD_dset_to_vectim( dset , mask, ignore ) ; RETURN(mrv) ;
+   }
+
+   /* make a mask that includes cutting out un-desirable slices */
+
+#pragma omp critical
+   { int ibot , itop , ii ;
+     mmm = (byte *)malloc(sizeof(byte)*nvox) ;
+     if( mask == NULL ) memset( mmm ,    1 , sizeof(byte)*nvox ) ;
+     else               memcpy( mmm , mask , sizeof(byte)*nvox ) ;
+     if( kzbot > 0 )
+       memset( mmm               , 0 , sizeof(byte)*kzbot       *nxy ) ;
+     if( kztop < nz-1 )
+       memset( mmm+(kztop+1)*nxy , 0 , sizeof(byte)*(nz-1-kztop)*nxy ) ;
+   }
+
+   /* and make the vectim using the standard function */
+
+   mrv = THD_dset_to_vectim( dset , mmm , ignore ) ;
+   free(mmm) ;
    RETURN(mrv) ;
 }
 
 /*---------------------------------------------------------------------*/
 /*-------- Catenates two datasets into vectim     ZSS Jan 2010 --------*/
+
 MRI_vectim * THD_2dset_to_vectim( THD_3dim_dataset *dset1, byte *mask1 ,
                                   THD_3dim_dataset *dset2, byte *mask2 ,
                                   int ignore )

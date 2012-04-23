@@ -630,7 +630,7 @@ extern void NI_swap_vector( int, int, void * ) ;
  
 /* port assignment functions from afni_ports.c */
 extern int init_ports_list();
-extern int set_ports_list_reinit(void);
+extern void set_ports_list_reinit(void);
 extern int get_port_named(char *name);
 extern void show_ports_list(void);
 extern int get_available_npb(void);
@@ -640,8 +640,8 @@ extern char *get_port_numbered(int port);
 extern char *get_np_help();
 extern int set_user_pif(char *s);
 extern char * get_user_pif(void);
-extern int set_user_np_block(int v);
-extern int get_max_port_block(void);
+extern int set_user_np_bloc(int v);
+extern int get_max_port_bloc(void);
 extern int get_num_ports(void);
 extern int get_user_np_bloc(void);
 
@@ -695,14 +695,15 @@ extern void   NI_free_column  ( NI_rowtype * , int , void * );
 extern void * NI_copy_column  ( NI_rowtype * , int , void * );
 extern int    NI_size_column  ( NI_rowtype * , int , void * ); /* 26 Mar 2003 */
 
-extern void   NI_read_header_only   ( int ) ;                  /* 21 Mar 2003 */
+extern void   NI_set_read_header_only   ( int ) ;              /* 21 Mar 2003 */
+extern int    NI_get_read_header_only( void );                 /* 24 Feb. 2012 */
 extern void * NI_read_element_header( NI_stream_type *, int ); /* 26 Mar 2003 */
 extern void   NI_skip_procins( int ) ;                         /* 03 Jun 2005 */
 
 extern int NI_write_element_tofile( char *, void *, int ) ;    /* 07 Mar 2007 */
 extern void * NI_read_element_fromfile( char * ) ;             /* 12 Mar 2007 */
 extern void * NI_read_element_fromstring( char *nstr );     /* 26 Feb 2010 ZSS*/
-extern char * NI_write_element_tostring( NI_element *nel ); /* Oct 2011 ZSS */
+extern char * NI_write_element_tostring( void *nel ); /* Oct 2011 ZSS */
 
 #define NI_SWAP_MASK  (1<<0)
 #define NI_LTEND_MASK (1<<1)
