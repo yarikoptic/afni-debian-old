@@ -21,8 +21,8 @@ Last-Update: 2010-09-21
 Index: afni/CMakeLists.txt
 ===================================================================
 --- /dev/null	1970-01-01 00:00:00.000000000 +0000
-+++ afni/CMakeLists.txt	2012-04-23 13:24:53.661456622 +0200
-@@ -0,0 +1,231 @@
++++ afni/CMakeLists.txt	2012-04-23 16:50:05.810029802 +0200
+@@ -0,0 +1,232 @@
 +PROJECT(AFNI)
 +
 +cmake_minimum_required(VERSION 2.6)
@@ -250,6 +250,7 @@ Index: afni/CMakeLists.txt
 +  ADD_SUBDIRECTORY(R_scripts)
 +  ADD_SUBDIRECTORY(SUMA)
 +  ADD_SUBDIRECTORY(avovk)
++  ADD_SUBDIRECTORY(ptaylor)
 +
 +  ADD_SUBDIRECTORY(faces)
 +  ADD_SUBDIRECTORY(poems)
@@ -257,7 +258,7 @@ Index: afni/CMakeLists.txt
 Index: afni/CMakeLists_apps.txt
 ===================================================================
 --- /dev/null	1970-01-01 00:00:00.000000000 +0000
-+++ afni/CMakeLists_apps.txt	2012-04-23 13:24:53.665456621 +0200
++++ afni/CMakeLists_apps.txt	2012-04-23 16:50:05.810029802 +0200
 @@ -0,0 +1,216 @@
 +##
 +## This file is to be included in the toplevel CMakeLists.txt
@@ -291,15 +292,15 @@ Index: afni/CMakeLists_apps.txt
 +  im2niml DTIStudioFibertoSegments 3dLocalstat 3dTwotoComplex 3dInvFMRI
 +  3dmatcalc 3dAcost 3dLocalBistat 3dFWHMx 3dBlurToFWHM 3dDFT 3dSynthesize
 +  1dMarry 3dEmpty 1dFlagMotion 3dTsort 1dTsort 3dTfitter 1dUpsample
-+  3dLocalSVD niml_feedme 3dErrtsCormat 3dUndump 3dREMLfit
++  3dLocalSVD niml_feedme 3dErrtsCormat 3dUndump 3dREMLfit 3dTnorm
 +  3dUpsample 3dTcorrMap 3dmatmult 3dmaskSVD 1dBandpass 3dBlurInMask 3dRank
 +  3dDeconvolve 1dGentimes 2dImReg 3dStatClust 3dDWItoDT 3dRegAna
 +  3dUniformize 3ddelay 3dfim+ 3dNeocon 3dConvolve RSFgen
 +  3dFFT 1dgenARMA11 3dPeriodogram 1dAstrip 3dLocalPV 3dBandpass
-+  3dSetupGroupInCorr 3dGroupInCorr 3dSatCheck 3dTcorr1D 3dSimARMA11
++  3dSetupGroupInCorr 3dGroupInCorr 3dDimRed 3dSatCheck 3dTcorr1D 3dSimARMA11
 +  3dClustSim 3dRetinoPhase 3dMaskToASCII 3dttest++ 3dDTtoDWI niccc
 +  3dRankizer 3dXYZcat 3dPolyfit 3dNwarpApply 1dCorrelate 3dCountSpikes
-+  3dNwarpCalc dicom_hinfo apsearch 1dBport
++  3dNwarpCalc dicom_hinfo apsearch 1dBport 3dNormalityTest
 +  ${EXTRAS})
 +
 +SET(SCRIPTS
@@ -478,7 +479,7 @@ Index: afni/CMakeLists_apps.txt
 Index: afni/CMakeLists_libs.txt
 ===================================================================
 --- /dev/null	1970-01-01 00:00:00.000000000 +0000
-+++ afni/CMakeLists_libs.txt	2012-04-23 13:24:53.665456621 +0200
++++ afni/CMakeLists_libs.txt	2012-04-23 16:50:05.810029802 +0200
 @@ -0,0 +1,195 @@
 +##
 +## This file is to be included in the toplevel CMakeLists.txt
@@ -515,7 +516,7 @@ Index: afni/CMakeLists_libs.txt
 +  mri_dicom_stuff.c mri_check.c mri_allzero.c mri_subset.c mri_to_fvect.c
 +  mri_genalign_util.c rcmat.c dmat44.c mri_rbfinterp.c matrix.c
 +  gifti_choice.c zfun.c cs_pv.c cs_sort_iv.c cs_sort_d misc_math.c
-+  mri_genARMA11.c mri_catvol.c mri_polyfit.c mri_nwarp.c)
++  mri_genARMA11.c mri_catvol.c mri_polyfit.c mri_nwarp.c mri_extract.c)
 +
 +SET(THD_SRC
 +  thd_atr.c thd_dsetto1D.c thd_initalldir.c thd_reconpar.c thd_auxdata.c
@@ -551,7 +552,7 @@ Index: afni/CMakeLists_libs.txt
 +  edt_filtervol.c edt_help.c edt_onedset.c edt_scl2max.c edt_substbrick.c
 +  edt_volamax.c edt_zscore.c edt_fullcopy.c edt_calcmask.c edt_volpad.c
 +  edt_sortmask.c edt_clust2.c edt_wodcopy.c edt_clustalpha.c
-+  edt_geomcon.c)
++  edt_geomcon.c edt_floatize.c)
 +
 +SET(SUMA_SRC
 +  suma_datasets.c suma_algorithms.c)
@@ -678,7 +679,7 @@ Index: afni/CMakeLists_libs.txt
 Index: afni/CMakeLists_plugins.txt
 ===================================================================
 --- /dev/null	1970-01-01 00:00:00.000000000 +0000
-+++ afni/CMakeLists_plugins.txt	2012-04-23 13:24:53.665456621 +0200
++++ afni/CMakeLists_plugins.txt	2012-04-23 16:50:05.810029802 +0200
 @@ -0,0 +1,69 @@
 +##
 +## This file is to be included in the toplevel CMakeLists.txt
@@ -752,7 +753,7 @@ Index: afni/CMakeLists_plugins.txt
 Index: afni/R_scripts/CMakeLists.txt
 ===================================================================
 --- /dev/null	1970-01-01 00:00:00.000000000 +0000
-+++ afni/R_scripts/CMakeLists.txt	2012-04-23 13:24:53.665456621 +0200
++++ afni/R_scripts/CMakeLists.txt	2012-04-23 16:50:05.810029802 +0200
 @@ -0,0 +1,15 @@
 +PROJECT(R_SCRIPTS)
 +
@@ -772,7 +773,7 @@ Index: afni/R_scripts/CMakeLists.txt
 Index: afni/SUMA/CMakeLists.txt
 ===================================================================
 --- /dev/null	1970-01-01 00:00:00.000000000 +0000
-+++ afni/SUMA/CMakeLists.txt	2012-04-23 13:24:53.665456621 +0200
++++ afni/SUMA/CMakeLists.txt	2012-04-23 16:50:05.810029802 +0200
 @@ -0,0 +1,231 @@
 +PROJECT(SUMA)
 +
@@ -865,7 +866,7 @@ Index: afni/SUMA/CMakeLists.txt
 +  inflate_compare SurfaceMetrics ConvertSurface
 +  ConvertDset ROI2dataset SurfSmooth SurfPatch SurfQual SurfClust IsoSurface
 +  ConvexHull 3dSkullStrip 3dSeg 3dCRUISEtoAFNI 3dGenPriors 3dBRAIN_VOYAGERtoAFNI 3dVol2Surf
-+  SurfMeasures FSread_annot SampBias volume_render 3dSurfMask SurfToSurf
++  SurfMeasures FSread_annot SampBias BrainSkin volume_render 3dSurfMask SurfToSurf
 +  ROIgrow AnalyzeTrace DriveSuma SurfDist SpharmReco SpharmDeco SurfDsetInfo
 +  SurfLocalStat SurfFWHM NikoMap SurfInfo 3dSurf2Vol SurfRetinoMap ParseName
 +  RestSym SurfExtrema 3dinfill)
@@ -1007,8 +1008,8 @@ Index: afni/SUMA/CMakeLists.txt
 +  ARCHIVE DESTINATION ${AFNI_INSTALL_LIB_DIR} COMPONENT Development)
 Index: afni/SUMA/SUMA_gts.h
 ===================================================================
---- afni.orig/SUMA/SUMA_gts.h	2012-04-23 12:45:49.833347506 +0200
-+++ afni/SUMA/SUMA_gts.h	2012-04-23 13:24:53.665456621 +0200
+--- afni.orig/SUMA/SUMA_gts.h	2012-04-23 16:48:12.042024505 +0200
++++ afni/SUMA/SUMA_gts.h	2012-04-23 16:50:05.810029802 +0200
 @@ -20,7 +20,6 @@
  #include "gts/config.h"
  #endif
@@ -1019,8 +1020,8 @@ Index: afni/SUMA/SUMA_gts.h
  
 Index: afni/SUMA/SUMA_gts_insert.c
 ===================================================================
---- afni.orig/SUMA/SUMA_gts_insert.c	2012-04-23 12:45:49.833347506 +0200
-+++ afni/SUMA/SUMA_gts_insert.c	2012-04-23 13:24:53.665456621 +0200
+--- afni.orig/SUMA/SUMA_gts_insert.c	2012-04-23 16:48:12.050024506 +0200
++++ afni/SUMA/SUMA_gts_insert.c	2012-04-23 16:50:05.814029802 +0200
 @@ -7,6 +7,8 @@
  #include "../../SUMA_gts_insert.c" 
  gts's surface.c works just fine
@@ -1033,7 +1034,7 @@ Index: afni/SUMA/SUMA_gts_insert.c
 Index: afni/avovk/CMakeLists.txt
 ===================================================================
 --- /dev/null	1970-01-01 00:00:00.000000000 +0000
-+++ afni/avovk/CMakeLists.txt	2012-04-23 13:24:53.665456621 +0200
++++ afni/avovk/CMakeLists.txt	2012-04-23 16:50:05.814029802 +0200
 @@ -0,0 +1,26 @@
 +PROJECT(segtools)
 +
@@ -1064,7 +1065,7 @@ Index: afni/avovk/CMakeLists.txt
 Index: afni/coxplot/CMakeLists.txt
 ===================================================================
 --- /dev/null	1970-01-01 00:00:00.000000000 +0000
-+++ afni/coxplot/CMakeLists.txt	2012-04-23 13:24:53.665456621 +0200
++++ afni/coxplot/CMakeLists.txt	2012-04-23 16:50:05.814029802 +0200
 @@ -0,0 +1,23 @@
 +PROJECT(coxplot)
 +
@@ -1091,8 +1092,8 @@ Index: afni/coxplot/CMakeLists.txt
 +  ARCHIVE DESTINATION ${AFNI_INSTALL_LIB_DIR} COMPONENT Development)
 Index: afni/cs_qmed.c
 ===================================================================
---- afni.orig/cs_qmed.c	2012-04-23 12:45:49.921347511 +0200
-+++ afni/cs_qmed.c	2012-04-23 13:24:53.665456621 +0200
+--- afni.orig/cs_qmed.c	2012-04-23 16:48:12.022024504 +0200
++++ afni/cs_qmed.c	2012-04-23 16:50:05.814029802 +0200
 @@ -6,6 +6,10 @@
  
  #include "mrilib.h"
@@ -1107,7 +1108,7 @@ Index: afni/cs_qmed.c
 Index: afni/faces/CMakeLists.txt
 ===================================================================
 --- /dev/null	1970-01-01 00:00:00.000000000 +0000
-+++ afni/faces/CMakeLists.txt	2012-04-23 13:24:53.665456621 +0200
++++ afni/faces/CMakeLists.txt	2012-04-23 16:50:05.814029802 +0200
 @@ -0,0 +1,8 @@
 +PROJECT(FACES)
 +
@@ -1119,8 +1120,8 @@ Index: afni/faces/CMakeLists.txt
 +  DESTINATION ${AFNI_INSTALL_PICS_DIR} COMPONENT Runtime)
 Index: afni/gifti_choice.c
 ===================================================================
---- afni.orig/gifti_choice.c	2012-04-23 12:45:49.997347515 +0200
-+++ afni/gifti_choice.c	2012-04-23 13:24:53.665456621 +0200
+--- afni.orig/gifti_choice.c	2012-04-23 16:48:12.094024507 +0200
++++ afni/gifti_choice.c	2012-04-23 16:50:05.814029802 +0200
 @@ -10,15 +10,18 @@
  
  #ifdef HAVE_GIFTI
@@ -1150,8 +1151,8 @@ Index: afni/gifti_choice.c
      /* if we do not love or even want GIFTI, include failure functions here */
 Index: afni/mri_dicom_hdr.c
 ===================================================================
---- afni.orig/mri_dicom_hdr.c	2012-04-23 12:45:50.033347517 +0200
-+++ afni/mri_dicom_hdr.c	2012-04-23 13:24:53.673456622 +0200
+--- afni.orig/mri_dicom_hdr.c	2012-04-23 16:48:12.110024509 +0200
++++ afni/mri_dicom_hdr.c	2012-04-23 16:50:05.814029802 +0200
 @@ -95,18 +95,18 @@
  
  /* Dimon needs to compile without libmri     18 May 2006 */
@@ -1180,8 +1181,8 @@ Index: afni/mri_dicom_hdr.c
  
 Index: afni/mri_nstats.c
 ===================================================================
---- afni.orig/mri_nstats.c	2012-04-23 12:45:50.041347516 +0200
-+++ afni/mri_nstats.c	2012-04-23 13:24:53.677456623 +0200
+--- afni.orig/mri_nstats.c	2012-04-23 16:48:12.074024506 +0200
++++ afni/mri_nstats.c	2012-04-23 16:50:05.814029802 +0200
 @@ -1,10 +1,7 @@
  #include "mrilib.h"
  
@@ -1196,7 +1197,7 @@ Index: afni/mri_nstats.c
 Index: afni/poems/CMakeLists.txt
 ===================================================================
 --- /dev/null	1970-01-01 00:00:00.000000000 +0000
-+++ afni/poems/CMakeLists.txt	2012-04-23 13:24:53.677456623 +0200
++++ afni/poems/CMakeLists.txt	2012-04-23 16:50:05.814029802 +0200
 @@ -0,0 +1,6 @@
 +PROJECT(POEMS)
 +
@@ -1207,7 +1208,7 @@ Index: afni/poems/CMakeLists.txt
 Index: afni/python_scripts/CMakeLists.txt
 ===================================================================
 --- /dev/null	1970-01-01 00:00:00.000000000 +0000
-+++ afni/python_scripts/CMakeLists.txt	2012-04-23 13:24:53.677456623 +0200
++++ afni/python_scripts/CMakeLists.txt	2012-04-23 16:50:05.814029802 +0200
 @@ -0,0 +1,25 @@
 +PROJECT(PYTHON_SCRIPTS)
 +
@@ -1237,7 +1238,7 @@ Index: afni/python_scripts/CMakeLists.txt
 Index: afni/rickr/CMakeLists.txt
 ===================================================================
 --- /dev/null	1970-01-01 00:00:00.000000000 +0000
-+++ afni/rickr/CMakeLists.txt	2012-04-23 13:24:53.677456623 +0200
++++ afni/rickr/CMakeLists.txt	2012-04-23 16:50:05.818029801 +0200
 @@ -0,0 +1,31 @@
 +PROJECT(rickr)
 +
@@ -1272,8 +1273,8 @@ Index: afni/rickr/CMakeLists.txt
 +  ARCHIVE DESTINATION ${AFNI_INSTALL_LIB_DIR} COMPONENT Development)
 Index: afni/rickr/Dimon.c
 ===================================================================
---- afni.orig/rickr/Dimon.c	2012-04-23 12:45:50.109347520 +0200
-+++ afni/rickr/Dimon.c	2012-04-23 13:24:53.681456623 +0200
+--- afni.orig/rickr/Dimon.c	2012-04-23 16:48:12.150024510 +0200
++++ afni/rickr/Dimon.c	2012-04-23 16:50:05.818029801 +0200
 @@ -145,6 +145,7 @@
  #define IFM_PROG_NAME   "Dimon"
  
@@ -1293,8 +1294,8 @@ Index: afni/rickr/Dimon.c
  extern float DI_MRL_tr;
 Index: afni/rickr/dimon_afni.c
 ===================================================================
---- afni.orig/rickr/dimon_afni.c	2012-04-23 12:45:50.113347520 +0200
-+++ afni/rickr/dimon_afni.c	2012-04-23 13:24:53.681456623 +0200
+--- afni.orig/rickr/dimon_afni.c	2012-04-23 16:48:12.134024509 +0200
++++ afni/rickr/dimon_afni.c	2012-04-23 16:50:05.818029801 +0200
 @@ -8,8 +8,9 @@
  #include "mri_image.h"
  #include "mri_dicom_hdr.h"
@@ -1308,8 +1309,8 @@ Index: afni/rickr/dimon_afni.c
   * dimon_afni.c
 Index: afni/suma_gifti.c
 ===================================================================
---- afni.orig/suma_gifti.c	2012-04-23 12:45:50.125347521 +0200
-+++ afni/suma_gifti.c	2012-04-23 13:24:53.681456623 +0200
+--- afni.orig/suma_gifti.c	2012-04-23 16:48:12.002024503 +0200
++++ afni/suma_gifti.c	2012-04-23 16:50:05.818029801 +0200
 @@ -230,9 +230,14 @@
     }
     
@@ -1345,7 +1346,7 @@ Index: afni/suma_gifti.c
 Index: afni/html/CMakeLists.txt
 ===================================================================
 --- /dev/null	1970-01-01 00:00:00.000000000 +0000
-+++ afni/html/CMakeLists.txt	2012-04-23 13:24:53.701456624 +0200
++++ afni/html/CMakeLists.txt	2012-04-23 16:50:05.818029801 +0200
 @@ -0,0 +1,7 @@
 +PROJECT(HTML)
 +
@@ -1354,3 +1355,33 @@ Index: afni/html/CMakeLists.txt
 +
 +INSTALL(FILES ${ALLHTML} ${ALLJPEG}
 +  DESTINATION ${AFNI_INSTALL_HTML_DIR} COMPONENT Runtime)
+Index: afni/ptaylor/CMakeLists.txt
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ afni/ptaylor/CMakeLists.txt	2012-04-23 16:50:19.142030423 +0200
+@@ -0,0 +1,25 @@
++PROJECT(tracktools)
++
++if (GSL_LIBRARY)
++  MESSAGE(STATUS "Found GSL library, compiling tracktools")
++  SET(SOURCES DoTrackit.c)
++  ADD_LIBRARY(tracktools ${SOURCES})
++  TARGET_LINK_LIBRARIES(tracktools gsl gslcblas)
++  SET(PROGRAMS 3dTrackID 3dProbTrackID 3dDWUncert1 3dDWUncert2)
++
++  ADD_EXECUTABLE(3dTrackID 3dTrackID.c)
++  ADD_EXECUTABLE(3dProbTrackID 3dProbTrackID.c)
++  ADD_EXECUTABLE(3dDWUncert1 3dDWUncert1.c)
++  ADD_EXECUTABLE(3dDWUncert2 3dDWUncert2.c)
++
++  FOREACH(program ${PROGRAMS})
++    TARGET_LINK_LIBRARIES(${program} ${AFNI_LIBS} ${TRACKTOOLS_LIBS} ${GSL_LIBRARIES})
++  ENDFOREACH(program)
++
++  INSTALL(TARGETS tracktools ${PROGRAMS}
++    RUNTIME DESTINATION ${AFNI_INSTALL_BIN_DIR} COMPONENT Runtime
++    LIBRARY DESTINATION ${AFNI_INSTALL_LIB_DIR} COMPONENT Runtime
++    ARCHIVE DESTINATION ${AFNI_INSTALL_LIB_DIR} COMPONENT Development)
++ELSE(GSL_LIBRARY)
++  MESSAGE("GNU Scientific Library not found - not compiling tracktools!")
++ENDIF(GSL_LIBRARY)
