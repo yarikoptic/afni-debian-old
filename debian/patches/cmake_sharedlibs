@@ -1012,8 +1012,8 @@ Last-Update: 2010-09-21
 +#include <stdlib.h>
 +#include "gts.h"
  
- /* functions gts_surface_suma, vertex_load, and face_load 
-    are based on 
+ static int debug;
+ 
 --- /dev/null
 +++ b/avovk/CMakeLists.txt
 @@ -0,0 +1,26 @@
@@ -1236,7 +1236,7 @@ Last-Update: 2010-09-21
 +  ARCHIVE DESTINATION ${AFNI_INSTALL_LIB_DIR} COMPONENT Development)
 --- a/rickr/Dimon.c
 +++ b/rickr/Dimon.c
-@@ -141,6 +141,7 @@
+@@ -145,6 +145,7 @@
  #define IFM_PROG_NAME   "Dimon"
  
  #include "Imon.h"
@@ -1244,7 +1244,7 @@ Last-Update: 2010-09-21
  #include "mrilib.h"
  #include "realtime.h"
  
-@@ -151,7 +152,7 @@
+@@ -155,7 +156,7 @@
  #include "l_mcw_glob.h"
  #include "thd_iochan.h"
  #include "mri_image.h"

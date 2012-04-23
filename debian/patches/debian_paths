@@ -47,7 +47,7 @@ Last-Update: 2010-09-29
        if( epath == NULL ) RETURN(dset) ;
 --- a/afni.c
 +++ b/afni.c
-@@ -4881,12 +4881,31 @@
+@@ -4883,12 +4883,31 @@
        /*-- 20 Dec 2001: Try to read a "global" session --*/
        /*-- 11 May 2002: Move read global session up here --*/
  

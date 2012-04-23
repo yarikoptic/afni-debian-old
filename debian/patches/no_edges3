@@ -11,7 +11,7 @@ Author: Judd Storrs <storrsjm@email.uc.edu>, Michael Hanke <michael.hanke@gmail.
 Last-Update: 2009-10-21
 --- a/@auto_tlrc
 +++ b/@auto_tlrc
-@@ -320,6 +320,12 @@
+@@ -325,6 +325,12 @@
           set ss_opt = "$ss_opt -no_avoid_eyes";      
           set donext = 0      
        endif
@@ -24,7 +24,7 @@ Last-Update: 2009-10-21
        if ($donext == 1) then
           echo "Error: Option or parameter '$argv[$cnt]' not understood"
           apsearch -popt `basename $0` -word $argv[$cnt]
-@@ -1336,6 +1342,9 @@
+@@ -1345,6 +1351,9 @@
  echo "      -no_avoid_eyes : An option that gets passed to 3dSkullStrip."
  echo "                       Use it when parts of the frontal lobes get clipped"
  echo "                       See 3dSkullStrip -help for more details."
@@ -36,7 +36,7 @@ Last-Update: 2009-10-21
  echo "                       -ncr is there however, should you choose NOT TO"
 --- a/Makefile.INCLUDE
 +++ b/Makefile.INCLUDE
-@@ -11,8 +11,8 @@
+@@ -12,8 +12,8 @@
  
  ## 07 Dec 2005: modify the include flags here
  
@@ -47,7 +47,7 @@ Last-Update: 2009-10-21
  
  DOCS     = ../doc/ps/*.ps ../doc/README/README*                    \
             rickr/AFNI.changes.rickr rhammett/AFNI.changes.rhammett \
-@@ -78,7 +78,7 @@
+@@ -79,7 +79,7 @@
             3dDeconvolve_f 3dAnhist 3dAFNIto3D 3dUniformize 3dWarp nicat         \
             3dSpatNorm fftest serial_helper 3dDTeig 3dDWItoDT 3dWarpDrive        \
             nifti_tool 3dAllineate nifti1_test whereami plugout_drive 3dLSS      \
@@ -56,7 +56,7 @@ Last-Update: 2009-10-21
             DTIStudioFibertoSegments Dimon 3dLocalstat 3danisosmooth 3dmaxima    \
             3dTwotoComplex 3dInvFMRI 3dmatcalc 3dAcost 3dLocalBistat 3dFWHMx     \
             3dBlurToFWHM 1dSEM 3dDFT 3dSynthesize 1dMarry 3dEmpty 3dsvm          \
-@@ -635,9 +635,10 @@
+@@ -641,9 +641,10 @@
  	$(RM) $@
  	$(CC) -o 3dvolreg 3dvolreg.o $(LFLAGS) $(LLIBS)
  
@@ -70,7 +70,7 @@ Last-Update: 2009-10-21
  
  from3d:from3d.o
  	$(RM) $@
-@@ -736,10 +737,11 @@
+@@ -742,10 +743,11 @@
  	$(RM) $@
  	$(CC) -o 3dttest++ 3dttest++.o $(LFLAGS) $(LLIBS)
  
@@ -86,8 +86,8 @@ Last-Update: 2009-10-21
  
  ### From Stephen LaConte
  3dsvm:
-@@ -1583,7 +1585,7 @@
- 	$(CP) -pr coxplot volpack moveup moveAFNI* eispack avovk                 ./afni_src
+@@ -1605,7 +1607,7 @@
+ 	$(CP) -pr coxplot volpack moveup moveAFNI* eispack avovk ptaylor               ./afni_src
  	$(CP) -pr $(SCRIPTS) $(PY_DIR) $(R_DIR)                                  ./afni_src
  	$(CP) -pr gifsicledir qhulldir f2cdir mpeg_encodedir                     ./afni_src
 -	$(CP) -pr 3DEdge netcdf-3.5.0 jpeg-6b niml Makefile_* nifti dlcompat     ./afni_src
@@ -95,7 +95,7 @@ Last-Update: 2009-10-21
  	$(CP) -pr SUMA svm matlab rickr faces poems gifti ni_test_? README.*     ./afni_src
  	$(CP) -pr XmHTML html                                                    ./afni_src
  	chmod -R ugo+rw                                                          ./afni_src
-@@ -2346,8 +2348,9 @@
+@@ -2372,8 +2374,9 @@
  #######
  # 3DEdge library files - make them and move them up here
  
@@ -206,7 +206,7 @@ Last-Update: 2009-10-21
  
  static int InteractiveQuit;
  
-@@ -4198,6 +4200,7 @@
+@@ -4116,6 +4118,7 @@
     \param poutsetp (THD_3dim_dataset **)If not null, it will point to a dataset that contains
                                          the edges.
  */
@@ -214,14 +214,14 @@ Last-Update: 2009-10-21
  SUMA_Boolean SUMA_3dedge3(THD_3dim_dataset *inset, float *emask, THD_3dim_dataset **poutsetp)
  {
     static char FuncName[]={"SUMA_3dedge3"};
-@@ -4418,3 +4421,4 @@
+@@ -4336,3 +4339,4 @@
        
     SUMA_RETURN(YUP);
  }
 +#endif /* Disabled for Debian package -- license problem with 3DEdge */
 --- a/SUMA/SUMA_BrainWrap.h
 +++ b/SUMA/SUMA_BrainWrap.h
-@@ -39,7 +39,9 @@
+@@ -61,7 +61,9 @@
  int SUMA_DidUserQuit(void);
  EDIT_options *SUMA_BlankAfniEditOptions(void);
  void *SUMA_Push_Nodes_To_Hull(SUMA_SurfaceObject *SO, SUMA_GENERIC_PROG_OPTIONS_STRUCT *Opt, SUMA_COMM_STRUCT *cs, int N_itermax);
