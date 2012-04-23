@@ -44,7 +44,8 @@ DEB_CMAKE_EXTRA_FLAGS = \
     -DAFNI_INSTALL_PLUGIN_DIR:STRING=/lib/afni/plugins \
     -DAFNI_INSTALL_SCRIPT_DIR:STRING=/share/afni/scripts \
     -DAFNI_INSTALL_PICS_DIR:STRING=/share/afni/pics \
-    -DAFNI_INSTALL_POEMS_DIR:STRING=/share/afni/poems
+    -DAFNI_INSTALL_POEMS_DIR:STRING=/share/afni/poems \
+    -DAFNI_INSTALL_HTML_DIR:STRING=/share/afni/html
 
 # one ring to rule them all ...
 %:
