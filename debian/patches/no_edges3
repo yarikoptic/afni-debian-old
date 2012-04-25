@@ -9,10 +9,8 @@ Description: Strip any 3DEdge-related functionality from AFNI
 Forwarded: Rick Reynolds <reynoldr@mail.nih.gov>
 Author: Judd Storrs <storrsjm@email.uc.edu>, Michael Hanke <michael.hanke@gmail.com>
 Last-Update: 2009-10-21
-Index: afni/@auto_tlrc
-===================================================================
---- afni.orig/@auto_tlrc	2012-04-23 12:45:49.737347502 +0200
-+++ afni/@auto_tlrc	2012-04-23 13:24:53.545456617 +0200
+--- a/@auto_tlrc
++++ b/@auto_tlrc
 @@ -325,6 +325,12 @@
           set ss_opt = "$ss_opt -no_avoid_eyes";      
           set donext = 0      
@@ -36,10 +34,8 @@ Index: afni/@auto_tlrc
  echo "      -ncr           : 3dWarpDrive option -coarserot is now a default."
  echo "                       It will cause no harm, only good shall come of it."
  echo "                       -ncr is there however, should you choose NOT TO"
-Index: afni/Makefile.INCLUDE
-===================================================================
---- afni.orig/Makefile.INCLUDE	2012-04-23 12:45:49.753347503 +0200
-+++ afni/Makefile.INCLUDE	2012-04-23 13:24:53.553456616 +0200
+--- a/Makefile.INCLUDE
++++ b/Makefile.INCLUDE
 @@ -12,8 +12,8 @@
  
  ## 07 Dec 2005: modify the include flags here
@@ -111,10 +107,8 @@ Index: afni/Makefile.INCLUDE
  
  #######
  # Eispack and CDF library files - make them and move them up here
-Index: afni/SUMA/SUMA_3dSkullStrip.c
-===================================================================
---- afni.orig/SUMA/SUMA_3dSkullStrip.c	2012-04-23 12:45:49.769347504 +0200
-+++ afni/SUMA/SUMA_3dSkullStrip.c	2012-04-23 13:24:53.557456616 +0200
+--- a/SUMA/SUMA_3dSkullStrip.c
++++ b/SUMA/SUMA_3dSkullStrip.c
 @@ -13,6 +13,21 @@
        sts = SUMA_help_talk(ps);
        printf ( 
@@ -201,10 +195,8 @@ Index: afni/SUMA/SUMA_3dSkullStrip.c
  
        BEAUTY:
        /* smooth the surface a bit */
-Index: afni/SUMA/SUMA_BrainWrap.c
-===================================================================
---- afni.orig/SUMA/SUMA_BrainWrap.c	2012-04-23 12:45:49.773347504 +0200
-+++ afni/SUMA/SUMA_BrainWrap.c	2012-04-23 13:24:53.557456616 +0200
+--- a/SUMA/SUMA_BrainWrap.c
++++ b/SUMA/SUMA_BrainWrap.c
 @@ -1,6 +1,8 @@
  #include "SUMA_suma.h"
  #include "../thd_brainormalize.h"
@@ -227,10 +219,8 @@ Index: afni/SUMA/SUMA_BrainWrap.c
     SUMA_RETURN(YUP);
  }
 +#endif /* Disabled for Debian package -- license problem with 3DEdge */
-Index: afni/SUMA/SUMA_BrainWrap.h
-===================================================================
---- afni.orig/SUMA/SUMA_BrainWrap.h	2012-04-23 12:45:49.773347504 +0200
-+++ afni/SUMA/SUMA_BrainWrap.h	2012-04-23 13:24:53.557456616 +0200
+--- a/SUMA/SUMA_BrainWrap.h
++++ b/SUMA/SUMA_BrainWrap.h
 @@ -61,7 +61,9 @@
  int SUMA_DidUserQuit(void);
  EDIT_options *SUMA_BlankAfniEditOptions(void);
@@ -241,10 +231,8 @@ Index: afni/SUMA/SUMA_BrainWrap.h
  
  /*!
     SUMA_WRAP_BRAIN_SMOOTH(niter, bufp1, bufp2);
-Index: afni/SUMA/SUMA_Makefile_NoDev
-===================================================================
---- afni.orig/SUMA/SUMA_Makefile_NoDev	2012-04-23 12:45:49.801347506 +0200
-+++ afni/SUMA/SUMA_Makefile_NoDev	2012-04-23 13:24:53.557456616 +0200
+--- a/SUMA/SUMA_Makefile_NoDev
++++ b/SUMA/SUMA_Makefile_NoDev
 @@ -3,14 +3,14 @@
  MAKE = make
  SUMALIB = libSUMA.a
@@ -271,10 +259,8 @@ Index: afni/SUMA/SUMA_Makefile_NoDev
  		${SUMALIBLIST} ${AFNILIB} ${ZLIB} ${SUMA_LINK_LIB}
  
  3dGenPriors: SUMA_3dGenPriors.c libSUMA.a
-Index: afni/@RetinoProc
-===================================================================
---- afni.orig/@RetinoProc	2012-04-23 12:45:49.733347502 +0200
-+++ afni/@RetinoProc	2012-04-23 13:24:53.561456617 +0200
+--- a/@RetinoProc
++++ b/@RetinoProc
 @@ -253,6 +253,7 @@
                          -epi  EpiAnatRef+orig   \
                          -AddEdge -anat2epi \

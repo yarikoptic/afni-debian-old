@@ -3,10 +3,8 @@ Description: thd_ttatlas_query.c allows custom atlas location not supported by @
   of locations.
 Author: Michael Hanke <michael.hanke@gmail.com>
 Last-Update: 2011-01-17
-Index: afni/@FindAfniDsetPath
-===================================================================
---- afni.orig/@FindAfniDsetPath	2012-04-23 12:45:49.733347502 +0200
-+++ afni/@FindAfniDsetPath	2012-04-23 13:24:53.513456614 +0200
+--- a/@FindAfniDsetPath
++++ b/@FindAfniDsetPath
 @@ -4,7 +4,7 @@
  # Medical College of Wisconsin
  # Sep 27, 2006

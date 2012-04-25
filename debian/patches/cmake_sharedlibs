@@ -18,11 +18,9 @@ Description: Alternative CMAKE-based buildsystem and shared lib configuration
 Forwarded: Rick Reynolds <reynoldr@mail.nih.gov>
 Author: Michael Hanke <michael.hanke@gmail.com>, Bernd Feige <bernd.feige@uniklinik-freiburg.de>
 Last-Update: 2010-09-21
-Index: afni/CMakeLists.txt
-===================================================================
---- /dev/null	1970-01-01 00:00:00.000000000 +0000
-+++ afni/CMakeLists.txt	2012-04-23 16:50:05.810029802 +0200
-@@ -0,0 +1,232 @@
+--- /dev/null
++++ b/CMakeLists.txt
+@@ -0,0 +1,236 @@
 +PROJECT(AFNI)
 +
 +cmake_minimum_required(VERSION 2.6)
@@ -84,6 +82,10 @@ Index: afni/CMakeLists.txt
 +  ADD_DEFINITIONS(-DUSING_LESSTIF)
 +ENDIF(AFNI_BUILD_WITH_LESSTIF2)
 +INCLUDE_DIRECTORIES(${MOTIF_INCLUDE_DIR})
++
++FIND_PATH(GLIB_INCLUDE_DIRS glib.h /usr/include/glib-2.0)
++FIND_PATH(GLIBCONF_INCLUDE_DIRS glibconfig.h /usr/lib/x86_64-linux-gnu/glib-2.0/include)
++INCLUDE_DIRECTORIES(${GLIB_INCLUDE_DIRS} ${GLIBCONF_INCLUDE_DIRS})
 +
 +#
 +# NIfTI
@@ -255,10 +257,8 @@ Index: afni/CMakeLists.txt
 +  ADD_SUBDIRECTORY(faces)
 +  ADD_SUBDIRECTORY(poems)
 +ENDIF(NOT AFNI_BUILD_CORELIBS_ONLY)
-Index: afni/CMakeLists_apps.txt
-===================================================================
---- /dev/null	1970-01-01 00:00:00.000000000 +0000
-+++ afni/CMakeLists_apps.txt	2012-04-23 16:50:05.810029802 +0200
+--- /dev/null
++++ b/CMakeLists_apps.txt
 @@ -0,0 +1,216 @@
 +##
 +## This file is to be included in the toplevel CMakeLists.txt
@@ -476,18 +476,18 @@ Index: afni/CMakeLists_apps.txt
 +
 +INSTALL(PROGRAMS ${SCRIPTS}
 +  DESTINATION ${AFNI_INSTALL_SCRIPT_DIR} COMPONENT Runtime)
-Index: afni/CMakeLists_libs.txt
-===================================================================
---- /dev/null	1970-01-01 00:00:00.000000000 +0000
-+++ afni/CMakeLists_libs.txt	2012-04-23 16:50:05.810029802 +0200
-@@ -0,0 +1,195 @@
+--- /dev/null
++++ b/CMakeLists_libs.txt
+@@ -0,0 +1,209 @@
 +##
 +## This file is to be included in the toplevel CMakeLists.txt
 +##
 +
 +INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}
 +                    ${CMAKE_SOURCE_DIR}/niml
-+                    ${CMAKE_SOURCE_DIR}/rickr)
++                    ${CMAKE_SOURCE_DIR}/rickr
++                    ${CMAKE_SOURCE_DIR}/ptaylor)
++
 +#
 +# Define sets of source files
 +#
@@ -646,6 +646,20 @@ Index: afni/CMakeLists_libs.txt
 +TARGET_LINK_LIBRARIES(mrix ${X11_LIBRARIES} ${MOTIF_LIBRARIES} mri coxplot XmHTML)
 +
 +#
++# librio
++#
++
++# Find R
++FIND_LIBRARY(R_LIB NAMES R PATH /usr/lib)
++FIND_PATH(R_INCLUDE_DIRS R.h /usr/share/R/include)
++INCLUDE_DIRECTORIES(${R_INCLUDE_DIRS})
++
++SET(RIOSRC R_io.c)
++ADD_LIBRARY(rio ${RIOSRC})
++TARGET_LINK_LIBRARIES(rio mri ${R_LIB})
++SET_TARGET_PROPERTIES(rio PROPERTIES COMPILE_FLAGS "-std=gnu99")
++
++#
 +# libafni_warp
 +#
 +SET(WARPSRC afni_warp.c)
@@ -659,15 +673,13 @@ Index: afni/CMakeLists_libs.txt
 +ADD_LIBRARY(afni_warp ${WARPSRC})
 +TARGET_LINK_LIBRARIES(afni_warp mri)
 +
-+
 +#
 +# Install targets
 +#
-+INSTALL(TARGETS mri mrix afni_warp
++INSTALL(TARGETS mri mrix afni_warp rio
 +  RUNTIME DESTINATION ${AFNI_INSTALL_BIN_DIR} COMPONENT Runtime
 +  LIBRARY DESTINATION ${AFNI_INSTALL_LIB_DIR} COMPONENT Runtime
 +  ARCHIVE DESTINATION ${AFNI_INSTALL_LIB_DIR} COMPONENT Development)
-+
 +
 +# consider all headers as development headers
 +# TODO determine which of them are really necessary
@@ -676,10 +688,8 @@ Index: afni/CMakeLists_libs.txt
 +  DESTINATION ${AFNI_INSTALL_INCLUDE_DIR}
 +  PERMISSIONS ${FILE_PERMISSIONS}
 +  COMPONENT Development)
-Index: afni/CMakeLists_plugins.txt
-===================================================================
---- /dev/null	1970-01-01 00:00:00.000000000 +0000
-+++ afni/CMakeLists_plugins.txt	2012-04-23 16:50:05.810029802 +0200
+--- /dev/null
++++ b/CMakeLists_plugins.txt
 @@ -0,0 +1,69 @@
 +##
 +## This file is to be included in the toplevel CMakeLists.txt
@@ -750,10 +760,8 @@ Index: afni/CMakeLists_plugins.txt
 +INSTALL(TARGETS ${allplugins}
 +  DESTINATION ${AFNI_INSTALL_PLUGIN_DIR} COMPONENT Runtime
 +  PERMISSIONS ${FILE_PERMISSIONS})
-Index: afni/R_scripts/CMakeLists.txt
-===================================================================
---- /dev/null	1970-01-01 00:00:00.000000000 +0000
-+++ afni/R_scripts/CMakeLists.txt	2012-04-23 16:50:05.810029802 +0200
+--- /dev/null
++++ b/R_scripts/CMakeLists.txt
 @@ -0,0 +1,15 @@
 +PROJECT(R_SCRIPTS)
 +
@@ -770,11 +778,9 @@ Index: afni/R_scripts/CMakeLists.txt
 +  PERMISSIONS ${FILE_PERMISSIONS})
 +INSTALL(PROGRAMS ${SCRIPTS}
 +  DESTINATION ${AFNI_INSTALL_SCRIPT_DIR} COMPONENT Runtime)
-Index: afni/SUMA/CMakeLists.txt
-===================================================================
---- /dev/null	1970-01-01 00:00:00.000000000 +0000
-+++ afni/SUMA/CMakeLists.txt	2012-04-23 16:50:05.810029802 +0200
-@@ -0,0 +1,231 @@
+--- /dev/null
++++ b/SUMA/CMakeLists.txt
+@@ -0,0 +1,239 @@
 +PROJECT(SUMA)
 +
 +##
@@ -866,7 +872,7 @@ Index: afni/SUMA/CMakeLists.txt
 +  inflate_compare SurfaceMetrics ConvertSurface
 +  ConvertDset ROI2dataset SurfSmooth SurfPatch SurfQual SurfClust IsoSurface
 +  ConvexHull 3dSkullStrip 3dSeg 3dCRUISEtoAFNI 3dGenPriors 3dBRAIN_VOYAGERtoAFNI 3dVol2Surf
-+  SurfMeasures FSread_annot SampBias BrainSkin volume_render 3dSurfMask SurfToSurf
++  SurfMeasures FSread_annot SampBias volume_render 3dSurfMask SurfToSurf
 +  ROIgrow AnalyzeTrace DriveSuma SurfDist SpharmReco SpharmDeco SurfDsetInfo
 +  SurfLocalStat SurfFWHM NikoMap SurfInfo 3dSurf2Vol SurfRetinoMap ParseName
 +  RestSym SurfExtrema 3dinfill)
@@ -966,6 +972,14 @@ Index: afni/SUMA/CMakeLists.txt
 +  SET_TARGET_PROPERTIES(SurfMesh PROPERTIES COMPILE_FLAGS ${XGTS_CFLAGS})
 +  TARGET_LINK_LIBRARIES(SurfMesh ${GTS_LIBRARIES})
 +  LIST(APPEND PROGRAMS SurfMesh)
++
++  SET(SUMAGTS_SRCS SUMA_gts.c)
++  ADD_LIBRARY(SUMAGTS ${SUMAGTS_SRCS})
++  TARGET_LINK_LIBRARIES(SUMAGTS ${SUMA_LIBS} ${GLUT_LIBRARIES})
++
++  ADD_EXECUTABLE(BrainSkin SUMA_BrainSkin.c)
++  TARGET_LINK_LIBRARIES(BrainSkin SUMAGTS ${GTS_LIBRARIES})
++  LIST(APPEND PROGRAMS BrainSkin)
 +ENDIF(GTS_FOUND)
 +
 +# all programs link against SUMA_LIBS
@@ -1002,14 +1016,12 @@ Index: afni/SUMA/CMakeLists.txt
 +#
 +# Install targets
 +#
-+INSTALL(TARGETS SUMA ${PROGRAMS}
++INSTALL(TARGETS SUMA SUMAGTS ${PROGRAMS}
 +  RUNTIME DESTINATION ${AFNI_INSTALL_BIN_DIR} COMPONENT Runtime
 +  LIBRARY DESTINATION ${AFNI_INSTALL_LIB_DIR} COMPONENT Runtime
 +  ARCHIVE DESTINATION ${AFNI_INSTALL_LIB_DIR} COMPONENT Development)
-Index: afni/SUMA/SUMA_gts.h
-===================================================================
---- afni.orig/SUMA/SUMA_gts.h	2012-04-23 16:48:12.042024505 +0200
-+++ afni/SUMA/SUMA_gts.h	2012-04-23 16:50:05.810029802 +0200
+--- a/SUMA/SUMA_gts.h
++++ b/SUMA/SUMA_gts.h
 @@ -20,7 +20,6 @@
  #include "gts/config.h"
  #endif
@@ -1018,10 +1030,8 @@ Index: afni/SUMA/SUMA_gts.h
  
  #include "SUMA_suma.h"
  
-Index: afni/SUMA/SUMA_gts_insert.c
-===================================================================
---- afni.orig/SUMA/SUMA_gts_insert.c	2012-04-23 16:48:12.050024506 +0200
-+++ afni/SUMA/SUMA_gts_insert.c	2012-04-23 16:50:05.814029802 +0200
+--- a/SUMA/SUMA_gts_insert.c
++++ b/SUMA/SUMA_gts_insert.c
 @@ -7,6 +7,8 @@
  #include "../../SUMA_gts_insert.c" 
  gts's surface.c works just fine
@@ -1031,10 +1041,8 @@ Index: afni/SUMA/SUMA_gts_insert.c
  
  static int debug;
  
-Index: afni/avovk/CMakeLists.txt
-===================================================================
---- /dev/null	1970-01-01 00:00:00.000000000 +0000
-+++ afni/avovk/CMakeLists.txt	2012-04-23 16:50:05.814029802 +0200
+--- /dev/null
++++ b/avovk/CMakeLists.txt
 @@ -0,0 +1,26 @@
 +PROJECT(segtools)
 +
@@ -1062,10 +1070,8 @@ Index: afni/avovk/CMakeLists.txt
 +ELSE(GSL_LIBRARY)
 +  MESSAGE("GNU Scientific Library not found - not compiling segtools!")
 +ENDIF(GSL_LIBRARY)
-Index: afni/coxplot/CMakeLists.txt
-===================================================================
---- /dev/null	1970-01-01 00:00:00.000000000 +0000
-+++ afni/coxplot/CMakeLists.txt	2012-04-23 16:50:05.814029802 +0200
+--- /dev/null
++++ b/coxplot/CMakeLists.txt
 @@ -0,0 +1,23 @@
 +PROJECT(coxplot)
 +
@@ -1090,10 +1096,8 @@ Index: afni/coxplot/CMakeLists.txt
 +  RUNTIME DESTINATION ${AFNI_INSTALL_BIN_DIR} COMPONENT Runtime
 +  LIBRARY DESTINATION ${AFNI_INSTALL_LIB_DIR} COMPONENT Runtime
 +  ARCHIVE DESTINATION ${AFNI_INSTALL_LIB_DIR} COMPONENT Development)
-Index: afni/cs_qmed.c
-===================================================================
---- afni.orig/cs_qmed.c	2012-04-23 16:48:12.022024504 +0200
-+++ afni/cs_qmed.c	2012-04-23 16:50:05.814029802 +0200
+--- a/cs_qmed.c
++++ b/cs_qmed.c
 @@ -6,6 +6,10 @@
  
  #include "mrilib.h"
@@ -1105,10 +1109,8 @@ Index: afni/cs_qmed.c
  /*------------------------------------------------------------------------
     Compute the median of an array of floats.  Will rearrange (partially
     sort) the array in the process.  The algorithm is based on Quicksort,
-Index: afni/faces/CMakeLists.txt
-===================================================================
---- /dev/null	1970-01-01 00:00:00.000000000 +0000
-+++ afni/faces/CMakeLists.txt	2012-04-23 16:50:05.814029802 +0200
+--- /dev/null
++++ b/faces/CMakeLists.txt
 @@ -0,0 +1,8 @@
 +PROJECT(FACES)
 +
@@ -1118,10 +1120,8 @@ Index: afni/faces/CMakeLists.txt
 +
 +INSTALL(FILES ${ALLFACES} ${ALLSPLASH}
 +  DESTINATION ${AFNI_INSTALL_PICS_DIR} COMPONENT Runtime)
-Index: afni/gifti_choice.c
-===================================================================
---- afni.orig/gifti_choice.c	2012-04-23 16:48:12.094024507 +0200
-+++ afni/gifti_choice.c	2012-04-23 16:50:05.814029802 +0200
+--- a/gifti_choice.c
++++ b/gifti_choice.c
 @@ -10,15 +10,18 @@
  
  #ifdef HAVE_GIFTI
@@ -1149,10 +1149,8 @@ Index: afni/gifti_choice.c
  #else
  
      /* if we do not love or even want GIFTI, include failure functions here */
-Index: afni/mri_dicom_hdr.c
-===================================================================
---- afni.orig/mri_dicom_hdr.c	2012-04-23 16:48:12.110024509 +0200
-+++ afni/mri_dicom_hdr.c	2012-04-23 16:50:05.814029802 +0200
+--- a/mri_dicom_hdr.c
++++ b/mri_dicom_hdr.c
 @@ -95,18 +95,18 @@
  
  /* Dimon needs to compile without libmri     18 May 2006 */
@@ -1179,10 +1177,8 @@ Index: afni/mri_dicom_hdr.c
  
  /* cast int to pointer and vice-versa without warning messages */
  
-Index: afni/mri_nstats.c
-===================================================================
---- afni.orig/mri_nstats.c	2012-04-23 16:48:12.074024506 +0200
-+++ afni/mri_nstats.c	2012-04-23 16:50:05.814029802 +0200
+--- a/mri_nstats.c
++++ b/mri_nstats.c
 @@ -1,10 +1,7 @@
  #include "mrilib.h"
  
@@ -1194,10 +1190,8 @@ Index: afni/mri_nstats.c
  #endif
  
  /*--------------------------------------------------------------------------*/
-Index: afni/poems/CMakeLists.txt
-===================================================================
---- /dev/null	1970-01-01 00:00:00.000000000 +0000
-+++ afni/poems/CMakeLists.txt	2012-04-23 16:50:05.814029802 +0200
+--- /dev/null
++++ b/poems/CMakeLists.txt
 @@ -0,0 +1,6 @@
 +PROJECT(POEMS)
 +
@@ -1205,10 +1199,8 @@ Index: afni/poems/CMakeLists.txt
 +
 +INSTALL(FILES ${ALLPOEMS}
 +  DESTINATION ${AFNI_INSTALL_POEMS_DIR} COMPONENT Runtime)
-Index: afni/python_scripts/CMakeLists.txt
-===================================================================
---- /dev/null	1970-01-01 00:00:00.000000000 +0000
-+++ afni/python_scripts/CMakeLists.txt	2012-04-23 16:50:05.814029802 +0200
+--- /dev/null
++++ b/python_scripts/CMakeLists.txt
 @@ -0,0 +1,25 @@
 +PROJECT(PYTHON_SCRIPTS)
 +
@@ -1235,10 +1227,8 @@ Index: afni/python_scripts/CMakeLists.txt
 +  PERMISSIONS ${FILE_PERMISSIONS})
 +INSTALL(PROGRAMS ${SCRIPTS}
 +  DESTINATION ${AFNI_INSTALL_SCRIPT_DIR} COMPONENT Runtime)
-Index: afni/rickr/CMakeLists.txt
-===================================================================
---- /dev/null	1970-01-01 00:00:00.000000000 +0000
-+++ afni/rickr/CMakeLists.txt	2012-04-23 16:50:05.818029801 +0200
+--- /dev/null
++++ b/rickr/CMakeLists.txt
 @@ -0,0 +1,31 @@
 +PROJECT(rickr)
 +
@@ -1271,10 +1261,8 @@ Index: afni/rickr/CMakeLists.txt
 +  RUNTIME DESTINATION ${AFNI_INSTALL_BIN_DIR} COMPONENT Runtime
 +  LIBRARY DESTINATION ${AFNI_INSTALL_LIB_DIR} COMPONENT Runtime
 +  ARCHIVE DESTINATION ${AFNI_INSTALL_LIB_DIR} COMPONENT Development)
-Index: afni/rickr/Dimon.c
-===================================================================
---- afni.orig/rickr/Dimon.c	2012-04-23 16:48:12.150024510 +0200
-+++ afni/rickr/Dimon.c	2012-04-23 16:50:05.818029801 +0200
+--- a/rickr/Dimon.c
++++ b/rickr/Dimon.c
 @@ -145,6 +145,7 @@
  #define IFM_PROG_NAME   "Dimon"
  
@@ -1292,10 +1280,8 @@ Index: afni/rickr/Dimon.c
  
  extern char  DI_MRL_orients[8];
  extern float DI_MRL_tr;
-Index: afni/rickr/dimon_afni.c
-===================================================================
---- afni.orig/rickr/dimon_afni.c	2012-04-23 16:48:12.134024509 +0200
-+++ afni/rickr/dimon_afni.c	2012-04-23 16:50:05.818029801 +0200
+--- a/rickr/dimon_afni.c
++++ b/rickr/dimon_afni.c
 @@ -8,8 +8,9 @@
  #include "mri_image.h"
  #include "mri_dicom_hdr.h"
@@ -1307,10 +1293,8 @@ Index: afni/rickr/dimon_afni.c
  
  /*----------------------------------------------------------------------
   * dimon_afni.c
-Index: afni/suma_gifti.c
-===================================================================
---- afni.orig/suma_gifti.c	2012-04-23 16:48:12.002024503 +0200
-+++ afni/suma_gifti.c	2012-04-23 16:50:05.818029801 +0200
+--- a/suma_gifti.c
++++ b/suma_gifti.c
 @@ -230,9 +230,14 @@
     }
     
@@ -1343,10 +1327,8 @@ Index: afni/suma_gifti.c
     RETURN(gim);
  }
   
-Index: afni/html/CMakeLists.txt
-===================================================================
---- /dev/null	1970-01-01 00:00:00.000000000 +0000
-+++ afni/html/CMakeLists.txt	2012-04-23 16:50:05.818029801 +0200
+--- /dev/null
++++ b/html/CMakeLists.txt
 @@ -0,0 +1,7 @@
 +PROJECT(HTML)
 +
@@ -1355,18 +1337,16 @@ Index: afni/html/CMakeLists.txt
 +
 +INSTALL(FILES ${ALLHTML} ${ALLJPEG}
 +  DESTINATION ${AFNI_INSTALL_HTML_DIR} COMPONENT Runtime)
-Index: afni/ptaylor/CMakeLists.txt
-===================================================================
---- /dev/null	1970-01-01 00:00:00.000000000 +0000
-+++ afni/ptaylor/CMakeLists.txt	2012-04-23 16:50:19.142030423 +0200
+--- /dev/null
++++ b/ptaylor/CMakeLists.txt
 @@ -0,0 +1,25 @@
 +PROJECT(tracktools)
 +
-+if (GSL_LIBRARY)
-+  MESSAGE(STATUS "Found GSL library, compiling tracktools")
++if (GSL_LIBRARY AND GTS_LIBRARY)
++  MESSAGE(STATUS "Found GSL and GTS libraries, compiling tracktools")
 +  SET(SOURCES DoTrackit.c)
 +  ADD_LIBRARY(tracktools ${SOURCES})
-+  TARGET_LINK_LIBRARIES(tracktools gsl gslcblas)
++  TARGET_LINK_LIBRARIES(tracktools gsl gslcblas gts)
 +  SET(PROGRAMS 3dTrackID 3dProbTrackID 3dDWUncert1 3dDWUncert2)
 +
 +  ADD_EXECUTABLE(3dTrackID 3dTrackID.c)
@@ -1375,7 +1355,7 @@ Index: afni/ptaylor/CMakeLists.txt
 +  ADD_EXECUTABLE(3dDWUncert2 3dDWUncert2.c)
 +
 +  FOREACH(program ${PROGRAMS})
-+    TARGET_LINK_LIBRARIES(${program} ${AFNI_LIBS} ${TRACKTOOLS_LIBS} ${GSL_LIBRARIES})
++    TARGET_LINK_LIBRARIES(${program} ${AFNI_LIBS} ${TRACKTOOLS_LIBS} ${GSL_LIBRARIES} ${GTS_LIBRARIES})
 +  ENDFOREACH(program)
 +
 +  INSTALL(TARGETS tracktools ${PROGRAMS}

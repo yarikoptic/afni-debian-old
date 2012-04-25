@@ -4,10 +4,8 @@ Description: Adjust GLUT header location to a more standard setting.
 Forwarded: Rick Reynolds <reynoldr@mail.nih.gov>
 Author: Michael Hanke <michael.hanke@gmail.com>
 Last-Update: 2010-09-20
-Index: afni/SUMA/SUMA_suma.h
-===================================================================
---- afni.orig/SUMA/SUMA_suma.h	2012-04-23 12:45:49.837347507 +0200
-+++ afni/SUMA/SUMA_suma.h	2012-04-23 13:24:53.597456619 +0200
+--- a/SUMA/SUMA_suma.h
++++ b/SUMA/SUMA_suma.h
 @@ -128,7 +128,7 @@
     #include <GL/gl.h>
     #include <GL/glu.h>

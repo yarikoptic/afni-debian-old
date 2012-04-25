@@ -3,10 +3,8 @@ Description: Configure Debian-specific installation paths
   and /usr/share, instead of having to dump everything into a single directory.
 Author: Michael Hanke <michael.hanke@gmail.com>
 Last-Update: 2010-09-29
-Index: afni/afni_func.c
-===================================================================
---- afni.orig/afni_func.c	2012-04-23 12:45:49.881347510 +0200
-+++ afni/afni_func.c	2012-04-23 13:24:53.625456619 +0200
+--- a/afni_func.c
++++ b/afni_func.c
 @@ -6573,6 +6573,8 @@
     /*----- get path to search -----*/
  
@@ -16,10 +14,8 @@ Index: afni/afni_func.c
     if( epath == NULL ) epath = getenv("AFNI_PLUGIN_PATH") ;
     if( epath == NULL ) epath = getenv("PATH") ;
     if( epath == NULL ){ num_poem=-1; EXRETURN ; }
-Index: afni/afni_splash.c
-===================================================================
---- afni.orig/afni_splash.c	2012-04-23 12:45:49.897347510 +0200
-+++ afni/afni_splash.c	2012-04-23 13:24:53.633456620 +0200
+--- a/afni_splash.c
++++ b/afni_splash.c
 @@ -666,6 +666,8 @@
     /*----- get path to search -----*/
  
@@ -29,10 +25,8 @@ Index: afni/afni_splash.c
     if( epath == NULL ) epath = getenv("AFNI_PLUGIN_PATH") ;
     if( epath == NULL ) epath = getenv("PATH") ;
     if( epath == NULL ) epath = getenv("HOME") ;
-Index: afni/thd_ttatlas_query.c
-===================================================================
---- afni.orig/thd_ttatlas_query.c	2012-04-23 12:45:50.153347522 +0200
-+++ afni/thd_ttatlas_query.c	2012-04-23 13:24:53.645456620 +0200
+--- a/thd_ttatlas_query.c
++++ b/thd_ttatlas_query.c
 @@ -592,6 +592,8 @@
     if( !first ) return adnam ;
     first = 0 ;
@@ -51,10 +45,8 @@ Index: afni/thd_ttatlas_query.c
        if( epath == NULL ) epath = getenv("AFNI_PLUGIN_PATH") ;
        if( epath == NULL ) epath = getenv("PATH") ;
        if( epath == NULL ) RETURN(dset) ;
-Index: afni/afni.c
-===================================================================
---- afni.orig/afni.c	2012-04-23 12:45:49.873347508 +0200
-+++ afni/afni.c	2012-04-23 13:24:53.653456621 +0200
+--- a/afni.c
++++ b/afni.c
 @@ -4883,12 +4883,31 @@
        /*-- 20 Dec 2001: Try to read a "global" session --*/
        /*-- 11 May 2002: Move read global session up here --*/
