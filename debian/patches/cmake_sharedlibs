@@ -20,7 +20,7 @@ Author: Michael Hanke <michael.hanke@gmail.com>, Bernd Feige <bernd.feige@unikli
 Last-Update: 2010-09-21
 --- /dev/null
 +++ b/CMakeLists.txt
-@@ -0,0 +1,236 @@
+@@ -0,0 +1,290 @@
 +PROJECT(AFNI)
 +
 +cmake_minimum_required(VERSION 2.6)
@@ -82,10 +82,64 @@ Last-Update: 2010-09-21
 +  ADD_DEFINITIONS(-DUSING_LESSTIF)
 +ENDIF(AFNI_BUILD_WITH_LESSTIF2)
 +INCLUDE_DIRECTORIES(${MOTIF_INCLUDE_DIR})
++#
++# Stolen from KDE
++#
++################################################################################
++# - Try to find the GLIB2 libraries
++# Once done this will define
++#
++#  GLIB2_FOUND - system has glib2
++#  GLIB2_INCLUDE_DIR - the glib2 include directory
++#  GLIB2_LIBRARIES - glib2 library
 +
-+FIND_PATH(GLIB_INCLUDE_DIRS glib.h /usr/include/glib-2.0)
-+FIND_PATH(GLIBCONF_INCLUDE_DIRS glibconfig.h /usr/lib/x86_64-linux-gnu/glib-2.0/include)
-+INCLUDE_DIRECTORIES(${GLIB_INCLUDE_DIRS} ${GLIBCONF_INCLUDE_DIRS})
++# Copyright (c) 2008 Laurent Montel, <montel@kde.org>
++#
++# Redistribution and use is allowed according to the terms of the BSD license.
++# For details see the accompanying COPYING-CMAKE-SCRIPTS file.
++
++if(GLIB2_INCLUDE_DIR AND GLIB2_LIBRARIES)
++    # Already in cache, be silent
++    set(GLIB2_FIND_QUIETLY TRUE)
++endif(GLIB2_INCLUDE_DIR AND GLIB2_LIBRARIES)
++
++find_package(PkgConfig)
++pkg_check_modules(PC_LibGLIB2 QUIET glib-2.0)
++
++find_path(GLIB2_MAIN_INCLUDE_DIR
++          NAMES glib.h
++          HINTS ${PC_LibGLIB2_INCLUDEDIR}
++          PATH_SUFFIXES glib-2.0)
++
++find_library(GLIB2_LIBRARY 
++             NAMES glib-2.0 
++             HINTS ${PC_LibGLIB2_LIBDIR}
++)
++
++set(GLIB2_LIBRARIES ${GLIB2_LIBRARY})
++
++# search the glibconfig.h include dir under the same root where the library is found
++get_filename_component(glib2LibDir "${GLIB2_LIBRARIES}" PATH)
++
++find_path(GLIB2_INTERNAL_INCLUDE_DIR glibconfig.h
++          PATH_SUFFIXES glib-2.0/include
++          HINTS ${PC_LibGLIB2_INCLUDEDIR} "${glib2LibDir}" ${CMAKE_SYSTEM_LIBRARY_PATH})
++
++set(GLIB2_INCLUDE_DIR "${GLIB2_MAIN_INCLUDE_DIR}")
++
++# not sure if this include dir is optional or required
++# for now it is optional
++if(GLIB2_INTERNAL_INCLUDE_DIR)
++  set(GLIB2_INCLUDE_DIR ${GLIB2_INCLUDE_DIR} "${GLIB2_INTERNAL_INCLUDE_DIR}")
++endif(GLIB2_INTERNAL_INCLUDE_DIR)
++
++include(FindPackageHandleStandardArgs)
++find_package_handle_standard_args(GLIB2  DEFAULT_MSG  GLIB2_LIBRARIES GLIB2_MAIN_INCLUDE_DIR)
++
++mark_as_advanced(GLIB2_INCLUDE_DIR GLIB2_LIBRARIES)
++
++################################################################################
++INCLUDE_DIRECTORIES(${GLIB2_INCLUDE_DIR})
 +
 +#
 +# NIfTI
@@ -1342,7 +1396,7 @@ Last-Update: 2010-09-21
 @@ -0,0 +1,25 @@
 +PROJECT(tracktools)
 +
-+if (GSL_LIBRARY AND GTS_LIBRARY)
++IF (GSL_LIBRARY AND GTS_FOUND)
 +  MESSAGE(STATUS "Found GSL and GTS libraries, compiling tracktools")
 +  SET(SOURCES DoTrackit.c)
 +  ADD_LIBRARY(tracktools ${SOURCES})
@@ -1355,13 +1409,13 @@ Last-Update: 2010-09-21
 +  ADD_EXECUTABLE(3dDWUncert2 3dDWUncert2.c)
 +
 +  FOREACH(program ${PROGRAMS})
-+    TARGET_LINK_LIBRARIES(${program} ${AFNI_LIBS} ${TRACKTOOLS_LIBS} ${GSL_LIBRARIES} ${GTS_LIBRARIES})
++    TARGET_LINK_LIBRARIES(${program} ${AFNI_LIBS} tracktools ${GSL_LIBRARY} ${GTS_LIBRARIES})
 +  ENDFOREACH(program)
 +
 +  INSTALL(TARGETS tracktools ${PROGRAMS}
 +    RUNTIME DESTINATION ${AFNI_INSTALL_BIN_DIR} COMPONENT Runtime
 +    LIBRARY DESTINATION ${AFNI_INSTALL_LIB_DIR} COMPONENT Runtime
 +    ARCHIVE DESTINATION ${AFNI_INSTALL_LIB_DIR} COMPONENT Development)
-+ELSE(GSL_LIBRARY)
-+  MESSAGE("GNU Scientific Library not found - not compiling tracktools!")
-+ENDIF(GSL_LIBRARY)
++ELSE (GSL_LIBRARY AND GTS_FOUND)
++	MESSAGE(STATUS "GSL and/or GTS libraries not found -- not compiling tracktools")
++ENDIF (GSL_LIBRARY AND GTS_FOUND)
