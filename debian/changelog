@@ -1,4 +1,4 @@
-afni (0.20120224~dfsg.1-1) UNRELEASED; urgency=low
+afni (0.20120420~dfsg.1-1) UNRELEASED; urgency=low
 
   [ Alex Waite]
   * New upstream code; updated CMake. Adds 3dCountSpikes, 3dNwarpCalc,
@@ -21,7 +21,15 @@ afni (0.20120224~dfsg.1-1) UNRELEASED; urgency=low
   [ Michael Hanke ]
   * Added build-dependency on xmhtml1-dev for "new" tooltip system.
 
- -- Michael Hanke <mih@debian.org>  Fri, 02 Mar 2012 16:14:08 +0100
+  [ Alex Waite ]
+  * New upstream code. Updated CMake build system.
+  * Upstream: New I/O library for R uses AFNI's c library.
+  * Upstream: Web-based access atlases available. Able to query web atlases from whereami and open webpages.
+  * Upstream new programs: dicom_hinfo, apsearch, quick.alpha.vals.py, 3dLSS, @AfniEnv, @Atlasize, 1dBport, SurfExtrema, 3dinfill, 3dNormalityTest, 3dTnorm
+  * Upstream: Many bug fixes and overall code cleanup.
+  * Now build and ship libSUMAGTS.so
+
+ -- Alex Waite <alexqw85@gmail.com>  Wed, 25 Apr 2012 18:58:59 +0200
 
 afni (0.20110610~dfsg.1-1) UNRELEASED; urgency=low
 
