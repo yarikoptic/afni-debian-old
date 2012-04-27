@@ -24,8 +24,11 @@ afni (0.20120420~dfsg.1-1) UNRELEASED; urgency=low
   [ Alex Waite ]
   * New upstream code. Updated CMake build system.
   * Upstream: New I/O library for R uses AFNI's c library.
-  * Upstream: Web-based access atlases available. Able to query web atlases from whereami and open webpages.
-  * Upstream new programs: dicom_hinfo, apsearch, quick.alpha.vals.py, 3dLSS, @AfniEnv, @Atlasize, 1dBport, SurfExtrema, 3dinfill, 3dNormalityTest, 3dTnorm
+  * Upstream: Web-based access atlases available. Able to query web atlases
+    from whereami and open webpages.
+  * Upstream new programs: dicom_hinfo, apsearch, quick.alpha.vals.py, 3dLSS,
+    @AfniEnv, @Atlasize, 1dBport, SurfExtrema, 3dinfill, 3dNormalityTest,
+    3dTnorm
   * Upstream: Many bug fixes and overall code cleanup.
   * Now build and ship libSUMAGTS.so
 
