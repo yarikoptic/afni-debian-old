@@ -91,7 +91,7 @@ PROGRAMS = afni to3d from3d abut 3dclust nsize 3dinfo 3dproject 3dmerge count   
            3dClustSim 3dRetinoPhase 3dMaskToASCII 3dttest++ 3dDTtoDWI           \
            niccc rbox qdelaunay 3dkmeans 3dXYZcat 3dPolyfit 3dNwarpApply        \
            1dCorrelate 3dCountSpikes 3dNwarpCalc dicom_hinfo apsearch 1dBport   \
-           3dNormalityTest                                                      \
+           3dNormalityTest 3dmask_tool                                          \
            $(EXTRAS)
 
 PROGRAMS_NOPLUG = afni to3d from3d abut 3dclust nsize 3dinfo 3dproject 3dmerge      \
@@ -124,7 +124,7 @@ PROGRAMS_NOPLUG = afni to3d from3d abut 3dclust nsize 3dinfo 3dproject 3dmerge  
                   3dmaskSVD 3dRank 3dLocalPV 3dTcorr1D 3dClustSim 3dRetinoPhase     \
                   3dMaskToASCII 3dttest++ 3dDTtoDWI niccc 3dXYZcat 3dPolyfit        \
                   3dNwarpApply 1dCorrelate 3dCountSpikes 3dNwarpCalc dicom_hinfo    \
-                  apsearch 3dNormalityTest                                          \
+                  apsearch 3dNormalityTest 3dmask_tool                              \
                   $(EXTRAS)
 
 # For CYGWIN (look for "exe" to find various places below)
@@ -205,7 +205,8 @@ vastness:all plugins install install_plugins install_lib
 
 ### Make many things
 
-all:$(LIBDL) libmri.a libmrix.a libcoxplot.a libvolpack.a R_io.so programs
+all:$(LIBDL) libmri.a libmrix.a libcoxplot.a libvolpack.a libtracktools.a \
+             R_io.so programs
 
 ### Make afni binaries
 
@@ -2295,10 +2296,6 @@ r_misc.o: rickr/r_misc.c rickr/r_misc.h
 	$(RM) $@
 	$(CC) -o 3dmaxima 3dmaxima.o maxima.o $(LFLAGS) $(LLIBS)
 
-3dmatmult: 3dmatmult.o libmri.a
-	$(RM) $@
-	$(CC) -o 3dmatmult 3dmatmult.o $(LFLAGS) $(LLIBS)
-
 3dresample: 3dresample.o libmri.a
 	$(RM) $@
 	$(CC) -o 3dresample 3dresample.o $(LFLAGS) $(LLIBS)
@@ -2337,6 +2334,14 @@ gtest:
 	$(MAKE) gtest 'RM=$(RM)' 'CC=$(CC)' 'IFLAGS=$(ISFLAGS)'         \
 	                'LFLAGS=$(LFLAGS)' ;                            \
 	$(MV) gtest .. ; )
+
+3dmatmult: 3dmatmult.o libmri.a
+	$(RM) $@
+	$(CC) -o 3dmatmult 3dmatmult.o $(LFLAGS) $(LLIBS)
+
+3dmask_tool: 3dmask_tool.o libmri.a
+	$(RM) $@
+	$(CC) -o 3dmask_tool 3dmask_tool.o $(LFLAGS) $(LLIBS)
 
 #######
 # rendering library
@@ -2839,7 +2844,7 @@ ptaylor_all:
 	$(MAKE) all  ;	\
 	cd ../	;		)
 
-libtracktools.a: ptaylor/libtracktools.a
+libtracktools.a:
 	( cd ptaylor ;	\
 	./@MakeLocalMake	;\
 	$(MAKE) libtracktools.a  ;	\
@@ -2850,7 +2855,7 @@ libtracktools.a: ptaylor/libtracktools.a
 #############
 #SUMA
 
-libSUMA.a: libmri.a libmrix.a libcoxplot.a libf2c.a
+libSUMA.a: libmri.a libmrix.a libcoxplot.a libf2c.a libtracktools.a
 	( cd SUMA ;	\
 	rm -f libSUMA.a	;\
 	$(MAKE) -f $(SUMA_MAKEFILE_NAME) clean MarchingCubes.o libSUMA.a 'INSTALLDIR=$(INSTALLDIR)' \
@@ -2890,7 +2895,7 @@ libGLws.a:
 	$(CP) SUMA/libGLws.a ./;	)
 ###
 #link executables but check for libraries first and create them if needed	
-suma_exec:libGLws.a libSUMA.a libmri.a xutil.o LiteClue.o parser.o parser_int.o libmrix.a libcoxplot.a libf2c.a
+suma_exec:libGLws.a libSUMA.a libtracktools.a libmri.a xutil.o LiteClue.o parser.o parser_int.o libmrix.a libcoxplot.a libf2c.a
 	( cd SUMA ;	\
 	$(MAKE) -f $(SUMA_MAKEFILE_NAME) testGL suma ScaleToMap CompareSurfaces \
 	MakeColorMap ROI2dataset 3dVol2Surf \
@@ -2932,7 +2937,7 @@ suma_gts_progs: libgts.a
 
 ###
 #run make all in SUMA directory, USE FOR DEVELOPMENT ONLY	
-suma_all:libmri.a xutil.o LiteClue.o parser.o parser_int.o libmrix.a libcoxplot.a libf2c.a
+suma_all:libmri.a libtracktools.a xutil.o LiteClue.o parser.o parser_int.o libmrix.a libcoxplot.a libf2c.a
 	( cd SUMA ;	\
 	$(MAKE) -f $(SUMA_MAKEFILE_NAME) all 'INSTALLDIR=$(INSTALLDIR)' 'INSTALLDIR_SUMA=$(INSTALLDIR)' \
 	'SUMA_INCLUDE_PATH=$(SUMA_INCLUDE_PATH)' \
@@ -2948,7 +2953,7 @@ suma_all:libmri.a xutil.o LiteClue.o parser.o parser_int.o libmrix.a libcoxplot.
 
 ###
 #run make anew in SUMA directory, USE FOR DEVELOPMENT ONLY	
-suma_anew:libmri.a xutil.o LiteClue.o parser.o parser_int.o libmrix.a libcoxplot.a libf2c.a
+suma_anew:libmri.a xutil.o LiteClue.o parser.o parser_int.o libmrix.a libcoxplot.a libf2c.a libtracktools.a
 	( cd SUMA ;	\
 	$(MAKE) -f $(SUMA_MAKEFILE_NAME) anew 'INSTALLDIR=$(INSTALLDIR)' 'INSTALLDIR_SUMA=$(INSTALLDIR)' \
 	'SUMA_INCLUDE_PATH=$(SUMA_INCLUDE_PATH)' \
@@ -3069,7 +3074,7 @@ suma_link:
 	( cd SUMA ;	\
 	tar -xf $(SUMA_BIN_ARCHIVE)	;\
 	touch *.a	;\
-	$(CP) libmri.a libmrix.a libcoxplot.a libf2c.a ../	;\
+	$(CP) libmri.a libtractools.a libmrix.a libcoxplot.a libf2c.a ../	;\
 	$(RM) suma MakeColorMap ROI2dataset 3dVol2Surf 3dSurf2Vol \
    SurfMeasures  SurfFWHM \
    ScaleToMap MapIcosahedron \
