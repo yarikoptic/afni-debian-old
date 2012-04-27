@@ -821,11 +821,11 @@ Last-Update: 2010-09-21
 +
 +# script being programs on their own
 +SET(SCRIPTS
-+  1dRplot.R 3dICA.R 3dICC.R 3dICC_REML.R 3dLME.R ExamineXmat.R smooth.R)
++  1dRplot.R 3dICA.R 3dICC.R 3dICC_REML.R 3dLME.R 3dMEMA.R 3dSignatures.R ExamineXmat.R smooth.R)
 +
 +# everything else that is not meant to be a standalone script
 +SET(MODULES
-+  1dGC.R 1dSEMr.R 1dSVAR.R 3dGC.R 3dKS.R 3dMEMA.R 3dSignatures.R AFNIio.R AFNIplot.R Level2.R Signatures.R)
++  1dGC.R 1dSEMr.R 1dSVAR.R 3dGC.R 3dKS.R AFNIio.R AFNIplot.R Level2.R Signatures.R)
 +
 +INSTALL(FILES ${MODULES}
 +  DESTINATION ${AFNI_INSTALL_SCRIPT_DIR} COMPONENT Runtime
