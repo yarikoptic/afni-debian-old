@@ -196,6 +196,60 @@ fprintf(stderr,"Changing color to %f %f %f\n",rr,gg,bb) ;
 }
 
 /*-----------------------------------------------------------------------*/
+#define DUPLICATION
+
+#ifdef DUPLICATION  /* 27 Apr 2012: slower, but produces nicer looking images */
+
+# undef  BOr
+# undef  BOg
+# undef  BOb
+# define BOr(i,j) bout[3*((i)+(j)*nxout)+0]
+# define BOg(i,j) bout[3*((i)+(j)*nxout)+1]
+# define BOb(i,j) bout[3*((i)+(j)*nxout)+2]
+# undef  BIr
+# undef  BIg
+# undef  BIb
+# define BIr(i,j) ((unsigned int)bin [3*((i)+(j)*nxin )+0])
+# define BIg(i,j) ((unsigned int)bin [3*((i)+(j)*nxin )+1])
+# define BIb(i,j) ((unsigned int)bin [3*((i)+(j)*nxin )+2])
+
+static MRI_IMAGE * mri_downsize_by2( MRI_IMAGE *imin )
+{
+   MRI_IMAGE *imout ; int nxin,nyin , nxout,nyout , ii,jj,i2,j2 ;
+   byte *bin , *bout ; unsigned int val ;
+
+   if( imin == NULL || imin->kind != MRI_rgb ) return NULL ;
+
+   nxin = imin->nx ; nyin  = imin->ny ;
+   nxout = nxin /2 ; nyout = nyin / 2 ;
+
+   imout = mri_new( nxout , nyout , MRI_rgb ) ;
+   bout  = MRI_RGB_PTR(imout) ;
+   bin   = MRI_RGB_PTR(imin) ;
+
+   for( jj=0 ; jj < nyout ; jj++ ){
+     j2 = 2*jj ;
+     for( ii=0 ; ii < nxout ; ii++ ){
+       i2 = 2*ii ;
+       val = BIr(i2,j2)+BIr(i2+1,j2)+BIr(i2,j2+1)+BIr(i2+1,j2+1)+1; BOr(ii,jj) = (byte)(val >> 2);
+       val = BIg(i2,j2)+BIg(i2+1,j2)+BIg(i2,j2+1)+BIg(i2+1,j2+1)+1; BOg(ii,jj) = (byte)(val >> 2);
+       val = BIb(i2,j2)+BIb(i2+1,j2)+BIb(i2,j2+1)+BIb(i2+1,j2+1)+1; BOb(ii,jj) = (byte)(val >> 2);
+     }
+   }
+
+   return imout ;
+}
+
+# undef  BOr
+# undef  BOg
+# undef  BOb
+# undef  BIr
+# undef  BIg
+# undef  BIb
+
+#endif /* DUPLICATION */
+
+/*-----------------------------------------------------------------------*/
 
 #undef  IMSIZ
 #define IMSIZ 1024
@@ -204,6 +258,9 @@ static MRI_IMAGE * memplot_to_mri( MEM_plotdata *mp )  /* 05 Dec 2007 */
 {
    MRI_IMAGE *im ; int nx , ny , imsiz ;
    byte *imp ;
+#ifdef DUPLICATION
+   int did_dup=0 ;
+#endif
 
    if( mp == NULL || MEMPLOT_NLINE(mp) < 1 ) return NULL ;
 
@@ -215,12 +272,20 @@ static MRI_IMAGE * memplot_to_mri( MEM_plotdata *mp )  /* 05 Dec 2007 */
    } else {
      nx = imsiz * mp->aspect ; ny = imsiz ;
    }
+#ifdef DUPLICATION    /* double image size for rendering */
+   if( imsiz <= 2048 ){ nx *=2 ; ny *=2 ; did_dup = 1 ; }
+#endif
    im = mri_new( nx , ny , MRI_rgb ) ;
    imp = MRI_RGB_PTR(im) ; memset( imp , 255 , 3*nx*ny ) ; /* white-ize */
    set_memplot_RGB_box(0,0,0,0) ;
    do_thick = 1 ;
    memplot_to_RGB_sef( im , mp , 0 , 0 , 0 ) ;
    do_thick = 0 ;
+#ifdef DUPLICATION    /* then downsample for beauty */
+   if( did_dup ){
+     MRI_IMAGE *qim = mri_downsize_by2(im) ; mri_free(im) ; im = qim ;
+   }
+#endif
    return im ;
 }
 

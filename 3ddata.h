@@ -4672,6 +4672,8 @@ extern int THD_mask_fillin_completely( int,int,int, byte *, int ) ; /* 19 Apr 20
 extern int THD_mask_fillin_once      ( int,int,int, byte *, int ) ;
 
 extern int THD_mask_clip_neighbors( int,int,int, byte *, float,float,float *) ; /* 28 Oct 2003 */
+extern int THD_mask_fill_holes( int,int,int, byte *, int);  /* 27 Apr 2012 */
+
 
 extern void THD_mask_clust( int nx, int ny, int nz, byte *mmm ) ;
 extern void THD_mask_erode( int nx, int ny, int nz, byte *mmm, int redilate ) ;
