@@ -1427,6 +1427,7 @@ void AFNI_sigfunc_alrm(int sig)
      "Little by little, one travels far"                             ,
      "Divide By Cucumber Error; Please Reinstall Universe and Reboot",
      "Out of Cheese Error; Please Install Wensleydale and Try Again" ,
+     "Out of Cheese Error; Please Install Stilton and Try Again"     ,
      "If at first you don't succeed -- call it version 1.0"          ,
      "Never trust a statistic you haven't faked yourself"            ,
      "May your teeth never be replaced by damp woolen socks"         ,
@@ -1834,6 +1835,8 @@ int main( int argc , char *argv[] )
         MCW_new_DC( MAIN_shell , GLOBAL_argopt.ncolor ,
                     INIT_ncolovr , INIT_colovr , INIT_labovr ,
                     GLOBAL_argopt.gamma , GLOBAL_argopt.install_cmap ) ;
+
+   memplot_to_X11_set_DC(MAIN_dc) ; /* 30 Apr 2012 */
 
    if( MAIN_dc->depth < 9 && MAIN_dc->visual_class != TrueColor && GLOBAL_argopt.unique_dcs ){
      GLOBAL_argopt.unique_dcs = False ;
