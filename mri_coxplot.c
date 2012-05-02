@@ -48,9 +48,10 @@ void memplot_to_RGB_sef( MRI_IMAGE *im , MEM_plotdata *mp ,
 {
    byte rrr=0,ggg=0,bbb=0 ;
    int ii , nline , same ;
-   float old_thick , old_color , new_color , new_thick , sthick=0.0 ;
+   float old_thick , old_color , new_color , new_thick , sthick=0.0f ;
    float scal,xscal,yscal , xoff,yoff ;
    int x1,y1 , x2,y2 ;
+   int x1_old=-666,y1_old=-666 , x2_old=-666,y2_old=-666 ; float sthick_old=-666.f ;
    int skip ;
 
 ENTRY("memplot_to_RGB_sef") ;
@@ -72,15 +73,15 @@ ENTRY("memplot_to_RGB_sef") ;
    if( box_xbot >= box_xtop || box_ybot >= box_ytop ){
 
       xscal = im->nx / mp->aspect ; /* aspect = x-axis objective size */
-      yscal = im->ny / 1.0 ;        /* 1.0    = y-axis objective size */
-      xoff  = yoff = 0.499 ;
+      yscal = im->ny / 1.0f ;       /* 1.0    = y-axis objective size */
+      xoff  = yoff = 0.499f ;
 
    } else {  /* scale to a given sub-box in the window */
 
       xscal = box_xtop - box_xbot ;
       yscal = box_ytop - box_ybot ;
-      xoff  = box_xbot + 0.499    ;
-      yoff  = box_ybot + 0.499    ;
+      xoff  = box_xbot + 0.499f   ;
+      yoff  = box_ybot + 0.499f   ;
    }
 
    if( !freee && !do_freee ){              /* no aspect freedom ==> */
@@ -89,12 +90,12 @@ ENTRY("memplot_to_RGB_sef") ;
    }
    scal = sqrt(fabs(xscal*yscal)) ;
 
-   old_color = -1.0 ;            /* these don't occur naturally */
+   old_color = -1.0f ;            /* these don't occur naturally */
    old_thick = -THCODE_INVALID ;
 
    /*--- loop over lines, scale and plot ---*/
 
-   mri_draw_opacity( 1.0 ) ;
+   mri_draw_opacity( 1.0f ) ;
 
    for( ii=start ; ii < end ; ii++ ){
 
@@ -181,7 +182,19 @@ fprintf(stderr,"Changing color to %f %f %f\n",rr,gg,bb) ;
           float da=a2-a1 , db=b2-b1 , dl=new_thick/sqrtf(da*da+db*db) ;
           float c1,c2 , d1,d2 ;
           int jj , ss=(int)(3.5f*sthick) ;
-          dl /= (2*ss) ; da *= dl ; db *= dl ; ss = MIN(ss,9) ;
+          dl /= (2*ss) ; da *= dl ; db *= dl ; ss = MAX(ss,2) ;
+#if 1
+          if( sthick >= 2.0f && sthick == sthick_old ){  /* 01 May 2012 */
+            int rad = (int)(0.555f*sthick+0.001f) ;
+            if( x1 == x2_old && y1 == y2_old ){
+              mri_drawcircle( im , x1,y1 , rad, rrr,ggg,bbb , 1 ) ;
+            }
+            else if( x2 == x1_old && y2 == y1_old ){
+              mri_drawcircle( im , x2,y2 , rad, rrr,ggg,bbb , 1 ) ;
+            }
+          }
+          x1_old = x1; x2_old = x2; y1_old = y1; y2_old = y2; sthick_old = sthick;
+#endif
           for( jj=-ss ; jj <= ss ; jj++ ){
             if( jj == 0 ) continue ;
             c1 = a1 + jj*db ; c2 = a2 + jj*db ;

@@ -49,6 +49,21 @@
 
 afni_history_struct rickr_history[] = {
 
+ { 1, MAY, 2012, RCR, "gen_ss_review_scripts.py", MINOR, TYPE_ENHANCE,
+   "added -prefix option; added censor coloring to 1dplot commands",
+   NULL
+ } ,
+
+ { 1, MAY, 2012, RCR, "1d_tool.py", MINOR, TYPE_ENHANCE,
+   "added -looks_like_AM",
+   NULL
+ } ,
+
+ { 1, MAY, 2012, RCR, "make_random_timing.py", MINOR, TYPE_ENHANCE,
+   "allowed -ordered_stimuli and -max_consec, together",
+   "Requested by Liat."
+ } ,
+
  { 30, APR, 2012, RCR, "afni_restproc.py", MAJOR, TYPE_NEW_PROG,
    "this program is by Rayus Kuplicki, please contact him for information",
    NULL

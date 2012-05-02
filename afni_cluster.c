@@ -1700,7 +1700,9 @@ ENTRY("AFNI_clus_action_CB") ;
                if( htop < val ) htop = val ;
              }
            }
-           if( hbot >= htop ){ DESTROY_IMARR(imar); SHOW_AFNI_READY; EXRETURN; } /* bad */
+           if( hbot >= htop ){
+             DESTROY_IMARR(imar); SHOW_AFNI_READY; EXRETURN;  /* bad */
+           }
          }
          if( (int)hbot == hbot && (int)htop == htop ){
            nbin = htop - hbot ;
@@ -1877,6 +1879,7 @@ ENTRY("AFNI_clus_action_CB") ;
            plot_ts_xypush(1,0) ; plot_ts_setthik(0.006f) ;
            xax = (float *)malloc(sizeof(float)*im->nx) ;
            for( jj=0 ; jj < im->nx ; jj++ ) xax[jj] = ibot+jj ;
+           X11_SET_NEW_PLOT ;
            if( sim == NULL ){
               plot_ts_lab( im3d->dc->display ,
                            im->nx , xax , 1 , &far ,
