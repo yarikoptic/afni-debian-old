@@ -1735,7 +1735,7 @@ ENTRY("AFNI_clus_action_CB") ;
            strcat(ylab,(dosqrt)?" [SqrtHist]" : " [Hist]") ;
            sprintf(tlab,"\\noesc %s[%d..%d]",
                    THD_trailname(DSET_HEADNAME(cwid->dset),SESSTRAIL) , ibot,itop ) ;
-           plot_ts_xypush(0,-1) ; plot_ts_setthik(0.005f) ;
+           plot_ts_xypush(0,-1) ; plot_ts_setTHIK(0.004f) ; plot_ts_setthik(0.0015f) ;
            PLUTO_histoplot_f( nbin,hbot,htop , hbin , xlab,ylab,tlab , 0,NULL ) ;
 
          } else {         /*----- save histogram -----*/
@@ -1876,7 +1876,7 @@ ENTRY("AFNI_clus_action_CB") ;
            sprintf(tlab,"\\noesc %s[%d..%d]",
                    THD_trailname(DSET_HEADNAME(cwid->dset),SESSTRAIL),
                    ibot,itop) ;
-           plot_ts_xypush(1,0) ; plot_ts_setthik(0.006f) ;
+           plot_ts_xypush(1,0) ; plot_ts_setTHIK(0.006f) ; plot_ts_setthik(0.0015f) ;
            xax = (float *)malloc(sizeof(float)*im->nx) ;
            for( jj=0 ; jj < im->nx ; jj++ ) xax[jj] = ibot+jj ;
            X11_SET_NEW_PLOT ;
@@ -1945,8 +1945,7 @@ ENTRY("AFNI_clus_action_CB") ;
        if( ISVALID_DSET(fset) && fset->dblk->vedim == NULL ){
          im3d->vedset.ival     = im3d->vinfo->fim_index ;
          im3d->vedset.param[0] = (float)im3d->vinfo->thr_index ;
-         im3d->vedset.param[1] = im3d->vinfo->func_threshold
-                                *im3d->vinfo->func_thresh_top ;
+         im3d->vedset.param[1] = get_3Dview_func_thresh(im3d,1);
          im3d->vedset.param[4] = im3d->vinfo->thr_sign ;
          im3d->vedset.param[5] = im3d->vinfo->use_posfunc ;
          im3d->vedset.exinfo   = NULL ;
