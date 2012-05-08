@@ -111,8 +111,8 @@ Last-Update: 2010-09-21
 +          HINTS ${PC_LibGLIB2_INCLUDEDIR}
 +          PATH_SUFFIXES glib-2.0)
 +
-+find_library(GLIB2_LIBRARY 
-+             NAMES glib-2.0 
++find_library(GLIB2_LIBRARY
++             NAMES glib-2.0
 +             HINTS ${PC_LibGLIB2_LIBDIR}
 +)
 +
@@ -704,7 +704,7 @@ Last-Update: 2010-09-21
 +#
 +
 +# Find R
-+FIND_LIBRARY(R_LIB NAMES R PATH /usr/lib)
++FIND_LIBRARY(R_LIB NAMES R PATH /usr/lib /usr/lib/R/lib)
 +FIND_PATH(R_INCLUDE_DIRS R.h /usr/share/R/include)
 +INCLUDE_DIRECTORIES(${R_INCLUDE_DIRS})
 +
