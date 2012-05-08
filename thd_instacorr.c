@@ -3,6 +3,20 @@
 #undef  EM
 #define EM(s) ERROR_message("InstaCorr setup bad: %s",(s))
 
+/* Return 1 if methods uses timeseries normalization, 
+          0 otherwise */
+int THD_instacorr_cmeth_needs_norm(int cmeth) {
+   switch (cmeth) {
+      case NBISTAT_EUCLIDIAN_DIST:
+      case NBISTAT_CITYBLOCK_DIST:
+         return(0);
+      default:
+         return(1);
+   }
+   return(1);
+}
+
+
 /*---------------------------------------------------------------------------*/
 /* Read and pre-process time series for InstaCorr [moved here 10 Nov 2011].  */
 
@@ -47,15 +61,38 @@ ENTRY("THD_instacorr_tsprep") ;
    dvec = (float **)malloc(sizeof(float *)*nmmm) ;
    for( iv=0 ; iv < nmmm ; iv++ ) dvec[iv] = VECTIM_PTR(mv,iv) ;
 
-   if( iset->gortim != NULL ){
-     if( iset->gortim->nx < ntime+iset->ignore ){
-       ERROR_message("Global ort time series length=%d is shorter than dataset=%d",
-                     iset->gortim->nx , ntime+iset->ignore ) ;
+   if( iset->gortim != NULL ){         /** set up the extra orts **/
+     if( iset->gortim->nx < ntime ){
+
+       /* too short to be useful */
+
+       ERROR_message("Global Ort time series length=%d is too short!",iset->gortim->nx);
+       ERROR_message(" ==> ignoring Global Ort file") ;
+
+     } else if( iset->gortim->nx >= ntime && iset->gortim->nx < ntime+iset->ignore ){
+
+       /* too short to ignore initial points */
+
+       if( iset->ignore > 0 )
+         ININFO_message("Global Ort time series length=%d: not ignoring initial points",
+                        iset->gortim->nx ) ;
+       ngvec = iset->gortim->ny ;
+       gvec  = (float **)malloc(sizeof(float *)*ngvec) ;
+       for( iv=0 ; iv < ngvec ; iv++ )
+         gvec[iv] = MRI_FLOAT_PTR(iset->gortim) + iv*iset->gortim->nx ;
+
      } else {
+
+       /* long enough to ignore initial points */
+
+       if( iset->ignore > 0 )
+         ININFO_message("Global Ort time series length=%d: ignoring first %d points",
+                        iset->gortim->nx , iset->ignore ) ;
        ngvec = iset->gortim->ny ;
        gvec  = (float **)malloc(sizeof(float *)*ngvec) ;
        for( iv=0 ; iv < ngvec ; iv++ )
          gvec[iv] = MRI_FLOAT_PTR(iset->gortim) + iv*iset->gortim->nx + iset->ignore ;
+
      }
    }
 
@@ -83,9 +120,11 @@ ENTRY("THD_instacorr_tsprep") ;
    }
 
    /*-- normalize --*/
-
-   ININFO_message("- Normalizing dataset time series") ;
-   THD_vectim_normalize( mv ) ;
+   
+   if (THD_instacorr_cmeth_needs_norm(iset->cmeth)) {
+      ININFO_message("- Normalizing dataset time series") ;
+      THD_vectim_normalize( mv ) ;
+   }
 
    RETURN(mv) ;
 }
@@ -275,6 +314,12 @@ ENTRY("THD_instacorr") ;
 
      case NBISTAT_BC_PEARSON_V:
        THD_vectim_pearsonBC( mv,sblur,ijk,1,dar ); break; /* 07 Mar 2011 */
+       
+     case NBISTAT_EUCLIDIAN_DIST:/* 4 Apr 2012, ZSS*/
+       THD_vectim_distance( mv , tsar , dar , 0, "inv;n_scale") ; break ;  
+
+     case NBISTAT_CITYBLOCK_DIST:/* 4 Apr 2012, ZSS*/
+       THD_vectim_distance( mv , tsar , dar , 1, "inv;n_scale") ; break ;  
    }
 
    /** put them into the output image **/

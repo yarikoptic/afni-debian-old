@@ -101,6 +101,12 @@ static char i_helpstring[] =
   "               computing the correlations\n"
   "                [These are also bandpassed to avoid re-introducing any]\n"
   "                [of the frequency components rejected by Bandpass.    ]\n"
+  "             * If Ignore > 0, and if the 1D file is the same length (or more)\n"
+  "               as the input dataset, then the first Ignore points of this 1D\n"
+  "               file will also be ignored.\n"
+  "             * If Ignore > 0, but this file is shorter than the input dataset,\n"
+  "               then no initial points in this 1D file will be ignored.\n"
+  "             * If the Global Ort file is too short, it will be ignored in toto.\n"
   "\n"
   "* Misc Opts:\n"
   "  IF environment variable AFNI_INSTACORR_SEEDBLUR is YES\n"
@@ -174,9 +180,10 @@ PLUGIN_interface * ICOR_init( char *lab )
 {
    PLUGIN_interface *plint ;     /* will be the output of this routine */
    static char *yn[2] = { "No" , "Yes" } ;
-   static char *meth_string[7] = { "Pearson" , "Spearman" ,
+   static char *meth_string[9] = { "Pearson" , "Spearman" ,
                                    "Quadrant", "Ken Tau_b", "TicTacToe" ,
-                                   "BCpearson" , "VCpearson"  } ;
+                                   "BCpearson" , "VCpearson", "Euclidian",
+                                   "CityBlock" } ;
    char sk[32] , sc[32] ;
    int gblur = AFNI_yesenv("AFNI_INSTACORR_SEEDBLUR") ;
 
@@ -227,7 +234,9 @@ PLUGIN_interface * ICOR_init( char *lab )
    PLUTO_add_number( plint , "Polort" , -1,2,0,2 , FALSE ) ;
    { char *un = tross_username() ;
      PLUTO_add_string( plint , "Method" ,
-                       (un != NULL && strstr(un,"cox") != NULL) ? 7 : 4 ,
+                       (un != NULL && 
+                        (strstr(un,"cox") != NULL ||
+                         strstr(un,"ziad") != NULL) ) ? 9 : 4 ,
                        meth_string , 0 ) ;
    }
 
@@ -341,6 +350,8 @@ static char * ICOR_main( PLUGIN_interface *plint )
          case 'B': cmeth = NBISTAT_BC_PEARSON_M  ; break ; /* 07 Mar 2011 */
          case 'V': cmeth = NBISTAT_BC_PEARSON_V  ; break ; /* 07 Mar 2011 */
          case 'T': cmeth = NBISTAT_TICTACTOE_CORR; break ; /* 30 Mar 2011 */
+         case 'E': cmeth = NBISTAT_EUCLIDIAN_DIST; break ; /* 04 May 2012, ZSS*/
+         case 'C': cmeth = NBISTAT_CITYBLOCK_DIST; break ; /* 04 May 2012, ZSS*/
        }
        continue ;
      }
@@ -373,7 +384,6 @@ static char * ICOR_main( PLUGIN_interface *plint )
      WARNING_message("Combining Polort=-1 and Bandpass may give peculiar results!") ;
 
    /** check if only thing changed is sblur -- don't need to re-prepare in that case **/
-
    if( im3d->iset           != NULL     &&
        im3d->iset->mv       != NULL     &&
        im3d->iset->dset     == dset     &&
@@ -387,11 +397,15 @@ static char * ICOR_main( PLUGIN_interface *plint )
        im3d->iset->ftop     == ftop     &&
        im3d->iset->blur     == blur     &&
        im3d->iset->despike  == despike  &&
-       im3d->iset->polort   == polort      ){
+       im3d->iset->polort   == polort   &&
+       THD_instacorr_cmeth_needs_norm(im3d->iset->cmeth)
+                            == 
+       THD_instacorr_cmeth_needs_norm(cmeth)   ){
 
      INFO_message("InstaCorr setup: minor changes accepted") ;
-     im3d->iset->sblur = sblur ; im3d->iset->cmeth = cmeth ; return NULL ;
-   }
+     im3d->iset->sblur = sblur ; im3d->iset->cmeth = cmeth ; 
+     im3d->iset->change = 1; return NULL ;
+   } 
 
    /** (re)create InstaCorr setup **/
 
@@ -413,6 +427,7 @@ static char * ICOR_main( PLUGIN_interface *plint )
    iset->polort   = polort ;  /* 26 Feb 2010 */
    iset->cmeth    = cmeth ;   /* 01 Mar 2010 */
    iset->prefix   = (char *)malloc(sizeof(char)*16) ;
+   iset->change   = 2; /* 07 May 2012 ZSS */
    cpt = AFNI_controller_label(im3d); sprintf(iset->prefix,"%c_ICOR",cpt[1]);
 
    etim = PLUTO_elapsed_time() ;
@@ -479,7 +494,7 @@ ENTRY("AFNI_icor_setref_anatijk") ;
 
 int AFNI_icor_setref_xyz( Three_D_View *im3d , float xx,float yy,float zz )
 {
-   MRI_IMAGE *iim; float *iar; THD_fvec3 iv,jv; THD_ivec3 kv; int ijk;
+   MRI_IMAGE *iim; float *iar, rng; THD_fvec3 iv,jv; THD_ivec3 kv; int ijk;
    THD_3dim_dataset *icoset ; THD_slist_find slf ; int nds=0 ;
    double etim ;
 
@@ -605,7 +620,20 @@ ENTRY("AFNI_icor_setref_xyz") ;
        THD_set_string_atr( icoset->dblk, "INSTACORR_EXTRASET", DSET_HEADNAME(im3d->iset->eset) );
    }
 
-   EDIT_BRICK_LABEL  (icoset,0,"Correlation") ;
+   switch (im3d->iset->cmeth) {
+      case NBISTAT_EUCLIDIAN_DIST:
+         EDIT_BRICK_LABEL  (icoset,0,"Inv.Euc.Dist") ;
+         rng = 10.0;
+         break;
+      case NBISTAT_CITYBLOCK_DIST:
+         EDIT_BRICK_LABEL  (icoset,0,"Inv.City.Dist") ;
+         rng = 10.0;
+         break;
+      default:
+         EDIT_BRICK_LABEL  (icoset,0,"Correlation") ;
+         rng = 0.7;
+         break;
+   }
    EDIT_BRICK_TO_FICO(icoset,0,im3d->iset->mv->nvals,1,im3d->iset->ndet) ;
 
    DSET_BRICK_FDRCURVE_ALLKILL(icoset) ;
@@ -637,15 +665,16 @@ ENTRY("AFNI_icor_setref_xyz") ;
    }
 
    /* redisplay overlay */
-
-   if( im3d->fim_now != icoset ){  /* switch to this dataset */
+   if( im3d->fim_now != icoset ||
+       im3d->iset->change ){  /* switch to this dataset */
      MCW_choose_cbs cbs ; char cmd[32] , *cpt=AFNI_controller_label(im3d) ;
      cbs.ival = nds ;
      AFNI_finalize_dataset_CB( im3d->vwid->view->choose_func_pb ,
                                (XtPointer)im3d ,  &cbs           ) ;
      AFNI_set_fim_index(im3d,0) ;
      AFNI_set_thr_index(im3d,0) ;
-     sprintf(cmd,"SET_FUNC_RANGE %c.0.7",cpt[1]) ;
+     
+     sprintf(cmd,"SET_FUNC_RANGE %c.%.2f",cpt[1], rng) ;
      AFNI_driver(cmd) ;
    }
    AFNI_reset_func_range(im3d) ;
@@ -659,10 +688,11 @@ ENTRY("AFNI_icor_setref_xyz") ;
    }
    AFNI_set_thr_pval(im3d) ; AFNI_process_drawnotice(im3d) ;
 
+   im3d->iset->change = 0;    /* resset change flag */
+   
    if( ncall <= 1 )
      ININFO_message(" InstaCorr elapsed time = %.2f sec: redisplay" ,
                     PLUTO_elapsed_time()-etim ) ;
-
    ncall++ ; RETURN(1) ;
 }
 

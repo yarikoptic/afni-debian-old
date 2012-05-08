@@ -4447,11 +4447,11 @@ typedef struct {
   MRI_IMAGE *gortim ;
   int ignore , automask , mindex ;
   float fbot , ftop , blur , sblur ;
-  int polort , cmeth , despike ;
+  int polort , cmeth , despike , change ;
   MRI_vectim *mv ;
   char *prefix ; int ndet ;
   float *tseed ;
-
+  
   THD_3dim_dataset *eset ; MRI_vectim *ev ;
 } ICOR_setup ;
 
@@ -4475,7 +4475,7 @@ typedef struct {
 
 extern int         THD_instacorr_prepare( ICOR_setup *iset ) ;
 extern MRI_IMAGE * THD_instacorr        ( ICOR_setup *iset, int ijk, int ata ) ;
-
+extern int         THD_instacorr_cmeth_needs_normalize( int cmeth );
 /*---------------------------------------------------------------------------*/
 
 extern int THD_extract_array      ( int, THD_3dim_dataset *, int, void * ) ;
@@ -4677,6 +4677,8 @@ extern int THD_mask_fill_holes( int,int,int, byte *, int);  /* 27 Apr 2012 */
 
 extern void THD_mask_clust( int nx, int ny, int nz, byte *mmm ) ;
 extern void THD_mask_erode( int nx, int ny, int nz, byte *mmm, int redilate ) ;
+extern void THD_mask_erode_sym(int nx,int ny,int nz, byte *mmm, int nerode);
+
 extern void THD_mask_erodemany( int nx, int ny, int nz, byte *mmm, int npeel ) ; /* 24 Oct 2006 */
 
 extern int THD_peel_mask( int nx, int ny, int nz , byte *mmm, int pdepth ) ;
@@ -5191,6 +5193,7 @@ extern float THD_bootstrap_vectcorr( int nlen, int nboot, int use_pv, int xtyp,
 
 extern float THD_spearman_corr_nd( int,float *,float *) ;  /* 23 Aug 2006 */
 extern float THD_quadrant_corr_nd( int,float *,float *) ;
+extern float THD_distance( int, float *, float *, int ); /* 04 May 2012 */
 #define THD_pearson_corr_nd THD_pearson_corr
 
 extern void  rank_order_float     ( int , float * );
