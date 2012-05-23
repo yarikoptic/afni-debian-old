@@ -156,7 +156,7 @@ def make_outlier_commands(proc):
           '    # censor outlier TRs per run, ignoring the first %d TRs\n'     \
           '    # - censor when more than %g of automask voxels are outliers\n'\
           '    # - step() defines which TRs to remove via censoring\n'        \
-          '    1deval -a outcount_r$run.1D '                                  \
+          '    1deval -a outcount.r$run.1D '                                  \
           '-expr "1-step(a-%g)%s" > rm.out.cen.r$run.1D\n'                    \
           % (nskip, censor, censor, dstr)
         cs1 = '\n'                                                          \
@@ -188,7 +188,7 @@ def make_outlier_commands(proc):
     else:                             lstr = ''
 
     prev_prefix = proc.prev_prefix_form_run(view=1)
-    ofile = 'outcount_r$run.1D'
+    ofile = 'outcount.r$run.1D'
     warn  = '** TR #0 outliers: possible pre-steady state TRs in run $run'
     proc.out_wfile = 'out.pre_ss_warn.txt'
 
@@ -213,7 +213,7 @@ def make_outlier_commands(proc):
 
     cmd += 'end\n\n'                                                      \
            '# catenate outlier counts into a single time series\n'        \
-           'cat outcount_r??.1D > outcount.rall.1D\n'                     \
+           'cat outcount.r*.1D > outcount_rall.1D\n'                      \
            '%s\n' % cs1
  
     return 0, cmd
@@ -1198,10 +1198,10 @@ def db_cmd_volreg(proc, block):
         cmd = cmd + '\n    # if there was an error, exit so user can see'     \
                     '\n    if ( $status ) exit\n\n'
 
+    proc.mot_default = 'dfile_rall.1D'
     cmd = cmd + "end\n\n"                                                     \
                 "# make a single file of registration params\n"               \
-                "cat dfile.r??.1D > dfile.rall.1D\n\n"
-    proc.mot_default = 'dfile.rall.1D'
+                "cat dfile.r*.1D > %s\n\n" % proc.mot_default
 
     # if not censoring motion, make a generic motion file
     if not proc.user_opts.find_opt('-regress_censor_motion'):
@@ -2244,10 +2244,8 @@ def db_mod_regress(block, proc, user_opts):
         bopt.parlist = uopt.parlist
         proc.stims_orig = uopt.parlist   # store for initial copy
 
-    uopt = user_opts.find_opt('-regress_stim_labels')
-    bopt = block.opts.find_opt('-regress_stim_labels')
-    if uopt and bopt:  # check length later, when we know num stim types
-        bopt.parlist = uopt.parlist
+    apply_uopt_to_block('-regress_stim_labels', user_opts, block)
+    apply_uopt_to_block('-regress_stim_types', user_opts, block)
 
     uopt = user_opts.find_opt('-regress_RONI')
     bopt = block.opts.find_opt('-regress_RONI')
@@ -2681,6 +2679,22 @@ def db_cmd_regress(proc, block):
                   % (len(basis), len(proc.stims))
             return
 
+    # create a stim_type list to match the stims
+    opt = block.opts.find_opt('-regress_stim_types')
+    # init list
+    if not opt: stim_types = ['times']
+    else: stim_types = opt.parlist
+    if len(proc.stims) != len(stim_types):
+        # if just one basis function, duplicate for each stim, else error
+        if len(stim_types) == 1:
+            stim_types = [stim_types[0] for i in range(len(proc.stims))]
+        else:
+            print '** error: have %d stim types but %d stim classes' \
+                  % (len(stim_types), len(proc.stims))
+            return
+    if not UTIL.vals_are_constant(stim_types, 'times'):
+        print '++ apply %d stim types: %s' % (len(stim_types),stim_types)
+
     # ----------------------------------------
     # deal with motion (demean, deriv, per-run, censor)
     if block.opts.find_opt('-regress_no_motion'): proc.mot_labs = []
@@ -2751,8 +2765,7 @@ def db_cmd_regress(proc, block):
     #    (O3dd = list of 3dd option lines, which may need an extra indent)
 
     O3dd = ['%s3dDeconvolve -input %s' % (istr, proc.prev_dset_form_wild()),
-            mask,
-            censor_str]
+            mask, censor_str]
     O3dd.extend(reg_orts)
     O3dd.extend([ '    -polort %d%s' % (polort, datum),
                   normall, times_type,
@@ -2818,8 +2831,10 @@ def db_cmd_regress(proc, block):
         if sfiles:  # then -stim_file and no basis function
             O3dd.append("    -stim_file %d %s" % (ind+1,proc.stims[ind]))
         else:
-            O3dd.append("    -stim_times %d %s '%s'"  % \
-                        (ind+1, proc.stims[ind], basis[ind]))
+            if stim_types[ind] == 'times': st_suf = ''
+            else:                          st_suf = '_%s' % stim_types[ind]
+            O3dd.append("    -stim_times%s %d %s '%s'"  % \
+                        (st_suf, ind+1, proc.stims[ind], basis[ind]))
             # accumulate timing files with TENTs for later error checks
             if basis[ind].find('TENT') >= 0: tent_times.append(proc.stims[ind])
         # and add the label
@@ -4219,7 +4234,11 @@ g_help_string = """
 
            Also consider adding -regress_bandpass.
 
-        5c. RETROICOR example c: censoring and bandpass filtering.
+        5c. RETROICOR example c (modern): censoring and bandpass filtering.
+
+           This is an example of how we would current suggest analyzing
+           resting state data.  If no RICOR regressors exist, see example 9
+           (or just remove any ricor options).
 
            Censoring due to motion has long been considered appropriate in
            BOLD FMRI analysis, but is less common for those doing bandpass
@@ -4231,18 +4250,24 @@ g_help_string = """
            regress frequencies within the regression model, where censored is
            simple.
 
-           To example #5, add -regress_censor_motion and -regress_bandpass.
+           Also, align EPI to anat and warp to standard space.
 
                 afni_proc.py -subj_id sb23.e5a.ricor            \\
                         -dsets sb23/epi_r??+orig.HEAD           \\
-                        -do_block despike ricor                 \\
+                        -blocks despike ricor align tlrc volreg \\
+                                blur mask regress               \\
                         -tcat_remove_first_trs 3                \\
                         -ricor_regs_nfirst 3                    \\
                         -ricor_regs sb23/RICOR/r*.slibase.1D    \\
+                        -volreg_align_e2a                       \\
+                        -volreg_tlrc_warp                       \\
                         -regress_motion_per_run                 \\
                         -regress_censor_motion 0.3              \\
-                        -regress_bandpass 0.01 0.1
-
+                        -regress_bandpass 0.01 0.1              \\
+                        -regress_apply_mot_types demean deriv   \\
+                        -regress_run_clustsim no                \\
+                        -regress_est_blur_errts
+                        
         6. A modern example.  GOOD TO CONSIDER.
 
            Align the EPI to the anatomy.  Also, process in standard space.
@@ -4293,27 +4318,38 @@ g_help_string = """
               created internally by 3dBlurInMask (akin to 3dAutomask).
 
            b. Let the basis functions vary.  For some reason, we expect the
-              BOLD responses to the positive classes to vary across the brain.
+              BOLD responses to the telephone classes to vary across the brain.
               So we have decided to use TENT functions there.  Since the TR is
               3.0s and we might expect up to a 45 second BOLD response curve,
-              use 'TENT(0,45,16)' for those 3 out of 9 basis functions.
+              use 'TENT(0,45,16)' for those first 3 out of 9 basis functions.
 
               This means using -regress_basis_multi instead of -regress_basis,
               and specifying all 9 basis functions appropriately.
 
-           c. Not only censor motion, but censor TRs when more than 10% of the
+           c. Use amplitude modulation.
+
+              We expect responses to email stimuli to vary proportionally with
+              the number of punctuation characters used in the message (in
+              certain brain regions).  So we will use those values as auxiliary
+              parameters 3dDeconvolve by marrying the parameters to the stim
+              times (using 1dMarry).
+
+              Use -regress_stim_types to specify that the epos/eneg/eneu stim
+              classes should be passed to 3dDeconvolve using -stim_times_AM2.
+
+           d. Not only censor motion, but censor TRs when more than 10% of the
               automasked brain are outliers.  So add -regress_censor_outliers.
 
-           d. Include both de-meaned and derivatives of motion parameters in
+           e. Include both de-meaned and derivatives of motion parameters in
               the regression.  So add '-regress_apply_mot_types demean deriv'.
 
-           e. Output baseline parameters so we can see the effect of motion.
+           f. Output baseline parameters so we can see the effect of motion.
               So add -bout under option -regress_opts_3dD.
 
-           d. Save on RAM by computing the fitts only after 3dDeconvolve.
+           g. Save on RAM by computing the fitts only after 3dDeconvolve.
               So add -regress_compute_fitts.
 
-           e. Speed things up.  Have 3dDeconvolve use 4 CPUs and skip the
+           h. Speed things up.  Have 3dDeconvolve use 4 CPUs and skip the
               single subject 3dClustSim execution.  So add '-jobs 4' to the
               -regress_opts_3dD option and add '-regress_run_clustsim no'.
 
@@ -4327,6 +4363,9 @@ g_help_string = """
                         -volreg_tlrc_warp                                  \\
                         -blur_in_automask                                  \\
                         -regress_stim_times sb23/stim_files/blk_times.*.1D \\
+                        -regress_stim_types times times times              \\
+                                            AM2   AM2   AM2                \\
+                                            times times times              \\
                         -regress_stim_labels tneg tpos tneu                \\
                                              eneg epos eneu                \\
                                              fneg fpos fneu                \\
@@ -4398,6 +4437,49 @@ g_help_string = """
                         -jobs 2                                          \\
                         -gltsym 'SYM: vis -aud' -glt_label 1 V-A
 
+        9. Resting state analysis (modern): censoring and bandpass filtering.
+
+           This is our suggested way to do pre-processing for resting state
+           analysis, under the assumption that no cardio/physio recordings
+           were made (see example 5 for cardio files).
+
+           Censoring due to motion has long been considered appropriate in
+           BOLD FMRI analysis, but is less common for those doing bandpass
+           filtering in RC FMRI because the FFT requires one to either break
+           the time axis (evil) or to replace the censored data with something
+           probably inapproprate.
+
+           Instead, it is slow (no FFT, but maybe SFT :) but effective to
+           regress frequencies within the regression model, where censored is
+           simple.
+
+           inputs: anat, EPI
+           output: errts dataset (to be used for correlation)
+
+           special processing:
+              - despike, as another way to reduce motion effect
+                 (see block despike)
+              - censor motion TRs at the same time as bandpassing data
+                 (see -regress_censor_motion, -regress_bandpass)
+              - regress motion parameters AND derivatives
+                 (see -regress_apply_mot_types)
+
+           Note: if regressing out regions of interest, either create the ROI
+                 time series before the blur step, or remove blur from the list
+                 of blocks (and apply any desired blur after the regression).
+
+                afni_proc.py -subj_id subj123                               \\
+                        -dsets epi_run1+orig.HEAD                           \\
+                        -copy_anat anat+orig                                \\
+                        -blocks despike align tlrc volreg blur mask regress \\
+                        -tcat_remove_first_trs 3                            \\
+                        -volreg_align_e2a                                   \\
+                        -volreg_tlrc_warp                                   \\
+                        -regress_censor_motion 0.3                          \\
+                        -regress_bandpass 0.01 0.1                          \\
+                        -regress_apply_mot_types demean deriv               \\
+                        -regress_run_clustsim no                            \\
+                        -regress_est_blur_errts
 
     --------------------------------------------------
     -ask_me EXAMPLES:
@@ -6269,7 +6351,7 @@ g_help_string = """
 
             This option gives the ability to choose a combination of:
 
-                basic:  dfile.rall.1D - the parameters straight from 3dvolreg
+                basic:  dfile_rall.1D - the parameters straight from 3dvolreg
                         (or an external motion file, see -regress_motion_file)
                 demean: 'basic' params with the mean removed, per run
                 deriv:  per-run derivative of 'basic' params (de-meaned)
@@ -6347,14 +6429,13 @@ g_help_string = """
             all user-supplied regressors (please let me know if there is need
             to apply different basis functions to different regressors).
 
-         ** Note that use of dmBLOCK requires -stim_times_AM1 (or AM2).  Until
-            that is handled properly by afni_proc.py, users will need to edit
-            the processing script, changing -stim_times to the appropriate
-            _AM1 or _AM2.
-        
+         ** Note that use of dmBLOCK requires -stim_times_AM1 (or AM2).  So
+            consider option -regress_stim_types.
+
             Please see '3dDeconvolve -help' for more information, or the link:
                 http://afni.nimh.nih.gov/afni/doc/misc/3dDeconvolveSummer2004
-            See also -regress_basis_normall, -regress_stim_times.
+            See also -regress_basis_normall, -regress_stim_times,
+                     -regress_stim_types.
 
         -regress_basis_normall NORM : specify the magnitude of basis functions
 
@@ -6738,7 +6819,7 @@ g_help_string = """
 
             Particularly if the user performs motion correction outside of
             afni_proc.py, they may wish to specify a motion parameter file
-            other than dfile.rall.1D (the default generated in the volreg
+            other than dfile_rall.1D (the default generated in the volreg
             block).
 
             If the motion parameter file is in an external directory, the
@@ -6914,7 +6995,7 @@ g_help_string = """
             The user is encouraged to check the 3dDeconvolve command in the
             processing script, to be sure they are applied correctly.
 
-        -regress_stim_labels LAB1 ...   : specify labels for stimulus types
+        -regress_stim_labels LAB1 ...   : specify labels for stimulus classes
 
                 e.g. -regress_stim_labels houses faces donuts
                 default: stim01 stim02 stim03 ...
@@ -7033,7 +7114,7 @@ g_help_string = """
 
         -regress_stim_times_offset OFFSET : add OFFSET to -stim_times files
 
-                e.g. -stim_times_offset 1.25
+                e.g. -regress_stim_times_offset 1.25
                 default: 0
 
             If the -regress_stim_files option is used (so the script converts
@@ -7050,6 +7131,36 @@ g_help_string = """
             Please see 'make_stim_times.py -help' for more information.
             See also -regress_stim_files, -regress_use_stim_files,
                      -tshift_align_to.
+
+        -regress_stim_types TYPE1 TYPE2 ... : specify list of stim times types
+
+                e.g. -regress_stim_types times times AM2 AM2 times AM1
+                e.g. -regress_stim_types AM2
+                default: times
+
+            If amplitude, duration or individual modulation is desired with
+            any of the stimulus timing files provided via -regress_stim_files,
+            then this option should be used to specify one (if all of the types
+            are the same) or a list of stimulus timing types.
+
+            The types should be (possibly repeated) elements of the set:
+            {times, AM1, AM2, IM}, where they indicate:
+
+                times:  a standard stimulus timing file (not married)
+                        ==> use -stim_times in 3dDeconvolve command
+
+                AM1:    have one or more married parameters
+                        ==> use -stim_times_AM1 in 3dDeconvolve command
+
+                AM2:    have one or more married parameters
+                        ==> use -stim_times_AM2 in 3dDeconvolve command
+
+                IM:     have (exactly) one married parameter
+                        ==> use -stim_times_IM in 3dDeconvolve command
+            
+            Please see '3dDeconvolve -help' for more information.
+            See also -regress_stim_times.
+            See also example 7 (esoteric options).
 
         -regress_use_stim_files : use -stim_file in regression, not -stim_times
 

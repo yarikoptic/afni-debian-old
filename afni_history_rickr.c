@@ -49,6 +49,52 @@
 
 afni_history_struct rickr_history[] = {
 
+ { 22, MAY, 2012, RCR, "uber_subject.py", MINOR, TYPE_NEW_OPT,
+   "added regress_bandpass and regress_mot_deriv (probably for resting state)",
+   NULL
+ } ,
+
+ { 21, MAY, 2012, RCR, "afni_proc.py", MINOR, TYPE_NEW_OPT,
+   "added the long-desired-but-not-so-needed -regress_stim_types option",
+   "This allows users to specify -stim_times/_AM1/_AM2/_IM."
+ } ,
+
+ { 19, MAY, 2012, RCR, "afni_proc.py", MICRO, TYPE_ENHANCE,
+   "added help examples for resting state analysis",
+   NULL
+ } ,
+
+ { 19, MAY, 2012, RCR, "afni-general", MICRO, TYPE_ENHANCE,
+   "allow for auto-tcat of 1D inputs that are separated by spaces",
+   "For E Demir to use in 3dDeconovolve."
+ } ,
+
+ { 16, MAY, 2012, RCR, "@GetAfniOrient", MICRO, TYPE_MODIFY,
+   "suppress 3dinfo version text",
+   NULL
+ } ,
+
+ { 16, MAY, 2012, RCR, "@auto_tlrc", MICRO, TYPE_MODIFY,
+   "do not ask for user input, even if centers are off by 80+ mm",
+   NULL
+ } ,
+
+ { 11, MAY, 2012, RCR, "gen_ss_review_scripts.py", MINOR, TYPE_ENHANCE,
+   "also output average censored per-TR motion",
+   NULL
+ } ,
+
+ { 10, MAY, 2012, RCR, "afni_proc.py", MINOR, TYPE_ENHANCE,
+   "allow processing of more than 99 runs",
+   NULL
+ } ,
+
+ { 10, MAY, 2012, RCR, "gen_ss_review_scripts.py", MINOR, TYPE_ENHANCE,
+   "allow for a wider range of file names",
+   "- handle case of more than 99 runs\n"
+   "- look for files of the form *_rall.1D, as well as *.rall.1D"
+ } ,
+
  { 7, MAY, 2012, RCR, "3dmask_tool", MINOR, TYPE_ENHANCE,
    "replaced THD_mask_erode with new THD_mask_erode_sym",
    "This change should make dilate and erosion operations symmetric."

@@ -85,107 +85,6 @@ static char shelp_GenPriors[] = {
 "\n"
 };
 
-static char shelp_Seg[] = {
-"3dSeg segments brain volumes into tissue classes.\n"
-"\n"
-"Example 1: Segmenting a T1 volume with:\n"
-"              Brain mask, No prior volumes, Uniform mixing fraction\n"
-"           3dSeg    -anat anat.nii    -mask AUTO \\\n"
-"                    -classes 'CSF ; GM ; WM' -bias_classes 'GM ; WM' \\\n"
-"                    -bias_fwhm 25 -mixfrac UNI -main_N 5 \\\n"
-"                    -blur_meth BFT\n"   
-"Options:\n"
-"\n"
-#if 0
-"Examples: (All examples can do without the -gold* options)\n"
-"  Case A: Segmenting a T1 volume with a brain mask available\n"
-"  A.1:  Brain mask and MRF only.\n"
-"  3dSeg    -anat banat+orig     \\\n"
-"           -mask anat.ns+orig   \\\n"
-"           -gold goldseg+orig   -gold_bias goldbias+orig   \\\n"
-"           -classes 'CSF ; GM ; WM' \\\n"
-"           -Bmrf 1.0            \\\n"
-"           -bias_classes 'GM ; WM' -bias_fwhm 25 \\\n"
-"           -prefix case.A.1  -overwrite    \\\n"
-"\n"
-"  A.2:  Adding average mixing fraction constraint derived from\n"
-"        population based spatial priors, and preserving the weighting\n"
-"        throughout the segmentation.\n"
-"  3dSeg    -anat banat+orig     \\\n"
-"           -mask anat.ns+orig   \\\n"
-"           -gold goldseg+orig   -gold_bias goldbias+orig   \\\n"
-"           -classes 'CSF ; GM ; WM' \\\n"
-"           -bias_classes 'GM ; WM' -bias_fwhm 25 \\\n"
-"           -prefix case.A.2  -overwrite    \\\n"
-"           -mixfrac WHOLE_BRAIN \\\n"
-"           -Bmrf 1.0 -main_N 4           \\\n"
-#endif
-"\n"
-"\n"
-};
-
-static HELP_OPT SegOptList[] = {
-   {  "-anat", 
-      "-anat ANAT: ANAT is the volume to segment", 
-      NULL },
-   {  "-mask", 
-      "-mask MASK: MASK only non-zero voxels in MASK are analyzed.\n"
-      "        MASK is useful when no voxelwise priors are available.\n"
-      "        MASK can either be a dataset or the string 'AUTO'\n"
-      "        which would use AFNI's automask function to create the mask.\n", 
-      NULL },
-   {  "-blur_meth",
-      "-blur_meth BMETH: Set the blurring method for bias field estimation.\n"
-      "     -blur_meth takes one of: BFT, BIM, \n"
-      "             BFT: Use Fourier smoothing, masks be damned.\n"
-      "             BIM: Blur in mask, slower, more accurate, not necessarily \n"
-      "                  better bias field estimates.\n"
-      "             BNN: A crude blurring in mask. Faster than BIM but it does\n"
-      "                  not result in accurate FWHM. This option is for \n"
-      "                  impatient testing. Do not use it.\n"
-      "             LSB: Localstat moving average smoothing. Debugging only. \n"
-      "                  Do not use.\n",
-      "BFT" },
-   {  "-bias_fwhm BIAS_FWHM: The amount of blurring used when estimating the\n"
-      "                      field bias with the Wells method.\n"
-      "                      [Wells et. al. IEEE TMI 15, 4, 1997].\n",
-      "25.0" },
-   {  "-classes", 
-      "-classes 'CLASS_STRING': CLASS_STRING is a semicolon delimited\n"
-      "                         string of class labels. At the moment\n"
-      "                         CLASS_STRING can only be 'CSF; GM; WM'\n", 
-      NULL},
-   {  "-Bmrf",
-      "-Bmrf BMRF: Weighting factor controlling influence of MRF step. \n"
-      "            BMRF = 0.0 means no MRF, 1.0 is typical, the larger BMRF\n"
-      "            the stronger the MRF. Use -Bmrf when you have no voxelwise\n"
-      "            priors.\n",
-      "0.0" },           
-   {  "-bias_classes",
-      "-bias_classes 'BIAS_CLASS_STRING': A semcolon demlimited string of \n"
-      "                                   classes that contribute to the \n"
-      "                                   estimation of the bias field.\n",
-      "'GM; WM'" },
-   {  "-prefix",
-      "-prefix PREF: PREF is the prefix for all output volume that are not \n"
-      "              debugging related.\n", 
-      "Segsy" },
-   {  NULL, NULL, NULL  },
-   {  "-overwrite",
-      "-overwrite: An option common to almost all AFNI programs. It is \n"
-      "            automatically turned on if you provide no PREF.\n",
-      NULL },
-   {  "-mixfrac 'MIXFRAC': MIXFRAC sets up the volume-wide (within mask)\n"
-      "                    tissue fractions while initializing the \n"
-      "                    segmentation. You can specify the mixing fractions\n"
-      "                    directly such as with '0.1 0.45 0.45', or with\n"
-      "                    the following special flags:\n"
-      "              'UNI': Equal mixing fractions \n"
-      "              'AVG152_BRAIN_MASK': Mixing fractions reflecting AVG152\n"
-      "                                   template.\n",
-      "UNI" }, 
-   {  NULL, NULL, NULL  }
-};
 
 void GenPriors_usage(int detail) 
 {
@@ -198,20 +97,6 @@ void GenPriors_usage(int detail)
    EXRETURN;
 }
 
-void Seg_usage(int detail) 
-{
-   int i = 0;
-   char *s=NULL;
-   
-   ENTRY("Seg_usage");
-   
-   printf( "%s", shelp_Seg );
-   s = SUMA_OptList_string(SegOptList);
-   printf( "%s", s );
-   SUMA_free(s);
-   
-   EXRETURN;
-}
 
 SEG_OPTS *SegOpt_Struct()
 {
@@ -1205,6 +1090,11 @@ int SUMA_ShortizeDset(THD_3dim_dataset **dsetp, float thisfac) {
       } else {
          EDIT_substscale_brick(cpset, i, DSET_BRICK_TYPE(dset,i), 
                             DSET_ARRAY(dset,i), MRI_short, thisfac);
+         if (DSET_BRICK_TYPE(dset,i) != MRI_short) {
+            DSET_FREE_ARRAY(dset, i);
+         } else {
+            DSET_NULL_ARRAY(dset, i);
+         }
       }
    }
    /* preserve tables, if any */
@@ -1219,7 +1109,9 @@ THD_3dim_dataset *Seg_load_dset( char *set_name ) {
    THD_3dim_dataset *dset=NULL, *sdset=NULL;
    int i=0;
    byte make_cp=0;
+   int verb=0;
    char sprefix[THD_MAX_PREFIX+10];
+   
    ENTRY("Seg_load_dset");
    
    dset = THD_open_dataset( set_name );
@@ -1232,7 +1124,7 @@ THD_3dim_dataset *Seg_load_dset( char *set_name ) {
    
    for (i=0; i<DSET_NVALS(dset); ++i) {
       if (DSET_BRICK_TYPE(dset,i) != MRI_short) {
-         INFO_message("Sub-brick %d in %s not of type short.\n"
+         if (verb) INFO_message("Sub-brick %d in %s not of type short.\n"
                        "Creating new short copy of dset ", 
                        i, DSET_PREFIX(dset));
          make_cp=1; break;

@@ -1,5 +1,58 @@
 #include "mrilib.h"
 
+#undef  PREP_SPEARMAN
+#undef  PREP_DEMEAN
+#undef  PREP_QUANTILE
+
+#define PREP_SPEARMAN  1
+#define PREP_DEMEAN    2
+#define PREP_QUANTILE  3
+
+static int num_quantile = 9 ;
+
+/*--------------------------------------------------------------------------*/
+/* These PREP function process the data in-place. */
+
+void PREP_demean( int n , float *ar )
+{
+   int ii ; float bb ;
+   for( bb=0.0f,ii=0 ; ii < n ; ii++ ) bb += ar[ii] ;
+   bb /= n ;
+   for( ii=0 ; ii < n ; ii++ ) ar[ii] -= bb ;
+   return ;
+}
+
+/*--------------------------------------------------------------------------*/
+
+void PREP_spearman( int n , float *ar )
+{
+   int ii ; float rb ;
+   rank_order_float(n,ar) ;     /*  ranks are 0..n-1 (cf. thd_correlate.c) */
+   rb = 0.5f*(n-1) ;                                          /* mean rank */
+   for( ii=0 ; ii < n ; ii++ ) ar[ii] -= rb ;          /* remove mean rank */
+   return ;
+}
+
+/*--------------------------------------------------------------------------*/
+
+void PREP_quantile( int n , float *a )
+{
+   int ii ; float rb , jf ;
+
+   jf = 0.001f + 1.00001f * (n-0.5f) / (float)num_quantile ;
+   if( jf <= 2.0f ){ PREP_spearman(n,a) ; return ; }
+   jf = 1.0f / jf ;
+
+   rank_order_float(n,a) ;        /* convert to ranks */
+
+   for( rb=0.0f,ii=0 ; ii < n ; ii++ ){
+     a[ii] = (int)( (a[ii]+0.333f)*jf ) ; rb += a[ii] ;
+   }
+   rb /= n ;
+   for( ii=0 ; ii < n ; ii++ ) a[ii] -= rb ;
+   return ;
+}
+
 /*--------------------------------------------------------------------------*/
 
 char * get_surf_param(char *sname, char *parname)
@@ -29,7 +82,7 @@ char * get_surf_param(char *sname, char *parname)
 }
 
 /*--------------------------------------------------------------------------*/
-void usage_3dSetupGroupInCorr(int detail) 
+void usage_3dSetupGroupInCorr(int detail)
 {
         printf(
  "Usage: 3dSetupGroupInCorr [options] dataset dataset ...\n"
@@ -70,13 +123,15 @@ void usage_3dSetupGroupInCorr(int detail)
  "  of time points or time spacing.  But each dataset must have\n"
  "  at least 9 points along the time axis!\n"
  "\n"
- "* The only pre-processing herein for each time series is to L2\n"
+ "* The ONLY pre-processing herein for each time series is to L2\n"
  "  normalize it (sum of squares = 1) and scale it to 8-bit bytes\n"
  "  (or to 16-bit shorts).\n"
  "  ++ You almost certainly want to use 3dBandpass and/or some other\n"
  "     code to pre-process the datasets BEFORE input to this program.\n"
  "  ++ See the SAMPLE SCRIPT below for a semi-reasonable way to\n"
  "     pre-process a collection of datasets for 3dGroupInCorr.\n"
+ "  ++ [10 May 2012] The '-prep' option now allows for some limited\n"
+ "     pre-processing operations.\n"
  "\n"
  "* The outputs from this program are 2 files:\n"
  "  ++ PREFIX.grpincorr.niml is a text file containing the header\n"
@@ -145,6 +200,14 @@ void usage_3dSetupGroupInCorr(int detail)
  "                    temporary 3dBandpass outputs as soon\n"
  "                    as they are no longer needed.\n"
  "\n"
+ "  -prep XXX      = Prepare (or preprocess) each data time series in some\n"
+ "                   fashion before L2 normalization and storing, where\n"
+ "                   'XXX' is one of these:\n"
+ "                 ++ SPEARMAN ==> convert data to ranks, so that the\n"
+ "                                 resulting individual subject correlations\n"
+ "                                 in 3dGroupInCorr are Spearman correlations.\n"
+ "                 ++ DEMEAN   ==> remove the mean\n"
+ "\n"
 "    Variations for surface-based data:\n"
 "    ----------------------------------\n"
 "    If you are working with one surface, no special options are needed.\n"
@@ -192,15 +255,16 @@ void usage_3dSetupGroupInCorr(int detail)
  "/bin/rm -f *_amask+tlrc.*\n"
  "\n"
  "# Bandpass and blur each dataset inside the group mask\n"
- "# (skip first 4 time points, and also remove global signal)\n"
+ "#  * Skip first 4 time points.\n"
+ "#  * If you want to remove the global mean signal, you would use the '-ort'\n"
+ "#    option for 3dBandpass -- but we recommend that you do NOT do this:\n"
+ "#    http://dx.doi.org/10.1089/brain.2012.0080\n"
  "\n"
  "foreach fred ( sub*_rest+tlrc.HEAD )\n"
  "  set sub = `basename $fred _rest+tlrc.HEAD`\n"
- "  3dmaskave -mask ALL_amask5050+tlrc -quiet $fred'[4..$]' > ${sub}_GS.1D\n"
  "  3dBandpass -mask ALL_amask5050+tlrc -blur 6.0 -band 0.01 0.10 -prefix ${sub}_BP\\\n"
- "             -input $fred'[4..$]' -ort ${sub}_GS.1D\n"
+ "             -input $fred'[4..$]'\n"
  "end\n"
- "/bin/rm -f *_GS.1D\n"
  "\n"
  "# Extract data for 3dGroupInCorr\n"
  "\n"
@@ -225,7 +289,7 @@ void usage_3dSetupGroupInCorr(int detail)
  "* With encouragement from MMK.\n"
  "\n"
      ) ;
-     PRINT_COMPILE_DATE ; 
+     PRINT_COMPILE_DATE ;
    return;
 }
 
@@ -252,6 +316,11 @@ int main( int argc , char * argv[] )
    char **dset_labels=NULL ; int ndset_labels=0 ;  /* 14 May 2010 */
    char  *dset_labels_all  ; int len_all=0 ;
    char *cmdline ;                                 /* 26 May 2010 */
+   int   prepcode=0 ;                              /* 10 May 2012 */
+   void *prepfunc=NULL ;
+   char prepname[128] = "normalize" ;
+
+   /*--- official AFNI startup stuff ---*/
 
    mainENTRY("3dSetupGroupInCorr"); machdep();
    AFNI_logger("3dSetupGroupInCorr",argc,argv);
@@ -260,11 +329,42 @@ int main( int argc , char * argv[] )
 
    nopt = 1 ;
    while( nopt < argc && argv[nopt][0] == '-' ){
+
       if( strcmp(argv[nopt],"-help") == 0 ||
           strcmp(argv[nopt],"-h") == 0 ){
          usage_3dSetupGroupInCorr(strlen(argv[nopt]) > 3 ? 2:1);
          exit(0) ;
       }
+
+     if( strcasecmp(argv[nopt],"-prep") == 0 ){   /* 10 May 2012 */
+       if( ++nopt >= argc ) ERROR_exit("need an argument after %s",argv[nopt-1]) ;
+       if( strcasecmp(argv[nopt],"SPEARMAN") == 0 ){
+         prepcode = PREP_SPEARMAN ;
+         prepfunc = (void *)PREP_spearman ;
+         strcpy(prepname,"SPEARMAN/normalize") ;
+       } else if( strcasecmp(argv[nopt],"DEMEAN") == 0 ){
+         prepcode = PREP_DEMEAN ;
+         prepfunc = (void *)PREP_demean ;
+         strcpy(prepname,"DEMEAN/normalize") ;
+       } else if( strncasecmp(argv[nopt],"QUANTILE",8) == 0 ){
+         char *cpt ;
+                           cpt = strchr(argv[nopt],':') ;
+         if( cpt == NULL ) cpt = strchr(argv[nopt],'#') ;
+         if( cpt == NULL ) cpt = strchr(argv[nopt],'@') ;
+         if( cpt == NULL ) cpt = strchr(argv[nopt],'_') ;
+         if( cpt == NULL ) cpt = argv[nopt]+8 ;
+         if( isdigit(*(cpt+1)) ){
+           kk = (int)strtod(cpt+1,NULL) ;
+           if( kk > 1 && kk < 100 ) num_quantile = kk ;
+         }
+         prepcode = PREP_QUANTILE ;
+         prepfunc = (void *)PREP_quantile ;
+         sprintf(prepname,"QUANTILE:%d/normalize",num_quantile) ;
+       } else {
+         ERROR_exit("Illegal string '%s' after option %s",argv[nopt],argv[nopt-1]) ;
+       }
+       nopt++ ; continue ;
+     }
 
      if( strncmp(argv[nopt],"-labels",6) == 0 ){  /* 14 May 2010 */
        char *sf ; NI_str_array *sar ;
@@ -523,7 +623,8 @@ int main( int argc , char * argv[] )
         THD_delete_3dim_dataset( inset[ids+1] , (Boolean)do_delete ) ;
         inset[ids+1] = NULL ;
 
-        THD_vectim_normalize( mv ) ; /* L2 normalize each time series */
+        THD_vectim_applyfunc( mv , prepfunc ) ;  /* prep each time series */
+        THD_vectim_normalize( mv ) ;     /* L2 normalize each time series */
 
         /* find largest absolute value over all vectors */
         nvv = mv->nvec * mv->nvals ; top = 0.0f ; fv = mv->fvec ;
@@ -540,16 +641,22 @@ int main( int argc , char * argv[] )
         if( do_byte ){
           top = 127.4f / top ; fac[ids/2] = 1.0f / top ;  /* save scale factor */
           bv = (sbyte *)malloc(sizeof(sbyte)*nvv) ;       /* output array */
-          for( kk=0 ; kk < nvv ; kk++ ) bv[kk] = (sbyte)rintf(top*fv[kk]) ;
+          for( kk=0 ; kk < nvv ; kk++ ){
+            val = fv[kk]*top ;
+            bv[kk] = (val >= 0.0f) ? (sbyte)(val+0.499f) : (sbyte)(val-0.499f) ;
+          }
         } else {
           top = 32766.0f / top ; fac[ids/2] = 1.0f / top ;  /* save scale factor */
-          sv = (short *)malloc(sizeof(short)*nvv) ;       /* output array */
-          for( kk=0 ; kk < nvv ; kk++ ) sv[kk] = (short)rintf(top*fv[kk]) ;
+          sv = (short *)malloc(sizeof(short)*nvv) ;         /* output array */
+          for( kk=0 ; kk < nvv ; kk++ ){
+            val = fv[kk]*top ;
+            sv[kk] = (val >= 0.0f) ? (short)(val+0.499f) : (short)(val-0.499f) ;
+          }
         }
         VECTIM_destroy(mv) ;
 
         ctim = NI_clock_time() ;
-        fprintf(stderr," normalize =%5d ms;",ctim-btim) ;
+        fprintf(stderr," %s =%5d ms;",prepname,ctim-btim) ;
         btim = ctim ;
 
         /* write output array */
@@ -576,7 +683,7 @@ int main( int argc , char * argv[] )
          ndset /= 2;
    } else {
       for( ids=0 ; ids < ndset ; ids++ ){
-        fprintf(stderr,"++ Dataset %s:",DSET_BRIKNAME(inset[ids])) ;
+        fprintf(stderr,"++ Dataset %d/%d: %s",ids+1,ndset,DSET_BRIKNAME(inset[ids])) ;
         btim = NI_clock_time() ;
 
         /* extract all time series in the mask, as floats */
@@ -593,7 +700,26 @@ int main( int argc , char * argv[] )
         THD_delete_3dim_dataset( inset[ids] , (Boolean)do_delete ) ;
         inset[ids] = NULL ;
 
-        THD_vectim_normalize( mv ) ; /* L2 normalize each time series */
+        THD_vectim_applyfunc( mv , prepfunc ) ;  /* prep each time series */
+#if 0
+        /* find largest absolute value over all vectors */
+        nvv = mv->nvec * mv->nvals ; top = 0.0f ; fv = mv->fvec ;
+        for( kk=0 ; kk < nvv ; kk++ ){
+          val = fabsf(fv[kk]) ; if( val > top ) top = val ;
+        }
+        fprintf(stderr,"[post top=%g]",top) ;
+#endif
+        THD_vectim_normalize( mv ) ;     /* L2 normalize each time series */
+
+#if 0
+        { float sq ;
+          for( iv=0 ; iv < mv->nvec ; iv++ ){
+            sq = 0.0f ; fv = VECTIM_PTR(mv,iv) ;
+            for( kk=0 ; kk < mv->nvals ; kk++ ) sq += fv[kk]*fv[kk] ;
+            if( sq != 0.0f && fabsf(sq-1.0f) > 0.0001f ) ININFO_message("index=%d sq=%g",iv,sq) ;
+          }
+        }
+#endif
 
         /* find largest absolute value over all vectors */
 
@@ -601,6 +727,9 @@ int main( int argc , char * argv[] )
         for( kk=0 ; kk < nvv ; kk++ ){
           val = fabsf(fv[kk]) ; if( val > top ) top = val ;
         }
+#if 0
+        fprintf(stderr,"[post top=%g]",top) ;
+#endif
 
         if( top == 0.0f ){
           fclose(fp) ; remove(dfname) ; ERROR_exit("Dataset is all zero?!") ;
@@ -611,16 +740,22 @@ int main( int argc , char * argv[] )
         if( do_byte ){
           top = 127.4f / top ; fac[ids] = 1.0f / top ;  /* save scale factor */
           bv = (sbyte *)malloc(sizeof(sbyte)*nvv) ;     /* output array */
-          for( kk=0 ; kk < nvv ; kk++ ) bv[kk] = (sbyte)rintf(top*fv[kk]) ;
+          for( kk=0 ; kk < nvv ; kk++ ){
+            val = fv[kk]*top ;
+            bv[kk] = (val >= 0.0f) ? (sbyte)(val+0.499f) : (sbyte)(val-0.499f) ;
+          }
         } else {
           top = 32766.0f / top ; fac[ids] = 1.0f / top ;  /* save scale factor */
           sv = (short *)malloc(sizeof(short)*nvv) ;       /* output array */
-          for( kk=0 ; kk < nvv ; kk++ ) sv[kk] = (short)rintf(top*fv[kk]) ;
+          for( kk=0 ; kk < nvv ; kk++ ){
+            val = fv[kk]*top ;
+            sv[kk] = (val >= 0.0f) ? (short)(val+0.499f) : (short)(val-0.499f) ;
+          }
         }
         VECTIM_destroy(mv) ;
 
         ctim = NI_clock_time() ;
-        fprintf(stderr," normalize =%5d ms;",ctim-btim) ;
+        fprintf(stderr," %s =%5d ms;",prepname,ctim-btim) ;
         btim = ctim ;
 
         /* write output array */

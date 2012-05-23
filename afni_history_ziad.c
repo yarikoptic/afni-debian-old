@@ -66,6 +66,61 @@
 afni_history_struct ziad_history[] = {
 /*=====BELOW THIS LINE=====*/
 
+
+ { 27, May , 2012 , ZSS , "ROIgrow" , MICRO , TYPE_BUG_FIX,
+   "ROIgrow was not taking -spec surface definition",
+   NULL
+ },
+ 
+ { 27, May , 2012 , ZSS , "@SUMA_Make_Spec_FS" , MINOR , TYPE_NEW_OPT,
+   "Made the script also port thickness data and take them to std. space",
+   NULL
+ },
+ 
+ { 27, May , 2012 , ZSS , "3dTcorrelate" , MINOR , TYPE_NEW_OPT,
+   "Added -covariance option, turned off DOF setting for anything but pearson.",
+   "See function THD_covariance()\n"
+ },
+ 
+ { 27, May , 2012 , ZSS , "MapIcosahedron" , MINOR , TYPE_NEW_OPT,
+   "Made program output mapping info file for use with SurfToSurf",
+   "Also made microscopic improvement to automatic dset name generation for"
+   " -dset_map"
+ },
+ 
+ { 27, May , 2012 , ZSS , "SurfToSurf" , MICRO , TYPE_BUG_FIX,
+   "Microscopic improvement to automatic dset name generation for output dsets",
+   NULL
+ },
+ 
+ { 15, May , 2012 , ZSS , "1dRplot" , MICRO , TYPE_NEW_OPT,
+   "Added -load.Rdat to regenerate previous plot on command line",
+   NULL
+ },
+ 
+ { 15, May , 2012 , ZSS , "afni-general" , MINOR , TYPE_NEW_OPT,
+   "Added '[1dcat FF.1D]' syntax for sub-brick selections in 1D file",
+   "This was added for the same reason '[count ...]' was added, and \n"
+   "that is to allow for lengthy selection values. Dealing with selections\n"
+   "of 100+ sub-bricks virtually guarantees some string limit is reached,\n"
+   "somewhere. See 3dTcat -help for details"
+ },
+ 
+ { 8, May , 2012 , ZSS , "afni-general" , MINOR , TYPE_MODIFY,
+   "Code updates for P. Taylor's tractography",
+   NULL
+ },
+ 
+ { 8, May , 2012 , ZSS , "3dSeg" , MINOR , TYPE_BUG_FIX,
+   "Fixed memory leak problem",
+   NULL
+ },
+ 
+ { 8, May , 2012 , ZSS , "count" , MINOR , TYPE_NEW_OPT,
+   "Added -form to count: count -form %c 49 130",
+   NULL
+ },
+ 
  { 4, May , 2012 , ZSS , "afni" , MINOR , TYPE_NEW_OPT,
    "Added inverse distance measures to InstaCorr",
    "For the moment, those options are only accessible to usernames \n"

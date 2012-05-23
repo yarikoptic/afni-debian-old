@@ -43,7 +43,16 @@
 
 afni_history_struct rwcox_history[] = {
 /*=====BELOW THIS LINE=====*/
-  { 8 , MAY , 2012 , RWC , "1ddot" , MICRO , TYPE_NEW_OPT ,
+  { 21 , MAY , 2012 , RWC , "FDR calculations" , MICRO , TYPE_NEW_ENV ,
+   "AFNI_NON_INDEPENDENT_FDR == YES --> like '-cdep' in 3dFDR." ,
+   NULL } ,
+
+ { 17 , MAY , 2012 , RWC , "3dGroupInCorr" , MINOR , TYPE_NEW_OPT ,
+   "Add -donocov option" ,
+   "When -covariates is used, -donocov says to also do the NO covariates\n"
+   "analyses and tack them onto the end of the results -- for comparison fun" } ,
+
+ { 8 , MAY , 2012 , RWC , "1ddot" , MICRO , TYPE_NEW_OPT ,
    "Add -rank option to do Spearman correlations" ,
    NULL } ,
 
