@@ -1149,7 +1149,8 @@ fprintf(stderr,"NI_write_columns: col_num=%d col_len=%d tmode=%d\n",col_num,col_
 
      /* can't find type, or no data in column?  take this job and shove it */
 
-     if( rt[col] == NULL || col_dat[col] == NULL ){ FREEUP; WCERR("e"); return -1; }
+     if( rt[col]      == NULL ){ FREEUP; WCERR("e") ; return -1; }
+     if( col_dat[col] == NULL ){ FREEUP; WCERR("e'"); return -1; }
 
      vsiz[col] = ROWTYPE_is_varsize(rt[col]) ;         /* variable dim type? */
      fsiz[col] = rt[col]->size ;         /* fixed size of struct (w/padding) */

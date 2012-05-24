@@ -49,6 +49,16 @@
 
 
 afni_history_struct dglen_history[] = {
+{ 23 , MAY, 2012 , DRG , "3dinfo, @auto_tlrc" , 
+    MAJOR , TYPE_BUG_FIX, 
+    "Generic space handling corrected for TT_N27 and other spaces",
+    "@auto_tlrc would crash with improper generic spaces\n"
+    "Generic space restricted to AFNI view names (orig, acpc, tlrc)"
+} ,
+{ 22 , MAY, 2012 , DRG , "3dDWItoDT" , 
+    MINOR , TYPE_NEW_OPT, 
+    "csf_val and csf_fa options for default values if B=0 less than gradient values"
+} ,
 { 8 , MAY, 2012 , DRG , "3dinfo" , 
     MICRO , TYPE_NEW_OPT, 
     "gen_space option to see generic space type for a dataset"
