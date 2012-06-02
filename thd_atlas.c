@@ -104,6 +104,10 @@ char * THD_get_view_space(THD_3dim_dataset *dset)
    ENTRY("THD_get_view_space");
 
    if(!dset) RETURN(NULL);
+   spcstr = dset->dblk->diskptr->viewcode;
+   if(spcstr != NULL)
+      RETURN(spcstr);
+
    spcstr = THD_get_generic_space(dset); /* space from dataset structure - do not free */
 
    if (strcmp(spcstr, "ORIG")==0)
@@ -111,7 +115,6 @@ char * THD_get_view_space(THD_3dim_dataset *dset)
    if (strcmp(spcstr, "ACPC")==0)
       RETURN("ACPC");
    /* all other spaces are assumed to be TLRC */
-/*   if (strcmp(space, "TLRC")==0) || (strcmp(space, "MNI_ANAT")==0) || (strcmp(space, "MNI")==0))*/
    RETURN("TLRC");
 }
 
@@ -1812,6 +1815,8 @@ invert_affine(ATLAS_XFORM *xf)
    float *xfptr;
    ENTRY("invert_affine");
 
+   if ( !xf || !xf->xform) RETURN(1);
+   
    matrix_initialize (&tempmat);
    matrix_create(4,4,&tempmat);
    xfptr = (float *) xf->xform;
@@ -1831,7 +1836,7 @@ invert_affine(ATLAS_XFORM *xf)
    matrix_destroy(&invmat);
    matrix_destroy(&tempmat);
 
-   return(0);
+   RETURN(0);
 }
 
 /* invert a 12 piece matrix - do in place */
