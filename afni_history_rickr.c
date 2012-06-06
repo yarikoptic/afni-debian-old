@@ -49,6 +49,26 @@
 
 afni_history_struct rickr_history[] = {
 
+ { 5, JUN, 2012, RCR, "3dmask_tool", MICRO, TYPE_BUG_FIX,
+   "need to explicitly set DSET_BRICK_TYPE() on some systems",
+   NULL
+ } ,
+
+ { 5, JUN, 2012, RCR, "afni_proc.py", MINOR, TYPE_MODIFY,
+   "warn users if married types and files do not seem to match",
+   NULL
+ } ,
+
+ { 3, JUN, 2012, RCR, "afni_proc.py", MICRO, TYPE_MODIFY,
+   "for resting state analysis, suggest -regress_censor_motion 0.2",
+   "Suggest a more strict limit for resting state than for task analysis."
+ } ,
+
+ { 3, JUN, 2012, RCR, "uber_subject.py", MICRO, TYPE_ENHANCE,
+   "for variable updates: actually show list if it is short enough",
+   NULL
+ } ,
+
  { 25, MAY, 2012, RCR, "uber_subject.py", MINOR, TYPE_ENHANCE,
    "display modified options and subject defaults",
    NULL
