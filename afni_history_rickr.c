@@ -49,6 +49,21 @@
 
 afni_history_struct rickr_history[] = {
 
+ { 15, JUN, 2012, RCR, "GIFTI", MINOR, TYPE_MODIFY,
+   "make num_dim violation a warning, because of mris_convert",
+   NULL
+ } ,
+
+ { 15, JUN, 2012, RCR, "afni_proc.py", MINOR, TYPE_NEW_OPT,
+   "added -regress_censor_extern",
+   NULL
+ } ,
+
+ { 14, JUN, 2012, RCR, "gen_ss_review_scripts.py", MICRO, TYPE_BUG_FIX,
+   "use afni -com instead of plugout_drive (for case of multiple users)",
+   "Thanks to V Razdan and N Adleman for noting the issue."
+ } ,
+
  { 6, JUN, 2012, RCR, "afni_proc.py", MICRO, TYPE_BUG_FIX,
    "look for input of EPI datasets in standard space and NIfTI format",
    NULL
