@@ -49,6 +49,16 @@
 
 afni_history_struct rickr_history[] = {
 
+ { 25, JUN, 2012, RCR, "gen_group_command.py", MICRO, TYPE_ENHANCE,
+   "added help for -factors and 3dANOVA3 -type 4 examples",
+   NULL
+ } ,
+
+ { 25, JUN, 2012, RCR, "gen_ss_review_scripts.py", MICRO, TYPE_BUG_FIX,
+   "fixed uninitialized cpad1,2 in the case of no censoring",
+   NULL
+ } ,
+
  { 22, JUN, 2012, RCR, "gen_group_command.py", MINOR, TYPE_NEW_OPT,
    "added commands 3dANOVA2 and 3dANOVA3; added option -factors",
    "Need to add help for -factors (i.e. for 3dANOVA3 -type 4)."
