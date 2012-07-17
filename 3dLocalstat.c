@@ -127,12 +127,16 @@ void usage_3dLocalstat(int detail)
 "                          (e.g., outside the mask).\n"
 "               * FWHMbar= Compute just the average of the 3 FWHM values\n"
 "                          (normally would NOT do this with FWHM also).\n"
+#if 0
+"               * FWHMbar12 = Compute the average of the 3 FWHM values,\n"
+"                             but using the '-2difMAD' method of 3dFWHMx.\n"
+#endif
 "               * perc:P0:P1:Pstep = \n"
 "                          Compute percentiles between P0 and P1 with a \n"
 "                          step of Pstep.\n"
 "                          Default P1 is equal to P0 and default P2 = 1\n"
-"               * rank   = rank of the voxel's instensity\n"
-"               * frank  = rank / numer of voxels in neighborhood\n"
+"               * rank   = rank of the voxel's intensity\n"
+"               * frank  = rank / number of voxels in neighborhood\n"
 "               * P2skew = Pearson's second skewness coefficient\n"
 "                           3 * (mean - median) / stdev \n"
 "               * ALL    = all of the above, in that order \n"
@@ -149,7 +153,7 @@ void usage_3dLocalstat(int detail)
 "               therein as a mask.  Voxels NOT in the mask will\n"
 "               not be used in the neighborhood of any voxel. Also,\n"
 "               a voxel NOT in the mask will have its statistic(s)\n"
-"               computed as zero (0).\n"
+"               computed as zero (0) -- usually (cf. supra).\n"
 " -automask   = Compute the mask as in program 3dAutomask.\n"
 "               -mask and -automask are mutually exclusive: that is,\n"
 "               you can only specify one mask.\n"
@@ -377,7 +381,8 @@ int main( int argc , char *argv[] )
                       iizz, NSTAT_PERCENTILE, ncode); */
          for (ipv=0; ipv<iizz; ++ipv)  code[ncode++] = NSTAT_PERCENTILE;
        }
-       else if( strcasecmp(cpt,"fwhmbar")==0 ) code[ncode++] = NSTAT_FWHMbar;
+       else if( strcasecmp(cpt,"fwhmbar"  )==0 ) code[ncode++] = NSTAT_FWHMbar;
+       else if( strcasecmp(cpt,"fwhmbar12")==0 ) code[ncode++] = NSTAT_FWHMbar12;
        else if( strcasecmp(cpt,"ALL")   == 0 ){
          code[ncode++] = NSTAT_MEAN  ; code[ncode++] = NSTAT_SIGMA ;
          code[ncode++] = NSTAT_VAR   ; code[ncode++] = NSTAT_CVAR  ;
@@ -617,7 +622,7 @@ int main( int argc , char *argv[] )
      lcode[NSTAT_mMP2s0]  = "MEDIAN";lcode[NSTAT_mMP2s1]     = "MAD";
      lcode[NSTAT_mMP2s2]  = "P2skew";lcode[NSTAT_mmMP2s0]    = "MEAN";
      lcode[NSTAT_mmMP2s1] = "MEDIAN";lcode[NSTAT_mmMP2s2]    = "MAD";
-     lcode[NSTAT_mmMP2s3] = "P2skew"; 
+     lcode[NSTAT_mmMP2s3] = "P2skew";lcode[NSTAT_FWHMbar12]  = "FWHMbar12"; 
      
      if( DSET_NVALS(inset) == 1 ){
        ii=0;
