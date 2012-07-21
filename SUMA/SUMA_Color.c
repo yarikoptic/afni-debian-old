@@ -4261,8 +4261,8 @@ SUMA_SCALE_TO_MAP_OPT * SUMA_ScaleToMapOptInit(void)
    Opt->BrightFact = 1.0;
    Opt->interpmode = SUMA_INTERP;
    Opt->alaAFNI = NOPE;
-   Opt->AutoIntRange = YUP;
-   Opt->AutoBrtRange = YUP;
+   Opt->AutoIntRange = -1;
+   Opt->AutoBrtRange = -1;
    Opt->ColsContMode = 0;
    {
       char *eee = getenv("SUMA_MaskZero");
@@ -5396,7 +5396,7 @@ SUMA_OVERLAYS * SUMA_CreateOverlayPointer (
          }
       }
 
-      Sover->SymIrange = 0;
+      Sover->SymIrange = SUMA_isEnv("SUMA_Sym_I_Range","YES")?1:0;
    }
    
    SUMA_RETURN (Sover);
@@ -7514,15 +7514,18 @@ SUMA_ASSEMBLE_LIST_STRUCT * SUMA_AssembleColorPlaneList (SUMA_SurfaceObject *SO)
    /* need a list to store new names */
    list = (DList *)SUMA_calloc(1,sizeof(DList));
    dlist_init(list, NULL); /* you don't want to free the strings */
-   /* need a list to store the pointers, it is useless when SortByOrder is used, but I leave it in to keep the code simple */
+   /* need a list to store the pointers, it is useless when SortByOrder 
+      is used, but I leave it in to keep the code simple */
    listop = (DList *)SUMA_calloc(1,sizeof(DList)); 
-   dlist_init(listop, NULL); /* you don't want to free the data as it is copied from  OverlayPlanelist*/
+   dlist_init(listop, NULL); /* you don't want to free the data as it is 
+                                copied from  OverlayPlanelist*/
          
    clist = NULL;
    N_clist = -1;
    Elm_OverlayPlanelist = NULL;
    do {
-      if (!Elm_OverlayPlanelist) Elm_OverlayPlanelist = dlist_head(OverlayPlanelist);
+      if (!Elm_OverlayPlanelist) 
+         Elm_OverlayPlanelist = dlist_head(OverlayPlanelist);
       else Elm_OverlayPlanelist = Elm_OverlayPlanelist->next;
       
       OvD = (SUMA_OVERLAY_LIST_DATUM *) Elm_OverlayPlanelist->data;
@@ -7541,7 +7544,8 @@ SUMA_ASSEMBLE_LIST_STRUCT * SUMA_AssembleColorPlaneList (SUMA_SurfaceObject *SO)
 
       if (SortByOrder) {
          SUMA_LH("Sorting by order");
-         /* list is already sorted, just copy the string and object structure pointers to lists */
+         /* list is already sorted, just copy the string and object 
+            structure pointers to lists */
          dlist_ins_next(list, dlist_tail(list), (void*)store);
          /* this line is redundant with SortByOrder but it don't hoyt */
          dlist_ins_next(listop, dlist_tail(listop), (void*)OvD);
@@ -7769,9 +7773,11 @@ SUMA_Boolean SUMA_OKassign(SUMA_DSET *dset, SUMA_SurfaceObject *SO)
 void SUMA_LoadDsetOntoSO (char *filename, void *data)
 {
    static char FuncName[]={"SUMA_LoadDsetOntoSO"};
-   SUMA_SurfaceObject *SO = NULL;
-
+   SUMA_SurfaceObject *SO = NULL, *SOC=NULL;
+   char *fC=NULL;
+   
    SUMA_ENTRY;
+
    if (!data || !filename) {
       SUMA_SLP_Err("Null data"); 
       SUMA_RETURNe;
@@ -7783,6 +7789,27 @@ void SUMA_LoadDsetOntoSO (char *filename, void *data)
       SUMA_SLP_Err("Failed loading, and colorizing dset"); 
       SUMA_RETURNe;
    }
+   
+   if (!(SOC = SUMA_Contralateral_SO(SO, SUMAg_DOv, SUMAg_N_DOv))) {
+      SUMA_RETURNe;
+   }
+   if (!(fC = SUMA_Contralateral_file(filename))) {
+      SUMA_RETURNe;
+   }
+
+   /* have contralateral bunch, load 'em cowboy */
+   if (!(SUMA_OpenCloseSurfaceCont(NULL, SOC, NULL))) {
+      SUMA_free(fC);
+      SUMA_S_Err("Failed initializing contraleteral controller"); 
+      SUMA_RETURNe;
+   }
+   if (!SUMA_LoadDsetOntoSO_eng(fC, SOC, 1, 1, 1, NULL)) {
+      SUMA_free(fC);
+      SUMA_S_Err("Failed loading, and colorizing contralateral dset"); 
+      SUMA_RETURNe;
+   }
+   
+   SUMA_free(fC); fC=NULL;
    
    SUMA_RETURNe;
 }
@@ -7996,8 +8023,13 @@ SUMA_Boolean SUMA_LoadDsetOntoSO_eng (char *filename, SUMA_SurfaceObject *SO,
       NewColPlane->OptScl->tind = 0;
       NewColPlane->OptScl->bind = 0;
       SUMA_GetDsetColRange(dset, 0, NewColPlane->OptScl->IntRange, loc);
-
-
+      if (NewColPlane->SymIrange) {
+         NewColPlane->OptScl->IntRange[0] = 
+            -fabs(SUMA_MAX_PAIR( NewColPlane->OptScl->IntRange[0],
+                                 NewColPlane->OptScl->IntRange[1]));
+         NewColPlane->OptScl->IntRange[1] = -NewColPlane->OptScl->IntRange[0];
+      }
+      
       /* stick a colormap onto that plane ? */
       dsetcmap = NI_get_attribute(dset->ngr,"SRT_use_this_cmap");
       if (dsetcmap) {
@@ -8037,25 +8069,27 @@ SUMA_Boolean SUMA_LoadDsetOntoSO_eng (char *filename, SUMA_SurfaceObject *SO,
          if (!LW->isShaded) SUMA_RefreshDsetList (SO);  
       }  
       
+      SUMA_LH("Refreshing sub-brick selectors");            
       /* if lists for switching sub-bricks are not shaded, update them too */
-      if ((LW = SO->SurfCont->SwitchIntMenu->lw) && !LW->isShaded) {
-         SUMA_DsetColSelectList(SO, 0, 0, 1);
-      }
-      if ((LW = SO->SurfCont->SwitchThrMenu->lw) && !LW->isShaded) {
-         SUMA_DsetColSelectList(SO, 1, 0, 1);
-      }
-      if ((LW = SO->SurfCont->SwitchBrtMenu->lw) && !LW->isShaded) {
-         SUMA_DsetColSelectList(SO, 2, 0, 1);
-      }
-      
-      if (LocalHead) 
-         fprintf (SUMA_STDERR,
-                  "%s: Updating Dset frame, OverInd=%d\n", 
-                  FuncName, OverInd);
-      /* update the Dset frame */
-      if (OverInd >= 0)        
-         SUMA_InitializeColPlaneShell(SO, SO->Overlays[OverInd]);
+      if (SO->SurfCont->SwitchIntMenu) {
+         if ((LW = SO->SurfCont->SwitchIntMenu->lw) && !LW->isShaded) {
+            SUMA_DsetColSelectList(SO, 0, 0, 1);
+         }
+         if ((LW = SO->SurfCont->SwitchThrMenu->lw) && !LW->isShaded) {
+            SUMA_DsetColSelectList(SO, 1, 0, 1);
+         }
+         if ((LW = SO->SurfCont->SwitchBrtMenu->lw) && !LW->isShaded) {
+            SUMA_DsetColSelectList(SO, 2, 0, 1);
+         }
 
+         if (LocalHead) 
+            fprintf (SUMA_STDERR,
+                     "%s: Updating Dset frame, OverInd=%d\n", 
+                     FuncName, OverInd);
+         /* update the Dset frame */
+         if (OverInd >= 0)        
+            SUMA_InitializeColPlaneShell(SO, SO->Overlays[OverInd]);
+      }
    }
    
    if (used_over) *used_over = SO->Overlays[OverInd];

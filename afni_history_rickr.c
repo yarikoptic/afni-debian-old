@@ -49,6 +49,21 @@
 
 afni_history_struct rickr_history[] = {
 
+ { 20, JUL, 2012, RCR, "apsearch", MICRO, TYPE_MODIFY,
+   "exclude README.* from program list",
+   "Executable README files can be troublesome..."
+ } ,
+
+ { 17, JUL, 2012, RCR, "gen_ss_review_scripts.py", MINOR, TYPE_MODIFY,
+   "added checks for volreg and uncensored X-mat; get view from volreg",
+   NULL
+ } ,
+
+ { 17, JUL, 2012, RCR, "slow_surf_clustsim.py", MICRO, TYPE_MODIFY,
+   "removed -Niter opt from SurfSmooth (let it decide)",
+   NULL
+ } ,
+
  { 11, JUL, 2012, RCR, "afni_proc.py", MINOR, TYPE_ENHANCE,
    "fill gaps and holes in anatomical masks",
    "(now requires AFNI from 7 May, 2012)"
