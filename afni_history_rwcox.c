@@ -43,7 +43,15 @@
 
 afni_history_struct rwcox_history[] = {
 /*=====BELOW THIS LINE=====*/
-  { 12 , JUL , 2012 , RWC , "3dDeconvolve" , MICRO , TYPE_NEW_OPT ,
+  { 23 , JUL , 2012 , RWC , "3dAllineate" , MICRO , TYPE_GENERAL ,
+   "Also, change wsinc5 taper from Hanning to Hamming" ,
+   NULL } ,
+
+ { 23 , JUL , 2012 , RWC , "3dAllineate" , MICRO , TYPE_NEW_ENV ,
+   "Allow 7x7x7 interpolation in wsinc5 + spherical mask" ,
+   "via environment variables" } ,
+
+ { 12 , JUL , 2012 , RWC , "3dDeconvolve" , MICRO , TYPE_NEW_OPT ,
    "added ':a:b:c' appendage to -stim_times_AM2" ,
    "To allow user to specify what values to subtract from modulation\n"
    "parameters (over-riding the default subtraction of the average)." } ,
