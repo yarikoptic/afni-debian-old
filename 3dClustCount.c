@@ -82,21 +82,75 @@ void display_help_menu()
    "               'sss.clustcount.niml'.  If this file already exists, then\n"
    "               the results from the current run will be summed into the\n"
    "               existing results, and the file then re-written.\n"
+#if 0
+   "\n"
+   " -addin aaa  = Also add in the results from file 'aaa.clustcount.niml'\n"
+   "               to the cumulating counts.  This option lets you run\n"
+   "               multiple 3dClustCount jobs in parallel scripts, then\n"
+   "               merge the results.\n"
+#endif
    "\n"
    " -final      = If this option is given, then the results will be output\n"
    "               in a format like that used from 3dClustSim -- as 1D and\n"
    "               NIML formatted files with probabilities of various\n"
    "               cluster sizes.\n"
+   "               ++ You can use '-final' without any input datasets if\n"
+   "                  you want to create the final output files from the\n"
+   "                  saved '.clustcount.niml' output file from earlier runs.\n"
    "\n"
    " -quiet      = Don't print out the progress reports, etc.\n"
    "               ++ Put this option first to quiet most informational messages.\n"
    "\n"
-   "------\n"
-   "NOTES:\n"
-   "------\n"
+   "--------\n"
+   "EXAMPLE:\n"
+   "-------\n"
+   "The steps here are\n"
+   "  (a) Create a set of 250 3dGroupInCorr results from a set of 190 subjects,\n"
+   "      using 250 randomly located seed locations.  Note the use of '-sendall'\n"
+   "      to get the individual subject results -- these are used in the next\n"
+   "      step, and are in sub-bricks 2..191 -- the collective 3dGroupInCorr\n"
+   "      results (in sub-bricks 0..1) are not actually used here.\n"
+   "  (b) For each of these 250 output datasets, create 80 random splittings\n"
+   "      into 2 groups of 95 subjects each, and carry out a 2-sample t-test\n"
+   "      between these groups.\n"
+   "      ++ Note the use of program 2perm to create the random splittings into\n"
+   "         files QQ_A and QQ_B, drawn from sub-bricks 2..191 of the ${fred}\n"
+   "         datasets.\n"
+   "      ++ Note the use of the '[1dcat filename]' construction to specify\n"
+   "         which sub-bricks of the ${fred} dataset are used for input to\n"
+   "         the '-setX' options of 3dttest++.\n"
+   "  (c) Count clusters from the '[1]' sub-brick of the 80 t-test outputs --\n"
+   "      the t-statistic sub-brick.\n"
+   "      ++  Note the use of a wildcard filename with a sub-brick selector:\n"
+   "          'QQ*.HEAD[1]' -- 3dClustCount will do the wildcard expansion\n"
+   "          internally, then add the sub-brick selector '[1]' to each expanded\n"
+   "          dataset filename.\n"
+   "  (d) Produce the final report files for empirical cluster-size thresholds\n"
+   "      for 3dGroupInCorr analyses -- rather than rely on 3dClustSim's assumption\n"
+   "      of Gaussian-shaped spatial correlation structure.\n"
+   "The syntax is C-shell (tcsh), naturally.\n"
+   "\n"
+   "    \\rm -f ABscat*\n"
+   "    3dGroupInCorr -setA A.errts.grpincorr.niml                 \\\n"
+   "                  -setB B.errts.grpincorr.niml                  \\\n"
+   "                  -labelA A -labelB B -seedrad 5 -nosix -sendall \\\n"
+   "                  -batchRAND 250 ABscat\n"
+   "    foreach fred ( ABscat*.HEAD )\n"
+   "      foreach nnn ( `count -dig 2 0 79` )\n"
+   "        2perm -prefix QQ 2 191\n"
+   "        3dttest++ -setA ${fred}'[1dcat QQ_A]' \\\n"
+   "                  -setB ${fred}'[1dcat QQ_B]' \\\n"
+   "                  -no1sam -prefix QQ${nnn}\n"
+   "      end\n"
+   "      3dClustCount -prefix ABcount 'QQ*.HEAD[1]'\n"
+   "      \\rm -f QQ*\n"
+   "    end\n"
+   "    3dClustCount -final -prefix ABcount\n"
+   "    \\rm -f ABscat*\n"
    "\n"
    "--------------------------------\n"
    "---- RW Cox -- August 2012 -----\n"
+   "--------------------------------\n"
   ) ;
 
   PRINT_COMPILE_DATE ;
@@ -192,7 +246,7 @@ void get_options( int argc , char **argv )
     if( didex ) MCW_free_expand(nexp,fexp) ;
   }
 
-  if( ndset == 0 ) ERROR_exit("No input datasets?!") ;
+  if( ndset == 0 && !do_final ) ERROR_exit("No input datasets?!") ;
 
   if( prefix == NULL ){
     prefix = "ClustCount" ;
@@ -557,7 +611,8 @@ int main( int argc , char **argv )
      } /* end of loop over sub-bricks */
 
      if( verb && nds > 0 )
-       fprintf(stderr,"%d / %d sub-bricks processed\n",nds,DSET_NVALS(dset)) ;
+       fprintf(stderr,"%d / %d sub-bricks processed -- %d total now\n",
+               nds,DSET_NVALS(dset),niter) ;
      else if( verb && nds == 0 )
        fprintf(stderr," -- 0 sub-bricks processed\n") ;
 
@@ -569,7 +624,7 @@ int main( int argc , char **argv )
 
  } /* end of processing the inputs */
 
-  if( niter == 0 )
+  if( niter == 0 && !do_final )
     ERROR_exit("No data was processed :-(") ;
 
   if( verb && ndset > 1 && niter > 1 )
@@ -600,8 +655,8 @@ int main( int argc , char **argv )
     if( nelnum < 3*npthr ) NELERR("number") ;
     for( nnn=1 ; nnn <= 3 ; nnn++ ){
       vel[nnn] = (int **)malloc(sizeof(int *)*npthr) ;
-      for( ii=0 ; ii < npthr ; ii++ ){
-        jj = (nnn-1)*npthr + ii ;
+      for( ipthr=0 ; ipthr < npthr ; ipthr++ ){
+        jj = (nnn-1)*npthr + ipthr ;
         if( neldat->vec_typ[jj] != NI_INT ) NELERR("datum") ;
         vel[nnn][ipthr] = (int *)neldat->vec[jj] ;
       }
@@ -617,7 +672,7 @@ int main( int argc , char **argv )
       for( ii=0 ; ii < nelmax ; ii++ ){
         max_table[1][ipthr][ii] += vel[1][ipthr][ii] ;
         max_table[2][ipthr][ii] += vel[2][ipthr][ii] ;
-        max_table[2][ipthr][ii] += vel[2][ipthr][ii] ;
+        max_table[3][ipthr][ii] += vel[3][ipthr][ii] ;
       }
     }
 
@@ -632,8 +687,9 @@ NelDone:
 
   /*---------- save counting data to file ----------*/
 
-  {
-    int itop=0 , ii ;
+  if( niter > 0 ){
+    int itop=0 , ii ; char buf[128] ;
+
     for( ii=max_cluster_size ; ii > 0 && itop == 0 ; ii-- ){
       for( ipthr=0 ; ipthr < npthr ; ipthr++ ){
         if( max_table[1][ipthr][ii] > 0 ||
@@ -648,6 +704,9 @@ NelDone:
       for( ii=0 ; ii < npthr ; ii++ ){
         NI_add_column( neldat , NI_INT , max_table[nnn][ipthr] ) ;
     }}
+
+    sprintf(buf,"%d",niter) ;
+    NI_set_attribute( neldat , "niter" , buf ) ;
 
     NI_write_element_tofile( fnam , neldat , NI_TEXT_MODE ) ;
 
