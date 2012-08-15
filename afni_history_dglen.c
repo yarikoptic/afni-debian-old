@@ -49,6 +49,21 @@
 
 
 afni_history_struct dglen_history[] = {
+{ 14 , AUG, 2012 , DRG , "whereami minimum probability" , 
+    MINOR , TYPE_NEW_OPT, 
+    "Minimum probability option to consider for probabilistic atlases",
+    "Can set option, -min_prob, or environment variable,\n"
+    "AFNI_WHEREAMI_PROB_MIN, to control output of whereami reports or\n"
+    "masks from probabilistic atlases"
+} ,
+
+{ 14 , AUG, 2012 , DRG , "3drefit -epan error" , 
+    MINOR , TYPE_BUG_FIX, 
+    "Removed error for refitting data type",
+    "3drefit would exit with error for -epan and multi-subbrick data\n"
+    "Removed incorrect checks against archaic timepoints per TR nvals"
+} ,
+
 { 06 , AUG, 2012 , DRG , "NIFTI reading" , 
     MINOR , TYPE_NEW_ENV, 
     "Handling view equivalents for NIFTI",
