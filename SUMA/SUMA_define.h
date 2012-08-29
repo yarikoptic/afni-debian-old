@@ -677,7 +677,31 @@ typedef struct {
 } SUMA_ROI_ACTION_STRUCT;  /*!< a structure packaging data for the 
                                  routines acting on drawn ROIs */
 
+typedef enum { SUMA_SORT_CLUST_NOT_SET, SUMA_SORT_CLUST_NO_SORT, SUMA_SORT_CLUST_BY_NUMBER_NODES, SUMA_SORT_CLUST_BY_AREA } SUMA_SURF_CLUST_SORT_MODES;
 
+typedef struct {
+   char *in_name;
+   int nodecol;
+   int labelcol;
+   char *out_prefix;  /* this one's dynamically allocated so you'll have 
+                         to free it yourself */
+   float DistLim;
+   float AreaLim;
+   int NodeLim;
+   int DoThreshold;
+   float Thresh;
+   int tind;
+   float update;
+   int DoCentrality;
+   SUMA_Boolean OutROI;
+   SUMA_Boolean OutClustDset;
+   SUMA_Boolean WriteFile;
+   SUMA_SURF_CLUST_SORT_MODES SortMode;
+   SUMA_Boolean FullROIList;
+   SUMA_Boolean prepend_node_index;
+   SUMA_DSET_FORMAT oform;
+   
+} SUMA_SURFCLUST_OPTIONS;
 
 
 
@@ -727,6 +751,12 @@ typedef struct {
    int AutoIntRange;
    int AutoBrtRange;
    int ColsContMode; /*!< a flag to indicate what to do about contours */
+   
+   SUMA_SURFCLUST_OPTIONS *ClustOpt; /*!< Clusterizing options */
+   int Clusterize; /*!< If on, do some cluster business */
+   int RecomputeClust; /*!< 1 when clusters should be recomputed at 
+                              recolorization */
+
 } SUMA_SCALE_TO_MAP_OPT;
 
 
@@ -806,6 +836,10 @@ typedef struct {
    SUMA_DRAWN_ROI **Contours; /* Using the ROI structure to store contours
                                  which can be displayed along with color blobs */
    SUMA_WIDGET_LINK_MODE LinkMode;          /* How to link I & T selectors */
+   
+   DList *ClustList; /*!< The list of clusters */
+   byte *ClustOfNode; /*!< Tells which cluster a node belongs to, Should have
+                           SO->N_Node values in it*/
 } SUMA_OVERLAYS;
 
 
@@ -1191,13 +1225,19 @@ typedef struct{
    int Ni;   /*!< Number of rows = Number of elements PER COLUMN (1st dim)*/
    int Nj;   /*!< Number of columns = Number of elements PER ROW (2nd dim)*/
    int *cwidth; /*!< charcter spaces to save for widget per column */
+   byte *but_flag; /*!< Flags to indicate button status of a cell. That is 
+                        to allow the highjacking of text fields to make them
+                        toggle buttons. This should normally be used for column 
+                        and row titles only. But you never know */
    float *num_value;   /*!< current value at each cell (for numeric cells)*/
    char **str_value;   /*!< current string at each cell (for string cells) */
    SUMA_Boolean editable;
    SUMA_VARTYPE type; /*!< SUMA_int or SUMA_float or SUMA_string */
-   void (*NewValueCallback)(void *data); /*!< callback to make when a new value is set */
+   void (*NewValueCallback)(void *data); /*!< callback to make when 
+                                              a new value is set */
    void *NewValueCallbackData;
-   void (*TitLabelEVHandler)(Widget w , XtPointer cd , XEvent *ev , Boolean *ctd); 
+   void (*TitLabelEVHandler)( Widget w , XtPointer cd , XEvent *ev , 
+                              Boolean *ctd); 
    void *TitLabelEVHandlerData; 
    void (*CellEVHandler)(Widget w , XtPointer cd , XEvent *ev , Boolean *ctd); 
    void *CellEVHandlerData;
@@ -1268,6 +1308,7 @@ typedef struct {
    SUMA_TABLE_FIELD *DataTable;
    SUMA_TABLE_FIELD *LabelTable;
    SUMA_TABLE_FIELD *SetThrScaleTable; 
+   SUMA_TABLE_FIELD *SetClustTable; /*!< structure for clust setting table */
    /* Obsolete since Nov 09,
       Replaced with DsetViewModeMenu 
       Widget ColPlaneShow_tb; *//*!< show/hide color plane */
@@ -1316,22 +1357,23 @@ typedef struct {
    SUMA_MENU_WIDGET *LinkModeMenu; /*[SW_N_LinkMode] vector of widgets 
                                  controlling the linking of I, T widgets */
    SUMA_MENU_WIDGET *CmapModeMenu; /* [SW_N_CmapMode] */
-   Widget opts_rc; /*!< rowcolumn containing color map, color bar and the switch buttons */
+   Widget opts_rc; /*!< rowcolumn for color map, color bar and switch buttons */
    Widget opts_form; /*!< rowcolumn containing all options for colormapping */
    Widget rcvo; /*!< vertical rowcol for colormapping options */
-   Widget rcsw;   /*!<  rowcol for switching intensity, threshold and brightness */
-   Widget rcsw_v1;   /*!< rowcol containing Menu for Int. Thr. and Brt. */
-   Widget rcsw_v2;   /*!< rowcol containing toggle buttons for Int. Thr. and Brt. */
-   Widget rcswr;   /*!< horizontal rowcol for Intensity column range label */
-   Widget rccm;   /*!< rowcol containing colormap selectors and ranging options */
+   Widget rcsw; /*!<  rowcol for switching intensity, threshold and brightness */
+   Widget rcsw_v1;/*!< rowcol containing Menu for Int. Thr. and Brt. */
+   Widget rcsw_v2;/*!< rowcol containing toggle buttons for Int. Thr. and Brt. */
+   Widget rcswr;  /*!< horizontal rowcol for Intensity column range label */
+   Widget rccm;  /*!< rowcol containing colormap selectors and ranging options */
    Widget rccm_swcmap;
    Widget IntRange_lb; /*!< label widget containing range values */
-   Widget Int_tb; /* Toggle buttons for intensity, threshold and brightness toys */
+   Widget Int_tb;/* Toggle buttons for intensity, threshold & brightness toys */
    Widget Thr_tb;
    Widget Brt_tb;
    Widget CmapLoad_pb;
    int IntRangeLocked;
    int BrtRangeLocked;
+   Widget rcclust; /*!< rowcol holding clusterizing options */
 }SUMA_X_SurfCont;
 
 typedef struct {
@@ -1503,6 +1545,8 @@ typedef struct {
                         -1 if that cross hair is wild and loose */
    int NodeID; /*!< a node from SurfaceID can be associated with the cross 
                      hair (-1 for nothing) */   
+   GLUquadricObj *sphobjCmax; /*!< quadric object, representing Max cluster */
+   GLfloat sphcolCmax[4]; /*!< Sphere color */
 }SUMA_CrossHair;   
 
 typedef struct {      
@@ -2364,6 +2408,8 @@ typedef struct {
                            each node gets a shape defined by CommonNodeObject */
    SUMA_NIDO **NodeNIDOObjects;   /*!< a more flexible replication of NIDO 
                            CommonNodeObject where */
+                           
+   float *NodeAreas; /*!< A way to keep node areas around */
 }SUMA_SurfaceObject; /*!< \sa Alloc_SurfObject_Struct in SUMA_DOmanip.c
                      \sa SUMA_Free_Surface_Object in SUMA_Load_Surface_Object.c
                      \sa SUMA_Print_Surface_Object in SUMA_Load_Surface_Object.c

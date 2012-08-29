@@ -806,10 +806,11 @@ int SUMA_FindDsetColLabeled(SUMA_DSET *dset, char *label)
 */
 char **SUMA_AllDsetColLabels(SUMA_DSET *dset)
 {
+   static char FuncName[]={"SUMA_AllDsetColLabels"};   
    char ** AllLabels=NULL;
    int ii;
    
-   if (!dset) SUMA_RETURN(NULL);
+   if (!dset) return(NULL);
    
    AllLabels = (char **)SUMA_calloc(SDSET_VECNUM(dset)+1,sizeof(char*));
    
@@ -823,6 +824,7 @@ char **SUMA_AllDsetColLabels(SUMA_DSET *dset)
 
 char **SUMA_FreeAllDsetColLabels(char **AllLabels)
 {
+   static char FuncName[]={"SUMA_FreeAllDsetColLabels"}; 
    int ii=0;
    
    if (!AllLabels) return(NULL);
@@ -5817,7 +5819,7 @@ int SUMA_GetNodeDefColIndex(SUMA_DSET *dset)
 
 
 /*!
-   \brief Look for datasets statifying the following:
+   \brief Look for datasets satisfying the following:
       type SUMA_NODE_CONVEXITY 
       idcode_str for a geometry domain and a mesh domain
    \param ReturnDsetPointer if 1 then return pointer is to 
@@ -8729,7 +8731,8 @@ SUMA_Boolean SUMA_isSameDsetColTypes(SUMA_DSET *dset1, SUMA_DSET *dset2)
       SUMA_SL_Err("NULL Dsets");
       SUMA_RETURN(NOPE);
    }
-   
+   SUMA_LHv("Checking sb numbers %d vs %d\n", 
+         SDSET_VECNUM(dset1), SDSET_VECNUM(dset2));
    if (SDSET_VECNUM(dset1) != SDSET_VECNUM(dset2)) {
       SUMA_RETURN(NOPE);
    }
@@ -8744,6 +8747,8 @@ SUMA_Boolean SUMA_isSameDsetColTypes(SUMA_DSET *dset1, SUMA_DSET *dset2)
    }
    
    if (cnm1 && cnm2) {
+      SUMA_LHv("Types a la SUMA\n%s\nvs.\n%s\n",
+         cnm1,cnm2); 
       if (strcmp(cnm1,cnm2)) {/* wholesale comparison */
          SUMA_RETURN(NOPE);
       } else {
@@ -15450,7 +15455,9 @@ char *SUMA_NI_str_ar_2_comp_str (NI_str_array *nisa, char *sep)
    
    /* what's the total number of chars ? */
    for (i=0; i<nisa->num; ++i) {
-      if (nisa->str[i]) { Nchars += (strlen(nisa->str[i])+nsep+1) ; } /* be safe allocate a bit more ...*/
+      if (nisa->str[i]) { 
+         Nchars += (strlen(nisa->str[i])+nsep+1) ; 
+      } /* be safe allocate a bit more ...*/
       else Nchars += (nsep+1); /* for separator */
    }
    
@@ -15491,6 +15498,75 @@ NI_str_array *SUMA_comp_str_2_NI_str_ar(char *s, char *sep)
    
    SUMA_RETURN(nisa);
 }
+
+NI_str_array *SUMA_NI_str_array(NI_str_array *clss, char *what, char *action) 
+{
+   static char FuncName[]={"SUMA_NI_str_array"};
+   int i=0;
+   
+   SUMA_ENTRY;
+   
+   if (!what || !action) SUMA_RETURN(clss);
+   if (!clss) {
+      clss = (NI_str_array *)NI_calloc(1,sizeof(NI_str_array ));
+      clss->num = 0;
+      clss->str = NULL;
+   }
+   if (action[0] == 'a' || 
+       (action[0] == 'A' && NI_str_array_find(what, clss) < 0)) { /* add */
+      clss->num = clss->num+1;
+      clss->str = 
+         NI_realloc(clss->str, char *, sizeof(char *)*(clss->num));
+      clss->str[clss->num-1] = NI_malloc(char, strlen(what)+1);
+      strcpy(clss->str[clss->num-1], what);
+      clss->str[clss->num-1][strlen(what)]='\0';
+   } else if ( action[0] == 'r' ) {/* remove */
+      i=NI_str_array_find(what,clss); 
+      if (i>=0 && i!=clss->num-1) {
+         NI_free(clss->str[i]); clss->str[i] = clss->str[clss->num-1];
+      }
+      clss->num = clss->num-1;
+      clss->str = 
+         NI_realloc(clss->str, char *, sizeof(char *)*(clss->num));
+   } else if (action[0] != 'A'){
+      SUMA_S_Warnv("action %s unknown, nothing done\n", action);
+   } 
+   
+   SUMA_RETURN(clss);
+   
+}
+
+/* WARNING: For partial match, only the first hit is returned */
+int SUMA_NI_str_array_find( char *targ , NI_str_array *sar , int partial, int ci)
+{
+   static char FuncName[]={"SUMA_NI_str_array_find"};
+   int ii ;
+
+   SUMA_ENTRY;
+   
+   if( targ == NULL || *targ == '\0' || sar == NULL || sar->num < 1 ) 
+      SUMA_RETURN(-1);
+
+   if (!partial) {
+      if (!ci) {
+         for( ii=0 ; ii < sar->num ; ii++ )
+            if( strcmp(targ,sar->str[ii]) == 0 ) SUMA_RETURN(ii) ;
+      } else {
+         for( ii=0 ; ii < sar->num ; ii++ )
+            if( strcasecmp(targ,sar->str[ii]) == 0 ) SUMA_RETURN(ii) ;
+      }
+   } else {
+      if (!ci) {
+         for( ii=0 ; ii < sar->num ; ii++ )
+            if( strstr(sar->str[ii], targ) == NULL ) SUMA_RETURN(ii) ;
+      } else {
+         for( ii=0 ; ii < sar->num ; ii++ )
+            if( strcasestr(sar->str[ii], targ) == NULL ) SUMA_RETURN(ii) ;
+      }
+   }
+   SUMA_RETURN(-1) ;
+}
+
 
 NI_str_array *SUMA_free_NI_str_array(NI_str_array *nisa)
 {

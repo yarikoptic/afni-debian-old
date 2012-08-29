@@ -65,6 +65,74 @@
 
 afni_history_struct ziad_history[] = {
 /*=====BELOW THIS LINE=====*/
+ { 27, Aug , 2012 , ZSS , "afni-general" , MICRO , TYPE_MODIFY,
+   "Modifed THD_load_tcat() to include subbrick labels in auto catenation",
+   "Also, started checking for datatype mixing and issuing warning when needed."
+ },
+
+ { 24, Aug , 2012 , ZSS , "suma" , MICRO , TYPE_BUG_FIX,
+   "Fixed SUMA<-->AFNI cross hair linkage with multiple anat. correct surfaces",
+   "It used to be that a coordinate always got attached to the Local Domain\n"
+   "Parent surface. Even if you clicked closest to a node on the Pial surface\n"
+   "SUMA would jump to the correspoding node on the smoothwm surface. This was\n"
+   "way uncool."
+ },
+
+ { 24, Aug , 2012 , ZSS , "@ScaleVolume" , MICRO , TYPE_BUG_FIX,
+   "step(a) was used instead of bool(a) for masking operations",
+   "This caused zeros in the output where input values were negative.\n"
+   "Also added a modifier to the labels to highlight that features were\n"
+   "scaled."
+ },
+
+ { 24, Aug , 2012 , ZSS , "@CalculateSignatures" , MINOR , TYPE_NEW_OPT,
+   "Added coordinate feature generation, if TLRC xform is provided",
+   "Note that the TLRC xform need not be too precise. The coordinate\n"
+   "features are not intended to make sure of segmentation templates."
+ },
+
+ { 24, Aug , 2012 , ZSS , "suma" , MAJOR , TYPE_NEW_OPT,
+   "Added interactive clustering to surface controller",
+   "The state of affairs:\n"
+   "  -Clustering tables are only output to the terminal \n"
+   "     and the log window.\n"
+   "  -Clustering is yoked between hemispheres\n"
+   "  -Can control connectivity radius and min area or min nodes\n"
+   "  -When you click on a node inside a cluster, the node in that\n"
+   "     cluster with the highest value is highlighted with a black\n"
+   "     sphere." 
+ },
+
+ { 24, Aug , 2012 , ZSS , "niprobe" , MICRO , TYPE_NEW_PROG,
+   "A variant on niccc to handle certain NIML file probing operations",
+   NULL
+ },
+
+ { 24, Aug , 2012 , ZSS , "@SUMA_Make_Spec_FS" , MICRO , TYPE_MODIFY,
+   "Made script port more datasets from FreeSurfer (depth, curvature)",
+   NULL
+ },
+
+ { 24, Aug , 2012 , ZSS , "SurfClust" , MICRO , TYPE_NEW_OPT,
+   "Allow -i* form of surface input",
+   NULL
+ },
+
+ { 24, Aug , 2012 , ZSS , "afni-general" , MINOR , TYPE_NEW_PROG,
+   "Added Paul Taylor's 3dRSFC to the distribution",
+   NULL
+ },
+
+ { 20, Aug , 2012 , ZSS , "SurfExtrema" , MICRO , TYPE_NEW_OPT,
+   "Made default input the convexity of the surface",
+   NULL
+ },
+
+ { 15, Aug , 2012 , ZSS , "3drefit" , MINOR , TYPE_NEW_OPT,
+   "Added -sublabel_prefix and -sublabel_suffix",
+   NULL
+ },
+
  { 8, Aug , 2012 , ZSS , "suma" , MINOR , TYPE_MODIFY,
    "Improved handling of coords in 'cm' units and better axis text layout",
    "Surfaces with coords in cm were poorly displayed and without warning.\n"
