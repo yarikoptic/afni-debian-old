@@ -49,6 +49,34 @@
 
 afni_history_struct rickr_history[] = {
 
+ { 6, SEP, 2012, RCR, "afni-general", MINOR, TYPE_ENHANCE,
+   "if varying facs/types on NIfTI write, write floats instead of failing",
+   NULL
+ } ,
+
+ { 6, SEP, 2012, RCR, "gen_ss_review_scripts.py", MICRO, TYPE_MODIFY,
+   "print missing xmat error w/out debug, as it is fatal",
+   NULL
+ } ,
+
+ { 6, SEP, 2012, RCR, "afni-general", MINOR, TYPE_NEW_OPT,
+   "apply global opt -pad_to_node when going through AFNI format in thd_niml.c",
+   NULL
+ } ,
+
+ { 4, SEP, 2012, RCR, "afni_proc.py", MINOR, TYPE_NEW_OPT,
+   "added option -regress_ROI",
+   "This allows for tissue-based regression, with ROI averages from any of:\n"
+   "     brain (from full_mask), GM, WM and CSF (from Classes_resam)\n"
+   "The 'mask' block is required for all ROIs, and option -mask_segment_anat\n"
+   "is required for the latter 3."
+ } ,
+
+ { 4, SEP, 2012, RCR, "gen_group_command.py", MICRO, TYPE_BUG_FIX,
+   "fixed error message in case of different group sizes",
+   "Error pointed out by Priyank."
+ } ,
+
  { 31, AUG, 2012, RCR, "3dTstat", MINOR, TYPE_NEW_OPT,
    "added option -signed_absmax",
    "Requested by P Hamilton."
