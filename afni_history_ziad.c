@@ -65,6 +65,21 @@
 
 afni_history_struct ziad_history[] = {
 /*=====BELOW THIS LINE=====*/
+ { 7, Sep , 2012 , ZSS , "suma" , MICRO , TYPE_NEW_OPT,
+   "SUMA now highlights cluster |max|, rather than max",
+   NULL
+ },
+
+ { 6, Sep , 2012 , ZSS , "@RetinoProc" , MINOR , TYPE_NEW_OPT,
+   "Added -no_volreg for time series already registered",
+   NULL
+ },
+
+ { 6, Sep , 2012 , ZSS , "suma" , MICRO , TYPE_BUG_FIX,
+   "SUMA's sub-brick arrowfields were not updating properly",
+   NULL
+ },
+
  { 5, Sep , 2012 , ZSS , "@CalculateSignatures" , MINOR , TYPE_NEW_OPT,
    "Added possiblity to scale by top percentiles with -FATscl",
    "This would produce .sc9 outputs. It looks like the scaling is\n"
