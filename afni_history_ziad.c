@@ -65,6 +65,49 @@
 
 afni_history_struct ziad_history[] = {
 /*=====BELOW THIS LINE=====*/
+ { 12, Sep , 2012 , ZSS , "3dttest++" , MICRO , TYPE_BUG_FIX,
+   "Fixed incorrect warning in 3dttest++ about labels and filenames",
+   "The warning is intented to be sure users don't mess up the\n"
+   "-setA option when using the long form. The warning message\n"
+   "was being triggered incorrectly, this should no longer be the case.\n"
+   "Warning did not affect results."
+ },
+
+ { 12, Sep , 2012 , ZSS , "afni-general" , MICRO , TYPE_BUG_FIX,
+   "Stupid null character termination missing in THD_filepath()",
+   NULL
+ },
+
+ { 11, Sep , 2012 , ZSS , "suma" , MICRO , TYPE_BUG_FIX,
+   "Fixed potential corruption in macro SUMA_NEL_REPLACE_STRING",
+   "Not sure to make of this problem, but bad reads/writes\n"
+   "are happening in m_rc[(row)] in the macro, and to cs[n0++]\n"
+   "in cs[n0++] = lbl[i]; of SUMA_AddColAtt_CompString(). In fact\n"
+   "the first problem happens in cs[n0++], so the problem might\n"
+   "start there. In any case, the fix was to increase the length\n"
+   "of allocated segment by +10 instead of +1 in SUMA_NEL_REPLACE_STRING\n"
+   "That seems to do the trick.\n"
+ },
+
+ { 11, Sep , 2012 , ZSS , "suma" , MINOR , TYPE_MODIFY,
+   "Began merger of surface controllers",
+   "The idea is to have all surface controllers in one window\n"
+   "in order to save on screen space. Looks promising but must be\n"
+   "rolled out carefully because surface controllers permeate everything."
+   "Use environment variable SUMA_SameSurfCont to turn feature on.\n"
+   "Make sure it is debugged with valgrind too.\n"
+ },
+
+ { 11, Sep , 2012 , ZSS , "suma" , MINOR , TYPE_BUG_FIX,
+   "Fixed 'potential' crash in SUMA_SetScaleThr_one()",
+   NULL
+ },
+
+ { 10, Sep , 2012 , ZSS , "suma" , MINOR , TYPE_BUG_FIX,
+   "Typing in sub-brick arrow fields was ignored on linux",
+   "Problem due to incorrect error checking from strtod()"
+ },
+
  { 7, Sep , 2012 , ZSS , "suma" , MICRO , TYPE_NEW_OPT,
    "SUMA now highlights cluster |max|, rather than max",
    NULL

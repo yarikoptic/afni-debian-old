@@ -1179,7 +1179,6 @@ int SUMA_D_Key(SUMA_SurfaceViewer *sv, char *key, char *callmode)
                }  else {
                   SUMA_S_Note("No contralateral dset ");
                }
-               
                /* Initialize dot product options. You'll have to redo this
                   unfortunately below... */
                if (!(SUMA_is_TimeSeries_dset(in_dset, &TR))) {
@@ -5206,7 +5205,7 @@ int SUMA_MarkLineSurfaceIntersect (SUMA_SurfaceViewer *sv, SUMA_DO *dov,
       ip = NP * MTI->ifacemin;
 
       /* if the surface controller is open, update it */
-      if (SO->SurfCont->TopLevelShell)   SUMA_Init_SurfCont_SurfParam(SO);
+      if (SUMA_SURFCONT_CREATED(SO))   SUMA_Init_SurfCont_SurfParam(SO);
 
       /* print nodes about the closets faceset*/
       fprintf(SUMA_STDOUT, "\nvvvvvvvvvvvvvvvvvvvvvvvvvvvv\n");
@@ -5347,9 +5346,8 @@ int SUMA_MarkLineSurfaceIntersect (SUMA_SurfaceViewer *sv, SUMA_DO *dov,
          fprintf(SUMA_STDERR, "Error %s: SUMA_Engine call failed.\n", FuncName);
          SUMA_RETURN (-1);
       }
-      
-
-   } 
+   }
+    
    /* clear MTI */
    if (MTI) {
       MTI = SUMA_Free_MT_intersect_triangle(MTI);
