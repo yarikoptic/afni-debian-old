@@ -182,7 +182,8 @@ SCRIPTS = @4Daverage @CommandGlobb @GetAfniOrient @DTI_studio_reposition        
           @Install_InstaCorr_Demo @Quiet_Talkers @radial_correlate                \
           @DeblankFileNames @clean_help_dir @global_parse @AfniEnv @Atlasize      \
           @Install_TSrestMovieDemo @Install_AfniRetinoDemo                        \
-          @Install_PTaylor_TractDemo @Install_RSFMRI_Motion_Group_Demo
+          @Install_PTaylor_TractDemo @Install_RSFMRI_Motion_Group_Demo            \
+          @Install_MEICA_Demo
 
 PY_DIR = python_scripts
 PY_SCRIPTS = afni_base.py @DoPerRoi.py
@@ -1637,7 +1638,7 @@ backup:
 afni_src.tgz:
 	$(MKDIR) afni_src
 	$(CP) -p *.c *.f *.inc *.h *.hhh Makefile.* *.xbm $(MINDOCS) $(MISC)     ./afni_src
-	$(CP) -pr coxplot volpack moveup moveAFNI* eispack avovk ptaylor               ./afni_src
+	$(CP) -pr coxplot volpack moveup moveAFNI* eispack avovk ptaylor pkundu        ./afni_src
 	$(CP) -pr $(SCRIPTS) $(PY_DIR) $(R_DIR)                                  ./afni_src
 	$(CP) -pr gifsicledir qhulldir f2cdir mpeg_encodedir                     ./afni_src
 	$(CP) -pr 3DEdge netcdf-3.5.0 jpeg-6b niml Makefile_* nifti dlcompat     ./afni_src
@@ -1670,7 +1671,7 @@ afni_doc.tgz:
 
 ### Put things in their places
 
-install: $(INSTALLDIR) $(INSTALL_PREREQ) ptaylor_install
+install: $(INSTALLDIR) $(INSTALL_PREREQ) ptaylor_install pkundu_install 
 	$(MV) $(PROGRAMS) $(INSTALLDIR)
 	$(CP) $(SCRIPTS)  $(INSTALLDIR)
 	$(CP) $(PY_DIR)/*.py  $(R_DIR)/*.R $(INSTALLDIR)
@@ -2896,6 +2897,13 @@ libtracktools.a:
 	$(CP) libtracktools.a ../;	\
 	cd ../	;		)
 
+#############
+#PKUNDU directory
+
+pkundu_install:
+	( cd pkundu ;	\
+	./@install_pkundu $(INSTALLDIR)	;\
+	cd ../	;		)
 
 #############
 #SUMA
