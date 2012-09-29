@@ -113,6 +113,19 @@
    }  \
 }
 
+#define NEW_SHORTYV(par,nsb,nm,pb,view){  \
+   NEW_SHORTY(par,nsb,nm,pb); \
+   if (view) {\
+            if (!strstr(view,"orig")) \
+         EDIT_dset_items( pb ,ADN_view_type , VIEW_ORIGINAL_TYPE ,ADN_none ) ; \
+      else  if (!strstr(view,"acpc")) \
+         EDIT_dset_items( pb ,ADN_view_type, VIEW_ACPCALIGNED_TYPE ,ADN_none ); \
+      else  if (!strstr(view,"tlrc")) \
+         EDIT_dset_items( pb ,ADN_view_type, VIEW_TALAIRACH_TYPE ,ADN_none ) ; \
+      else SUMA_S_Errv("In NEW_SHORTYV; View of %s is rubbish", view);   \
+   }  \
+}
+
 #define NEW_SHORTY(par,nsb,nm,pb){  \
    int m_i;   \
    pb = EDIT_empty_copy(par); \
@@ -121,10 +134,10 @@
                     ADN_nvals, nsb, \
                     ADN_ntt, nsb, \
                     ADN_malloc_type , DATABLOCK_MEM_MALLOC ,   \
-                    ADN_view_type   , VIEW_ORIGINAL_TYPE ,  \
                     ADN_type        , HEAD_ANAT_TYPE ,   \
                     ADN_func_type   , ANAT_BUCK_TYPE ,   \
                     ADN_none ) ; \
+               /* ADN_view_type   , VIEW_ORIGINAL_TYPE ,  ZSS Sep 28 2012 */   \
    for(m_i=0;m_i<nsb;++m_i) EDIT_substitute_brick( pb, m_i, MRI_short, NULL ) ; \
    tross_Copy_History( par , pb ) ; \
 }
@@ -354,6 +367,12 @@
 
 SUMA_HIST *SUMA_hist(float *v, int n, int Ku, float Wu, 
                      float *range, char *label, int ignoreout);
+SUMA_HIST *SUMA_hist_opt(float *v, int n, int Ku, float Wu, float *range, 
+                     char *label, int ignoreout, 
+                     float oscfrqthr, char *methods);
+int SUMA_hist_smooth( SUMA_HIST *hh, int N_iter ); 
+float SUMA_hist_oscillation( SUMA_HIST *hh, 
+                             float minmaxfrac, float oscfracthr);
 SUMA_HIST *SUMA_Free_hist(SUMA_HIST *hh);
 void SUMA_Show_hist(SUMA_HIST *hh, int norm, FILE *out);
 void SUMA_Show_dist(SUMA_FEAT_DIST *FD, FILE *out);
@@ -361,6 +380,7 @@ void SUMA_Show_dists(SUMA_FEAT_DISTS *FDV, FILE *out, int level);
 char *SUMA_dist_info(SUMA_FEAT_DIST *FD, int level);
 char *SUMA_dists_info(SUMA_FEAT_DISTS *FDV, int level);
 float SUMA_hist_freq(SUMA_HIST *hh, float vv);
+float SUMA_hist_perc_freq(SUMA_HIST *nn, float perc, int norm, int *iperc);
 char *SUMA_hist_variable(SUMA_HIST *hh);
 char *SUMA_hist_conditional(SUMA_HIST *hh);
 char *SUMA_dist_variable(SUMA_FEAT_DIST *hh);
