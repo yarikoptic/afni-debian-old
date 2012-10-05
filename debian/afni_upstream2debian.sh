@@ -123,7 +123,8 @@ rm -rf ${spath}/XmHTML
 
 echo "Remove problematic code"
 # non-commercial license (README also says non-distribution)
-rm -rf ${spath}/3DEdge
+# Now GPL!!
+#rm -rf ${spath}/3DEdge
 
 # non-commercial, non-distribution license
 rm -rf ${spath}/svm
