@@ -359,9 +359,11 @@ g_history = """
         - if 3dD_stop and reml_exec, use errts_REML for blur estimation
           (thanks to P Molfese for noting the problem)
         - apply compute_fitts for non-reml case
+    3.34 Oct 01, 2012: added 'file' type for -regress_stim_types
+    3.35 Oct 03, 2012: make dashed parameters illegal for many options
 """
 
-g_version = "version 3.33, September 25, 2012"
+g_version = "version 3.35, October 3, 2012"
 
 # version of AFNI required for script execution
 g_requires_afni = "8 May 2012"
@@ -572,11 +574,11 @@ class SubjProcSream:
                         helpstr="show module version")
 
         # general execution options
-        self.valid_opts.add_opt('-blocks', -1, [],
+        self.valid_opts.add_opt('-blocks', -1, [], okdash=0,
                         helpstr='specify ordered list of blocks to apply')
-        self.valid_opts.add_opt('-do_block', -1, [],
+        self.valid_opts.add_opt('-do_block', -1, [], okdash=0,
                         helpstr='add extra blocks to the default list')
-        self.valid_opts.add_opt('-dsets', -1, [],
+        self.valid_opts.add_opt('-dsets', -1, [], okdash=0,
                         helpstr='EPI datasets to process, ordered by run')
 
         self.valid_opts.add_opt('-out_dir', 1, [],
@@ -589,7 +591,7 @@ class SubjProcSream:
                         helpstr="output filename separator char, def='.'")
         self.valid_opts.add_opt('-subj_curly', 0, [],
                         helpstr="always use {} around $subj")
-        self.valid_opts.add_opt('-subj_id', -1, [],
+        self.valid_opts.add_opt('-subj_id', 1, [],
                         helpstr='subject ID, used in most filenames')
 
         self.valid_opts.add_opt('-anat_has_skull', 1, [],
@@ -610,7 +612,7 @@ class SubjProcSream:
                         helpstr='terminate on setup errors')
         self.valid_opts.add_opt('-copy_anat', 1, [],
                         helpstr='anatomy to copy to results directory')
-        self.valid_opts.add_opt('-copy_files', -1, [],
+        self.valid_opts.add_opt('-copy_files', -1, [], okdash=0,
                         helpstr='list of files to copy to results directory')
         self.valid_opts.add_opt('-execute', 0, [],
                         helpstr='execute script as suggested to user')
@@ -670,7 +672,7 @@ class SubjProcSream:
                         helpstr="use stimuli 'per-run' or 'across-runs'")
         self.valid_opts.add_opt('-ricor_regress_solver', 1, [],
                         helpstr="regression via 'OLSQ' or 'REML'")
-        self.valid_opts.add_opt('-ricor_regs', -1, [],
+        self.valid_opts.add_opt('-ricor_regs', -1, [], okdash=0,
                         helpstr='slice-based regressors for RETROICOR')
         self.valid_opts.add_opt('-ricor_regs_nfirst', 1, [],
                         helpstr='num first TRs to remove from ricor_regs')
@@ -786,7 +788,7 @@ class SubjProcSream:
                         helpstr="bandpass in this range during regression")
         self.valid_opts.add_opt('-regress_basis', 1, [],
                         helpstr="basis function to use in regression")
-        self.valid_opts.add_opt('-regress_basis_multi', -1, [],
+        self.valid_opts.add_opt('-regress_basis_multi', -1, [], okdash=0,
                         helpstr="one basis function per stimulus class")
         self.valid_opts.add_opt('-regress_basis_normall', 1, [],
                         helpstr="specify magnitude of basis functions")
@@ -816,18 +818,18 @@ class SubjProcSream:
                         helpstr="output individual F-stats? (def: yes)")
         self.valid_opts.add_opt('-regress_polort', 1, [],
                         helpstr="baseline polynomial degree per run")
-        self.valid_opts.add_opt('-regress_stim_files', -1, [],
+        self.valid_opts.add_opt('-regress_stim_files', -1, [], okdash=0,
                         helpstr="0/1 or pre-convolved stimulus files")
-        self.valid_opts.add_opt('-regress_stim_labels', -1, [],
+        self.valid_opts.add_opt('-regress_stim_labels', -1, [], okdash=0,
                         helpstr="labels for specified regressors")
-        self.valid_opts.add_opt('-regress_stim_times', -1, [],
+        self.valid_opts.add_opt('-regress_stim_times', -1, [], okdash=0,
                         helpstr="stimulus timing files")
         self.valid_opts.add_opt('-regress_no_stim_times', 0, [],
                         helpstr="do not convert stim_files to timing")
         self.valid_opts.add_opt('-regress_stim_times_offset', 1, [],
                         helpstr="add offset when converting to timing")
-        self.valid_opts.add_opt('-regress_stim_types', -1, [],
-                        acplist=['times', 'AM1', 'AM2', 'IM'],
+        self.valid_opts.add_opt('-regress_stim_types', -1, [], okdash=0,
+                        acplist=['times', 'AM1', 'AM2', 'IM', 'file'],
                         helpstr="specify times/AM1/AM2/IM for each stim class")
         self.valid_opts.add_opt('-regress_use_stim_files', 0, [],
                         helpstr="do not convert stim_files to timing")
@@ -844,9 +846,9 @@ class SubjProcSream:
         self.valid_opts.add_opt('-regress_no_motion_deriv', 0, [],
                         helpstr="do not compute motion param derivatives")
 
-        self.valid_opts.add_opt('-regress_extra_stim_files', -1, [],
+        self.valid_opts.add_opt('-regress_extra_stim_files', -1, [], okdash=0,
                         helpstr="extra -stim_files to apply")
-        self.valid_opts.add_opt('-regress_extra_stim_labels', -1, [],
+        self.valid_opts.add_opt('-regress_extra_stim_labels', -1, [], okdash=0,
                         helpstr="labels for extra -stim_files")
 
         self.valid_opts.add_opt('-regress_compute_fitts', 0, [],
@@ -885,15 +887,15 @@ class SubjProcSream:
                         helpstr='additional options directly to 3dREMLfit')
         self.valid_opts.add_opt('-regress_reml_exec', 0, [],
                         helpstr="execute 3dREMLfit command script")
-        self.valid_opts.add_opt('-regress_ROI', -1, [],
+        self.valid_opts.add_opt('-regress_ROI', -1, [], okdash=0,
                         helpstr="regress out known ROIs")
-        self.valid_opts.add_opt('-regress_RONI', -1, [],
+        self.valid_opts.add_opt('-regress_RONI', -1, [], okdash=0,
                         helpstr="1-based list of regressors of no interest")
 
         # surface options
         self.valid_opts.add_opt('-surf_anat', 1, [],
                         helpstr="specify SurfVol dataset")
-        self.valid_opts.add_opt('-surf_spec', -1, [],
+        self.valid_opts.add_opt('-surf_spec', -1, [], okdash=0,
                         helpstr="list lh and/or rh surface spec file(s)")
         self.valid_opts.add_opt('-surf_anat_aligned', 1, [],
                         acplist=['yes','no'],

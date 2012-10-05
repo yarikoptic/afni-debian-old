@@ -133,14 +133,16 @@ g_history = """
     0.30 May 22, 2012 : basics of resting state
          - added regress_bandpass and regress_motion_deriv fields
     0.31 May 25, 2012 : show modified options and subject defaults
+    0.32 Oct  2, 2012 : added stim_type column to stim table
+         - also, split analysis var into anal_domain and anal_type
 """
 
-g_version = '0.31 (May 25, 2011)'
+g_version = '0.32 (October 3, 2012)'
 
 # ----------------------------------------------------------------------
 # global definition of default processing blocks
-g_def_anal_types  = ['volume:task', 'volume:rest',
-                     'surface:task', 'surface:rest']
+g_def_anal_domains = ['volume', 'surface']
+g_def_anal_types   = ['task', 'rest']
 g_def_blocks      = ['tshift', 'volreg', 'blur', 'mask', 'scale', 'regress']
 g_def_blocks_anat = ['tshift', 'align', 'tlrc', 'volreg', 'blur', 'mask',
                      'scale', 'regress']
@@ -151,6 +153,9 @@ g_def_align_cost  = 'lpc'
 g_tlrc_base_list  = ['TT_N27+tlrc', 'TT_avg152T1+tlrc', 'TT_icbm452+tlrc',
                      'MNI_avg152T1+tlrc']
 g_def_tlrc_base   = 'TT_N27+tlrc'
+g_def_stim_basis_list = ['GAM', 'BLOCK(5,1)', 'BLOCK(5)', 'TENT(0,15,6)',
+                         'SPMG2', 'NONE' ]
+g_def_stim_types_list = ['times', 'AM1', 'AM2', 'IM', 'file']
 
 
 # ----------------------------------------------------------------------
@@ -173,7 +178,8 @@ g_res_defs.output_proc   = ''           # output from running proc script
 # ----------------------------------------------------------------------
 # a global definition of subject defaults for single subject analysis
 g_subj_defs = SUBJ.VarsObject("Single Subject Dialog defaults")
-g_subj_defs.analysis      = 'volume:task' # see g_def_anal_types
+g_subj_defs.anal_domain   = 'volume'    # see g_def_anal_domains
+g_subj_defs.anal_type     = 'task'      # see g_def_anal_types
 g_subj_defs.blocks        = []
 g_subj_defs.sid           = ''          # subject ID    (no spaces - required)
 g_subj_defs.gid           = ''          # group ID      (no spaces)
@@ -186,6 +192,8 @@ g_subj_defs.stim_wildcard = 'no'        # use wildcard form for EPIs
 g_subj_defs.stim_label    = []          # label for each stim file
 g_subj_defs.stim_basis    = []          # basis functions: empty=GAM,
                                         #   valid lengths: 0, 1, len(stim)
+g_subj_defs.stim_type     = []          # times/AM1/AM2/IM/file
+
 # expected
 g_subj_defs.tcat_nfirst   = 0           # first TRs to remove from each run
 g_subj_defs.volreg_base   = g_def_vreg_base  # in g_vreg_base_list, or ''
@@ -230,6 +238,7 @@ g_svar_dict = {
    'stim_wildcard'      : 'yes/no: use wildcard for stim files',
    'stim_label'         : 'set stim file labels',
    'stim_basis'         : 'set basis functions for stim classes',
+   'stim_type'          : 'set stim types for stim classes',
 
    'tcat_nfirst'        : 'set number of TRs to remove, per run',
    'volreg_base'        : 'set volreg base string (first/third/last)',
@@ -265,7 +274,7 @@ g_svars_not_opt = [
    'name',
    'sid', 'gid',
    'anat', 'epi',
-   'stim', 'stim_label', 'stim_basis',
+   'stim', 'stim_label', 'stim_basis', 'stim_type',
    'gltsym', 'gltsym_label'
 ]
 
@@ -282,16 +291,16 @@ g_svars_not_opt = [
 #         - under subj ID / group ID, add read-only analysis type string
 #         - under extra regress options, add bandpass and regress_motion_deriv
 g_rest_defs = SUBJ.VarsObject("resting state defaults")
-g_rest_defs.analysis      = 'volume:rest'       # see g_def_anal_types
+g_rest_defs.anal_type     = 'rest'              # see g_def_anal_types
 g_rest_defs.blocks        = ['despike', 'tshift', 'align', 'tlrc', 'volreg',
                              'blur', 'mask', 'regress']
 g_rest_defs.regress_bandpass  = [0.01, 0.1]     # -regress_bandpass
 g_rest_defs.regress_mot_deriv = 'yes'           # -regress motion derivatives
+g_rest_defs.motion_limit  = 0.2                 # from 0.3
 g_rest_defs.run_clustsim  = 'no'
 g_rest_defs.stim          = []                  # no stim or labels
 g_rest_defs.gltsym        = []                  # no GLTs
 
-# rcr - add g_task_defs (to distinguish task/rest analysis)
 # rcr - add g_vol_defs and g_surf_defs (to distinguish volume/surface analysis)
 
 
@@ -535,6 +544,7 @@ class AP_Subject(object):
       cmd  = self.script_ap_stim()
       cmd += self.script_ap_stim_labels()
       cmd += self.script_ap_stim_basis()
+      cmd += self.script_ap_stim_types()
       cmd += self.script_ap_regress_other()
       cmd += self.script_ap_regress_opts_3dD()
       cmd += self.script_ap_post_regress()
@@ -557,7 +567,7 @@ class AP_Subject(object):
          cmd += '%s-regress_make_ideal_sum sum_ideal.1D \\\n' % self.LV.istr
 
       # skip epits if rest
-      if self.svars.val('analysis') == 'volume:task':
+      if self.svars.val('anal_type') == 'task':
          cmd += '%s-regress_est_blur_epits \\\n' % self.LV.istr
       cmd += '%s-regress_est_blur_errts \\\n' % self.LV.istr
 
@@ -704,6 +714,23 @@ class AP_Subject(object):
       return "%s-regress_basis_multi \\\n%*s%s \\\n" %         \
                 (self.LV.istr, self.LV.indent+4, '',
                 ' '.join(["'%s'"%b for b in self.svars.stim_basis]))
+
+   def script_ap_stim_types(self):
+      slen = len(self.svars.stim_type)
+      if slen == 0: return ''
+      if len(self.svars.stim) == 0: return '' # if stim are cleared, skip
+
+      if UTIL.vals_are_constant(self.svars.stim_type):
+         return "%s-regress_stim_types %s \\\n"  \
+                   % (self.LV.istr, self.svars.stim_type[0])
+
+      if slen != len(self.svars.stim):
+         self.errors.append('** error: num stim files != num stim types\n')
+         return ''
+         
+      return "%s-regress_stim_types \\\n%*s%s \\\n" %         \
+                (self.LV.istr, self.LV.indent+4, '',
+                ' '.join(["%s"%b for b in self.svars.stim_type]))
 
    def script_ap_stim_labels(self):
       slen = len(self.svars.stim_label)
@@ -922,13 +949,15 @@ class AP_Subject(object):
          if not aset.view == '+orig':
             self.errors.append('** get_tlrc: requires orig version dset\n')
             return ''
-         # now check that tlrc view exists
+
+         # check that tlrc view dset exists
          tset = aset.new(new_view='+tlrc')
-         if not aset.exist():
-            self.errors.append('** get_tlrc: tlrc version not found\n')
+         if not tset.exist():
+            err = '** get_tlrc: tlrc version %s not found\n' % tset.ppv()
+            self.errors.append(err)
             return ''
-         # check WARP_DATA attribute
-         # len 30 -> @auto_tlrc, 360 -> manual
+
+         # check WARP_DATA attribute (len 30 -> @auto_tlrc, 360 -> manual)
          wd = BASE.read_attribute(tset.ppv(), 'WARP_DATA')
          if not wd:
             err  = '** failed to read WARP_DATA attr from %s\n' % tset.ppv()
@@ -1462,6 +1491,22 @@ def update_svars_from_special(name, svars, check_sort=0):
 
    return changes
 
+helpstr_code_table_column = """
+                adding a new table column
+
+- possibly add a new self.gvars.Line_apply_XXX entry
+   - maybe with chooser button, to apply a choice from a list
+   - with callback processing in CB_line_text()
+   - update column headers and strech_cols in make_XXX_table
+   - copy variable vals to table in XXX_list_to_table
+      - probably alter setItem list and sortItems choice
+   - CB_gbox_PushB(): might have general init, also list choice application
+      - for choice application, might want to update vars from table first
+        (in case user has change table vals, not reflected in vars)
+   - add to update_XXX_from_table
+   - update help
+"""
+
 
 # ===========================================================================
 # help strings accessed both from command-line and GUI
@@ -1471,14 +1516,10 @@ helpstr_todo = """
 ---------------------------------------------------------------------------
                         todo list:  
 
-- set regress_bandpass and regress motion derivs (along with motion)
-- surface analysis
-- resting state analysis
 - choose block list
 - init from analysis type (vol/surf-task/rest)
    - help for what this means
-- set stim_times type (times/AM1/AM2/IM)
-   - help for what this means
+- write help for stim types
 - change print statements to LOG statements
    - optionally store to pass up to GUI (maybe start applying APSubj.status)
    - GUI could process (display as html?) and clear log
