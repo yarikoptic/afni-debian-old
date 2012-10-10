@@ -49,6 +49,16 @@
 
 afni_history_struct rickr_history[] = {
 
+ {  5, OCT, 2012, RCR, "1d_tool.py", MINOR, TYPE_NEW_OPT,
+   "added option -quick_censor_count",
+   NULL
+ } ,
+
+ {  5, OCT, 2012, RCR, "dicom_hinfo", MINOR, TYPE_NEW_OPT,
+   "added option -no_name",
+   NULL
+ } ,
+
  {  3, OCT, 2012, RCR, "afni-general", MINOR, TYPE_ENHANCE,
    "dashed parameters are now illegal for many options in many python programs",
    "Affects programs:\n"
