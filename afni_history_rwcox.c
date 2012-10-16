@@ -43,7 +43,19 @@
 
 afni_history_struct rwcox_history[] = {
 /*=====BELOW THIS LINE=====*/
-  { 19 , SEP , 2012 , RWC , "3dGroupInCorr" , MINOR , TYPE_NEW_OPT ,
+  { 15 , OCT , 2012 , RWC , "1dplot" , MICRO , TYPE_BUG_FIX ,
+   "Fixed bug with -CENSORTR run wildcards and coloring" ,
+   NULL } ,
+
+ { 15 , OCT , 2012 , RWC , "1dplot" , MICRO , TYPE_BUG_FIX ,
+   "Fixed bug with 'push' and '-yaxis' interacting badly." ,
+   NULL } ,
+
+ { 15 , OCT , 2012 , RWC , "afni" , MICRO , TYPE_MODIFY ,
+   "Add 'range=a,b' option to ALTER_WINDOW command in AFNI driver" ,
+   NULL } ,
+
+ { 19 , SEP , 2012 , RWC , "3dGroupInCorr" , MINOR , TYPE_NEW_OPT ,
    "Add -scale option for the Person from Kolkata" ,
    NULL } ,
 
