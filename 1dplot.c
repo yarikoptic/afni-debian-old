@@ -355,16 +355,16 @@ void usage_1dplot(int detail)
      "                   * Each argument on the command line after           \n"
      "                     '-CENSORTR' is treated as a censoring string,     \n"
      "                     until an argument starts with a '-' or an         \n"
-     "                     alphabetic character.  This means that if you     \n"
-     "                     want to plot a file named '9zork.1D', you may     \n"
-     "                     have to do something like                         \n"
-     "                       1dplot -CENSORTR 3-7 18-22 - 9zork.1D           \n"
+     "                     alphabetic character, or it contains the substring\n"
+     "                     '1D'.  This means that if you want to plot a file \n"
+     "                     named '9zork.xyz', you may have to do this:       \n"
+     "                       1dplot -CENSORTR 3-7 18-22 - 9zork.xyz          \n"
      "                     The stand-alone '-' will stop the processing      \n"
-     "                     of censor strings; otherwise, the '9zork.1D'      \n"
+     "                     of censor strings; otherwise, the '9zork.xyz'     \n"
      "                     string, since it doesn't start with a letter,     \n"
      "                     would be treated as a censoring string, which     \n"
-     "                     you would not like.                               \n"
-     "                   * N.B.: 2:37,47 means index #37 in run #2 and       \n"
+     "                     you would find confusing.                         \n"
+     "                  ** N.B.: 2:37,47 means index #37 in run #2 and       \n"
      "                     global time index 47; it does NOT mean            \n"
      "                     index #37 in run #2 AND index #47 in run #2.      \n"
      "\n"
@@ -380,6 +380,16 @@ void usage_1dplot(int detail)
      "                          [3dvolreg -1Dfile, where you've cat-enated]\n"
      "                          [the 1D files from separate runs into one ]\n"
      "                          [long file for plotting with this program.]\n"
+     "\n"
+     "Another fun fun example:\n"
+     "\n"
+     "  1dplot -censor_RGB #ffa -CENSORTR '0-99'           \\\n"
+     "         `1deval -1D: -num 61 -dx 0.3 -expr 'J0(x)'`\n"
+     "\n"
+     "which illustrates the use of 'censoring' to mark the entire graph\n"
+     "background in pale yellow '#ffa', and also illustrates the use\n"
+     "of the '-1D:' option in 1deval to produce output that can be\n"
+     "used directly on the command line, via the backquote `...` operator.\n"
      "\n"
    ) ;
 
@@ -784,7 +794,7 @@ int main( int argc , char *argv[] )
        for( iarg++ ;
             iarg < argc && argv[iarg][0] != '-'
                         && !isalpha(argv[iarg][0])
-                        && strstr(argv[iarg],".1D") == NULL ;
+                        && strstr(argv[iarg],"1D") == NULL ;
             iarg++ ){
          ns = strlen(argv[iarg]) ; if( ns == 0 ) continue ;
          src = realloc(src,strlen(src)+ns+2) ;
@@ -1116,8 +1126,8 @@ int main( int argc , char *argv[] )
               int_triple rab ;
               abc_CENSOR = (int_triple *)realloc( abc_CENSOR ,
                                                   sizeof(int_triple)*(num_CENSOR+nblk) );
-              rgb_CENSOR = (int_triple *)realloc( rgb_CENSOR ,
-                                                  sizeof(int_triple)*(num_CENSOR+nblk) );
+              rgb_CENSOR = (float_triple *)realloc( rgb_CENSOR ,
+                                                sizeof(float_triple)*(num_CENSOR+nblk) );
               for( rr=1 ; rr <= nblk ; rr++ ){
                 rab.i = rr; rab.j = aa; rab.k = bb; abc_CENSOR[num_CENSOR] = rab;
                 rgb_CENSOR[num_CENSOR++] = rgb_CENSOR[ic] ;
