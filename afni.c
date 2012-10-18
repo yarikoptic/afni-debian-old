@@ -4303,6 +4303,30 @@ if(PRINT_TRACING)
           }
           break ;
 
+          case 'j':{        /* jump to cluster peak -- for Dale [17 Oct 2012] */
+            int ic ; float px,py,pz , xx,yy,zz ;
+            AFNI_clu_widgets *cwid = im3d->vwid->func->cwid ;
+            mri_cluster_detail *cld = im3d->vwid->func->clu_det ;
+            if( cwid == NULL || cld == NULL ){ BEEPIT ; break ; }
+            ic = AFNI_clus_find_xyz( im3d ,
+                                     im3d->vinfo->xi , im3d->vinfo->yj , im3d->vinfo->zk ) ;
+            if( ic < 0 ){ BEEPIT ; break ; }
+            AFNI_clus_action_CB( cwid->clu_jump_pb[ic] , (XtPointer)im3d , (XtPointer)666 ) ;
+          }
+          break ;
+
+          case 'f':{       /* flash cluster [17 Oct 2012] */
+            int ic ; float px,py,pz , xx,yy,zz ;
+            AFNI_clu_widgets *cwid = im3d->vwid->func->cwid ;
+            mri_cluster_detail *cld = im3d->vwid->func->clu_det ;
+            if( cwid == NULL || cld == NULL ){ BEEPIT ; break ; }
+            ic = AFNI_clus_find_xyz( im3d ,
+                                     im3d->vinfo->xi , im3d->vinfo->yj , im3d->vinfo->zk ) ;
+            if( ic < 0 ){ BEEPIT ; break ; }
+            AFNI_clus_action_CB( cwid->clu_flsh_pb[ic] , (XtPointer)im3d , NULL ) ;
+          }
+          break ;
+
         }
 
 #else /* OLD OLD OLD */
@@ -5819,6 +5843,9 @@ static char * AFNI_image_help =
  "Shift+keyboard arrow keys = pan crop region around\n"
  "Ctrl+keyboard arrow keys  = expand/shrink crop region\n"
  "Shift+Home = center crop region on current crosshairs\n"
+ "--- THESE NEXT KEYSTROKES OPERATE WITH CLUSTERIZE ---\n"
+ "j = Jump to current cluster's peak (or cmass)\n"
+ "f = Flash current cluster\n"
 ;
 
 static char * AFNI_arrowpad_help =
@@ -9706,6 +9733,31 @@ ENTRY("AFNI_jumpto_dicom") ;
       BEEPIT ; WARNING_message("Jumpto DICOM failed -- bad coordinates?!") ;
       RETURN(-1) ;
    }
+}
+
+/*---------------------------------------------------------------------*/
+
+int AFNI_creepto_dicom( Three_D_View *im3d , float xx, float yy, float zz )
+{
+   float xc,yc,zc , dxx,dyy,dzz ; int ndd,qq,ii  ;
+
+ENTRY("AFNI_creepto_dicom") ;
+
+   xc = im3d->vinfo->xi ; yc = im3d->vinfo->yj ; zc = im3d->vinfo->zk ;
+
+   dxx = fabsf( (xx-xc) / DSET_DX(im3d->anat_now) ) ;
+   dyy = fabsf( (yy-yc) / DSET_DY(im3d->anat_now) ) ;
+   dzz = fabsf( (zz-zc) / DSET_DZ(im3d->anat_now) ) ;
+   ndd = (int)sqrtf(dxx*dxx+dyy*dzz+dzz*dzz) ;
+
+   if( ndd < 2 ){ ii = AFNI_jumpto_dicom(im3d,xx,yy,zz) ; RETURN(ii) ; }
+
+   dxx = (xx-xc) / ndd ; dyy = (yy-yc) / ndd ; dzz = (zz-zc) / ndd ;
+
+   for( qq=ndd-1 ; qq >= 0  ; qq-- )
+     ii = AFNI_jumpto_dicom( im3d , xx-dxx*qq , yy-dyy*qq , zz-dzz*qq ) ;
+
+   RETURN(ii) ;
 }
 
 /*----------- the two functions below date to 19 Aug 1999 -------------*/

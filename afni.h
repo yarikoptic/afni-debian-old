@@ -1593,6 +1593,8 @@ extern void AFNI_viewbut_EV( Widget, XtPointer, XEvent *, Boolean * ) ;
 extern void AFNI_cluster_EV( Widget, XtPointer, XEvent *, Boolean * ) ;
 extern void AFNI_clus_update_widgets( Three_D_View *im3d ) ;
 extern void AFNI_clus_popdown( Three_D_View *im3d ) ;
+extern int AFNI_clus_find_xyz( Three_D_View *im3d , float x,float y,float z ) ;
+extern void AFNI_clus_action_CB( Widget w , XtPointer cd , XtPointer cbs ) ;
 
 extern void AFNI_update_dataset_viewing( THD_3dim_dataset * ); /* 21 Jul 2009 */
 extern void AFNI_alter_wami_text(Three_D_View *im3d, char *utlab); 
@@ -1650,6 +1652,7 @@ extern void AFNI_do_many_writes      ( Widget , XtPointer , MCW_choose_cbs * ) ;
 extern void AFNI_finalize_dataset_CB ( Widget , XtPointer , MCW_choose_cbs * ) ;
 extern void AFNI_jumpto_CB           ( Widget , XtPointer , MCW_choose_cbs * ) ;
 extern int  AFNI_jumpto_dicom        ( Three_D_View * , float, float, float  ) ;
+extern int  AFNI_creepto_dicom       ( Three_D_View * , float, float, float  ) ;
 extern int  AFNI_jumpto_ijk          ( Three_D_View * , int, int, int  ) ;
 extern void AFNI_jumpto_ijk_CB       ( Widget , XtPointer , MCW_choose_cbs * ) ;
 extern void AFNI_sumato_CB           ( Widget , XtPointer , MCW_choose_cbs * ) ;

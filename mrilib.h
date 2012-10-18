@@ -868,6 +868,7 @@ extern void   mri_dicom_nohex ( int ) ;
 extern void   mri_dicom_setvm ( int ) ;     /* 28 Oct 2002 */
 extern void   mri_dicom_seterr( int ) ;     /* 05 Nov 2002 */
 extern void   mri_dicom_header_use_printf( int ) ; /* 02 May 2008 */
+extern void   mri_dicom_header_show_size_offset( int ); /* 17 Oct 2012 [rcr] */
 
 extern MRI_IMARR * mri_read_dicom( char * )  ;
 extern int         mri_imcount_dicom( char * ) ;

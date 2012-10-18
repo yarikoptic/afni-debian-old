@@ -49,7 +49,17 @@
 
 afni_history_struct rickr_history[] = {
 
- { 16, OCT, 2012, RCR, "uber_subject.py", MINOR, TYPE_ENHANCE,
+ { 17, OCT, 2012, RCR, "afni_proc.py", MICRO, TYPE_MODIFY,
+   "removed unneeded -set_tr from 1d_tool.py -censor_motion",
+   NULL
+ } ,
+
+ { 17, OCT, 2012, RCR, "dicom_hdr", MINOR, TYPE_NEW_OPT,
+   "added -no_length option, which helps when running diffs on output",
+   NULL
+ } ,
+
+ { 16, OCT, 2012, RCR, "uber_subject.py", MINOR, TYPE_NEW_OPT,
    "added analysis type and processing block list",
    NULL
  } ,
