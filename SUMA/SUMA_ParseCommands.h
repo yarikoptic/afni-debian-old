@@ -91,6 +91,7 @@ typedef struct {
    byte accept_t;
    byte accept_s;
    byte accept_i;
+   byte onestate; /* if 1, All -i surfaces will have the same state */
    byte accept_ipar;
    byte accept_o;
    byte accept_spec;
@@ -265,6 +266,8 @@ typedef struct {
    SUMA_GENERIC_ARGV_PARSE *ps; /* just a holder for convenience, never free it*/
    
    char *s; /* just a string, gets freed in the end */
+   
+   float permask;
 } SUMA_GENERIC_PROG_OPTIONS_STRUCT; /* also edit defaults in 
                                  SUMA_Alloc_Generic_Prog_Options_Struct and in 
                                  SUMA_Free_Generic_Prog_Options_Struct */
