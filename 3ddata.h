@@ -1545,14 +1545,33 @@ extern mat44 THD_mat44_sqrt( mat44 A ) ;  /* matrix square root [30 Jul 2007] */
 
 #undef  ISZERO_MAT44
 #define ISZERO_MAT44(AA) \
- ((AA.m[0][0] == 0.0) && \
-  (AA.m[0][2] == 0.0) && \
-  (AA.m[1][0] == 0.0) && \
-  (AA.m[1][2] == 0.0) && \
-  (AA.m[2][0] == 0.0) && \
-  (AA.m[2][2] == 0.0) && \
-  (AA.m[3][0] == 0.0) && \
-  (AA.m[3][2] == 0.0) )
+ ((AA.m[0][0] == 0.0f) && \
+  (AA.m[0][1] == 0.0f) && \
+  (AA.m[0][2] == 0.0f) && \
+  (AA.m[0][3] == 0.0f) && \
+  (AA.m[1][0] == 0.0f) && \
+  (AA.m[1][1] == 0.0f) && \
+  (AA.m[1][2] == 0.0f) && \
+  (AA.m[1][3] == 0.0f) && \
+  (AA.m[2][0] == 0.0f) && \
+  (AA.m[2][1] == 0.0f) && \
+  (AA.m[2][2] == 0.0f) && \
+  (AA.m[2][3] == 0.0f)   )
+
+#undef  ISIDENT_MAT44
+#define ISIDENT_MAT44(AA) \
+ ((AA.m[0][0] == 1.0f) && \
+  (AA.m[0][1] == 0.0f) && \
+  (AA.m[0][2] == 0.0f) && \
+  (AA.m[0][3] == 0.0f) && \
+  (AA.m[1][0] == 0.0f) && \
+  (AA.m[1][1] == 1.0f) && \
+  (AA.m[1][2] == 0.0f) && \
+  (AA.m[1][3] == 0.0f) && \
+  (AA.m[2][0] == 0.0f) && \
+  (AA.m[2][1] == 0.0f) && \
+  (AA.m[2][2] == 1.0f) && \
+  (AA.m[2][3] == 0.0f)   )
 
 /* check if 2 mat44 matrices are equal-ish */
 
@@ -1584,8 +1603,14 @@ extern mat44 THD_mat44_sqrt( mat44 A ) ;  /* matrix square root [30 Jul 2007] */
 #define LOAD_DIAG_MAT44(AA,a,b,c)                                         \
   LOAD_MAT44( AA , (a),0,0,0 , 0,(b),0,0 , 0,0,(c),0 )
 
+#undef  LOAD_IDENT_MAT44
+#define LOAD_IDENT_MAT44(AA)                                              \
+  LOAD_MAT44( AA , 1,0,0,0 , 0,1,0,0 , 0,0,1,0 )
+
 #undef  ZERO_MAT44
-#define ZERO_MAT44(AA) LOAD_DIAG_MAT44(AA,0.0,0.0,0.0)
+#define ZERO_MAT44(AA)  LOAD_DIAG_MAT44(AA,0.0,0.0,0.0)
+#undef  LOAD_ZERO_MAT44
+#define LOAD_ZERO_MAT44 ZERO_MAT44
 
 #undef  LOAD_MAT44_VEC
 #define LOAD_MAT44_VEC(AA,x,y,z) ( AA.m[0][3]=(x) , AA.m[1][3]=(y) , AA.m[2][3]=(z) )
@@ -1801,6 +1826,31 @@ extern mat44 THD_mat44_sqrt( mat44 A ) ;  /* matrix square root [30 Jul 2007] */
 
 #undef  MAT44_TRACE
 #define MAT44_TRACE(AA) ( AA.m[0][0] + AA.m[1][1] + AA.m[2][2] )
+
+/* scale */
+
+#undef  MAT44_SCALE
+#define MAT44_SCALE(AA,ff)                                                                 \
+ ( (AA).m[0][0] *= (ff), (AA).m[0][1] *= (ff), (AA).m[0][2] *= (ff), (AA).m[0][3] *= (ff), \
+   (AA).m[1][0] *= (ff), (AA).m[1][1] *= (ff), (AA).m[1][2] *= (ff), (AA).m[1][3] *= (ff), \
+   (AA).m[2][0] *= (ff), (AA).m[2][1] *= (ff), (AA).m[2][2] *= (ff), (AA).m[2][3] *= (ff)   )
+
+/* add */
+
+#undef  MAT44_SUM
+#define MAT44_SUM(AA,ff,BB,gg)                                    \
+  ( tempA_mat44.m[0][0] = (AA).m[0][0]*(ff) + (BB).m[0][0]*(gg) , \
+    tempA_mat44.m[0][1] = (AA).m[0][1]*(ff) + (BB).m[0][1]*(gg) , \
+    tempA_mat44.m[0][2] = (AA).m[0][2]*(ff) + (BB).m[0][2]*(gg) , \
+    tempA_mat44.m[0][3] = (AA).m[0][3]*(ff) + (BB).m[0][3]*(gg) , \
+    tempA_mat44.m[1][0] = (AA).m[1][0]*(ff) + (BB).m[1][0]*(gg) , \
+    tempA_mat44.m[1][1] = (AA).m[1][1]*(ff) + (BB).m[1][1]*(gg) , \
+    tempA_mat44.m[1][2] = (AA).m[1][2]*(ff) + (BB).m[1][2]*(gg) , \
+    tempA_mat44.m[1][3] = (AA).m[1][3]*(ff) + (BB).m[1][3]*(gg) , \
+    tempA_mat44.m[2][0] = (AA).m[2][0]*(ff) + (BB).m[2][0]*(gg) , \
+    tempA_mat44.m[2][1] = (AA).m[2][1]*(ff) + (BB).m[2][1]*(gg) , \
+    tempA_mat44.m[2][2] = (AA).m[2][2]*(ff) + (BB).m[2][2]*(gg) , \
+    tempA_mat44.m[2][3] = (AA).m[2][3]*(ff) + (BB).m[2][3]*(gg) , tempA_mat44 )
 
 /*---------------------------------------------------------------------*/
 /*--- data structure for information about time axis of 3D dataset ----*/
@@ -4471,7 +4521,7 @@ typedef struct {
   MRI_vectim *mv ;
   char *prefix ; int ndet ;
   float *tseed ;
-  
+
   THD_3dim_dataset *eset ; MRI_vectim *ev ;
 } ICOR_setup ;
 
@@ -5337,7 +5387,7 @@ extern void brainnormalize_coord( float  ispat, float  jspat, float  kspat ,
                 float *xrai_orig, float *yrai_orig, float *zrai_orig); /* ZSS */
 extern MRI_IMAGE * mri_watershedize( MRI_IMAGE * , float ) ;
 extern void mri_speciebusiness( int ) ;
-extern void mri_brain_normalize_cuts ( char * ); 
+extern void mri_brain_normalize_cuts ( char * );
 extern void mri_brainormalize_initialize(float dx, float dy, float dz);
 extern float THD_BN_dxyz(void);
 extern int THD_BN_nx(void);

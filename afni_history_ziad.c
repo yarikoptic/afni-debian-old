@@ -65,6 +65,31 @@
 
 afni_history_struct ziad_history[] = {
 /*=====BELOW THIS LINE=====*/
+ { 6, Nov , 2012 , ZSS , "3dkmeans" , MINOR , TYPE_NEW_OPT,
+   "Added -write_dists to only output ascii files when users want them",
+   "The changes were made to also cleanup the output of 3dSeg. \n"
+ },
+
+ { 6, Nov , 2012 , ZSS , "3dSkullStrip" , MINOR , TYPE_NEW_OPT,
+   "Added -head*, and -cut_below options to generate whole head masks",
+   "This was needed because 3dAutomask or 3dSkullStrip would fail at"
+   "creating whole head masks for cases with coil-array shading problems\n"
+   "and/or lots of noise."
+ },
+
+ { 1, Nov , 2012 , ZSS , "suma" , MICRO , TYPE_BUG_FIX,
+   "Fixed problem with very large threshold ranges",
+   "X11 scale cannot range more than MAX_INT/2. SUMA now"
+   "checks for that and warns the user.\n"
+ },
+
+ { 1, Nov , 2012 , ZSS , "suma-general" , MICRO , TYPE_NEW_ENV,
+   "Abide by AFNI's AFNI_FLOATSCAN variable and look for bad values",
+   "SUMA will now scan for bad floats (NAN, and INF) and sets them\n"
+   "to 0, when the dataset is loaded. You can turn this feature off\n"
+   "with AFNI_FLOATSCAN set to NO.\n"
+ },
+
  { 16, Oct , 2012 , ZSS , "3dSurfMask" , MICRO , TYPE_NEW_OPT,
    "Option -no_dist to avoid length distance computations.",
    "Also, the fast method was improved per the comment below."

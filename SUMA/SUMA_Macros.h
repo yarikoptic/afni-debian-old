@@ -461,19 +461,21 @@ if Dist = 0, point on plane, if Dist > 0 point above plane (along normal), if Di
    }
 
 /*!
-   \brief Project point N onto direction u
+   \brief Project point N onto direction u, projection is in P
 */
 #define SUMA_PROJECT_ONTO_DIR(U,N,P) {\
    static double m_Eq[4];   \
-   SUMA_S_Warn("UNTESTED");   \
-   SUMA_PLANE_NORMAL_POINT(U,N,m_Eq); /* Form plane passing through N and with dir U */ \
-   /* fr = -(m_Eq[0]xo+m_Eq[1]yo+m_Eq[2]zo+m_Eq[3]);  Intersection of line trhrough xo,yo,zo dir U */ \
+   SUMA_PLANE_NORMAL_POINT(U,N,m_Eq); /* plane through N with dir U */ \
    P[0] = -m_Eq[3]*U[0]; P[1] = -m_Eq[3]*U[1]; P[2] = -m_Eq[3]*U[2]; \
 }
 
 /*!
-   \brief intersection of line with plane
-   UNTESTED
+   \brief intersection of line defined by point N and direction U
+   and plane Eq
+   P is the resultant intersection point and ispar = 1 if
+   line is parallel to the plane.
+   
+   MACRO IS UNUSED, NEEDS TESTING 
 */
 #define SUMA_LINE_PLANE_INTERSECT(U,N,Eq,P,ispar) {\
    double m_dot, m_fr; \
@@ -1187,6 +1189,22 @@ Bruce Kimball, Paul Embree and Bruce Kimble
    norm = sqrt(norm); \
 }
 
+/*!
+   Make vector have unit norm 
+*/
+#define SUMA_UNITIZE_VEC(a,nel) {\
+   double m_norm=0.0;   \
+   int m_I=0;  \
+   for (m_I = 0; m_I < nel; m_I++) { \
+      m_norm += a[m_I]*a[m_I];    \
+   } \
+   m_norm = sqrt(m_norm); \
+   if (m_norm != 0.0f) {   \
+      for (m_I = 0; m_I < nel; m_I++) {\
+         a[m_I] /= m_norm; \
+      }  \
+   }  \
+}
 
 /*! \def SUMA_MIN_VEC(a,nel, amin)
 \brief SUMA_MIN_VEC macro for minimum
@@ -1234,6 +1252,41 @@ Bruce Kimball, Paul Embree and Bruce Kimble
       if (a[m_I] > amax) amax = a[m_I];    \
    } \
 }
+
+#define SUMA_MEAN_VEC(a,nel,amean,nozero) { \
+   int m_I, m_c=0;  double m_mean=0.0; \
+   amean = 0;  \
+   if (nozero) {\
+      for (m_I = 0; m_I < nel; m_I++) { \
+         if (a[m_I]!=0.0f) { ++m_c; m_mean += a[m_I]; }\
+      }\
+      if (m_c) amean = m_mean/m_c;  \
+   } else { \
+      for (m_I = 0; m_I < nel; m_I++) { \
+         m_mean += a[m_I]; \
+      }\
+      if (nel) amean = m_mean/nel;  \
+   }\
+}
+
+#define SUMA_MEAN_STD_VEC(a,nel,amean, astd, nozero) { \
+   int m_I, m_c=0;  double m_std=0.0, m_mmmm=0.0, dd=0.0;\
+   SUMA_MEAN_VEC(a,nel,m_mmmm,nozero); \
+   amean=m_mmmm; astd=0;  \
+   if (nozero) {\
+      for (m_I = 0; m_I < nel; m_I++) { \
+         if (a[m_I]!=0.0f) { ++m_c; dd=(a[m_I]-m_mmmm); m_std += dd*dd; }\
+      }\
+      if (m_c > 1) astd = sqrt(m_std/(m_c-1));  \
+   } else { \
+      for (m_I = 0; m_I < nel; m_I++) { \
+         dd=(a[m_I]-m_mmmm); m_std += dd*dd; \
+      }\
+      if (nel > 1) astd = sqrt(m_std/(nel-1));  \
+   }\
+}
+
+
 
 /*! \def SUMA_MIN_MAX_VEC(a,nel,amin, amax, aminloc, amaxloc)
 \brief SUMA_MIN_MAX_VEC macro for minimum and maximum 
@@ -1755,6 +1808,7 @@ SUMA_COPY_VEC(a,b,len,typea,typeb)
          typea *_PTA = (typea *)a;  \
          _PTA[ia] = (typea)val; \
 }
+
  
 /*!
 SUMA_DOTP_VEC macro:

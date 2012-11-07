@@ -22,6 +22,17 @@
    for (m_i=0; m_i<N_nmask; ++m_i) nmask[mask_record[m_i]] = 1;  \
 }
 
+typedef enum { NO_PRJ = -1,
+               E1_PLN_PRJ  , E2_PLN_PRJ, E3_PLN_PRJ, 
+               EZ_PLN_PRJ  , EY_PLN_PRJ, EX_PLN_PRJ, 
+               E1_DIR_PRJ  , E2_DIR_PRJ, E3_DIR_PRJ, 
+               EZ_DIR_PRJ  , EY_DIR_PRJ, EX_DIR_PRJ,
+               N_PRJ} SUMA_PC_PROJ; 
+
+typedef enum { NO_ROT = 0, ROT_2_Z = 1, ROT_2_Y, ROT_2_X } SUMA_PC_ROT;
+
+
+
 typedef enum { SUMA_SMOOTH_NOT_SET, SUMA_EQUAL, SUMA_FUJIWARA, SUMA_DESBRUN } SUMA_TAUBIN_SMOOTH_OPTIONS;
 
 static int SUMA_SSidbg=-1; /*!< Index of node for debug */
@@ -141,6 +152,8 @@ float * SUMA_Chung_Smooth (SUMA_SurfaceObject *SO, float **wgt,
 SUMA_Boolean SUMA_Chung_Smooth_dset (SUMA_SurfaceObject *SO, float **wgt, 
                            int N_iter, float FWHM, SUMA_DSET *dset, 
                            SUMA_COMM_STRUCT *cs, byte *nmask, byte strict_mask);
+SUMA_Boolean SUMA_DotNormals(SUMA_SurfaceObject *SO, float *dir, float **dots);
+
 /* NOTE THAT x passed to the macro must be in units of distance^2 */
 #define SUMA_CHUNG_KERNEL_NUMER(x,s) (exp(-(x)/(2.0*(s)*(s)))) 
 #define SUMA_FWHM_MEAN(fwhmv, N_fwhmv, meanfwhm, FWHM_mixmode, N) {\
@@ -218,8 +231,9 @@ int SUMA_NN_GeomSmooth2_SO(   SUMA_SurfaceObject *SO,
 int SUMA_NN_GeomSmooth3_SO(   SUMA_SurfaceObject *SO, 
                          byte *nmask, byte strict_mask,
                          int Niter, int anchor_each,
-                              SUMA_SurfaceObject *SOe,
-                         float *anchor_wght, THD_3dim_dataset *voxelize);
+                         SUMA_SurfaceObject *SOe,
+                         float *anchor_wght, THD_3dim_dataset *voxelize,
+                         SUMA_COMM_STRUCT *cs);
 SUMA_Boolean SUMA_ApplyAffine (float *NodeList, int N_Node, float M[][4], 
                                float *center);
 float *SUMA_NN_GeomSmooth( SUMA_SurfaceObject *SO, int Niter, float *fin_orig, 
@@ -281,7 +295,8 @@ THD_ivec3 SUMA_THD_3dmm_to_3dind_warn( SUMA_SurfaceObject *SO  ,
                                        THD_fvec3 fv, int *out );
 THD_fvec3 SUMA_THD_3dmm_to_dicomm( int xxorient, int yyorient, int zzorient , 
                                     THD_fvec3 imv );
-THD_fvec3 SUMA_THD_dicomm_to_3dmm( SUMA_SurfaceObject *SO , THD_fvec3 dicv );
+THD_fvec3 SUMA_THD_dicomm_to_3dmm( int xxorient, int yyorient, int zzorient , 
+                                    THD_fvec3 dicv );
 void SUMA_orcode_to_orstring (int xxorient, int yyorient, int zzorient, char *orstr);
 void SUMA_sizeto3d_2_deltaHEAD(THD_ivec3 orient, THD_fvec3 *delta);            
 void SUMA_originto3d_2_originHEAD(THD_ivec3 orient, THD_fvec3 *origin);
@@ -348,8 +363,13 @@ SUMA_Boolean SUMA_FillRandXform(double xform[][4], int seed, int type);
 SUMA_Boolean SUMA_FillScaleXform(double xform[][4], double sc[3]);
 
 float *SUMA_Project_Coords_PCA (float *xyz, int N_xyz, int iref, 
-                                int compnum, int rotate);
-                                
+                                SUMA_PC_PROJ compnum, SUMA_PC_ROT rotate);
+int SUMA_NodeDepth(float *NodeList, int N_Node, float **dpth, 
+                   float thr, byte **cmaskp);                                
+int SUMA_VoxelDepth(THD_3dim_dataset *dset, float **dpth,
+                    float thr, byte **cmaskp, int applymask);
+int SUMA_VoxelPlaneCut(THD_3dim_dataset *dset, float *Eq,
+                       byte **cmaskp, int applymask);
 int SUMA_is_Flat_Surf_Coords_PCA (float *xyz, int N_xyz, 
                                   float tol, float sampfrac); 
 int SUMA_is_Constant_Z_Coord(float *NodeList, int N_Node, float tol);

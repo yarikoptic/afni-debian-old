@@ -44,8 +44,34 @@ IndexWarp3D * IW3D_create( int nx , int ny , int nz )
    AA->hv = NULL ;  /* to be filled in later, maybe */
    AA->je = NULL ;  /* to be filled in later, maybe */
    AA->se = NULL ;  /* to be filled in later, maybe */
-   LOAD_DIAG_MAT44(AA->cmat,1.0f,1.0f,1.0f) ;
-   LOAD_DIAG_MAT44(AA->imat,1.0f,1.0f,1.0f) ;
+   LOAD_IDENT_MAT44(AA->cmat) ;
+   LOAD_IDENT_MAT44(AA->imat) ;
+   LOAD_ZERO_MAT44(AA->emat) ;
+   AA->geomstring = NULL ;
+   AA->view = VIEW_ORIGINAL_TYPE ;
+
+   return AA ;
+}
+
+/*---------------------------------------------------------------------------*/
+
+IndexWarp3D * IW3D_create_vacant( int nx , int ny , int nz )
+{
+   IndexWarp3D *AA ;
+
+   if( nx < NGMIN && ny < NGMIN && nz < NGMIN ) return NULL ;
+
+   AA = (IndexWarp3D *)calloc(1,sizeof(IndexWarp3D)) ;
+   AA->nx = nx ; AA->ny = ny ; AA->nz = nz ;
+   AA->xd = NULL ;
+   AA->yd = NULL ;
+   AA->zd = NULL ;
+   AA->hv = NULL ;
+   AA->je = NULL ;
+   AA->se = NULL ;
+   LOAD_IDENT_MAT44(AA->cmat) ;
+   LOAD_IDENT_MAT44(AA->imat) ;
+   LOAD_ZERO_MAT44(AA->emat) ;
    AA->geomstring = NULL ;
    AA->view = VIEW_ORIGINAL_TYPE ;
 
@@ -165,7 +191,7 @@ IndexWarp3D * IW3D_empty_copy( IndexWarp3D *AA )
 
    BB = IW3D_create( AA->nx , AA->ny , AA->nz ) ;
 
-   BB->cmat = AA->cmat ; BB->imat = AA->imat ;
+   BB->cmat = AA->cmat ; BB->imat = AA->imat ; BB->emat = AA->emat ;
 
    if( AA->geomstring != NULL )
      BB->geomstring = strdup(AA->geomstring) ;
@@ -200,10 +226,12 @@ IndexWarp3D * IW3D_copy( IndexWarp3D *AA , float fac )
        BB->zd[qq] = fac * AA->zd[qq] ;
      }
    }
+   MAT44_SCALE(BB->emat,fac) ;
 
    return BB ;
 }
 
+#if 0
 /*---------------------------------------------------------------------------*/
 /* Make a half-size copy (scaling displacements by 0.5 as well). */
 
@@ -231,6 +259,7 @@ IndexWarp3D * IW3D_duplo_down( IndexWarp3D *AA )
         FSUB(ydb,ii,jj,kk,nxb,nxyb) = 0.5f*FSUB(yda,2*ii,2*jj,2*kk,nxa,nxya) ;
         FSUB(zdb,ii,jj,kk,nxb,nxyb) = 0.5f*FSUB(zda,2*ii,2*jj,2*kk,nxa,nxya) ;
    }}}
+   MAT44_SCALE(BB->emat,0.5f) ;
 
    return BB ;
 }
@@ -281,10 +310,13 @@ IndexWarp3D * IW3D_duplo_up( IndexWarp3D *AA , int xadd,int yadd,int zadd)
                     +FSUB(zda,im,jm,kp,nxa,nxya) + FSUB(zda,ip,jm,kp,nxa,nxya)
                     +FSUB(zda,im,jp,kp,nxa,nxya) + FSUB(zda,ip,jp,kp,nxa,nxya) ) ;
    }}}
+   MAT44_SCALE(BB->emat,2.0f) ;
 
    return BB ;
 }
+#endif
 
+#if 0
 /*---------------------------------------------------------------------------*/
 /* Cut out a box-shaped piece of pie. */
 
@@ -349,6 +381,7 @@ void IW3D_pasteinbox( IndexWarp3D *AA , IndexWarp3D *BB ,
 
    return ;
 }
+#endif
 
 /*---------------------------------------------------------------------------*/
 /* Scale displacements by fac (in-place). */
@@ -366,6 +399,7 @@ void IW3D_scale( IndexWarp3D *AA , float fac )
      AA->yd[qq] *= fac ;
      AA->zd[qq] *= fac ;
    }
+   MAT44_SCALE(AA->emat,fac) ;
 
    return ;
 }
@@ -396,6 +430,7 @@ IndexWarp3D * IW3D_sum( IndexWarp3D *AA, float Afac, IndexWarp3D *BB, float Bfac
      CC->yd[qq] = Afac * AA->yd[qq] + Bfac * BB->yd[qq] ;
      CC->zd[qq] = Afac * AA->zd[qq] + Bfac * BB->zd[qq] ;
    }
+   CC->emat = MAT44_SUM( AA->emat,Afac , BB->emat,Bfac ) ;
 
    return CC ;
 }
@@ -403,6 +438,7 @@ IndexWarp3D * IW3D_sum( IndexWarp3D *AA, float Afac, IndexWarp3D *BB, float Bfac
 /*----------------------------------------------------------------------------*/
 /* smooth locally */
 
+#if 0
 #define M7  0.142857143f
 #define M28 0.035714286f
 #define M84 0.011904762f
@@ -410,6 +446,7 @@ IndexWarp3D * IW3D_sum( IndexWarp3D *AA, float Afac, IndexWarp3D *BB, float Bfac
 void IW3D_7smooth( IndexWarp3D *AA )
 {
 }
+#endif
 
 /*----------------------------------------------------------------------------*/
 /* Make the geometry of a warp match that of a dataset. */
@@ -435,6 +472,14 @@ void IW3D_adopt_dataset( IndexWarp3D *AA , THD_3dim_dataset *dset )
    if( gstr != NULL ) AA->geomstring = strdup(gstr) ;
    AA->view = dset->view_type ;
 
+   return ;
+}
+
+/*----------------------------------------------------------------------------*/
+
+void IW3D_set_emat( IndexWarp3D *AA , mat44 emm )
+{
+   if( AA != NULL ) AA->emat = emm ;
    return ;
 }
 
@@ -493,6 +538,18 @@ ENTRY("IW3D_from_dataset") ;
  AFNI_OMP_END ;
 
      mri_free(zim) ; mri_free(yim) ; mri_free(xim) ;
+   }
+
+   { ATR_float *atr ;
+     atr = THD_find_float_atr( dset->dblk , "NWARP_EMAT") ;
+     if( atr != NULL && atr->nfl >= 12 ){
+       float *matar = atr->fl ; mat44 qmat,rmat ;
+       LOAD_MAT44( qmat , matar[0] , matar[1] , matar[2] , matar[3] ,
+                          matar[4] , matar[5] , matar[6] , matar[7] ,
+                          matar[8] , matar[9] , matar[10], matar[11] ) ;
+       rmat     = MAT44_MUL( qmat , cmat ) ;
+       AA->emat = MAT44_MUL( imat , rmat ) ;
+     }
    }
 
    RETURN(AA) ;
@@ -1793,7 +1850,7 @@ ENTRY("IW3D_invert") ;
 
 static float sstepfac = 0.5f ;
 
-static float sstepfac_MAX = 0.456789f ;
+static float sstepfac_MAX = 0.432111f ;
 static float sstepfac_MIN = 0.234567f ;
 
 IndexWarp3D * IW3D_sqrtinv_step( IndexWarp3D *AA, IndexWarp3D *BB, int icode )
@@ -2021,7 +2078,7 @@ ENTRY("IW3D_sqrtinv") ;
        continue ;
      }
 
-     if( nrat < 0.0001f ){
+     if( nrat < 0.0002f ){
        if( verb_nww ) ININFO_message(" -- iteration converged") ;
        RETURN(BB) ;   /* converged */
      }
@@ -2040,7 +2097,7 @@ ENTRY("IW3D_sqrtinv") ;
 
    /* failed to converge, return latest result anyhoo */
 
-   WARNING_message("sqrtinv: iterations failed to converge") ;
+   WARNING_message("sqrtinv: iterations failed to converge beautifully") ;
    RETURN(BB) ;
 }
 
@@ -2154,6 +2211,19 @@ ENTRY("IW3D_from_poly") ;
    /* time to trot, Bwana */
 
    free(zq) ; free(yq) ; free(xq) ; RETURN(AA) ;
+}
+
+IndexWarp3D * IW3D_from_mat44( mat44 mm , IndexWarp3D *WW )
+{
+   float mar[12] ; IndexWarp3D *AA ;
+
+   UNLOAD_MAT44( mm ,
+                 mar[0] , mar[1] , mar[2] , mar[3] , mar[ 4] , mar[ 5] ,
+                 mar[6] , mar[7] , mar[8] , mar[9] , mar[10] , mar[11]  ) ;
+
+   affmode = AFF_MATRIX ;
+   AA = IW3D_from_poly( 12 , mar , WW ) ;
+   return AA ;
 }
 
 /****************************************************************************/
@@ -2278,6 +2348,70 @@ ENTRY("IW3D_warp_floatim") ;
                            0,sim->nx-1 , 0,sim->ny-1 , 0,sim->nz-1 , code ) ;
 
    RETURN(fim) ;
+}
+
+/*----------------------------------------------------------------------------*/
+
+void IW3D_mat44_into_floatim( mat44 imat , MRI_IMAGE *sim, MRI_IMAGE *fim,
+                              int ibot, int itop ,
+                              int jbot, int jtop ,
+                              int kbot, int ktop , int code )
+{
+   int nx,ny,nz,nxy , nii,njj,nkk , np , ii,jj,kk,ijk , pp ;
+   float *ip,*jp,*kp ;
+   float *far , *xd,*yd,*zd ;
+
+ENTRY("IW3D_mat44_into_floatim") ;
+
+   if( sim == NULL || sim->kind != MRI_float ) EXRETURN ;
+   if( fim == NULL || fim->kind != MRI_float ) EXRETURN ;
+
+   nx = fim->nx ; ny = fim->ny ; nz = fim->nz ; nxy = nx*ny ;
+
+   if( ibot < 0 ) ibot = 0 ; if( itop > nx-1 ) itop = nx-1 ;
+   if( jbot < 0 ) jbot = 0 ; if( jtop > ny-1 ) itop = ny-1 ;
+   if( kbot < 0 ) kbot = 0 ; if( ktop > nz-1 ) itop = nz-1 ;
+
+   nii = itop - ibot + 1 ; if( nii < 1 ) EXRETURN ;
+   njj = jtop - jbot + 1 ; if( njj < 1 ) EXRETURN ;
+   nkk = ktop - kbot + 1 ; if( nkk < 1 ) EXRETURN ;
+
+   np = nii*njj*nkk ;
+   ip = (float *)malloc(sizeof(float)*np) ;
+   jp = (float *)malloc(sizeof(float)*np) ;
+   kp = (float *)malloc(sizeof(float)*np) ;
+
+   for( pp=0,kk=kbot ; kk <= ktop ; kk++ ){
+     for( jj=jbot ; jj <= jtop ; jj++ ){
+       for( ii=ibot ; ii <= itop ; ii++,pp++ ){
+         MAT44_VEC( imat , ii,jj,kk , ip[pp],jp[pp],kp[pp] ) ;
+       }
+     }
+   }
+
+   far = MRI_FLOAT_PTR(fim) ;
+
+   /*-- All of them, Frank? --*/
+
+   if( nii == nx && njj == ny && nkk == nz ){
+
+     THD_interp_floatim( sim , np,ip,jp,kp , code , far ) ;
+
+   } else {  /*-- just some of them, Mother Goose? --*/
+
+     float *val = (float *)malloc(sizeof(float)*np) ;
+
+     THD_interp_floatim( sim , np,ip,jp,kp , code , val ) ;
+
+     for( pp=0,kk=kbot ; kk <= ktop ; kk++ )
+       for( jj=jbot ; jj <= jtop ; jj++ )
+         for( ii=ibot ; ii <= itop ; ii++,pp++ ) far[ii+jj*nx+kk*nxy] = val[pp];
+
+     free(val) ;
+   }
+
+   free(kp) ; free(jp) ; free(ip) ;
+   EXRETURN ;
 }
 
 #if 0
@@ -2885,7 +3019,8 @@ ENTRY("NwarpCalcRPN") ;
 
      /*--- compose ---*/
 
-     else if( strcasecmp(cmd,"&compose") == 0 || strcasecmp(cmd,"&*") == 0 ){
+     else if( strcasecmp(cmd,"&compose") == 0 || strcasecmp(cmd,"&*") == 0 ||
+              strcasecmp(cmd,"&mult")    == 0                                ){
         double ct = COX_cpu_time() ;
         if( nstk < 2 ) ERREX("stack too short") ;
         AA = IW3D_compose( iwstk[nstk-1] , iwstk[nstk-2] , icode ) ;
@@ -2918,6 +3053,18 @@ ENTRY("NwarpCalcRPN") ;
        if( *bp == ')' ) *bp = '\0' ;  /* delete trailing ) */
        val = (float)strtod(buf,NULL) ; free(buf) ;
        IW3D_scale( iwstk[nstk-1] , val ) ;
+     }
+
+     /*--- sum ---*/
+
+     else if( strncasecmp(cmd,"&sum",4) == 0 ){
+       char *bp=strchr(cmd,'(') ;
+       float alpha=1.0f , beta=1.0f ;
+       if( nstk < 2 ) ERREX("stack is too small") ;
+       if( bp != NULL ) sscanf(bp+1,"%f,%f",&alpha,&beta) ;
+       AA = IW3D_sum( iwstk[nstk-1],alpha , iwstk[nstk-2],beta ) ;
+       IW3D_destroy( iwstk[nstk-2] ) ; IW3D_destroy( iwstk[nstk-1] ) ;
+       nstk-- ; iwstk[nstk-1] = AA ;
      }
 
      /*--- apply ---*/
@@ -3675,7 +3822,7 @@ AFNI_OMP_END ;
 /*----------------------------------------------------------------------------*/
 
 static double Hpen_cut = 1.0 ;
-static double Hpen_fac = 0.0001 ;
+static double Hpen_fac = 0.0002 ;
 static double Hpen_pow = 4.0 ;
 static double Hpen_qow = 0.25 ;
 static double Hpen_sum = 0.0 ;
@@ -4337,6 +4484,7 @@ ENTRY("IW3D_warp_s2bim") ;
 
 /*----------------------------------------------------------------------------*/
 
+#if 0
 #undef  CALLME
 #define CALLME(inn,out) (out) = mri_duplo_down_3D(inn)
 
@@ -4416,3 +4564,4 @@ ENTRY("IW3D_warp_s2bim_duplo") ;
 
    RETURN(imww) ;
 }
+#endif

@@ -916,7 +916,7 @@ THD_3dim_dataset *SUMA_VoxelToSurfDistances(SUMA_SurfaceObject *SO,
       if (!SUMA_Shortest_Point_To_Triangles_Distance(
             Points, n_mask, 
             SO->NodeList, SO->FaceSetList, SO->N_FaceSet,
-            SO->FaceNormList, &dist, &closest, &sgn )) {
+            SO->FaceNormList, &dist, &closest, &sgn, 0)) {
          SUMA_S_Err("Failed to get shortys");
          SUMA_RETURN(NULL);     
       }
@@ -924,7 +924,7 @@ THD_3dim_dataset *SUMA_VoxelToSurfDistances(SUMA_SurfaceObject *SO,
       if (!SUMA_Shortest_Point_To_Triangles_Distance(
             Points, n_mask, 
             SO->NodeList, SO->FaceSetList, SO->N_FaceSet,
-            NULL, &dist, &closest, NULL )) {
+            NULL, &dist, &closest, NULL , 0)) {
          SUMA_S_Err("Failed to get shortys");
          SUMA_RETURN(NULL);     
       }
@@ -990,7 +990,7 @@ int SUMA_isSelfIntersect(SUMA_SurfaceObject *SO, int StopAt, byte *report)
          t1 = SO->EL->ELps[k][1]; t2 = SO->EL->ELps[SUMA_MIN_PAIR(k+1, SO->EL->N_EL-1)][1];
          ep1 = &(SO->NodeList[3*SO->EL->EL[k][0]]); ep2 = &(SO->NodeList[3*SO->EL->EL[k][1]]);
          /* find out if segment intersects */
-         MTI = SUMA_MT_intersect_triangle(ep1, ep2, SO->NodeList, SO->N_Node, SO->FaceSetList, SO->N_FaceSet, MTI); 
+         MTI = SUMA_MT_intersect_triangle(ep1, ep2, SO->NodeList, SO->N_Node, SO->FaceSetList, SO->N_FaceSet, MTI, 0); 
          for (it=0; it<SO->N_FaceSet; ++it) {
             if (MTI->isHit[it] && it != t1 && it != t2 && MTI->u[it] > SUMA_EPSILON && MTI->v[it] > SUMA_EPSILON) {
                /* ray hit triangle, is intersection inside segment ? */
@@ -3930,7 +3930,8 @@ int SUMA_NN_GeomSmooth3_SO(   SUMA_SurfaceObject *SO,
                          byte *nmask, byte strict_mask,
                          int Niter, int anchor_each,
                          SUMA_SurfaceObject *SOe,
-                         float *altw, THD_3dim_dataset *voxelize) 
+                         float *altw, THD_3dim_dataset *voxelize,
+                         SUMA_COMM_STRUCT *cs) 
 {
    static char FuncName[]={"SUMA_NN_GeomSmooth3_SO"};
    float *dsmooth=NULL;
@@ -3946,7 +3947,7 @@ int SUMA_NN_GeomSmooth3_SO(   SUMA_SurfaceObject *SO,
    
    if (!(dsmooth = SUMA_NN_GeomSmooth3( SO, Niter, SO->NodeList,
                                        SO->NodeDim, SUMA_ROW_MAJOR,
-                                       NULL, NULL,
+                                       NULL, cs,
                                        nmask, anchor_each, SOe,
                                        altw, voxelize))) {
       SUMA_S_Err("Failed to NN smooth");
@@ -5369,12 +5370,14 @@ float *SUMA_NN_GeomSmooth2( SUMA_SurfaceObject *SO, int N_iter, float *fin_orig,
                      MTI = SUMA_MT_intersect_triangle(P0, P1, 
                                              SOe->NodeList, SOe->N_Node, 
                                              SOe->FaceSetList, SOe->N_FaceSet, 
-                                             MTI);
-                     if (MTI->N_hits ==0) { /* go backwards */
+                                             MTI, 1);
+                     if (MTI->N_hits ==0) { 
+                        /* go backwards VERY inefficient, consider writing
+                           intersection function that keeps separate min/max */
                         MTI = SUMA_MT_intersect_triangle(P0, P2, 
                                              SOe->NodeList, SOe->N_Node, 
                                              SOe->FaceSetList, SOe->N_FaceSet, 
-                                             MTI);
+                                             MTI,-1);
                      }
                      if (MTI->N_hits ==0) { /* Nothing */
                         SUMA_S_Warnv("No hits for node %d\n", ii);
@@ -5490,7 +5493,9 @@ float *SUMA_NN_GeomSmooth3( SUMA_SurfaceObject *SO, int N_iter, float *fin_orig,
       }
    }
    
-   SUMA_S_Warn("Ad-hoc constraints on expansion, deal with this.\n");
+   if (LocalHead) {
+      SUMA_S_Warn("Ad-hoc constraints on expansion, deal with this.\n");
+   }
    memset(&SN, 0, sizeof(SUMA_SURF_NORM));
    fin_next = fin_orig;
    switch (d_order) {
@@ -5580,20 +5585,36 @@ float *SUMA_NN_GeomSmooth3( SUMA_SurfaceObject *SO, int N_iter, float *fin_orig,
                      P2[0] = Points[1][0];
                      P2[1] = Points[1][1];
                      P2[2] = Points[1][2];
+                     if (ii==SUMA_SSidbg) {
+                        SUMA_S_Notev(
+               "Node %d, expanding potential along: [%f %f %f] --> [%f %f %f]\n",
+                        ii, P0[0], P0[1], P0[2], P1[0], P1[1], P1[2]);   
+                     }
                      /* now determine the distance along normal */
                      MTI = SUMA_MT_intersect_triangle(P0, P1, 
                                              SOe->NodeList, SOe->N_Node, 
                                              SOe->FaceSetList, SOe->N_FaceSet, 
-                                             MTI);
-                     if (MTI->N_hits ==0) { /* go backwards */
+                                             MTI, 1);
+                     if (MTI->N_hits ==0) { /* go backwards 
+                                Very inefficient, consider new intersection
+                                function that keeps minima from both directions*/
+                        if (ii==SUMA_SSidbg){
+                           SUMA_S_Warnv("No hit for node %d, going backwards!\n",
+                                    ii);
+                        }
                         MTI = SUMA_MT_intersect_triangle(P0, P2, 
                                              SOe->NodeList, SOe->N_Node, 
                                              SOe->FaceSetList, SOe->N_FaceSet, 
-                                             MTI);
+                                             MTI,-1);
                      }
                      if (MTI->N_hits ==0) { /* Nothing */
                         SUMA_S_Warnv("No hits for node %d\n", ii);
                      } else {
+                        if (ii==SUMA_SSidbg) {
+                           SUMA_S_Notev(
+                        "Node %d, hit at %f %f %f, expansion fraction: %f\n",
+                              ii, MTI->P[0], MTI->P[1], MTI->P[2], frc_mv);
+                        }
                         for (jj=0; jj<vpn; ++jj) 
                            fout[id+jj] = frc_mv*MTI->P[jj] + 
                                          (1.0-frc_mv)*fout[id+jj];
@@ -7370,7 +7391,6 @@ SUMA_Boolean SUMA_FixNN_Oversampling ( SUMA_SurfaceObject *SO, SUMA_DSET *dset,
    SUMA_RETURN(YUP);
 }
  
- 
 /*!
    \brief Project coordinates along a plane prependicular to one
    of the principal components.
@@ -7380,33 +7400,55 @@ SUMA_Boolean SUMA_FixNN_Oversampling ( SUMA_SurfaceObject *SO, SUMA_DSET *dset,
    \param iref (int): Make projection plane pass through node iref 
                      iref has coords xyz[3*iref], xyz[3*iref+1], xyz[3*iref+2]
                      If -1, then the function chooses iref = 0
-   \param compnum (int): Which of the three component is to be the projection
-                        plane's normal. 0 for the 1st principal vector
-                                        1 for the 2nd principal vector
-                                        2 for the 3rd
-                                        3 for the component closest to Z axis
-                                        4 for the component closest to Y axis
-                                        5 for the component closest to X axis
-   \param rotate (int): if 1 then rotate projection so that plane becomes 
+   \param compnum (SUMA_PC_PROJ): Choose  the projection plane's normal 
+                              or the projection direction line:
+              
+              NOTE: enum SUMA_PC_PROJ now replaces the integer codes
+
+                              Plane projections along various normals:
+                                  0 normal is 1st principal vector
+                                  1 normal is  2nd principal vector
+                                  2 normal is  3rd principal vector
+                                  3 normal is  component closest to Z axis
+                                  4 normal is  component closest to Y axis
+                                  5 normal is  component closest to X axis
+                              Line projections:
+                                  6 project along 1st principal vector
+                                  7 project along 2nd principal vector
+                                  8 project along 3rd principal vector
+                                  9 project along component closest to Z axis
+                                 10 project along component closest to Y axis
+                                 11 project along component closest to X axis
+                              
+              use NO_PRJ for no projections, or rotations, just return after PC.
+              
+   \param rotate (SUMA_PC_ROT): Rotate projection plane or direction as follows:
+                           ROT_2_Z rotate projection plane so it becomes 
                         parallel to XY plane,
-                           2 for XZ plane
-                           3 for YZ plane      
+                           ROT_2_Y for XZ plane
+                           ROT_2_X for YZ plane   
+                        If projecting to lines, then 
+                           ROT_2_Z rotates line to Z axis
+                           ROT_2_Y rotates line to Y axis
+                           ROT_2_X rotates line to X axis   
 */                              
 float *SUMA_Project_Coords_PCA (float *xyz, int N_xyz, int iref, 
-                                int compnum, int rotate)  
+                                SUMA_PC_PROJ compnum, SUMA_PC_ROT rotate)  
 {
    static char FuncName[]={"SUMA_Project_Coords_PCA"};
-   int i, i3;
-   double trace, pc_vec[9], pc_eig[3], Eq[4], pc0[3], proj[3];
-   float *xyzp=NULL, fv[3], **fm=NULL, *p1, pcf0[3], pp[3], ddx[3], ddy[3], ddz[3], dx, dy, dz;
+   int i, i3, lineproj=0;
+   double trace, pc_vec[9], pc_eig[3], Eq[4], pc0[3], proj[3], rdot;
+   float *xyzp=NULL, fv[3], **fm=NULL, *p1, 
+         pcf0[3], pp[3], ddx[3], ddy[3], ddz[3], dx, dy, dz;
    char pc_m[3];
-   SUMA_Boolean LocalHead = YUP;
+   SUMA_Boolean LocalHead = NOPE;
    
    SUMA_ENTRY;
 
    SUMA_LH("Xforming");
-   if (compnum < 0 || compnum > 5) {
-      SUMA_S_Errv("Bad compnum %d, range [0 5]\n", compnum);
+   if (compnum < NO_PRJ || compnum >= N_PRJ) {
+      SUMA_S_Errv("Bad compnum %d, range [%d %d]\n", 
+                  compnum, NO_PRJ, N_PRJ-1);
       SUMA_RETURN(NULL);
    }
    
@@ -7475,64 +7517,83 @@ float *SUMA_Project_Coords_PCA (float *xyz, int N_xyz, int iref,
       SUMA_free(xxx); xxx=NULL;
    }  
    
-   if (compnum >= 3 ) {
-            if (compnum == 3) {
-         /* find direction closest to Z */
-               if (pc_m[0] == 'Z') compnum = 0;
-         else  if (pc_m[1] == 'Z') compnum = 1;
-         else  if (pc_m[2] == 'Z') compnum = 2; 
-      } else if (compnum == 4) {
-         /* find direction closest to Y */
-               if (pc_m[0] == 'Y') compnum = 0;
-         else  if (pc_m[1] == 'Y') compnum = 1;
-         else  if (pc_m[2] == 'Y') compnum = 2; 
-      } else if (compnum == 5) {
-         /* find direction closest to X */
-               if (pc_m[0] == 'X') compnum = 0;
-         else  if (pc_m[1] == 'X') compnum = 1;
-         else  if (pc_m[2] == 'X') compnum = 2;
-      } else {
-         SUMA_S_Errv("Bad value for compnum %d, setting to 0\n",
-                     compnum);
-         compnum = 0;
+   if (compnum == NO_PRJ) SUMA_RETURN(xyzp); 
+   
+   if (compnum >= E1_DIR_PRJ) lineproj = 1;
+   else lineproj = 0;
+   
+          if (compnum == EZ_PLN_PRJ || compnum == EZ_DIR_PRJ) {
+      /* find direction closest to Z */
+            if (pc_m[0] == 'Z') compnum = E1_PLN_PRJ;
+      else  if (pc_m[1] == 'Z') compnum = E2_PLN_PRJ;
+      else  if (pc_m[2] == 'Z') compnum = E3_PLN_PRJ; 
+   } else if (compnum == EY_PLN_PRJ || compnum == EY_DIR_PRJ) {
+      /* find direction closest to Y */
+            if (pc_m[0] == 'Y') compnum = E1_PLN_PRJ;
+      else  if (pc_m[1] == 'Y') compnum = E2_PLN_PRJ;
+      else  if (pc_m[2] == 'Y') compnum = E3_PLN_PRJ; 
+   } else if (compnum == EX_PLN_PRJ || compnum == EX_DIR_PRJ) {
+      /* find direction closest to X */
+            if (pc_m[0] == 'X') compnum = E1_PLN_PRJ;
+      else  if (pc_m[1] == 'X') compnum = E2_PLN_PRJ;
+      else  if (pc_m[2] == 'X') compnum = E3_PLN_PRJ;
+   } else {
+      SUMA_S_Errv("Bad value for compnum %d, setting to 0\n",
+                  compnum);
+      compnum = 0;
+   }
+   
+   if (!lineproj) {
+      /* Find equation of plane passing by node iref and having the PC 
+         for a normal */
+      pc0[0] = pc_vec[compnum  ]; 
+      pc0[1] = pc_vec[compnum+3]; 
+      pc0[2] = pc_vec[compnum+6];
+      for (i=0; i<3;++i) pcf0[i]=pc0[i];
+
+      p1 = &(xyzp[3*iref]);
+      SUMA_LHv("   Forming plane with normal [%f %f %f], \n"
+               "   passing by point iref [%f %f %f]\n", 
+         pc0[0], pc0[1], pc0[2], p1[0], p1[1], p1[2]); 
+      SUMA_PLANE_NORMAL_POINT(pc0, p1, Eq);
+
+      /* project all points to the plane */
+      for (i=0; i<N_xyz; ++i) {
+         i3=3*i;
+         proj[0] = xyzp[i3];proj[1] = xyzp[i3+1];proj[2] = xyzp[i3+2];
+         SUMA_PROJECT_ONTO_PLANE(Eq, proj, (xyzp+3*i));
       }
+      SUMA_LHv(" After plane projection\n"
+               "izero now: [%f %f %f]\n"
+               "iref  now: [%f %f %f]\n",
+               xyzp[0], xyzp[1], xyzp[2],
+               xyzp[iref*3], xyzp[iref*3+1], xyzp[iref*3+2]);
+   } else {
+      pc0[0] = pc_vec[compnum  ]; 
+      pc0[1] = pc_vec[compnum+3]; 
+      pc0[2] = pc_vec[compnum+6];
+      for (i=0; i<3;++i) pcf0[i]=pc0[i];
+      for (i=0; i<N_xyz; ++i) {
+         i3=3*i;
+         proj[0] = xyzp[i3];proj[1] = xyzp[i3+1];proj[2] = xyzp[i3+2];
+         SUMA_PROJECT_ONTO_DIR(pc0, proj, (xyzp+3*i));
+      }
+      SUMA_LHv(" After line projection\n"
+               "izero now: [%f %f %f]\n"
+               "iref  now: [%f %f %f]\n",
+               xyzp[0], xyzp[1], xyzp[2],
+               xyzp[iref*3], xyzp[iref*3+1], xyzp[iref*3+2]);
    }
-   
-   /* Find equation of plane passing by node iref and having the PC 
-      for a normal */
-   pc0[0] = pc_vec[compnum  ]; 
-   pc0[1] = pc_vec[compnum+3]; 
-   pc0[2] = pc_vec[compnum+6];
-   for (i=0; i<3;++i) pcf0[i]=pc0[i];
-    
-   p1 = &(xyzp[3*iref]);
-   SUMA_LHv("   Forming plane with normal [%f %f %f], \n"
-            "   passing by point iref [%f %f %f]\n", 
-      pc0[0], pc0[1], pc0[2], p1[0], p1[1], p1[2]); 
-   SUMA_PLANE_NORMAL_POINT(pc0, p1, Eq);
-   
-   /* project all points to the plane */
-   for (i=0; i<N_xyz; ++i) {
-      i3=3*i;
-      proj[0] = xyzp[i3];proj[1] = xyzp[i3+1];proj[2] = xyzp[i3+2];
-      SUMA_PROJECT_ONTO_PLANE(Eq, proj, (xyzp+3*i));
-   }
-   SUMA_LHv(" After projection\n"
-            "izero now: [%f %f %f]\n"
-            "iref  now: [%f %f %f]\n",
-            xyzp[0], xyzp[1], xyzp[2],
-            xyzp[iref*3], xyzp[iref*3+1], xyzp[iref*3+2]);
-            
-   if (rotate > 0) {
-      /* Now rotate all projected points so that plane is in XY */
+   if (rotate > NO_ROT) {
+      /* Now rotate all projected points*/
       switch (rotate) {
-         case 1:
+         case ROT_2_Z:
             fv[0]=0.0; fv[1]=0.0; fv[2]=1.0; /* Z axis */
             break;
-         case 2:
+         case ROT_2_Y:
             fv[0]=0.0; fv[1]=1.0; fv[2]=0.0; /* Y axis */
             break;
-         case 3:
+         case ROT_2_X:
             fv[0]=1.0; fv[1]=0.0; fv[2]=0.0; /* X axis */
             break;
          default:
@@ -7540,6 +7601,9 @@ float *SUMA_Project_Coords_PCA (float *xyz, int N_xyz, int iref,
             SUMA_free(xyzp); xyzp=NULL;
             SUMA_RETURN(xyzp); 
       }
+      rdot = SUMA_SIGN(SUMA_MT_DOT(pcf0, fv));
+      SUMA_LHv("Dot product before rotation: %f\n",
+               SUMA_MT_DOT(pcf0, fv));  
       fm = (float **)SUMA_allocate2D(4,4,sizeof(float));
       if (!SUMA_FromToRotation (pcf0, fv,  fm)) {
             SUMA_S_Err("Failed to get rotation");
@@ -7547,6 +7611,17 @@ float *SUMA_Project_Coords_PCA (float *xyz, int N_xyz, int iref,
          SUMA_free2D((char **)fm, 2); fm = NULL;
          SUMA_RETURN(xyzp); 
       }
+      proj[0] = pcf0[0]*fm[0][0] + 
+                pcf0[1]*fm[0][1] +
+                pcf0[2]*fm[0][2] ;
+      proj[1] = pcf0[0]*fm[1][0] + 
+                pcf0[1]*fm[1][1] +
+                pcf0[2]*fm[1][2] ;
+      proj[2] = pcf0[0]*fm[2][0] + 
+                pcf0[1]*fm[2][1] +
+                pcf0[2]*fm[2][2] ;
+      SUMA_LHv("Dot product after rotation: %f\n",
+               SUMA_MT_DOT(proj, fv));  
       /* Apply rotation to all points */
       for (i=0; i<N_xyz; ++i) {
          i3=3*i;
@@ -7578,6 +7653,363 @@ float *SUMA_Project_Coords_PCA (float *xyz, int N_xyz, int iref,
    
    SUMA_RETURN(xyzp); 
 }
+
+int SUMA_VoxelDepth(THD_3dim_dataset *dset, float **dpth,
+                    float thr, byte **cmaskp, int applymask) 
+{
+   static char FuncName[]={"SUMA_VoxelDepth"};
+   float *sdpth=NULL, *xyz=NULL;
+   int ii, jj, kk, nn, vv, nvox=0;
+   byte *cmask=NULL, *scmask=NULL;
+   int N_inmask = -1;
+   THD_fvec3 mm, di; 
+   SUMA_Boolean LocalHead = NOPE;
+
+   SUMA_ENTRY;
+   
+   if (!dset) {
+      SUMA_S_Err("NULL input");
+      SUMA_RETURN(-1);
+   }
+   if (dpth && *dpth) {
+      SUMA_S_Err("If passing dpth, *dpth must be NULL");
+      SUMA_RETURN(-1);
+   }
+   if (cmaskp && *cmaskp) {
+      SUMA_S_Err("If passing cmaskp, *cmaskp must be NULL");
+      SUMA_RETURN(-1);
+   }
+   
+   /* get xyz of all non-zero voxels in dset */
+   if (!(cmask = THD_makemask( dset , 0 , 1.0, -1.0 ))) {
+      SUMA_S_Err("Failed to get mask");
+      SUMA_RETURN(-1);
+   }
+   for (nvox=0, ii=0; ii<DSET_NVOX(dset); ++ii) {
+      if (cmask[ii]) ++nvox;
+   }
+   if (!(xyz = (float *)SUMA_calloc(3*nvox, sizeof(float)))) {
+      SUMA_S_Errv("Failed to allocate for %d floats\n",
+                  3*nvox);
+      free(cmask);
+      SUMA_RETURN(-1);
+   }
+   vv=0; nn = 0;
+   for (kk=0; kk<DSET_NZ(dset); ++kk) {
+   for (jj=0; jj<DSET_NY(dset); ++jj) {
+   for (ii=0; ii<DSET_NX(dset); ++ii) {
+      if (cmask[vv]) {
+         mm.xyz[0] = DSET_XORG(dset)+ii*DSET_DX(dset);
+         mm.xyz[1] = DSET_YORG(dset)+jj*DSET_DY(dset);
+         mm.xyz[2] = DSET_ZORG(dset)+kk*DSET_DZ(dset);
+         di = SUMA_THD_3dmm_to_dicomm( dset->daxes->xxorient,
+                                       dset->daxes->yyorient,
+                                       dset->daxes->zzorient, mm);
+         xyz[3*nn  ] = di.xyz[0];
+         xyz[3*nn+1] = di.xyz[1];
+         xyz[3*nn+2] = di.xyz[2];
+         ++nn;
+      }
+      ++vv;
+   } } }
+   
+   SUMA_LHv("Calling depth function, thr %f\n", thr);
+   N_inmask = SUMA_NodeDepth(xyz, nvox, 
+                             dpth ? &sdpth:NULL, 
+                             thr, &scmask);
+   SUMA_LHv("%d / %d voxels met threshold\n", N_inmask, nvox);
+   SUMA_free(xyz); xyz = NULL;
+  
+   /* Does the user want voxel depths back ? */
+   if (dpth) {
+      SUMA_LH("Returning depth values");
+      *dpth = (float *)SUMA_calloc(DSET_NVOX(dset), sizeof(float));
+      vv=0; nn = 0;
+      for (kk=0; kk<DSET_NZ(dset); ++kk) {
+      for (jj=0; jj<DSET_NY(dset); ++jj) {
+      for (ii=0; ii<DSET_NX(dset); ++ii) {
+         if (cmask[vv]) {
+            *(*dpth+vv)=sdpth[nn]; ++nn;
+         } 
+         ++vv;
+      } } }
+   }
+   /* Does the user want mask back ? */
+   if (cmaskp) {
+      SUMA_LH("Returning byte mask");
+      *cmaskp = (byte *)SUMA_calloc(DSET_NVOX(dset), sizeof(byte));
+      vv=0; nn = 0;
+      for (kk=0; kk<DSET_NZ(dset); ++kk) {
+      for (jj=0; jj<DSET_NY(dset); ++jj) {
+      for (ii=0; ii<DSET_NX(dset); ++ii) {
+         if (cmask[vv]) {
+            *(*cmaskp+vv)=scmask[nn]; ++nn;
+         }
+         ++vv;
+      } } }
+   }
+   /* Apply the mask ? */
+   if (applymask) {
+      SUMA_LH("Applying mask");
+      switch (DSET_BRICK_TYPE(dset,0)) {
+         case MRI_byte:
+            {  byte *bv = (byte *)DSET_ARRAY(dset,0) ;
+               vv=0; nn = 0;
+               for (kk=0; kk<DSET_NZ(dset); ++kk) {
+               for (jj=0; jj<DSET_NY(dset); ++jj) {
+               for (ii=0; ii<DSET_NX(dset); ++ii) {
+                  if (cmask[vv]) {
+                     if (!scmask[nn]) bv[vv] = 0; 
+                     ++nn;
+                  }
+                  ++vv;
+               } } }
+            }
+            break;
+         case MRI_short:
+            {  short *sv = (short *)DSET_ARRAY(dset,0) ;
+               vv=0; nn = 0;
+               for (kk=0; kk<DSET_NZ(dset); ++kk) {
+               for (jj=0; jj<DSET_NY(dset); ++jj) {
+               for (ii=0; ii<DSET_NX(dset); ++ii) {
+                  if (cmask[vv]) {
+                     if (!scmask[nn]) sv[vv] = 0; 
+                     ++nn;
+                  }
+                  ++vv;
+               } } }
+            }
+            break;
+         case MRI_float:
+            {  float *fv = (float *)DSET_ARRAY(dset,0) ;
+               vv=0; nn = 0;
+               for (kk=0; kk<DSET_NZ(dset); ++kk) {
+               for (jj=0; jj<DSET_NY(dset); ++jj) {
+               for (ii=0; ii<DSET_NX(dset); ++ii) {
+                  if (cmask[vv]) {
+                     if (!scmask[nn]) fv[vv] = 0; 
+                     ++nn;
+                  }
+                  ++vv;
+               } } }
+            }
+            break;
+         default:
+            SUMA_S_Errv("Dset type %d not supported\n", DSET_BRICK_TYPE(dset,0));
+            break;
+      }
+   }
+   
+   SUMA_LH("Liberte");
+   if (cmask) free(cmask); cmask = NULL;
+   if (scmask) SUMA_free(scmask);
+   if (sdpth) SUMA_free(sdpth);
+   SUMA_RETURN(N_inmask);                   
+}
+
+int SUMA_VoxelPlaneCut(THD_3dim_dataset *dset, float *Eq,
+                       byte **cmaskp, int applymask) 
+{
+   static char FuncName[]={"SUMA_VoxelPlaneCut"};
+   int ii, jj, kk, nn, vv;
+   byte *cmask=NULL;
+   int N_inmask = -1;
+   THD_fvec3 mm, di;
+   float dist; 
+   SUMA_Boolean LocalHead = NOPE;
+
+   SUMA_ENTRY;
+   
+   if (!dset) {
+      SUMA_S_Err("NULL input");
+      SUMA_RETURN(-1);
+   }
+   if (cmaskp && *cmaskp) {
+      SUMA_S_Err("If passing cmaskp, *cmaskp must be NULL");
+      SUMA_RETURN(-1);
+   }
+   
+   /* get xyz of all non-zero voxels in dset */
+   if (!(cmask = THD_makemask( dset , 0 , 1.0, -1.0 ))) {
+      SUMA_S_Err("Failed to get mask");
+      SUMA_RETURN(-1);
+   }
+   
+   /* Change plane equation to fit orientation */
+   di.xyz[0] = Eq[0];
+   di.xyz[1] = Eq[1];
+   di.xyz[2] = Eq[2];
+   mm = SUMA_THD_dicomm_to_3dmm( dset->daxes->xxorient,
+                                       dset->daxes->yyorient,
+                                       dset->daxes->zzorient, di);
+   Eq[0] = mm.xyz[0];
+   Eq[1] = mm.xyz[1];
+   Eq[2] = mm.xyz[2];
+   
+   vv=0; nn = 0, N_inmask=0;
+   for (kk=0; kk<DSET_NZ(dset); ++kk) {
+   for (jj=0; jj<DSET_NY(dset); ++jj) {
+   for (ii=0; ii<DSET_NX(dset); ++ii) {
+      if (cmask[vv]) {
+         mm.xyz[0] = DSET_XORG(dset)+ii*DSET_DX(dset);
+         mm.xyz[1] = DSET_YORG(dset)+jj*DSET_DY(dset);
+         mm.xyz[2] = DSET_ZORG(dset)+kk*DSET_DZ(dset);
+         dist = Eq[0]*mm.xyz[0]+Eq[1]*mm.xyz[1]+Eq[2]*mm.xyz[2]-Eq[3];
+         if (dist < 0.0) {
+            cmask[vv] = 0;
+         } else {
+            ++N_inmask;
+         }
+         ++nn;
+      }
+      ++vv;
+   } } }
+   
+   SUMA_LHv("%d / %d nozero voxels pass the cut test\n", N_inmask, nn);
+   
+   /* Apply the mask ? */
+   if (applymask) {
+      SUMA_LH("Applying mask");
+      switch (DSET_BRICK_TYPE(dset,0)) {
+         case MRI_byte:
+            {  byte *bv = (byte *)DSET_ARRAY(dset,0) ;
+               vv=0; 
+               for (kk=0; kk<DSET_NZ(dset); ++kk) {
+               for (jj=0; jj<DSET_NY(dset); ++jj) {
+               for (ii=0; ii<DSET_NX(dset); ++ii) {
+                  if (!cmask[vv]) {
+                     bv[vv] = 0; 
+                  }
+                  ++vv;
+               } } }
+            }
+            break;
+         case MRI_short:
+            {  short *sv = (short *)DSET_ARRAY(dset,0) ;
+               vv=0; 
+               for (kk=0; kk<DSET_NZ(dset); ++kk) {
+               for (jj=0; jj<DSET_NY(dset); ++jj) {
+               for (ii=0; ii<DSET_NX(dset); ++ii) {
+                  if (!cmask[vv]) {
+                     sv[vv] = 0; 
+                  }
+                  ++vv;
+               } } }
+            }
+            break;
+         case MRI_float:
+            {  float *fv = (float *)DSET_ARRAY(dset,0) ;
+               vv=0; 
+               for (kk=0; kk<DSET_NZ(dset); ++kk) {
+               for (jj=0; jj<DSET_NY(dset); ++jj) {
+               for (ii=0; ii<DSET_NX(dset); ++ii) {
+                  if (!cmask[vv]) {
+                     fv[vv] = 0; 
+                  }
+                  ++vv;
+               } } }
+            }
+            break;
+         default:
+            SUMA_S_Errv("Dset type %d not supported\n", DSET_BRICK_TYPE(dset,0));
+            break;
+      }
+   }
+   
+   /* Does the user want mask back ? */
+   if (cmaskp) {
+      SUMA_LH("Returning byte mask");
+      *cmaskp = cmask; cmask = NULL;
+   }
+
+   SUMA_LH("Liberte");
+   if (cmask) free(cmask); cmask = NULL;
+   
+   SUMA_RETURN(N_inmask);                   
+}
+
+
+/*
+   Compute the depth (along principal direction closest to z axis)
+   of each node relative to the topmost node.
+      xyz: The coords of the nodes, 
+      N_Node: The number of nodes
+      dpth (float**): If not NULL, will contain allocated vector of 
+                      depths upon return. 
+      thr (float): Depth threshold
+      cmask (byte **): If not NULL, return a mask of 0 where nodes
+                       are deeper than threshold.
+   Returns the number of nodes in the mask. -1 on error
+*/                   
+int SUMA_NodeDepth(float *NodeList, int N_Node, float **dpth, 
+                   float thr, byte **cmaskp)
+{
+   static char FuncName[]={"SUMA_NodeDepth"};
+   float *xyzp=NULL;
+   int ii, iimax, iimin;
+   byte *cmask=NULL;
+   int N_inmask = -1;
+   SUMA_Boolean LocalHead = NOPE;
+
+   SUMA_ENTRY;
+
+   if (dpth && *dpth) {
+      SUMA_S_Err("If passing dpth, *dpth must be NULL");
+      SUMA_RETURN(-1);
+   }
+   if (cmaskp && *cmaskp) {
+      SUMA_S_Err("If passing cmaskp, *cmaskp must be NULL");
+      SUMA_RETURN(-1);
+   }
+
+   /* PCA of coords, project points along direction closest. 
+      to Z axis then rotate projection to Z axis */
+   xyzp = SUMA_Project_Coords_PCA (NodeList, N_Node, 2, 
+                                   EZ_DIR_PRJ, ROT_2_Z); 
+   /* Find the highest node */
+   iimax = 0; iimin = 0;
+   for (ii=1; ii<N_Node; ++ii) {
+      if (xyzp[3*ii+2] > xyzp[3*iimax+2]) {
+         iimax = ii;
+      }
+      if (xyzp[3*ii+2] < xyzp[3*iimin+2]) {
+         iimin = ii;
+      }
+   }
+
+   SUMA_LHv("Highest node %d PCR(%f,%f,%f), ORIG(%f,%f,%f)\n"
+            "Lowest  node %d PCR(%f,%f,%f), ORIG(%f,%f,%f)\n",
+                iimax, xyzp[3*iimax], xyzp[3*iimax+1], xyzp[3*iimax+2], 
+                    NodeList[3*iimax], NodeList[3*iimax+1], NodeList[3*iimax+2],
+                iimin, xyzp[3*iimin], xyzp[3*iimin+1], xyzp[3*iimin+2], 
+                    NodeList[3*iimin], NodeList[3*iimin+1], NodeList[3*iimin+2]);
+   /* Create a mask of nodes more than XXmm from the highest node */
+   cmask = (byte *)SUMA_calloc(N_Node, sizeof(byte));
+   N_inmask = 0;
+   for (ii=0; ii<N_Node; ++ii) {
+      if (xyzp[3*iimax+2] - xyzp[3*ii+2] <= thr) {
+         cmask[ii]=1;
+         ++N_inmask;
+      }
+   }
+
+   if (dpth) {
+      float ref=xyzp[3*iimax+2];
+      float *ddd = (float*)SUMA_calloc(N_Node, sizeof(float));
+      for (ii=0; ii<N_Node; ++ii) {
+         ddd[ii] = ref - xyzp[3*ii+2];
+      } 
+      *dpth = ddd; 
+   }
+   SUMA_free(xyzp); xyzp = NULL;
+
+   if (!cmaskp) SUMA_free(cmask);
+   else *cmaskp = cmask;
+   cmask = NULL;
+
+   SUMA_RETURN(N_inmask);
+}
+
 
 int SUMA_is_Constant_Z_Coord(float *NodeList, int N_Node, float tol)
 {
@@ -8590,6 +9022,52 @@ int SUMA_OrientTriangles (float *NodeList, int N_Node, int *FaceSetList,
    SUMA_RETURN(sgn);
 }
 
+/*!
+   Compute the dot product of the normal direction with the
+   direction stored in dir
+   SO Surface with normals and Center already computed
+   dir 1 direction vector. If NULL then each node
+       will get a different direction vector formed by the 
+       node and the surface's center.
+   dots Will contain the dot products. If *dots == NULL,
+        the function will alocate space, else it will
+        use the pointer in *dots
+*/   
+SUMA_Boolean SUMA_DotNormals(SUMA_SurfaceObject *SO, float *dir, float **dots)
+{
+   static char FuncName[]={"SUMA_DotNormals"};
+   double Un, U[3]={0.0, 0.0, 0.0};
+   float *dtp=NULL, *X=NULL, *N=NULL;
+   int ii=0;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+      
+   if (!SO || !SO->NodeNormList || !SO->Center || !dots) {
+      SUMA_SL_Err("Null or no input");
+      SUMA_RETURN(NOPE);
+   }
+
+   if (*dots == NULL) {
+      *dots = (float *)SUMA_calloc(3*SO->N_Node, sizeof(float));
+   }
+   dtp = *dots;
+   
+   if (dir) {
+      U[0] = dir[0]; U[1] = dir[1]; U[2] = dir[2];
+      SUMA_UNITIZE_VEC(U,3);
+   }
+   for (ii=0; ii<SO->N_Node; ++ii) {
+      N = SO->NodeNormList+3*ii;
+      if (!dir) { /* direction X-->Center */
+         X = SO->NodeList+3*ii;
+         SUMA_UNIT_VEC(X, SO->Center, U, Un);
+      }
+      dtp[ii] = SUMA_MT_DOT(N, U);
+   }
+   
+   SUMA_RETURN(YUP);
+}
 /* 
    A convenience function for SUMA_OrientTriangles
    It takes care of recreating relevant SO fields

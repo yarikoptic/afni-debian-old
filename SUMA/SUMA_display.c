@@ -6114,7 +6114,7 @@ SUMA_Boolean SUMA_Init_SurfCont_SurfParam(SUMA_SurfaceObject *SO)
    XmString string;
    SUMA_SurfaceObject *oSO;
    SUMA_Boolean SameSurface = NOPE;
-   SUMA_Boolean LocalHead = YUP;
+   SUMA_Boolean LocalHead = NOPE;
    
    SUMA_ENTRY;
    oSO = *(SO->SurfCont->curSOp);
@@ -11783,7 +11783,7 @@ void SUMA_PositionWindowRelative (  Widget New, Widget Ref,
             }
             XQueryPointer( XtDisplay(New), wind, &root, &child, 
                            &root_x, &root_y, &win_x, &win_y, &keys_buttons);
-            NewX = root_x - (int)Dx*2;
+            NewX = root_x - (int)Dx*13;
             NewY = root_y - (int)NewH + Dx;
          }
          break;
