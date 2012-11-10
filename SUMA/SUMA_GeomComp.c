@@ -7807,6 +7807,173 @@ int SUMA_VoxelDepth(THD_3dim_dataset *dset, float **dpth,
    SUMA_RETURN(N_inmask);                   
 }
 
+int SUMA_VoxelDepth_Z(THD_3dim_dataset *dset, float **dpth,
+                    float thr, byte **cmaskp, int applymask,
+                    float peakperc) 
+{
+   static char FuncName[]={"SUMA_VoxelDepth_Z"};
+   float *zs=NULL, *z=NULL;
+   int ii, jj, kk, nn, vv, nvox=0, itop=0;
+   byte *cmask=NULL;
+   int N_inmask = -1;
+   THD_fvec3 mm, di; 
+   SUMA_Boolean LocalHead = NOPE;
+
+   SUMA_ENTRY;
+   
+   if (!dset) {
+      SUMA_S_Err("NULL input");
+      SUMA_RETURN(-1);
+   }
+   if (dpth && *dpth) {
+      SUMA_S_Err("If passing dpth, *dpth must be NULL");
+      SUMA_RETURN(-1);
+   }
+   if (cmaskp && *cmaskp) {
+      SUMA_S_Err("If passing cmaskp, *cmaskp must be NULL");
+      SUMA_RETURN(-1);
+   }
+   
+   /* get xyz of all non-zero voxels in dset */
+   if (!(cmask = THD_makemask( dset , 0 , 1.0, -1.0 ))) {
+      SUMA_S_Err("Failed to get mask");
+      SUMA_RETURN(-1);
+   }
+   for (nvox=0, ii=0; ii<DSET_NVOX(dset); ++ii) {
+      if (cmask[ii]) ++nvox;
+   }
+   
+   if (!(z = (float *)SUMA_calloc(nvox, sizeof(float)))) {
+      SUMA_S_Errv("Failed to allocate for %d floats\n",
+                  nvox);
+      free(cmask);
+      SUMA_RETURN(-1);
+   }
+   if (!(zs = (float *)SUMA_calloc(nvox, sizeof(float)))) {
+      SUMA_S_Errv("Failed to allocate for %d floats\n",
+                  nvox);
+      free(cmask);
+      SUMA_RETURN(-1);
+   }
+   vv=0; nn = 0;
+   for (kk=0; kk<DSET_NZ(dset); ++kk) {
+   for (jj=0; jj<DSET_NY(dset); ++jj) {
+   for (ii=0; ii<DSET_NX(dset); ++ii) {
+      if (cmask[vv]) {
+         mm.xyz[0] = DSET_XORG(dset)+ii*DSET_DX(dset);
+         mm.xyz[1] = DSET_YORG(dset)+jj*DSET_DY(dset);
+         mm.xyz[2] = DSET_ZORG(dset)+kk*DSET_DZ(dset);
+         di = SUMA_THD_3dmm_to_dicomm( dset->daxes->xxorient,
+                                       dset->daxes->yyorient,
+                                       dset->daxes->zzorient, mm);
+         z[nn] = zs[nn] = di.xyz[2];
+         ++nn;
+      }
+      ++vv;
+   } } }
+   
+   /* sort the depths */
+   qsort(zs, nvox, sizeof(float), 
+         (int(*) (const void *, const void *)) SUMA_compare_float);
+   /* find the top Z value */
+   itop = (nvox-1)*((100-peakperc)/100.0);
+   if (itop > nvox-1) {
+      itop = nvox-1;
+   } else if (itop < 0) {
+      itop = 0;
+   }
+   SUMA_LHv("Top Z selection at %f %% is %fmm\n", peakperc, zs[itop]);
+   
+   /* Does the user want voxel depths back ? */
+   if (dpth) {
+      SUMA_LH("Returning depth values");
+      *dpth = (float *)SUMA_calloc(DSET_NVOX(dset), sizeof(float));
+      vv=0; nn = 0;
+      for (kk=0; kk<DSET_NZ(dset); ++kk) {
+      for (jj=0; jj<DSET_NY(dset); ++jj) {
+      for (ii=0; ii<DSET_NX(dset); ++ii) {
+         if (cmask[vv]) {
+            *(*dpth+vv)=zs[itop]-z[nn]; ++nn;
+         } 
+         ++vv;
+      } } }
+   }
+   /* Does the user want mask back ? */
+   if (cmaskp) {
+      SUMA_LH("Returning byte mask");
+      *cmaskp = (byte *)SUMA_calloc(DSET_NVOX(dset), sizeof(byte));
+      vv=0; nn = 0;
+      for (kk=0; kk<DSET_NZ(dset); ++kk) {
+      for (jj=0; jj<DSET_NY(dset); ++jj) {
+      for (ii=0; ii<DSET_NX(dset); ++ii) {
+         if (cmask[vv]) {
+            if (zs[itop]-z[nn] <= thr) {
+               *(*cmaskp+vv) = 1;
+            }
+            ++nn;
+         }
+         ++vv;
+      } } }
+   }
+   /* Apply the mask ? */
+   if (applymask) {
+      SUMA_LH("Applying mask");
+      switch (DSET_BRICK_TYPE(dset,0)) {
+         case MRI_byte:
+            {  byte *bv = (byte *)DSET_ARRAY(dset,0) ;
+               vv=0; nn = 0;
+               for (kk=0; kk<DSET_NZ(dset); ++kk) {
+               for (jj=0; jj<DSET_NY(dset); ++jj) {
+               for (ii=0; ii<DSET_NX(dset); ++ii) {
+                  if (cmask[vv]) {
+                     if (zs[itop]-z[nn] > thr) bv[vv] = 0; 
+                     ++nn;
+                  }
+                  ++vv;
+               } } }
+            }
+            break;
+         case MRI_short:
+            {  short *sv = (short *)DSET_ARRAY(dset,0) ;
+               vv=0; nn = 0;
+               for (kk=0; kk<DSET_NZ(dset); ++kk) {
+               for (jj=0; jj<DSET_NY(dset); ++jj) {
+               for (ii=0; ii<DSET_NX(dset); ++ii) {
+                  if (cmask[vv]) {
+                     if (zs[itop]-z[nn] > thr)  sv[vv] = 0; 
+                     ++nn;
+                  }
+                  ++vv;
+               } } }
+            }
+            break;
+         case MRI_float:
+            {  float *fv = (float *)DSET_ARRAY(dset,0) ;
+               vv=0; nn = 0;
+               for (kk=0; kk<DSET_NZ(dset); ++kk) {
+               for (jj=0; jj<DSET_NY(dset); ++jj) {
+               for (ii=0; ii<DSET_NX(dset); ++ii) {
+                  if (cmask[vv]) {
+                     if (zs[itop]-z[nn] > thr)  fv[vv] = 0; 
+                     ++nn;
+                  }
+                  ++vv;
+               } } }
+            }
+            break;
+         default:
+            SUMA_S_Errv("Dset type %d not supported\n", DSET_BRICK_TYPE(dset,0));
+            break;
+      }
+   }
+   
+   SUMA_LH("Liberte");
+   if (cmask) free(cmask); cmask = NULL;
+   if (z) SUMA_free(z); z= NULL;
+   if (zs) SUMA_free(zs); zs= NULL;
+   SUMA_RETURN(N_inmask);                   
+}
+
 int SUMA_VoxelPlaneCut(THD_3dim_dataset *dset, float *Eq,
                        byte **cmaskp, int applymask) 
 {
