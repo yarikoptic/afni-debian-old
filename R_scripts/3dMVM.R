@@ -28,7 +28,7 @@ greeting.MVM <- function ()
           ================== Welcome to 3dMVM ==================          
    AFNI Group Analysis Program with Multivariate Linear Modeling Approach
 #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-Version 0.1.0, Nov 7, 2012
+Version 0.1.0, Nov 16, 2012
 Author: Gang Chen (gangchen@mail.nih.gov)
 Website - http://afni.nimh.nih.gov/sscc/gangc/MVM.html
 SSCC/NIMH, National Institutes of Health, Bethesda MD 20892
@@ -44,7 +44,7 @@ help.MVM.opts <- function (params, alpha = TRUE, itspace='   ', adieu=FALSE) {
           ================== Welcome to 3dMVM ==================          
     AFNI Group Analysis Program with Multi-Variate Modeling Approach
 #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-Version 0.1.0, Nov 7, 2012
+Version 0.1.0, Nov 16, 2012
 Author: Gang Chen (gangchen@mail.nih.gov)
 Website - http://afni.nimh.nih.gov/sscc/gangc/MVM.html
 SSCC/NIMH, National Institutes of Health, Bethesda MD 20892
@@ -357,7 +357,7 @@ read.MVM.opts.batch <- function (args=NULL, verb = 0) {
       opname <- opname[length(opname)];
       switch(opname,
              prefix = lop$outFN  <- pprefix.AFNI.name(ops[[i]]),
-             maskFN = lop$maskFN <- ops[[i]],
+             mask = lop$maskFN <- ops[[i]],
              jobs   = lop$nNodes <- ops[[i]],
              model  = lop$model  <- ops[[i]],
              wsVars = lop$wsVars  <- ops[[i]],
@@ -716,11 +716,12 @@ inData <- read.AFNI(lop$dataStr[1, FileCol], verb=lop$verb, meth=lop$iometh)
 dimx <- inData$dim[1]
 dimy <- inData$dim[2]
 dimz <- inData$dim[3]
-head <- inData$header
+# for writing output purpose
+head <- inData
 
 # ww <- inData$NI_head
 #myHist <- inData$header$HISTORY_NOTE; myOrig <- inData$origin; myDelta <- inData$delta
-
+# Read in all input files
 inData <- unlist(lapply(lapply(lop$dataStr[,FileCol], read.AFNI, verb=lop$verb, meth=lop$iometh), '[[', 1))
 dim(inData) <- c(dimx, dimy, dimz, NoFile)
 
