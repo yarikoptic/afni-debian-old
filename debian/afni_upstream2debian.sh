@@ -169,7 +169,7 @@ if [ -n "${gitdir}" ]; then
 		ln -fs $upstream_archive $tf
 		echo "Importing upstream tarball into GIT with pristine-tar"
 		( cd $HOME/git/afni-pristine && \
-		  echo -e "\n" |  PS1= git-import-orig --pristine-tar "${tf}" -u "0.${afni_version}"; )
+		  echo -e "\n" |  PS1= git-import-orig --no-merge --pristine-tar "${tf}" -u "0.${afni_version}"; )
 		rm -f $tf
 	fi
 else
