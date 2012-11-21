@@ -121,6 +121,12 @@ rm -rf ${spath}/gifsicle*
 # XmHTML
 rm -rf ${spath}/XmHTML
 
+# NiBabel
+rm -rf ${spath}/pkundu/meica.libs/nibabel
+
+# MDP
+rm -rf ${spath}/pkundu/meica.libs/mdp
+
 echo "Remove problematic code"
 # non-commercial license (README also says non-distribution)
 # Now GPL!!
