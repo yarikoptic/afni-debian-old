@@ -313,7 +313,7 @@ Last-Update: 2010-09-21
 +ENDIF(NOT AFNI_BUILD_CORELIBS_ONLY)
 --- /dev/null
 +++ b/CMakeLists_apps.txt
-@@ -0,0 +1,216 @@
+@@ -0,0 +1,223 @@
 +##
 +## This file is to be included in the toplevel CMakeLists.txt
 +##
@@ -354,8 +354,8 @@ Last-Update: 2010-09-21
 +  3dSetupGroupInCorr 3dGroupInCorr 3dDimRed 3dSatCheck 3dTcorr1D 3dSimARMA11
 +  3dClustSim 3dRetinoPhase 3dMaskToASCII 3dttest++ 3dDTtoDWI niccc
 +  3dRankizer 3dXYZcat 3dPolyfit 3dNwarpApply 1dCorrelate 3dCountSpikes
-+  3dNwarpCalc dicom_hinfo apsearch 1dBport 3dNormalityTest
-+  ${EXTRAS})
++  3dNwarpCalc dicom_hinfo apsearch 3dNormalityTest 3dmask_tool FIRdesign
++  help_format 2perm 3dClustCount 3dQwarp 3dTransformGroupInCorr 3dExtractGroupInCorr ${EXTRAS})
 +
 +SET(SCRIPTS
 +  @4Daverage @CommandGlobb @GetAfniOrient @DTI_studio_reposition
@@ -377,7 +377,10 @@ Last-Update: 2010-09-21
 +  @MakeLabelTable @ElectroGrid ExamineXmat 1dRplot @2dwarper.Allin
 +  @Shift_Volume @help.AFNI @1dDiffMag @FSlabel2dset @Install_InstaCorr_Demo
 +  @Quiet_Talkers @radial_correlate @DeblankFileNames @clean_help_dir
-+  @global_parse @AfniEnv @Atlasize)
++  @global_parse @AfniEnv @Atlasize @Install_TSrestMovieDemo
++  @Install_AfniRetinoDemo @Install_PTaylor_TractDemo
++  @Install_RSFMRI_Motion_Group_Demo @Install_MEICA_Demo @T1scale
++)
 +
 +
 +##
@@ -402,6 +405,10 @@ Last-Update: 2010-09-21
 +#
 +# Further customized targets
 +#
++ADD_EXECUTABLE(1dBport 1dBport.c mri_bport.c)
++TARGET_LINK_LIBRARIES(1dBport ${AFNI_LIBS} -ldl)
++LIST(APPEND PROGRAMS 1dBport)
++
 +ADD_EXECUTABLE(3dTSgen 3dTSgen.c)
 +TARGET_LINK_LIBRARIES(3dTSgen ${AFNI_LIBS} -ldl)
 +LIST(APPEND PROGRAMS 3dTSgen)
@@ -821,7 +828,7 @@ Last-Update: 2010-09-21
 +
 +# script being programs on their own
 +SET(SCRIPTS
-+  1dRplot.R 3dICA.R 3dICC.R 3dICC_REML.R 3dLME.R 3dMEMA.R 3dSignatures.R ExamineXmat.R smooth.R)
++  3dAOV.R 1dRplot.R 3dICA.R 3dICC.R 3dICC_REML.R 3dLME.R 3dMEMA.R 3dMVM.R 3dSignatures.R ExamineXmat.R smooth.R)
 +
 +# everything else that is not meant to be a standalone script
 +SET(MODULES
@@ -929,7 +936,7 @@ Last-Update: 2010-09-21
 +  SurfMeasures FSread_annot SampBias volume_render 3dSurfMask SurfToSurf
 +  ROIgrow AnalyzeTrace DriveSuma SurfDist SpharmReco SpharmDeco SurfDsetInfo
 +  SurfLocalStat SurfFWHM NikoMap SurfInfo 3dSurf2Vol SurfRetinoMap ParseName
-+  RestSym SurfExtrema 3dinfill)
++  RestSym SurfExtrema 3dinfill 3dHist)
 +
 +# automatically add targets for all programs following to frequently used
 +# naming scheme
@@ -1260,7 +1267,7 @@ Last-Update: 2010-09-21
 +
 +# script being programs on their own
 +SET(SCRIPTS
-+  1d_tool.py afni_proc.py align_epi_anat.py @DoPerRoi.py eg_main_chrono.py
++  1d_tool.py afni_proc.py afni_restproc.py align_epi_anat.py @DoPerRoi.py eg_main_chrono.py
 +  gen_epi_review.py gen_group_command.py gen_ss_review_scripts.py gui_xmat.py
 +  lpc_align.py make_pq_script.py make_random_timing.py make_stim_times.py
 +  neuro_deconvolve.py python_module_test.py realtime_receiver.py
@@ -1283,7 +1290,7 @@ Last-Update: 2010-09-21
 +  DESTINATION ${AFNI_INSTALL_SCRIPT_DIR} COMPONENT Runtime)
 --- /dev/null
 +++ b/rickr/CMakeLists.txt
-@@ -0,0 +1,31 @@
+@@ -0,0 +1,32 @@
 +PROJECT(rickr)
 +
 +SET(SOURCES r_idisp.c r_misc.c r_new_resam_dset.c)
@@ -1292,7 +1299,7 @@ Last-Update: 2010-09-21
 +#TARGET_LINK_LIBRARIES(rickr afni_warp)
 +
 +IF(NOT AFNI_BUILD_CORELIBS_ONLY)
-+  SET(PROGRAMS 3dresample file_tool Dimon serial_helper)
++  SET(PROGRAMS 3dresample file_tool Dimon serial_helper column_cat)
 +
 +  ADD_EXECUTABLE(3dresample 3dresample.c)
 +  TARGET_LINK_LIBRARIES(3dresample ${AFNI_LIBS} ${WARP_LIBS} ${RICKR_LIBS})
@@ -1309,6 +1316,7 @@ Last-Update: 2010-09-21
 +  TARGET_LINK_LIBRARIES(Dimon ${AFNI_LIBS}) # For thd_iochan
 +
 +  ADD_EXECUTABLE(serial_helper serial_helper.c)
++  ADD_EXECUTABLE(column_cat column_cat.c)
 +ENDIF(NOT AFNI_BUILD_CORELIBS_ONLY)
 +
 +INSTALL(TARGETS rickr ${PROGRAMS}
@@ -1393,22 +1401,19 @@ Last-Update: 2010-09-21
 +  DESTINATION ${AFNI_INSTALL_HTML_DIR} COMPONENT Runtime)
 --- /dev/null
 +++ b/ptaylor/CMakeLists.txt
-@@ -0,0 +1,25 @@
+@@ -0,0 +1,22 @@
 +PROJECT(tracktools)
 +
 +IF (GSL_LIBRARY AND GTS_FOUND)
 +  MESSAGE(STATUS "Found GSL and GTS libraries, compiling tracktools")
-+  SET(SOURCES DoTrackit.c)
++  SET(SOURCES DoTrackit.c TrackIO.c rsfc.c)
 +  ADD_LIBRARY(tracktools ${SOURCES})
 +  TARGET_LINK_LIBRARIES(tracktools gsl gslcblas gts)
-+  SET(PROGRAMS 3dTrackID 3dProbTrackID 3dDWUncert1 3dDWUncert2)
-+
-+  ADD_EXECUTABLE(3dTrackID 3dTrackID.c)
-+  ADD_EXECUTABLE(3dProbTrackID 3dProbTrackID.c)
-+  ADD_EXECUTABLE(3dDWUncert1 3dDWUncert1.c)
-+  ADD_EXECUTABLE(3dDWUncert2 3dDWUncert2.c)
++  SET(PROGRAMS
++	3dTrackID 3dProbTrackID 3dDWUncert 3dReHo 3dRSFC map_TrackID)
 +
 +  FOREACH(program ${PROGRAMS})
++	ADD_EXECUTABLE(${program} ${program}.c)
 +    TARGET_LINK_LIBRARIES(${program} ${AFNI_LIBS} tracktools ${GSL_LIBRARY} ${GTS_LIBRARIES})
 +  ENDFOREACH(program)
 +
@@ -1419,3 +1424,25 @@ Last-Update: 2010-09-21
 +ELSE (GSL_LIBRARY AND GTS_FOUND)
 +	MESSAGE(STATUS "GSL and/or GTS libraries not found -- not compiling tracktools")
 +ENDIF (GSL_LIBRARY AND GTS_FOUND)
+--- /dev/null
++++ b/pkundu/CMakeLists.txt
+@@ -0,0 +1,8 @@
++PROJECT(PKUNDU)
++
++# script being programs on their own
++SET(SCRIPTS meica.py)
++
++
++INSTALL(PROGRAMS ${SCRIPTS}
++  DESTINATION ${AFNI_INSTALL_SCRIPT_DIR} COMPONENT Runtime)
+--- /dev/null
++++ b/pkundu/meica.libs/CMakeLists.txt
+@@ -0,0 +1,8 @@
++PROJECT(MEICA_LIBS)
++
++# script being programs on their own
++SET(SCRIPTS siemens_me2nii.py tedana.py)
++
++
++INSTALL(PROGRAMS ${SCRIPTS}
++  DESTINATION ${AFNI_INSTALL_SCRIPT_DIR} COMPONENT Runtime)

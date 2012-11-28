@@ -3,3 +3,6 @@ Duplicate files
   eispack.h eispack/eispack.h
   coxplot.h coxplot/coxplot.h
 
+Additional optional dependencies
+================================
+* OpenMP (gomp)
