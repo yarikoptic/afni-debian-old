@@ -325,13 +325,21 @@ THD_string_array * THD_get_all_afni_executables(void )
           !STRING_HAS_SUFFIX_CASE(elist->ar[ii], ".la") &&
           !STRING_HAS_SUFFIX_CASE(elist->ar[ii], ".txt") &&
           !STRING_HAS_SUFFIX_CASE(elist->ar[ii], ".R") &&
-    !(STRING_HAS_SUFFIX_CASE(elist->ar[ii], ".py") && !strncmp(etr,"lib_",4)) &&
+          !(STRING_HAS_SUFFIX_CASE(elist->ar[ii], ".py") &&
+             /* add a couple of python types to skip  20 Jul 2012 [rickr] */
+             !strncmp(etr,"lib_",4) && !strncmp(etr,"gui_",4) &&
+             !strncmp(etr,"ui_",4) ) &&
           (smode <= STORAGE_UNDEFINED || smode >= LAST_STORAGE_MODE)  &&
           !STRING_HAS_SUFFIX_CASE(elist->ar[ii], ".sumarc") &&
           !STRING_HAS_SUFFIX_CASE(elist->ar[ii], ".afnirc")&&
           !STRING_HAS_SUFFIX_CASE(elist->ar[ii], "lib.py") &&
           !STRING_HAS_SUFFIX_CASE(elist->ar[ii], ".pyc") &&
-          !STRING_HAS_SUFFIX_CASE(elist->ar[ii], ".Xdefaults") 
+          !STRING_HAS_SUFFIX_CASE(elist->ar[ii], ".Xdefaults") &&
+          /* skip README files, processed as scripts     20 Jul 2012 [rickr]
+             of note: README.atlas_building starts with the line:
+                      README.atlas_building
+             such process recursion is not good for the system... */
+          strncmp(etr, "README.", 7)
               )  {
          ADDTO_SARR( outar , elist->ar[ii] ) ; ++iaf;
          /* fprintf(stderr," %d- %s\n", iaf, etr); */
@@ -425,7 +433,7 @@ THD_string_array * THD_get_all_afni_dsets(void )
       if (
           !THD_is_directory(elist->ar[ii]) &&
           !strncmp(af, elist->ar[ii], N_af) &&
-          (smode > STORAGE_UNDEFINED && smode < LAST_STORAGE_MODE) &&
+          (smode > STORAGE_UNDEFINED && smode <= LAST_STORAGE_MODE) &&
           (smode != STORAGE_BY_BRICK ||  /* don't want the .BRICK, just .HEAD */
                STRING_HAS_SUFFIX(elist->ar[ii], ".HEAD")) &&
           (smode != STORAGE_BY_NIFTI ||        /* don't want the .img */

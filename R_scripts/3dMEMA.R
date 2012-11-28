@@ -23,7 +23,7 @@ ExecName <- '3dMEMA'
 read.MEMA.opts.interactive <- function (verb = 0) {
    lop <- list()  #List to hold all options from user input
    lop$verb <- verb
-   lop$iometh <- 'Rlib'
+   lop$iometh <- 'clib'
    
    outFNexist <- TRUE
    while (outFNexist) {
@@ -58,7 +58,7 @@ read.MEMA.opts.interactive <- function (verb = 0) {
    print("The following types of group analysis are currently available:")
    print("1: one condition with one group;")
    print("2: one condition across 2 groups with homoskedasticity (same variability);")
-   print("3: two conditions with one group;")
+#   print("3: two conditions with one group;")
    print("4: one condition across 2 groups with heteroskedasticity (different variability).")
    lop$anaType <- as.integer(readline("Which analysis type (1, 2, 3, 4): "))
    
@@ -128,61 +128,61 @@ read.MEMA.opts.interactive <- function (verb = 0) {
       } # for(ii in 1:lop$nGrp)
    } # if(lop$anaType==1 | lop$anaType==2 | lop$anaType==4)
    
-   if(lop$anaType==3) {
-      lop$nLevel <- 2   
-      lop$bFN <- vector('list', lop$nLevel)
-      lop$tFN <- vector('list', lop$nLevel)
-      lop$conLab <- vector('list', lop$nLevel)
-      lop$subjLab <- vector('list', 1)
-      lop$bList <- vector('list', lop$nLevel)
-      lop$tList <- vector('list', lop$nLevel)
-      lop$varList <- vector('list', lop$nLevel)
-      print("Since the contrast between the 2 conditions will be the 2nd minus the 1st, choose")
-      print("an appropriate order between the 2 conditions to get the desirable contrast.")
-      lop$grpName[[1]] <- readline("Label for the contrast? ")
-      lop$testName[[1]] <- lop$grpName[[1]]
+#   if(lop$anaType==3) {
+#      lop$nLevel <- 2   
+#      lop$bFN <- vector('list', lop$nLevel)
+#      lop$tFN <- vector('list', lop$nLevel)
+#      lop$conLab <- vector('list', lop$nLevel)
+#      lop$subjLab <- vector('list', 1)
+#      lop$bList <- vector('list', lop$nLevel)
+#      lop$tList <- vector('list', lop$nLevel)
+#      lop$varList <- vector('list', lop$nLevel)
+#      print("Since the contrast between the 2 conditions will be the 2nd minus the 1st, choose")
+#      print("an appropriate order between the 2 conditions to get the desirable contrast.")
+#      lop$grpName[[1]] <- readline("Label for the contrast? ")
+#      lop$testName[[1]] <- lop$grpName[[1]]
 
-      lop$nSubj[1] <- as.integer(readline("Number of subjects: "))
-      lop$nFiles[1] <- 2*lop$nSubj[1]  
+#      lop$nSubj[1] <- as.integer(readline("Number of subjects: "))
+#      lop$nFiles[1] <- 2*lop$nSubj[1]  
                         # 2 because of 1 beta and 1 t-statistic
-      for(jj in 1:lop$nSubj[1]) 
-         lop$subjLab[[1]][[jj]] <- 
-            readline(sprintf("No. %i subject label: ", jj))      
-      for(ii in 1:lop$nLevel) {
-         lop$conLab[[ii]] <- readline(sprintf("Label for condition %i? ", ii))
-         lop$bFN[[ii]] <- vector('integer', lop$nSubj[1]); 
-         lop$tFN[[ii]] <- vector('integer', lop$nSubj[1]);
-         for(jj in 1:lop$nSubj[1]) {
-            lop$bFN[[ii]][[jj]] <- 
-               readline(sprintf("No. %i subject (%s) file for beta or linear combination of betas with condition %s: ", 
-                        jj, lop$subjLab[[1]][[jj]], lop$conLab[[ii]]))
-            lop$tFN[[ii]][[jj]] <- 
-               readline(sprintf("No. %i subject (%s) file for the corresponding t-statistic with condition %s: ", 
-                        jj, lop$subjLab[[1]][[jj]], lop$conLab[[ii]]))
-            print("-----------------")
-         }
-         lop$bList[[ii]] <- lapply(lop$bFN[[ii]], read.AFNI, 
-                                   verb=lop$verb, meth=lop$iometh); 
-         lop$tList[[ii]] <- lapply(lop$tFN[[ii]], read.AFNI, 
-                                   verb=lop$verb, meth=lop$iometh);
-         if(ii==1) {
-            lop$myNote=lop$bList[[1]][[1]]$header$HISTORY_NOTE; 
-            lop$myOrig=lop$bList[[1]][[1]]$origin; 
-            lop$myDelta=lop$bList[[1]][[1]]$delta; 
-            lop$myDim <- lop$bList[[1]][[1]]$dim
-         }
-         lapply(lapply(lop$bList[[ii]], function(x) x$dim), 
-                function(x) 
-                  if(!all(x==lop$myDim)) 
-                     stop("Dimension mismatch among the beta input files!"))
-         lapply(lapply(lop$tList[[ii]], function(x) x$dim), 
-               function(x) 
-                  if(!all(x==lop$myDim)) 
-                     stop("Dimension mismatch between beta and t-statistic files!"))
+#      for(jj in 1:lop$nSubj[1]) 
+#         lop$subjLab[[1]][[jj]] <- 
+#            readline(sprintf("No. %i subject label: ", jj))      
+#      for(ii in 1:lop$nLevel) {
+#         lop$conLab[[ii]] <- readline(sprintf("Label for condition %i? ", ii))
+#         lop$bFN[[ii]] <- vector('integer', lop$nSubj[1]); 
+#         lop$tFN[[ii]] <- vector('integer', lop$nSubj[1]);
+#         for(jj in 1:lop$nSubj[1]) {
+#            lop$bFN[[ii]][[jj]] <- 
+#               readline(sprintf("No. %i subject (%s) file for beta or linear combination of betas with condition %s: ", 
+#                        jj, lop$subjLab[[1]][[jj]], lop$conLab[[ii]]))
+#            lop$tFN[[ii]][[jj]] <- 
+#               readline(sprintf("No. %i subject (%s) file for the corresponding t-statistic with condition %s: ", 
+#                        jj, lop$subjLab[[1]][[jj]], lop$conLab[[ii]]))
+#            print("-----------------")
+#         }
+#         lop$bList[[ii]] <- lapply(lop$bFN[[ii]], read.AFNI, 
+#                                   verb=lop$verb, meth=lop$iometh); 
+#         lop$tList[[ii]] <- lapply(lop$tFN[[ii]], read.AFNI, 
+#                                   verb=lop$verb, meth=lop$iometh);
+#         if(ii==1) {
+#            lop$myNote=lop$bList[[1]][[1]]$header$HISTORY_NOTE; 
+#            lop$myOrig=lop$bList[[1]][[1]]$origin; 
+#            lop$myDelta=lop$bList[[1]][[1]]$delta; 
+#            lop$myDim <- lop$bList[[1]][[1]]$dim
+#         }
+#         lapply(lapply(lop$bList[[ii]], function(x) x$dim), 
+#                function(x) 
+#                  if(!all(x==lop$myDim)) 
+#                     stop("Dimension mismatch among the beta input files!"))
+#         lapply(lapply(lop$tList[[ii]], function(x) x$dim), 
+#               function(x) 
+#                  if(!all(x==lop$myDim)) 
+#                     stop("Dimension mismatch between beta and t-statistic files!"))
 
-      } # for(ii in 1:lop$nLevel)  
+#      } # for(ii in 1:lop$nLevel)  
    
-   } # if(lop$anaType==3)
+#   } # if(lop$anaType==3)
    
    print("-----------------")
    print("There may have missing or zero t values at some voxels in some subjects.")
@@ -506,7 +506,7 @@ greeting.MEMA <- function ()
           ================== Welcome to 3dMEMA.R ==================          
              AFNI Mixed-Effects Meta-Analysis Modeling Package!
 #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-Version 0.1.14, Jan 20, 2012
+Version 0.2.0, Nov 9, 2012
 Author: Gang Chen (gangchen@mail.nih.gov)
 Website - http://afni.nimh.nih.gov/sscc/gangc/MEMA.html
 SSCC/NIMH, National Institutes of Health, Bethesda MD 20892
@@ -518,9 +518,8 @@ reference.MEMA <- function ()
 "#######################################################################
 Please consider citing the following if this program is useful for you:
 
-   Chen et al., FMRI Group Analysis Combining Effect 
-   Estimates and Their Variances. NeuroImage. (In Press). 
-   10.1016/j.neuroimage.2011.12.060
+   Chen et al., 2012. FMRI Group Analysis Combining Effect Estimates
+   and Their Variances. NeuroImage. NeuroImage 60: 747-765.
    
    http://afni.nimh.nih.gov/sscc/gangc/MEMA.html
    
@@ -540,21 +539,30 @@ Usage:
  both regression coefficients, or general linear contrasts among them, and the 
  corresponding t-statistics from each subject as input. It\'s required to install 
  R (http://www.r-project.org/), plus \'snow\' package if parallel computing is
- desirable. Version 0.1.13 (July 6, 2011). If you want to cite the analysis
+ desirable. Version 0.2.0 (Nov 9, 2012). If you want to cite the analysis
  approach, use the following at this moment:
 
- Chen et al., FMRI Group Analysis Combining Effect
- Estimates and Their Variances. NeuroImage. (In Press).
- 10.1016/j.neuroimage.2011.12.060
-
+ Chen et al., 2012. FMRI Group Analysis Combining Effect Estimates
+ and Their Variances. NeuroImage. NeuroImage 60: 747-765.
+ 
  The basic usage of 3dMEMA is to derive group effects of a condition, contrast,
  or linear combination (GLT) of multiple conditions. It can be used to analyze
  data from one, two, or multiple groups. However, if there are more than two
- groups involved in the analysis, dummy coding the groups as covariates is
- required, and extremely caution should be exercised in doing so because different
- coding strategy may lead to different interpretation. In addition, covariates
- can be incorporated in the model, but centering and potential interactions with
- other effects in the model should be considered. See more details at
+ groups or more than one subject-grouping variables (e.g., sex, adolescent/adults,
+ genotypes, etc.) involved in the analysis, dummy coding (zeros and ones) the 
+ variables as covariates is required, and extremely caution should be exercised 
+ in doing so because different coding strategy may lead to different 
+ interpretation. In addition, covariates (quantiative variables) can be 
+ incorporated in the model, but centering and potential interactions with other 
+ effects in the model should be considered. 
+ 
+ Basically, 3dMEMA can run one-sample, two-sample, and all types of BETWEEN-SUBJECTS
+ ANOVA and ANCOVA. Within-subject variables mostly cannot be modeled, but there are 
+ a few exceptions. For instance, paired-test can be performed through feeding the 
+ contrast of the two conditons as input. Multi-way ANOVA can be analyzed under the
+ following two scnearios: 1) all factors have only two levels (e.g., 2 X 2 repeated-
+ measures ANOVA) can be analyzed; or 1) there is only one within-subject (or 
+ repeated-measures) factor and it contains two levels only. See more details at
  
  http://afni.nimh.nih.gov/sscc/gangc/MEMA.html'
    
@@ -584,31 +592,9 @@ contrast from each subject in a group):
                -missing_data 0  \\
                -HKtest         \\        
                -model_outliers \\        
-               -residual_Z     \n"   
-
-   ex2 <-
-"Example 2 --- Paired type (two regression coefficients or general linear 
-contrasts from each subject in a group with the constrast is the 2nd set 
-subtracing the 1st one):
----------------------------------
-   3dMEMA   -prefix ex2  \\
-            -jobs 4      \\
-            -conditions happy sad \\
-            -missing_data happyMiss+tlrc sadMiss+tlrc \\
-            -set   happy \\
-                ac   ac_hap_B+tlrc   ac_hap_T+tlrc   \\
-                ejk  ejk_hap_B+tlrc  ejk_hap_T+tlrc  \\
-                ...
-                ss   ss_hap_B+tlrc   ss_hap_T+tlrc   \\
-            -set   sad   \\
-                ac   ac_sad_B+tlrc   ac_sad_T+tlrc   \\
-                ejk  ejk_sad_B+tlrc  ejk_sad_T+tlrc  \\
-                ...
-                ss   ss_sad_B+tlrc   ss_sad_T+tlrc   \\
-            \n"
-   
-   ex3 <- 
-"Example 3 --- Two-sample type (one regression coefficient or general linear
+               -residual_Z     \n"      
+   ex2 <- 
+"Example 2 --- Two-sample type (one regression coefficient or general linear
 contrast from each subject in two groups with the constrast being the 2nd group 
 subtracing the 1st one), heteroskedasticity (different cross-subjects variability 
 between the two groups), outlier modeling, covariates centering, no payment no 
@@ -630,6 +616,7 @@ interest till Memorial Day next year:
             -n_nonzero 18   \\
             -HKtest         \\
             -model_outliers \\
+            -unequal_variance \\
             -residual_Z     \\
             -covariates CovFile.txt \\
             -covariates_center age = 25 13 weight = 100 150  \\
@@ -648,6 +635,23 @@ interest till Memorial Day next year:
       delb  9     67
       tony  12    4000
 \n"
+
+   ex3 <-
+"Example 3 --- Paired type (difference of two regression coefficients or 
+general linear contrasts from each subject in a group). One scenario of 
+general linear combinations is to test linear or higher order trend at 
+individual level, and then take the trend information to group level.
+---------------------------------
+   3dMEMA   -prefix ex2  \\
+            -jobs 4      \\
+            -missing_data happyMiss+tlrc sadMiss+tlrc \\
+            -set happy-sad \\
+                ac   ac_hap-sad_B+tlrc   ac_hap-sad_T+tlrc   \\
+                ejk  ejk_hap-sad_B+tlrc  ejk_hap-sad_T+tlrc  \\
+                ...
+                ss   ss_hap-sad_B+tlrc   ss_hap-sad_T+tlrc   \\
+            \n"
+
 
    parnames <- names(params)
    ss <- vector('character')
@@ -699,7 +703,7 @@ read.MEMA.opts.batch <- function (args=NULL, verb = 0) {
    "              ...   ...       ...     \\\n",
    "              SUBJ_N BETA_DSET T_DSET \\\n",
    "     Specify the data for one of two test variables (either group,\n",
-   "             conditions/tasks/GLTs) A & B. \n",
+   "             contrast/GLTs) A & B. \n",
    "     SETNAME is the name assigned to the set. \n",
    "     SUBJ_K is the label for the subject K whose datasets will be \n",
    "            listed next\n",
@@ -713,10 +717,10 @@ read.MEMA.opts.batch <- function (args=NULL, verb = 0) {
    "                            pb05.Jane.Regression+tlrc'[face#0_Tstat]' \\\n" 
                         ) ),
                         
-      '-conditions' = apl(n = c(1,2), h = paste (
-   "-conditions COND1 [COND2]: Name of 1 or 2 conditions, tasks, or GLTs.\n",
-   "                           Default is one condition named 'c1'\n"   
-                  ) ),
+#      '-conditions' = apl(n = c(1,2), h = paste (
+#   "-conditions COND1 [COND2]: Name of 1 or 2 conditions, tasks, or GLTs.\n",
+#   "                           Default is one condition named 'c1'\n"   
+#                  ) ),
                   
       '-max_zeros' = apl(n = 1, d = 0, h = paste(
    "-max_zeros MM: Do not compute statistics at any voxel that has \n",
@@ -769,12 +773,11 @@ read.MEMA.opts.batch <- function (args=NULL, verb = 0) {
    "  -missing_data 0: With this format the zero value at a voxel of each subject\n",
    "                will be interpreted as missing data.\n",
    "  -missing_data File1 [File2]: Information about missing data is specified\n",
-   "                              with file of 1 or 2 conditions, tasks, GLTs, or\n",
-   "                              groups (the number 1 or 2 and file order should\n",
-   "                              be consistent with those in option -conditions\n",
-   "                              or -groups. The voxel value of each file indicates\n",
-   "                              the number of sujects with missing data in that\n",
-   "                              condition, task, GLT, or group. \n"
+   "                              with file of 1 or 2 groups (the number 1 or 2\n",
+   "                              and file order should be consistent with those\n",
+   "                              in option -groups). The voxel value of each file\n",
+   "                              indicates the number of sujects with missing data\n",
+   "                              in that group. \n"
                      ) ),      
       
       '-model_outliers' = apl(0, h = paste(
@@ -934,7 +937,7 @@ read.MEMA.opts.batch <- function (args=NULL, verb = 0) {
              prefix = lop$outFN  <- pprefix.AFNI.name(ops[[i]]),
              jobs   = lop$nNodes <- ops[[i]],
              groups = lop$grpName <- ops[[i]],
-             conditions = lop$conLab <- ops[[i]],
+#             conditions = lop$conLab <- ops[[i]],
              set  = lop <- MEMA.parse.set(lop, ops[[i]]),
              n_nonzero = lop$nNonzero <- ops[[i]],
              max_zeros = lop$nMaxzero <- ops[[i]],
@@ -1366,7 +1369,7 @@ process.MEMA.opts <- function (lop, verb = 0) {
                                              (lop$nSubj[1]+(ii-1)*lop$nSubj[2]),]
                                                       ), 1, "-", centerVal))
                }
-               lop$covData <- t(cbind(covList[[1]], covList[[2]]))
+               lop$covData <- rbind(covList[[1]], covList[[2]])
             } # if(lop$centerType == 1)
          } # if(lop$centerType2 == 3)
          
@@ -1973,14 +1976,14 @@ runRMA <- function(  inData, nGrp, n, p, xMat, outData,
    Y <- inData[1: halfLen]; V <- inData[(halfLen +1): fullLen]
    #tryCatch(sum(abs(Y)>tol) >= nNonzero, error = browser())
    if(sum(abs(Y)>tol) >= nNonzero) {  # run only when there are more than 2 non-zeros in both Y and V
-   tag <- TRUE
-   if(anaType==4) try(resList <- mema(Y, V, n[1], n[2], p, X=xMat, resZout, lapMod, knha=KHtest), tag <- FALSE) else
-      if(length(n)==1) try(resList <- mema(Y, V, n, p, X=xMat, resZout, lapMod, knha=KHtest), tag <- FALSE) else
-      try(resList <- mema(Y, V, n[2], p, X=xMat, resZout, lapMod, knha=KHtest), tag <- FALSE)  # for the case of 2 groups with homoskedasticiy
+   resList <- NULL
+   if(anaType==4) try(resList <- mema(Y, V, n[1], n[2], p, X=xMat, resZout, lapMod, knha=KHtest), silent=TRUE) else
+      if(length(n)==1) try(resList <- mema(Y, V, n, p, X=xMat, resZout, lapMod, knha=KHtest), silent=TRUE) else
+      try(resList <- mema(Y, V, n[2], p, X=xMat, resZout, lapMod, knha=KHtest), silent=TRUE)  # for the case of 2 groups with homoskedasticiy
    
    #if(is.null(resList)) tag <- FALSE  # stop here if singularity occurs
     
-   if(tag & !is.null(resList)) {
+   if(!is.null(resList)) {
    if(nGrp==1) {
       outData[1] <- resList$b[1]  # beta of group1, intercept
       outData[2] <- resList$z[1]  # z score of group1
@@ -2170,46 +2173,46 @@ tTop <- 100   # upper bound for t-statistic
       }
    }
    
-   if(lop$anaType==3) {  # case with two conditions
-      for(ii in 1:lop$nLevel) {
-         lop$bList[[ii]] <- lapply(lop$bList[[ii]], function(x) x$brk); 
-         lop$tList[[ii]] <- lapply(lop$tList[[ii]], function(x) x$brk)
-         lop$varList[[ii]] <- 
-            mapply(function(x, y) 
-                   ifelse((abs(x)<tolL) | (abs(y)<tolL), 0, (x/y)^2), 
-                   lop$bList[[ii]], lop$tList[[ii]], SIMPLIFY = FALSE)  # variance
-         for (jj in 1:lop$nSubj[1]) 
-            lop$varList[[ii]][[jj]][lop$varList[[ii]][[jj]] < tolL] <- tolU  
+#   if(lop$anaType==3) {  # case with two conditions
+#      for(ii in 1:lop$nLevel) {
+#         lop$bList[[ii]] <- lapply(lop$bList[[ii]], function(x) x$brk); 
+#         lop$tList[[ii]] <- lapply(lop$tList[[ii]], function(x) x$brk)
+#         lop$varList[[ii]] <- 
+#            mapply(function(x, y) 
+#                   ifelse((abs(x)<tolL) | (abs(y)<tolL), 0, (x/y)^2), 
+#                   lop$bList[[ii]], lop$tList[[ii]], SIMPLIFY = FALSE)  # variance
+#         for (jj in 1:lop$nSubj[1]) 
+#            lop$varList[[ii]][[jj]][lop$varList[[ii]][[jj]] < tolL] <- tolU  
                 # replace those 0 variances with a big number
-      }
-      if(!is.null(lop$missing_dataFN)) { # if missing data is considered
-         grpDFList <- vector('list', lop$nLevel)      
+#      }
+#      if(!is.null(lop$missing_dataFN)) { # if missing data is considered
+#         grpDFList <- vector('list', lop$nLevel)      
          # missing data is defined as 0 values at each voxel
-         if(is.numeric(lop$missing_dataFN)) { if(lop$missing_dataFN == 0) {
-            for(ii in 1:lop$nLevel) {
+#         if(is.numeric(lop$missing_dataFN)) { if(lop$missing_dataFN == 0) {
+#            for(ii in 1:lop$nLevel) {
                # here grpDFList[[ii]] is the number of 0 variances at each voxel for ii-th group
-               grpDFList[[ii]] <- (abs(lop$bList[[ii]][[1]]) == 0)  #0s in 1st subject in the ii-th group
+#               grpDFList[[ii]] <- (abs(lop$bList[[ii]][[1]]) == 0)  #0s in 1st subject in the ii-th group
                # add #0s in other subjects in the group
-               for(jj in 2:lop$nSubj[1]) 
-               grpDFList[[ii]] <- grpDFList[[ii]] + (abs(lop$bList[[ii]][[jj]]) == 0)
-            } } 
-         } else 
-         if(is.character(lop$missing_dataFN))  # missing data info provided by user
-            for(ii in 1:lop$nLevel) {
-               grpDFList[[ii]] <- read.AFNI(lop$missing_dataFN[ii], 
-                                    verb=lop$verb, meth=lop$iometh)$brk
-            }
-      }
+#               for(jj in 2:lop$nSubj[1]) 
+#               grpDFList[[ii]] <- grpDFList[[ii]] + (abs(lop$bList[[ii]][[jj]]) == 0)
+#            } } 
+#         } else 
+#         if(is.character(lop$missing_dataFN))  # missing data info provided by user
+#            for(ii in 1:lop$nLevel) {
+#               grpDFList[[ii]] <- read.AFNI(lop$missing_dataFN[ii], 
+#                                    verb=lop$verb, meth=lop$iometh)$brk
+#            }
+###      }
    
       # 2nd minus 1st: keep consistent with 3dttset and the two-sample types 2 and 4
-      contrBList <- mapply("-", lop$bList[[2]], lop$bList[[1]], SIMPLIFY = FALSE)
-      contrVarList <- mapply("+", lop$varList[[1]], lop$varList[[2]], 
-                              SIMPLIFY = FALSE)
+#      contrBList <- mapply("-", lop$bList[[2]], lop$bList[[1]], SIMPLIFY = FALSE)
+#      contrVarList <- mapply("+", lop$varList[[1]], lop$varList[[2]], 
+#                              SIMPLIFY = FALSE)
       
       # if one of the 2 conditions has 0 t-value, force the contrast beta ZERO here
       # even if the other beta is nonzerio since it's not worth considering a contrast for this voxel      
-      for (jj in 1:lop$nSubj[1]) contrBList[[jj]] <- ifelse(contrVarList[[jj]]>=tolU, 0, contrBList[[jj]])                     
-   }
+#      for (jj in 1:lop$nSubj[1]) contrBList[[jj]] <- ifelse(contrVarList[[jj]]>=tolU, 0, contrBList[[jj]])                     
+#   }
    
    #rm(lop$tList)
    lop$tList <- list();
@@ -2399,8 +2402,8 @@ tTop <- 100   # upper bound for t-statistic
          outLabel <- append(outLabel, sprintf("%s:tau^2", lop$testName[[ii]]))
          outLabel <- append(outLabel, sprintf("%s:QE", lop$testName[[ii]]))
       }
-      outLabel <- append(outLabel, "tau1^2>tau2^2")
-      outLabel <- append(outLabel, "tau2^2>tau1^2")
+      outLabel <- append(outLabel, "tau1^2 / tau2^2")
+      outLabel <- append(outLabel, "tau2^2 / tau1^2")
    } else {
       outLabel <- append(outLabel, "tau^2")
       outLabel <- append(outLabel, "QE:Chisq")  

@@ -146,7 +146,11 @@
 #define SUMA_WORKPROC_IO_NOTIFY 0  /*!< Same as above but for SUMA_workprocess */
 
 typedef enum { SUMA_VOX_NEIGHB_FACE, SUMA_VOX_NEIGHB_EDGE, SUMA_VOX_NEIGHB_CORNER } SUMA_VOX_NEIGHB_TYPES;
-typedef enum { SUMA_DONT_KNOW = 0, SUMA_IN_TRIBOX_OUTSIDE = 1, SUMA_INTERSECTS_TRIANGLE_OUTSIDE, SUMA_ON_NODE, SUMA_INTERSECTS_TRIANGLE_INSIDE, SUMA_IN_TRIBOX_INSIDE, SUMA_INSIDE_SURFACE } SUMA_SURF_GRID_INTERSECT_OPTIONS;
+typedef enum { SUMA_DONT_KNOW = 0, SUMA_IN_TRIBOX_OUTSIDE = 1, SUMA_INTERSECTS_TRIANGLE_OUTSIDE, 
+SUMA_ON_NODE, 
+SUMA_INTERSECTS_TRIANGLE_INSIDE, 
+SUMA_IN_TRIBOX_INSIDE, 
+SUMA_INSIDE_SURFACE } SUMA_SURF_GRID_INTERSECT_OPTIONS; 
                                     
 typedef enum { SUMA_GEOM_NOT_SET=-1, SUMA_GEOM_IRREGULAR = 0,    
                SUMA_GEOM_SPHERE = 1, SUMA_GEOM_ICOSAHEDRON, 
@@ -170,7 +174,7 @@ typedef enum { type_not_set = -1,
                NBSP_type, PL_type, VO_type,
                NBT_type, SBT_type, DBT_type, /*!< Those three will 
                                                    likely not be used */
-               NIDO_type, SDSET_type,
+               NIDO_type, SDSET_type, TRACT_type,
                N_DO_TYPES } SUMA_DO_Types;   
 
 /*!< Displayable Object Types 
@@ -298,28 +302,32 @@ typedef enum {    SOPT_ibbb,  /*!< int, byte, byte, byte, null */
 typedef enum { SW_File, 
                SW_FileOpen, SW_FileOpenSpec, SW_FileOpenSurf, SW_FileClose,
                SW_FileSaveView, SW_FileLoadView, 
-               SW_N_File } SUMA_WIDGET_INDEX_FILE; /*!< Indices to widgets under File menu. 
-                                                      Make sure you begin with SW_File and end
+               SW_N_File } SUMA_WIDGET_INDEX_FILE; 
+                     /*!< Indices to widgets under File menu. 
+                          Make sure you begin with SW_File and end
                                                       with SW_N_File */
 typedef enum { SW_Tools,
                SW_ToolsDrawROI,
-               SW_N_Tools } SUMA_WIDGET_INDEX_TOOLS; /*!< Indices to widgets under Tools menu. 
-                                                      Make sure you begin with SW_Tools and end
+               SW_N_Tools } SUMA_WIDGET_INDEX_TOOLS; 
+                     /*!< Indices to widgets under Tools menu. 
+                          Make sure you begin with SW_Tools and end
                                                       with  SW_N_Tools*/
 typedef enum { SW_View, 
                SW_ViewSumaCont, SW_ViewSurfCont, SW_ViewViewCont, 
                SW_ViewSep1,
                SW_ViewCrossHair, SW_ViewNodeInFocus, SW_ViewSelectedFaceset,
-               SW_N_View } SUMA_WIDGET_INDEX_VIEW; /*!< Indices to widgets under View menu. 
-                                                      Make sure you begin with SW_View and end
+               SW_N_View } SUMA_WIDGET_INDEX_VIEW; 
+                     /*!< Indices to widgets under View menu. 
+                          Make sure you begin with SW_View and end
                                                       with SW_N_View */
 typedef enum { SW_Help, 
                SW_HelpUsage,  SW_HelpMessageLog, SW_HelpSep1, 
                SW_HelpSUMAGlobal, SW_HelpViewerStruct, SW_HelpSurfaceStruct, 
                SW_HelpSep2, SW_HelpIONotify, SW_HelpEchoKeyPress, 
                SW_HelpMemTrace,  
-               SW_N_Help } SUMA_WIDGET_INDEX_HELP; /*!< Indices to widgets under Help menu.
-                                                         Make sure you begin with SW_View and end
+               SW_N_Help } SUMA_WIDGET_INDEX_HELP; 
+                  /*!< Indices to widgets under Help menu.
+                       Make sure you begin with SW_View and end
                                                          with SW_N_View */                                                   
 typedef enum { SW_SurfCont_Render,
                SW_SurfCont_RenderViewerDefault, SW_SurfCont_RenderFill, 
@@ -332,7 +340,7 @@ typedef enum { SW_SurfCont_DsetView,
                SW_SurfCont_DsetViewCol,
                SW_SurfCont_DsetViewCon,
                SW_SurfCont_DsetViewCaC,
-               SW_SurfCont_DsetViewXXX,   /* do not show, keep it last in list */
+               SW_SurfCont_DsetViewXXX,  /* do not show, keep it last in list */
                SW_N_SurfCont_DsetView } SUMA_WIDGET_INDEX_SURFCONT_DSETVIEW;
                
 typedef enum { SW_DrawROI_SaveMode,
@@ -673,7 +681,31 @@ typedef struct {
 } SUMA_ROI_ACTION_STRUCT;  /*!< a structure packaging data for the 
                                  routines acting on drawn ROIs */
 
+typedef enum { SUMA_SORT_CLUST_NOT_SET, SUMA_SORT_CLUST_NO_SORT, SUMA_SORT_CLUST_BY_NUMBER_NODES, SUMA_SORT_CLUST_BY_AREA } SUMA_SURF_CLUST_SORT_MODES;
 
+typedef struct {
+   char *in_name;
+   int nodecol;
+   int labelcol;
+   char *out_prefix;  /* this one's dynamically allocated so you'll have 
+                         to free it yourself */
+   float DistLim;
+   float AreaLim;
+   int NodeLim;
+   int DoThreshold;
+   float Thresh;
+   int tind;
+   float update;
+   int DoCentrality;
+   SUMA_Boolean OutROI;
+   SUMA_Boolean OutClustDset;
+   SUMA_Boolean WriteFile;
+   SUMA_SURF_CLUST_SORT_MODES SortMode;
+   SUMA_Boolean FullROIList;
+   SUMA_Boolean prepend_node_index;
+   SUMA_DSET_FORMAT oform;
+   
+} SUMA_SURFCLUST_OPTIONS;
 
 
 
@@ -723,6 +755,12 @@ typedef struct {
    int AutoIntRange;
    int AutoBrtRange;
    int ColsContMode; /*!< a flag to indicate what to do about contours */
+   
+   SUMA_SURFCLUST_OPTIONS *ClustOpt; /*!< Clusterizing options */
+   int Clusterize; /*!< If on, do some cluster business */
+   int RecomputeClust; /*!< 1 when clusters should be recomputed at 
+                              recolorization */
+
 } SUMA_SCALE_TO_MAP_OPT;
 
 
@@ -802,8 +840,11 @@ typedef struct {
    SUMA_DRAWN_ROI **Contours; /* Using the ROI structure to store contours
                                  which can be displayed along with color blobs */
    SUMA_WIDGET_LINK_MODE LinkMode;          /* How to link I & T selectors */
+   
+   DList *ClustList; /*!< The list of clusters */
+   byte *ClustOfNode; /*!< Tells which cluster a node belongs to, Should have
+                           SO->N_Node values in it*/
 } SUMA_OVERLAYS;
-
 
 
 /*! 
@@ -1188,13 +1229,19 @@ typedef struct{
    int Ni;   /*!< Number of rows = Number of elements PER COLUMN (1st dim)*/
    int Nj;   /*!< Number of columns = Number of elements PER ROW (2nd dim)*/
    int *cwidth; /*!< charcter spaces to save for widget per column */
+   byte *but_flag; /*!< Flags to indicate button status of a cell. That is 
+                        to allow the highjacking of text fields to make them
+                        toggle buttons. This should normally be used for column 
+                        and row titles only. But you never know */
    float *num_value;   /*!< current value at each cell (for numeric cells)*/
    char **str_value;   /*!< current string at each cell (for string cells) */
    SUMA_Boolean editable;
    SUMA_VARTYPE type; /*!< SUMA_int or SUMA_float or SUMA_string */
-   void (*NewValueCallback)(void *data); /*!< callback to make when a new value is set */
+   void (*NewValueCallback)(void *data); /*!< callback to make when 
+                                              a new value is set */
    void *NewValueCallbackData;
-   void (*TitLabelEVHandler)(Widget w , XtPointer cd , XEvent *ev , Boolean *ctd); 
+   void (*TitLabelEVHandler)( Widget w , XtPointer cd , XEvent *ev , 
+                              Boolean *ctd); 
    void *TitLabelEVHandlerData; 
    void (*CellEVHandler)(Widget w , XtPointer cd , XEvent *ev , Boolean *ctd); 
    void *CellEVHandlerData;
@@ -1212,6 +1259,14 @@ typedef struct {
    float translateVec[3];
 } SUMA_CMAP_RENDER_AREA;
 
+typedef struct {
+   Widget *mw; /* MenuWidgets vector */
+   int N_mw; /* number of widgets in MenuWidgets vector */
+   SUMA_LIST_WIDGET *lw; /* list version of menu widgets */
+   SUMA_ARROW_TEXT_FIELD *af; /* arrow field version of menu widgets*/
+   int menu_type;
+} SUMA_MENU_WIDGET;
+
 /*! structure containing widgets for surface  controllers SurfCont */
 typedef struct {
    /* *** DO NOT ADD ANYTHING BEFORE THESE FIELDS
@@ -1223,28 +1278,32 @@ typedef struct {
    */
    int LinkedPtrType; /*!< Indicates the type of linked pointer */
    int N_links;   /*!< Number of links to this pointer */
-   char owner_id[SUMA_IDCODE_LENGTH];   /*!< The id of whoever created that pointer. Might never get used.... */
+   char owner_id[SUMA_IDCODE_LENGTH];   /*!< The id of whoever created that 
+                                       pointer. Might never get used.... */
    
    int Open; /*!< Flag indicating that controller is open 
                   This was introduced to help deal with crashes on 
                   OS X 10.5 and 10.6*/
-   Widget TopLevelShell;/*!< Top level shell for a Surface's controller */
+   Widget TLS;/*!< Top level shell for a Surface's controller */
    Widget PosRef; /*!< reference position widget */
    Widget Mainform; /*!< main form, child of TopLevelShell */
    Widget SurfInfo_pb; /*!< More info push button */
    Widget SurfInfo_label; /*!< Le label */
    SUMA_CREATE_TEXT_SHELL_STRUCT * SurfInfo_TextShell; /*!< structure containing 
                         widgets and options of the surface info text shell */
-   Widget RenderModeMenu[SW_N_SurfCont_Render]; /*!< vector of widgets 
+   SUMA_MENU_WIDGET *RenderModeMenu; /*!<[SW_N_SurfCont_Render] widgets 
                                        controlling the rendering mode menu */
-   Widget DsetViewModeMenu[SW_N_SurfCont_DsetView]; /*!< vector of widgets 
+   SUMA_MENU_WIDGET *DsetViewModeMenu; /*!<[SW_N_SurfCont_DsetView]  widgets 
                                        controlling the dataset view mode menu */
    Widget ColPlane_fr; /*!< the frame controlling the colorplanes */
    Widget DsetMap_fr; /*!< the frame for mapping Dset to colormap */
    Widget Xhair_fr; /*!< The frame for cross hair Info and controls */ 
-   SUMA_ARROW_TEXT_FIELD *ColPlaneOrder; /*!< structure for arrow/text field widget controlling color plane order */
-   SUMA_ARROW_TEXT_FIELD *ColPlaneOpacity; /*!< structure for arrow/text field widget controlling color plane opacity */
-   SUMA_ARROW_TEXT_FIELD *ColPlaneDimFact; /*!< structure for arrow/text field widget controlling color plane DimFact */
+   SUMA_ARROW_TEXT_FIELD *ColPlaneOrder; /*!< arrow/text field  
+                                              controlling color plane order */
+   SUMA_ARROW_TEXT_FIELD *ColPlaneOpacity; /*!< arrow/text field 
+                                             controlling color plane opacity */
+   SUMA_ARROW_TEXT_FIELD *ColPlaneDimFact; /*!< arrow/text field 
+                                             controlling color plane DimFact */
    SUMA_TABLE_FIELD *SetRangeTable; /*!< structure for range setting table */
    SUMA_TABLE_FIELD *RangeTable; /*!< structure for range  table */
    SUMA_TABLE_FIELD *XhairTable; /*!< structure for Cross hair  table */
@@ -1253,6 +1312,7 @@ typedef struct {
    SUMA_TABLE_FIELD *DataTable;
    SUMA_TABLE_FIELD *LabelTable;
    SUMA_TABLE_FIELD *SetThrScaleTable; 
+   SUMA_TABLE_FIELD *SetClustTable; /*!< structure for clust setting table */
    /* Obsolete since Nov 09,
       Replaced with DsetViewModeMenu 
       Widget ColPlaneShow_tb; *//*!< show/hide color plane */
@@ -1260,12 +1320,16 @@ typedef struct {
    Widget SymIrange_tb; /*!< Symmetric intensity range */
    Widget AbsThresh_tb; /*!< absolute threshold */
    Widget ShowZero_tb; /*!< Show zero values */
-   SUMA_LIST_WIDGET *SwitchDsetlst; /*!< a structure containing widgets and options for the switch color plane list */
+   SUMA_LIST_WIDGET *SwitchDsetlst; /*!< a structure containing widgets and 
+                                    options for the switch color plane list */
    SUMA_TABLE_FIELD *ColPlaneLabelTable; 
-   SUMA_OVERLAYS *curColPlane; /*!< a copy of the pointer to the selected color plane */
-   SUMA_Boolean ShowCurForeOnly; /*!< Show current plane only out of the entire stack */
+   SUMA_OVERLAYS *curColPlane; /*!< a copy of the pointer to the selected color 
+                                    plane */
+   SUMA_Boolean ShowCurForeOnly; /*!< Show current plane only out of the entire 
+                                    stack */
    SUMA_Boolean GraphHidden; /*!< Graph update even in ShowCurForeOnly */
-   void **curSOp; /*!< a copy of the pointer to the surface object for which the controller is open */
+   void **curSOp; /*!< a copy of the pointer to the surface object for which the 
+                     controller is open */
    SUMA_CMAP_RENDER_AREA *cmp_ren;   /* data for cmap rendering zone */
    Widget thr_sc;   /*! scale for threshold data */
    Widget brt_sc;   /*! scale for brightness data */
@@ -1275,36 +1339,49 @@ typedef struct {
    Widget thrstat_lb;  /*! pvalue associated with threshold */
    Widget cmaptit_lb;  /*! title of cmap */
    Widget cmapswtch_pb; /*! button for switching color map */
-   Widget *SwitchIntMenu; /* vector of widgets controlling the switch intensity widgets */
-   Widget *SwitchThrMenu; /* vector of widgets controlling the switch threshold widgets */
-   Widget *SwitchBrtMenu; /* vector of widgets controlling the switch brightness widgets */
+   SUMA_MENU_WIDGET *SwitchIntMenu; /* vector of widgets controlling 
+                                       the switch intensity widgets */
+   SUMA_MENU_WIDGET *SwitchThrMenu; /* vector of widgets controlling 
+                                       the switch threshold widgets */
+   SUMA_MENU_WIDGET *SwitchBrtMenu; /* vector of widgets controlling 
+                                       the switch brightness widgets */
+   #if 0 /* Now folded into SUMA_MENU_WIDGET struct */
+   SUMA_ARROW_TEXT_FIELD *SwitchIntArrow;
+   SUMA_ARROW_TEXT_FIELD *SwitchThrArrow;
+   SUMA_ARROW_TEXT_FIELD *SwitchBrtArrow;
+   
    SUMA_LIST_WIDGET *SwitchIntLst; /*!< list widget for switching intensity */
    SUMA_LIST_WIDGET *SwitchThrLst; /*!< list widget for switching intensity */
    SUMA_LIST_WIDGET *SwitchBrtLst; /*!< list widget for switching intensity */
-   Widget *SwitchCmapMenu; /* vector of widgets controlling the switch cmap widgets */
-   Widget rc_CmapCont; /* rc container to contain Cmap menu */
+   #endif
+   SUMA_MENU_WIDGET *SwitchCmapMenu; /* vector of widgets controlling 
+                                        the switch cmap widgets */
+   #if 0 /* Now inside SUMA_MENU_WIDGET */
    int N_CmapMenu; /* Number of widgets in SwitchCmapMenu */
-   Widget CoordBiasMenu[SW_N_CoordBias]; /* vector of widgets controlling the  
-                                            coord bias widgets */
-   Widget LinkModeMenu[SW_N_LinkMode]; /* vector of widgets controlling the 
-                                          linking of I, T widgets */
-   Widget CmapModeMenu[SW_N_CmapMode];
-   Widget opts_rc; /*!< rowcolumn containing color map, color bar and the switch buttons */
+   #endif
+   Widget rc_CmapCont; /* rc container to contain Cmap menu */
+   SUMA_MENU_WIDGET *CoordBiasMenu; /* [SW_N_CoordBias]vector of widgets 
+                                 controlling the coord bias widgets */
+   SUMA_MENU_WIDGET *LinkModeMenu; /*[SW_N_LinkMode] vector of widgets 
+                                 controlling the linking of I, T widgets */
+   SUMA_MENU_WIDGET *CmapModeMenu; /* [SW_N_CmapMode] */
+   Widget opts_rc; /*!< rowcolumn for color map, color bar and switch buttons */
    Widget opts_form; /*!< rowcolumn containing all options for colormapping */
    Widget rcvo; /*!< vertical rowcol for colormapping options */
-   Widget rcsw;   /*!<  rowcol for switching intensity, threshold and brightness */
-   Widget rcsw_v1;   /*!< rowcol containing Menu for Int. Thr. and Brt. */
-   Widget rcsw_v2;   /*!< rowcol containing toggle buttons for Int. Thr. and Brt. */
-   Widget rcswr;   /*!< horizontal rowcol for Intensity column range label */
-   Widget rccm;   /*!< rowcol containing colormap selectors and ranging options */
+   Widget rcsw; /*!<  rowcol for switching intensity, threshold and brightness */
+   Widget rcsw_v1;/*!< rowcol containing Menu for Int. Thr. and Brt. */
+   Widget rcsw_v2;/*!< rowcol containing toggle buttons for Int. Thr. and Brt. */
+   Widget rcswr;  /*!< horizontal rowcol for Intensity column range label */
+   Widget rccm;  /*!< rowcol containing colormap selectors and ranging options */
    Widget rccm_swcmap;
    Widget IntRange_lb; /*!< label widget containing range values */
-   Widget Int_tb; /* Toggle buttons for intensity, threshold and brightness toys */
+   Widget Int_tb;/* Toggle buttons for intensity, threshold & brightness toys */
    Widget Thr_tb;
    Widget Brt_tb;
    Widget CmapLoad_pb;
    int IntRangeLocked;
    int BrtRangeLocked;
+   Widget rcclust; /*!< rowcol holding clusterizing options */
 }SUMA_X_SurfCont;
 
 typedef struct {
@@ -1321,7 +1398,8 @@ typedef struct {
    Widget AppShell; /*!< AppShell widget for Suma's controller */
    Widget quit_pb; /*!< quit push button */
    SUMA_Boolean quit_first;   /*!< flag indicating first press of done button */
-   SUMA_rb_group *Lock_rbg; /*!< pointer to structure contining N radio button groups */
+   SUMA_rb_group *Lock_rbg; /*!< pointer to structure contining N radio 
+                                 button groups */
    Widget *LockView_tbg;   /*!< vector of toggleview buttons */
    Widget LockAllView_tb;  /*!< widget of toggleAllview button */
    SUMA_CREATE_TEXT_SHELL_STRUCT *SumaInfo_TextShell;
@@ -1361,12 +1439,12 @@ typedef struct {
                      values are in SUMA_WIDGET_INDEX_DRAWROI_SAVEMODE */ 
    int WhatDist;  /*!< option for determining format of ROI to save, acceptable  
                         values are in SUMA_WIDGET_INDEX_DRAWROI_SAVEMODE */ 
-   Widget SaveModeMenu[SW_N_DrawROI_SaveMode]; /*!< set of widgets for SaveMode 
-                                                      menu */
-   Widget SaveWhatMenu[SW_N_DrawROI_SaveWhat]; /*!< set of widgets for SaveWhat 
-                                                      menu */
-   Widget WhatDistMenu[SW_N_DrawROI_WhatDist]; /*!< set of widgets for SaveWhat 
-                                                      menu */
+   SUMA_MENU_WIDGET *SaveModeMenu; /*!<[SW_N_DrawROI_SaveMode] set of 
+                           widgets for SaveMode menu */
+   SUMA_MENU_WIDGET *SaveWhatMenu; /*!<[SW_N_DrawROI_SaveWhat] set of 
+                           widgets for SaveWhat menu */
+   SUMA_MENU_WIDGET *WhatDistMenu; /*!<[SW_N_DrawROI_WhatDist] set of 
+                           widgets for SaveWhat menu */
 } SUMA_X_DrawROI;
 
                
@@ -1389,10 +1467,10 @@ typedef struct {
                                     controller widget structure */
    Widget ToggleCrossHair_View_tglbtn; /*!< OBSOLETE Toggle button in 
                                              View-> menu */
-   Widget FileMenu[SW_N_File]; /*!< Vector of widgets under File Menu */       
-   Widget ToolsMenu[SW_N_Tools]; /*!< Vector of widgets under File Menu */       
-   Widget ViewMenu[SW_N_View]; /*!< Vector of widgets under View Menu */
-   Widget HelpMenu[SW_N_Help]; /*!< Vector of widgets under Help Menu */
+   SUMA_MENU_WIDGET *FileMenu; /*!<[SW_N_File] File Menu Vector of widgets */   
+   SUMA_MENU_WIDGET *ToolsMenu; /*!<[SW_N_Tools]of widgets tools menu */
+   SUMA_MENU_WIDGET *ViewMenu; /*!< [SW_N_View]Vector of widgets  View Menu */
+   SUMA_MENU_WIDGET *HelpMenu; /*!< [SW_N_Help]Vector of widgets  Help Menu */
    SUMA_PROMPT_DIALOG_STRUCT *LookAt_prmpt; /*!< structure for LookAt dialog */
    SUMA_PROMPT_DIALOG_STRUCT *SetRot_prmpt; /*!< structure for set rotation 
                                                 dialog */
@@ -1400,8 +1478,8 @@ typedef struct {
                                                    Jump To Index dialog */
    SUMA_PROMPT_DIALOG_STRUCT *JumpXYZ_prmpt; /*!< structure for the 
                                                    Jump To XYZ dialog */
-   SUMA_PROMPT_DIALOG_STRUCT *JumpFocusNode_prmpt; /*!< structure for setting the                                                         Focus Node dialog */
-   SUMA_PROMPT_DIALOG_STRUCT *JumpFocusFace_prmpt; /*!< structure for setting the                                                         Focus FaceSet dialog */
+   SUMA_PROMPT_DIALOG_STRUCT *JumpFocusNode_prmpt; /*!< structure for setting                                                   Focus Node dialog */
+   SUMA_PROMPT_DIALOG_STRUCT *JumpFocusFace_prmpt; /*!< structure for setting                                                   Focus FaceSet dialog */
    SUMA_PROMPT_DIALOG_STRUCT *HighlightBox_prmpt; /*!<  structure for 
                                              highlighting nodes in Box dialog */ 
 }SUMA_X;
@@ -1448,6 +1526,12 @@ typedef struct {
    SUMA_PROMPT_DIALOG_STRUCT *ClipObj_prmpt; /*!< structure for clip obj dialg */
    
    XmFontList TableTextFontList; /*! Font list for table's text fields */
+   
+   SUMA_Boolean UseSameSurfCont; /* Use one surface controller for all surfs? */
+   SUMA_Boolean SameSurfContOpen;
+   Widget CommonSurfContTLW; /* If not null, then surface controller will
+                                   all be sharing this top level widget */
+   Widget TopSurfContWidget;
 }SUMA_X_AllView;
 
 /*! structure defining a cross hair */
@@ -1476,6 +1560,8 @@ typedef struct {
                         -1 if that cross hair is wild and loose */
    int NodeID; /*!< a node from SurfaceID can be associated with the cross 
                      hair (-1 for nothing) */   
+   GLUquadricObj *sphobjCmax; /*!< quadric object, representing Max cluster */
+   GLfloat sphcolCmax[4]; /*!< Sphere color */
 }SUMA_CrossHair;   
 
 typedef struct {      
@@ -1516,7 +1602,8 @@ typedef struct {
    char *Label; /*!< ascii label for DO */ 
    SUMA_DO_Types do_type;
    
-   int NodeBased; /*!< flag: 1 if segments are formed by vectors at surface nodes */
+   int NodeBased; /*!< flag: 1 if segments are formed by vectors at surface 
+                             nodes */
    char *Parent_idcode_str; /*!< Parent surface's id 
                                  (only used if NodeBased = 1
                                  NULL if NodeBased)*/
@@ -1524,18 +1611,23 @@ typedef struct {
                      NULL if NodeBased = 0 */
    int *NodeID1; /*!< Used to define the 2 node of vectors that are fully
                       nodebased */
+   
    GLfloat *n0; /*!< vector containing XYZ of nodes 1 (3*N_n elements long)
                      NULL if NodeBased*/
    GLfloat *n1; /*!< vector containing XYZ of nodes 2 (3*N_n elements long)*/
+   
    GLUquadricObj *topobj; /*!< quadric object, representing n1 */
    GLUquadricObj *botobj; /*!< quadric object, representing n0 */
+   
    int N_n; /*!< Number of elements in n0 and n1 */
+   
    GLfloat LineWidth; /*!< Common LineWidth of all segment*/
    GLfloat LineCol[4]; /*!< Common LineColor of all segments*/
-   GLfloat *colv; /*!< Vector of segment colors, 4 elements per segment. NULL if using LineCol */
-   GLfloat *thickv; /*!< Vector of segment thincknesses, 1 elements per segment. NULL if using LineWidth */
+   GLfloat *colv; /*!< Vector of segment colors, 4 elements per segment. 
+                        NULL if using LineCol */
+   GLfloat *thickv; /*!< Vector of segment thincknesses, 
+                         1 elements per segment. NULL if using LineWidth */
    SUMA_STIPPLE Stipple; /*!< dashed or solid line */
-   
 }SUMA_SegmentDO;
 
 typedef struct {
@@ -1554,7 +1646,7 @@ typedef struct {
    char *Label; /*!< ascii label for DO */ 
    SUMA_DO_Types do_type;
    
-   int NodeBased; /*!< flag: 1 if segments are formed by vectors at surface nodes */
+   int NodeBased; /*!< flag: 1 if segments are formed by vectors at nodes */
    char *Parent_idcode_str; /*!< Parent surface's id 
                                  (only used if NodeBased = 1
                                  NULL if NodeBased)*/
@@ -1568,12 +1660,33 @@ typedef struct {
    GLfloat CommonCol[4]; /*!< common colors */
    GLint CommonSlices; /*!< think pizza */
    GLint CommonStacks; /*!< think lattitudes */
-   GLfloat *radv; /*!< Vector of sphere radii, 1 elements per sphere. NULL if using CommonRad */
-   GLfloat *colv; /*!< Vector of sphere colors, 4 elements per sphere. NULL if using CommonCol */
-   GLenum CommonStyle; /*!< Common sphere drawing style. Choose from: GLU_FILL, GLU_LINE, GLU_SILHOUETTE, GLU_POINT */
+   GLfloat *radv; /*!< Vector of sphere radii, 1 elements per sphere. 
+                        NULL if using CommonRad */
+   GLfloat *colv; /*!< Vector of sphere colors, 4 elements per sphere. 
+                        NULL if using CommonCol */
+   GLenum CommonStyle; /*!< Common sphere drawing style. 
+            Choose from: GLU_FILL, GLU_LINE, GLU_SILHOUETTE, GLU_POINT */
    GLenum *stylev; /*!< Vector of sphere styles */
    
 }SUMA_SphereDO;
+
+typedef struct {
+   char *idcode_str;
+   char *Label;
+   SUMA_DO_Types do_type;
+   
+   char *Parent_idcode_str;
+   
+   TAYLOR_BUNDLE *tb; 
+
+   GLfloat LineWidth; /*!< Common LineWidth of all segment*/
+   GLfloat LineCol[4]; /*!< Common LineColor of all segments*/
+   GLfloat *colv; /*!< Vector of segment colors, 4 elements per segment. 
+                        NULL if using LineCol */
+   GLfloat *thickv; /*!< Vector of segment thincknesses, 
+                         1 elements per segment. NULL if using LineWidth */
+   SUMA_STIPPLE Stipple; /*!< dashed or solid line */
+} SUMA_TractDO;
 
 typedef struct {
    char *idcode_str;    /*!< unique idcode for DO */
@@ -2221,6 +2334,12 @@ typedef struct {
    float aMinDims;      /*!< The maximum across all dimensions*/
    float aMaxDims;      /*!< The minimum across all dimensions*/
    
+   float MaxCentDist;   /* Maximal node distance from center */
+   int MaxCentDistNode; /* Node which has maximal node distance from center */
+   float MinCentDist;   /* Minimal node distance from center */
+   int MinCentDistNode; /* Node which has minimal node distance from center */
+   
+   
    int N_patchNode; /*!<   Number of nodes used in the mesh. 
                            For patches, this number is < SO->N_Node */
    byte *patchNodeMask; /*!< if not NULL, then if patchNodeMask[i] then
@@ -2307,6 +2426,8 @@ typedef struct {
                            each node gets a shape defined by CommonNodeObject */
    SUMA_NIDO **NodeNIDOObjects;   /*!< a more flexible replication of NIDO 
                            CommonNodeObject where */
+                           
+   float *NodeAreas; /*!< A way to keep node areas around */
 }SUMA_SurfaceObject; /*!< \sa Alloc_SurfObject_Struct in SUMA_DOmanip.c
                      \sa SUMA_Free_Surface_Object in SUMA_Load_Surface_Object.c
                      \sa SUMA_Print_Surface_Object in SUMA_Load_Surface_Object.c
@@ -2878,6 +2999,8 @@ typedef struct {
    SUMA_PARSED_NAME *autorecord; /*!< Autorecord prefix */
    
    DList *SaveList; /*!< List of objects set to be saved when user chooses to */
+   
+   SUMA_Boolean YokeIntToNode;
 } SUMA_CommonFields;
 
 
@@ -2885,8 +3008,8 @@ typedef enum { SUMA_NO_SORT, SUMA_BY_PLANE_DISTANCE, SUMA_BY_SEGMENT_DISTANCE, S
 typedef enum { SUMA_LOWER_LEFT_SCREEN, SUMA_UPPER_LEFT_SCREEN, SUMA_UPPER_RIGHT_SCREEN, SUMA_LOWER_RIGHT_SCREEN } SUMA_SCREEN_CORNERS;
 typedef struct {
    double world_length;
-   double screen_length_x;
-   double screen_length_y;
+   double ScreenProj[3];
+   double ScreenProj_xy_length;
    double P1[3];
    double P2[3];
    int SegIndex;

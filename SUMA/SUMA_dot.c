@@ -675,11 +675,21 @@ void SUMA_dot_product_CB( void *params)
          SUMA_S_Err("Failed to compute dot product");
          SUMA_RETURNe;
       }
-      snprintf(ident,298*sizeof(char), "filename:%s", SDSET_FILENAME(out_dset));
-      p1 = SUMA_RemoveDsetExtension_s(SDSET_FILENAME(in_dset),
+      
+	   snprintf(ident,298*sizeof(char), "filename:%s", SDSET_FILENAME(out_dset));
+      
+      {
+      	SUMA_PARSED_NAME *p1p, *p2p;
+      p1p = SUMA_ParseFname(SDSET_FILENAME(in_dset), SUMAg_CF->cwd);
+      p1 = SUMA_RemoveDsetExtension_s(p1p->FileName_NoExt,
                                         SUMA_NO_DSET_FORMAT);
-      p2 = SUMA_RemoveDsetExtension_s(SDSET_FILENAME(ts_src_dset),
+      p2p = SUMA_ParseFname(SDSET_FILENAME(ts_src_dset), SUMAg_CF->cwd);
+      p2 = SUMA_RemoveDsetExtension_s(p2p->FileName_NoExt,
                                         SUMA_NO_DSET_FORMAT);
+      SUMA_Free_Parsed_Name(p1p); p1p = NULL;
+      SUMA_Free_Parsed_Name(p2p); p2p = NULL;
+      }
+      
       if (SO->Side == SUMA_LEFT) Cside = "L";
       else if (SO->Side == SUMA_RIGHT) Cside = "R";
       else Cside = "";
@@ -697,7 +707,7 @@ void SUMA_dot_product_CB( void *params)
       This way I'll know if this function 
       is being called repeatedly by mistake*/
    if (nelts) {
-      NI_remove_from_group(ngr, nelts); NI_free(nelts); nelts = NULL;
+      NI_remove_from_group(ngr, nelts); NI_free_element(nelts); nelts = NULL;
    }
    
    
@@ -735,7 +745,7 @@ SUMA_DSET *SUMA_DotDetrendDset(  SUMA_DSET *in_dset,
       SUMA_RETURN(NULL);  
    }
      
-  
+   SUMA_LH("Bandpass/detrending phase");  
    /* detrend */
    nnort = THD_bandpass_vectors (SDSET_VECNUM(in_dset), SDSET_VECLEN(in_dset), 
                                  fvec, (float)TR, fbot, ftop, qdet, nref, 
@@ -751,9 +761,11 @@ SUMA_DSET *SUMA_DotDetrendDset(  SUMA_DSET *in_dset,
       THD_normalize( SDSET_VECNUM(in_dset) , fvec[i] ) ;
    }
    
+   SUMA_LH("About to form output dset");
    /* make a copy of the input dset */
    o_dset = SUMA_MaskedCopyofDset(in_dset, NULL, NULL, 1, 0);
    
+   SUMA_LH("Now filling with output");
    /* Now fill it with fvec*/
    if (!SUMA_VecArray2Dset((void **)fvec, 
                             o_dset, 
@@ -964,6 +976,10 @@ SUMA_Boolean SUMA_dot_product(SUMA_DSET *in_dset,
                   fcol[ir] += (float)(ts[ic]*ddv[ir]);
             } 
          }
+         break;
+      case SUMA_complex:
+         SUMA_S_Err("No support for complex type here");
+         SUMA_RETURN(NOPE);
          break;
       default:
          SUMA_S_Err("What kind of numeric type is this?");
@@ -1267,7 +1283,7 @@ SUMA_Boolean SUMA_GICOR_setup_func( NI_stream nsg , NI_element *nel )
      memset(giset,0, sizeof(GICOR_setup)) ;
    }
    
-   if (!SUMA_init_GISET_setup(nsg, nel, giset)) SUMA_GIQUIT;
+   if (!SUMA_init_GISET_setup(nsg, nel, giset, 0)) SUMA_GIQUIT;
    
    /* Now find surfaces that can be the domain */
    if (!SUMA_GICOR_Surfaces(giset, SOv)) {

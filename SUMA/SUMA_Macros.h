@@ -283,9 +283,11 @@
       float d = 25, P2[2][3];
       
       SUMA_POINT_AT_DISTANCE(U, P1, d,  P2); 
-      fprintf(SUMA_STDERR,"P2 [%f %f %f]\n   [%f %f %f]\n", P2[0][0], P2[0][1], P2[0][2], P2[1][0], P2[1][1], P2[1][2]);
+      fprintf(SUMA_STDERR,"P2 [%f %f %f]\n   [%f %f %f]\n", 
+               P2[0][0], P2[0][1], P2[0][2], P2[1][0], P2[1][1], P2[1][2]);
       SUMA_POINT_AT_DISTANCE_NORM(Un, P1, d,  P2);  use this macro if you have a normalized direction vector ...
-      fprintf(SUMA_STDERR,"P2 [%f %f %f]\n   [%f %f %f]\n", P2[0][0], P2[0][1], P2[0][2], P2[1][0], P2[1][1], P2[1][2]);
+      fprintf(SUMA_STDERR,"P2 [%f %f %f]\n   [%f %f %f]\n", 
+               P2[0][0], P2[0][1], P2[0][2], P2[1][0], P2[1][1], P2[1][2]);
    }
    
 */
@@ -376,6 +378,21 @@ if Dist = 0, point on plane, if Dist > 0 point above plane (along normal), if Di
    Dist = m_Eq[0] * P[0] + m_Eq[1] * P[1] + m_Eq[2] * P[2] + m_Eq[3] ;   \
 }
 
+#define SUMA_DIST_FROM_PLANE2(P1, P2, P3, P, Dist, InAirSpace, dot){  \
+   static float m_Eq[4], m_P2[3], m_U[3], m_Un;   \
+   SUMA_Plane_Equation ( P1, P2, P3, m_Eq); \
+   Dist = m_Eq[0] * P[0] + m_Eq[1] * P[1] + m_Eq[2] * P[2] + m_Eq[3] ;   \
+   m_P2[0] = m_Eq[0]+P[0]; m_P2[1] = m_Eq[1]+P[1]; m_P2[2] = m_Eq[2]+P[2]; \
+   InAirSpace = SUMA_MT_isIntersect_Triangle (\
+                     P, m_P2, P1, P2, P3, NULL, NULL, NULL);\
+   m_P2[0]=(P1[0]+P2[0]+P3[0])/3.0; \
+   m_P2[1]=(P1[1]+P2[1]+P3[1])/3.0; \
+   m_P2[2]=(P1[2]+P2[2]+P3[2])/3.0; \
+   SUMA_UNIT_VEC(m_P2, P, m_U, m_Un); \
+   SUMA_NORM(m_Un, m_Eq); \
+   dot = m_Eq[0]*m_U[0]/m_Un + m_Eq[1]*m_U[1]/m_Un + m_Eq[2]*m_U[2]/m_Un;\
+}
+
 /*!
    Equation of a plane given its normal and a point
    See also SUMA_Plane_Equation
@@ -442,6 +459,33 @@ if Dist = 0, point on plane, if Dist > 0 point above plane (along normal), if Di
          (P)[0] = (P)[1] = (P)[2] = 0.0;  \
       }  \
    }
+
+/*!
+   \brief Project point N onto direction u, projection is in P
+*/
+#define SUMA_PROJECT_ONTO_DIR(U,N,P) {\
+   static double m_Eq[4];   \
+   SUMA_PLANE_NORMAL_POINT(U,N,m_Eq); /* plane through N with dir U */ \
+   P[0] = -m_Eq[3]*U[0]; P[1] = -m_Eq[3]*U[1]; P[2] = -m_Eq[3]*U[2]; \
+}
+
+/*!
+   \brief intersection of line defined by point N and direction U
+   and plane Eq
+   P is the resultant intersection point and ispar = 1 if
+   line is parallel to the plane.
+   
+   MACRO IS UNUSED, NEEDS TESTING 
+*/
+#define SUMA_LINE_PLANE_INTERSECT(U,N,Eq,P,ispar) {\
+   double m_dot, m_fr; \
+   SUMA_S_Warn("UNTESTED-2");   \
+   dot = SUMA_MT_DOT(U,Eq);   \
+   ispar = 0;  \
+   if (dot != 0.0f) m_fr = -(Eq[0]*N[0]+Eq[1]*N[1]+Eq[2]*N[2]+Eq[3])/dot;  \
+   else ispar = 1;   \
+   P[0] = N[0]+m_fr*U[0]; P[1] = N[1]+m_fr*U[1]; P[2] = N[2]+m_fr*U[2]; \
+}
 
 /*!
    \brief Intersection of a segment with a plane
@@ -550,6 +594,26 @@ if Dist = 0, point on plane, if Dist > 0 point above plane (along normal), if Di
       r += sqrt( (m_dx * m_dx) + (m_dy * m_dy) + (m_dz * m_dz)); \
    }  \
    r /= (float)SO->N_Node; \
+}
+
+/*!
+   \brief calculates the farthest point on a surface from its center.
+   max(dist(node_i,center));
+*/
+#define SUMA_SO_MAX_MIN_DIST(SO, DD, NN, dd, nn){ \
+   int m_i, m_i3=0; \
+   float m_dx, m_dy, m_dz; double m_Dm, m_d, m_dm; \
+   dd = 0.0; DD = 0.0; m_dm=11111111110.0; m_Dm=0.0; nn = -1; NN = -1;\
+   for (m_i=0; m_i<SO->N_Node; ++m_i) {   \
+      m_dx = SO->NodeList[m_i3++] - SO->Center[0];   \
+      m_dy = SO->NodeList[m_i3++] - SO->Center[1];   \
+      m_dz = SO->NodeList[m_i3++] - SO->Center[2];   \
+      m_d = (m_dx * m_dx) + (m_dy * m_dy) + (m_dz * m_dz);  \
+      if (m_d > m_Dm) { m_Dm = m_d; NN = m_i; }  \
+      else if (m_d < m_dm) { m_dm = m_d; nn = m_i; }  \
+   }  \
+   if (NN > -1) DD = sqrt(m_Dm); \
+   if (nn > -1) dd = sqrt(m_dm); \
 }
 
 /*!
@@ -1125,6 +1189,22 @@ Bruce Kimball, Paul Embree and Bruce Kimble
    norm = sqrt(norm); \
 }
 
+/*!
+   Make vector have unit norm 
+*/
+#define SUMA_UNITIZE_VEC(a,nel) {\
+   double m_norm=0.0;   \
+   int m_I=0;  \
+   for (m_I = 0; m_I < nel; m_I++) { \
+      m_norm += a[m_I]*a[m_I];    \
+   } \
+   m_norm = sqrt(m_norm); \
+   if (m_norm != 0.0f) {   \
+      for (m_I = 0; m_I < nel; m_I++) {\
+         a[m_I] /= m_norm; \
+      }  \
+   }  \
+}
 
 /*! \def SUMA_MIN_VEC(a,nel, amin)
 \brief SUMA_MIN_VEC macro for minimum
@@ -1173,6 +1253,41 @@ Bruce Kimball, Paul Embree and Bruce Kimble
    } \
 }
 
+#define SUMA_MEAN_VEC(a,nel,amean,nozero) { \
+   int m_I, m_c=0;  double m_mean=0.0; \
+   amean = 0;  \
+   if (nozero) {\
+      for (m_I = 0; m_I < nel; m_I++) { \
+         if (a[m_I]!=0.0f) { ++m_c; m_mean += a[m_I]; }\
+      }\
+      if (m_c) amean = m_mean/m_c;  \
+   } else { \
+      for (m_I = 0; m_I < nel; m_I++) { \
+         m_mean += a[m_I]; \
+      }\
+      if (nel) amean = m_mean/nel;  \
+   }\
+}
+
+#define SUMA_MEAN_STD_VEC(a,nel,amean, astd, nozero) { \
+   int m_I, m_c=0;  double m_std=0.0, m_mmmm=0.0, dd=0.0;\
+   SUMA_MEAN_VEC(a,nel,m_mmmm,nozero); \
+   amean=m_mmmm; astd=0;  \
+   if (nozero) {\
+      for (m_I = 0; m_I < nel; m_I++) { \
+         if (a[m_I]!=0.0f) { ++m_c; dd=(a[m_I]-m_mmmm); m_std += dd*dd; }\
+      }\
+      if (m_c > 1) astd = sqrt(m_std/(m_c-1));  \
+   } else { \
+      for (m_I = 0; m_I < nel; m_I++) { \
+         dd=(a[m_I]-m_mmmm); m_std += dd*dd; \
+      }\
+      if (nel > 1) astd = sqrt(m_std/(nel-1));  \
+   }\
+}
+
+
+
 /*! \def SUMA_MIN_MAX_VEC(a,nel,amin, amax, aminloc, amaxloc)
 \brief SUMA_MIN_MAX_VEC macro for minimum and maximum 
    a pointer to vector
@@ -1193,6 +1308,28 @@ Bruce Kimball, Paul Embree and Bruce Kimble
       else { if (a[m_I] < amin) { amin = a[m_I]; aminloc = m_I; } }    \
    } \
 }
+#define SUMA_MIN_MAX_CVEC(a,nel, amin, amax, aminloc, amaxloc, phase) { \
+   int m_I; \
+   double m_abs; \
+   amaxloc = 0; \
+   aminloc = 0; \
+   if (phase) {   \
+      amax = CARG(a[0]); \
+      amin = CARG(a[0]); \
+   }  else {   \
+      amax = CABS(a[0]); \
+      amin = CABS(a[0]); \
+   }  \
+   for (m_I = 1; m_I < nel; m_I++) { \
+      if (phase) {   \
+         m_abs = CARG((a[m_I])); \
+      } else {   \
+         m_abs = CABS((a[m_I])); \
+      }\
+      if (m_abs > amax) { amax = m_abs; amaxloc = m_I; }    \
+      else { if (m_abs < amin) { amin = m_abs; aminloc = m_I; } }    \
+   } \
+}
 
 #define SUMA_MIN_MAX_VEC_STRIDE(a,nel, amin, amax, aminloc, amaxloc, stride) { \
    int m_I; \
@@ -1203,6 +1340,30 @@ Bruce Kimball, Paul Embree and Bruce Kimble
    for (m_I = stride; m_I < nel; m_I = m_I+stride) { \
       if (a[m_I] > amax) { amax = a[m_I]; amaxloc = m_I; }    \
       else { if (a[m_I] < amin) { amin = a[m_I]; aminloc = m_I; } }    \
+   } \
+}
+
+#define SUMA_MIN_MAX_CVEC_STRIDE(a,nel, amin, amax, aminloc, amaxloc, stride, phase) { \
+   int m_I; \
+   double m_abs; \
+   complex m_c; \
+   amaxloc = 0; \
+   aminloc = 0; \
+   if (phase) {   \
+      amax = CARG(a[0]); \
+      amin = CARG(a[0]); \
+   }  else {   \
+      amax = CABS(a[0]); \
+      amin = CABS(a[0]); \
+   }  \
+   for (m_I = stride; m_I < nel; m_I = m_I+stride) { \
+      if (phase) {   \
+         m_abs = CARG((a[m_I])); \
+      } else {   \
+         m_abs = CABS((a[m_I])); \
+      }\
+      if ( m_abs > amax) { amax = m_abs; amaxloc = m_I; }    \
+      else { if (m_abs < amin) { amin = m_abs; aminloc = m_I; } }    \
    } \
 }
 
@@ -1647,6 +1808,7 @@ SUMA_COPY_VEC(a,b,len,typea,typeb)
          typea *_PTA = (typea *)a;  \
          _PTA[ia] = (typea)val; \
 }
+
  
 /*!
 SUMA_DOTP_VEC macro:
@@ -1699,6 +1861,17 @@ WARNING: The input data vectors are not cast to the type of s.
          U[0] = U[1] = U[2] = 0; \
       }  \
    }  \
+
+/*!
+   Pick a color based on the direction of the unit vector
+   between pa and pb. Direction sign ignored 
+*/
+#define SUMA_SEG_DELTA_COL(pa,pb,U) {\
+   SUMA_UNIT_VEC(pa, pb, U, Un); \
+   U[0] = SUMA_ABS(U[0]);        \
+   U[1] = SUMA_ABS(U[1]);        \
+   U[2] = SUMA_ABS(U[2]); U[3]=1.0; \
+}
    
 /*!
    \brief Macro to calculate normal of a triangle 

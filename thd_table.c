@@ -235,6 +235,32 @@ ENTRY("THD_simple_table_read") ;
 }
 
 /*------------------------------------------------------------------------*/
+
+void string_ectomy( char *src , char *bad )  /* 20 Jun 2012 */
+{
+   int nsrc , nbad , is , io , ib ;
+   char *out , ccc ;
+
+   if( src == NULL || bad == NULL || *src == '\0' || *bad == '\0' ) return ;
+
+   nsrc = strlen(src) ; out = calloc(sizeof(char),(nsrc+1)) ;
+   nbad = strlen(bad) ;
+
+   for( io=is=0 ; is < nsrc ; is++ ){
+     ccc = src[is] ;
+     for( ib=0 ; ib < nbad && bad[ib] != ccc ; ib++ ) ; /*nada*/
+     if( ib == nbad ) out[io++] = ccc ;
+   }
+
+   if( io < nsrc ){
+     ININFO_message("Table reading: replaced string %s with %s",src,out) ;
+     strcpy(src,out) ;
+   }
+
+   free(out) ; return ;
+}
+
+/*------------------------------------------------------------------------*/
 /* This table has column #0 as strings (labels), and remaining
    columns are numbers or strings.  Each column is 'pure' in type.
 *//*----------------------------------------------------------------------*/
@@ -432,13 +458,17 @@ ENTRY("THD_mixed_table_read") ;
          } else {
            if( ii < sar->num ) dpt = sar->str[ii] ;
            else                dpt = "N/A" ;
+           string_ectomy( dpt , "\"'" ) ;
            NI_insert_string( nel , row , ii , dpt ) ;
          }
        }
      } else {
        for( jj=2 ; jj <= niv ; jj++ ){
          ii = ivlist[jj] ;
-         if( nel->vec_typ[ii] == NI_FLOAT ){
+         /* vec_typ[ii] here would likely mean that K final columns would be
+            lost in the case of K text columns (after label)
+            --> issue noted by Phoebe from Harvard       26 Jul 2012 [rickr] */
+         if( nel->vec_typ[jj-1] == NI_FLOAT ){
            if( ii < sar->num ){
              val = (float)strtod( sar->str[ii] , &qpt ) ;
              if( *qpt != '\0' )
@@ -453,6 +483,7 @@ ENTRY("THD_mixed_table_read") ;
          } else {
            if( ii < sar->num ) dpt = sar->str[ii] ;
            else                dpt = "N/A" ;
+           string_ectomy( dpt , "\"'" ) ;
            NI_insert_string( nel , row , jj-1 , dpt ) ;
          }
        }

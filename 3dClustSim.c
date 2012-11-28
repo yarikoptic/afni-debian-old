@@ -214,11 +214,11 @@ void display_help_menu()
    "\n"
    "-NN abc        = Define the clustering method(s) to use.  'abc' contains\n"
    "                 some set of digits from the set { 1 , 2 , 3 }, where\n"
-   "                  1 = Use first-nearest neigbhor clustering\n"
+   "                  1 = Use first-nearest neighbor clustering\n"
    "                      * above threshold voxels cluster together if faces touch\n"
-   "                  2 = Use second-nearest neigbhor clustering\n"
+   "                  2 = Use second-nearest neighbor clustering\n"
    "                      * voxels cluster together if faces OR edges touch\n"
-   "                  3 = Use third-nearest neigbhor clustering\n"
+   "                  3 = Use third-nearest neighbor clustering\n"
    "                      * voxels cluster together if faces OR edges OR corners touch\n"
    "                 To get outputs from all 3 types of clustering, use '-NN 123'.\n"
    "                 If you don't use this option, then only first-nearest neighbor\n"
@@ -325,6 +325,20 @@ void display_help_menu()
    "     that table will be used even if you ask for NN3 clusterizing inside\n"
    "     AFNI -- the idea being that to get SOME result is better than nothing.\n"
    "\n"
+   "* The blur estimates (provided via -fwhm, say) can come from various\n"
+   "  sources.\n"
+   "     1) If '3dmerge -1blur_fwhm SIZE' is used to apply the blur to EPI\n"
+   "        data, that blur is on top of what is already in the data.  It is\n"
+   "        then appropriate to estimate the final blur size using 3dFWHMx on\n"
+   "        the residual EPI time series (after regression).  The final blur\n"
+   "        will generally be a bit larger than SIZE.  Consider how this is\n"
+   "        done by afni_proc.py.\n"
+   "     2) If '3dBlurToFWHM -FWHM SIZE' is used, then one can use SIZE\n"
+   "        directly (since the resulting blur is SIZE, it is not on top of\n"
+   "        what is in the data to begin with).\n"
+   "     3) Some people prefer to estimate the smoothness from the stdev of\n"
+   "        error in the given statistical test, rather than the residuals.\n"
+   "\n"
    "-------------------\n"
    "CAUTION and CAVEAT: [January 2011]\n"
    "-------------------\n"
@@ -335,7 +349,7 @@ void display_help_menu()
    "* Generally speaking, C(p,alpha) gets smaller as p gets smaller and C(p,alpha)\n"
    "  gets smaller as alpha gets larger.  As a result, in a small mask with small p\n"
    "  and large alpha, C(p,alpha) might shrink below 1.  But clusters of size C\n"
-   "  less than don't make any sense!\n"
+   "  less than 1 don't make any sense!\n"
    "\n"
    "* For example, suppose that for p=0.0005 that only 6%% of the simulations\n"
    "  have ANY above-threshold voxels inside the ROI mask.  In that case,\n"
@@ -1060,7 +1074,7 @@ void gather_stats_NN1( int ipthr , float *fim , byte *bfim , int *mtab , int ith
 
   thr = zthr[ipthr] ;
   for( ii=0 ; ii < nxyz ; ii++ ) bfim[ii] = (fim[ii] > thr) ;
-  siz = find_largest_cluster_NN1( bfim , ithr ) ;  /* find_cluster is a function pointer */
+  siz = find_largest_cluster_NN1( bfim , ithr ) ;
   if( siz > max_cluster_size ) siz = max_cluster_size ;
   mtab[siz]++ ;
 
@@ -1076,7 +1090,7 @@ void gather_stats_NN2( int ipthr , float *fim , byte *bfim , int *mtab , int ith
 
   thr = zthr[ipthr] ;
   for( ii=0 ; ii < nxyz ; ii++ ) bfim[ii] = (fim[ii] > thr) ;
-  siz = find_largest_cluster_NN2( bfim , ithr ) ;  /* find_cluster is a function pointer */
+  siz = find_largest_cluster_NN2( bfim , ithr ) ;
   if( siz > max_cluster_size ) siz = max_cluster_size ;
   mtab[siz]++ ;
 
@@ -1092,7 +1106,7 @@ void gather_stats_NN3( int ipthr , float *fim , byte *bfim , int *mtab , int ith
 
   thr = zthr[ipthr] ;
   for( ii=0 ; ii < nxyz ; ii++ ) bfim[ii] = (fim[ii] > thr) ;
-  siz = find_largest_cluster_NN3( bfim , ithr ) ;  /* find_cluster is a function pointer */
+  siz = find_largest_cluster_NN3( bfim , ithr ) ;
   if( siz > max_cluster_size ) siz = max_cluster_size ;
   mtab[siz]++ ;
 

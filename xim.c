@@ -50,6 +50,11 @@ XImage * mri_to_XImage( MCW_DC *dc , MRI_IMAGE *im )
 
 ENTRY("mri_to_XImage") ;
 
+   if( !im || !dc) {
+     fprintf(stderr,"\n*** Most ILLEGAL image input to mri_to_XImage\n") ;
+     EXIT(1) ;
+   }  
+   
    if( im->kind == MRI_rgb ) RETURN( rgb_to_XImage(dc,im) ) ;  /* 11 Feb 1999 */
 
    if( im->kind != MRI_short ){
@@ -859,4 +864,51 @@ ENTRY("ISQ_snapfile") ;
    if( ii <= 999999 ) mri_write_pnm( fname , tim ) ;
    mri_free(tim) ; last_ii = ii ;
    EXRETURN ;
+}
+
+
+/*-----------------------------------------------------------------------*/
+static MCW_DC       *cur_dc  = NULL ;
+static Display      *cur_dpy = NULL ;
+static Window        cur_w   = (Window)0 ;
+static GC            cur_GC ;
+static XGCValues     cur_gcv ;
+
+void memplot_to_X11_set_DC( MCW_DC *dc ){ cur_dc = dc ; return ; }
+
+void memplot_to_X11_funfunfun( Display *dpy , Window w , MEM_plotdata *mp ,
+                               int start , int end , int mask )
+{
+   MRI_IMAGE *im ; byte *imp ;
+   int nx=0 , ny=0 , did_dup=0 ;
+   XImage *xim ;
+
+   if( cur_dpy != dpy ){
+     cur_gcv.function   = GXcopy ;
+     cur_gcv.fill_style = FillSolid ;
+     cur_GC             = XCreateGC( dpy , w , GCFunction|GCFillStyle , &cur_gcv ) ;
+     cur_dpy            = dpy ;
+   }
+   cur_w = getwin_from_XDBE(dpy,w) ;
+
+   drawable_geom( dpy,cur_w , &nx,&ny,NULL ) ;
+/* INFO_message("memplot_to_X11_funfunfun: nx=%d ny=%d",nx,ny) ; */
+   if( nx < 19 || ny < 19 ) return ;
+
+   if( nx < 2048 && ny < 2048 ){ nx *= 2; ny *= 2; did_dup = 1; }
+
+   im  = mri_new( nx , ny , MRI_rgb ) ;
+   imp = MRI_RGB_PTR(im) ; memset( imp , 255 , 3*nx*ny ) ; /* white-ize */
+   set_memplot_RGB_box(0,0,0,0) ;
+   memplot_to_mri_set_dothick(1) ;
+   memplot_to_RGB_sef( im , mp , 0 , 0 , 1 ) ;
+   memplot_to_mri_set_dothick(0) ;
+   if( did_dup ){
+     MRI_IMAGE *qim = mri_downsize_by2(im) ; mri_free(im) ; im = qim ;
+   }
+
+   xim = rgb_to_XImage( cur_dc , im ) ; mri_free(im) ;
+   XPutImage( dpy , w , cur_GC , xim , 0,0,0,0 , xim->width , xim->height ) ;
+   MCW_kill_XImage(xim) ;
+   return ;
 }

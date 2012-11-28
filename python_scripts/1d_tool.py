@@ -83,6 +83,12 @@ examples (very basic for now):
                     -set_run_lengths 64 64 64 64 64 64 64 64 64 \\
                     -derivative -write motion.deriv.rlens.1D
 
+   7c. Use forward differences, instead of the default backward differences.
+
+         1d_tool.py -infile dfile.rall.1D                       \\
+                    -set_run_lengths 64 64 64 64 64 64 64 64 64 \\
+                    -forward_diff -write motion.deriv.rlens.1D
+
    8.  Verify whether labels show slice-major ordering (where all slice0
        regressors come first, then all slice1 regressors, etc).  Either
        show the labels and verify visually, or print whether it is true.
@@ -105,6 +111,14 @@ examples (very basic for now):
                     -set_run_lengths 64 61 67 61 67 61 67 61 67 \\
                     -derivative  -collapse_cols euclidean_norm  \\
                     -write e.norm.rlens.1D
+
+   9c. Similar to 9b, but weight the rotations as 0.9 mm.
+
+         1d_tool.py -infile motion.1D                           \\
+                    -set_run_lengths 64 61 67 61 67 61 67 61 67 \\
+                    -derivative  -collapse_cols weighted_enorm  \\
+                    -weight_vec .9 .9 .9 1 1 1                  \\
+                    -write e.norm.weighted.1D
 
   10.  Given motion.1D, create censor files to use in 3dDeconvolve, where a
        TR is censored if the derivative values have a Euclidean Norm above 1.2.
@@ -199,7 +213,11 @@ examples (very basic for now):
           1d_tool.py -infile data.txt -looks_like_global_times \\
                      -set_run_lengths 64 64 64 -set_tr 2
 
-       e. perform all tests, reporting all errors
+       e. report modulation type (amplitude and/or duration)
+
+          1d_tool.py -infile data.txt -looks_like_AM 
+
+       f. perform all tests, reporting all errors
 
           1d_tool.py -infile data.txt -looks_like_test_all \\
                      -set_run_lengths 64 64 64 -set_tr 2
@@ -250,6 +268,27 @@ examples (very basic for now):
 
         See also -seed.
 
+   17. Display min, mean, max, stdev of 1D file.
+
+        1d_tool.py -show_mmms -infile data.1D
+
+       To be more detailed, get stats for each of x, y, and z directional
+       blur estimates for all subjects.  Cat(enate) all of the subject files
+       and pipe that to 1d_tool.py with infile - (meaning stdin).
+
+        cat subject_results/group.*/sub*/*.results/blur.errts.1D \\
+                | 1d_tool.py -show_mmms -infile -
+
+   18. Just output censor count for default method.
+
+       This will output nothing but the number of TRs that would be censored,
+       akin to using -censor_motion.
+
+        1d_tool.py -infile dfile_rall.1D -set_nruns 3 -quick_censor_count 0.3
+
+        1d_tool.py -infile dfile_rall.1D -set_run_lengths 100 80 120 \
+                   -quick_censor_count 0.3
+
 ---------------------------------------------------------------------------
 basic informational options:
 
@@ -267,9 +306,43 @@ required input:
 general options:
 
    -add_cols NEW_DSET.1D        : extend dset to include these columns
+
+   -backward_diff               : take derivative as backward difference
+
+        Take the backward differences at each time point.  For each index > 0,
+        value[index] = value[index] - value[index-1], and value[0] = 0.
+
+        This option is identical to -derivative.
+
+        See also -forward_diff, -derivative, -set_nruns, -set_run_lens.
+
    -collapse_cols METHOD        : collapse multiple columns into one, where
 
-        METHOD is one of: min, max, minabs, maxabs, euclidean_norm.
+        METHOD is one of: min, max, minabs, maxabs, euclidean_norm,
+                          weighted_enorm.
+
+        Consideration of the euclidean_norm method:
+
+           For censoring, the euclidean_norm method is used (sqrt(sum squares)).
+           This combines rotations (in degrees) with shifts (in mm) as if they
+           had the same weight.
+
+           Note that assuming rotations are about the center of mass (which
+           should produce a minimum average distance), then the average arc
+           length (averaged over the brain mask) of a voxel rotated by 1 degree
+           (about the CM) is the following (for the given datasets):
+
+              TT_N27+tlrc:        0.967 mm (average radius = 55.43 mm)
+              MNIa_caez_N27+tlrc: 1.042 mm (average radius = 59.69 mm)
+              MNI_avg152T1+tlrc:  1.088 mm (average radius = 62.32 mm)
+
+           The point of these numbers is to suggest that equating degrees and
+           mm should be fine.  The average distance caused by a 1 degree
+           rotation is very close to 1 mm (in an adult human).
+
+         * Use of weighted_enorm requires the -weight_vec option.
+
+              e.g. -collapse_cols weighted_enorm -weight_vec .9 .9 .9 1 1 1 
 
    -censor_motion LIMIT PREFIX  : create censor files
 
@@ -323,7 +396,17 @@ general options:
    -censor_prev_TR              : for each censored TR, also censor previous
    -cormat_cutoff CUTOFF        : set cutoff for cormat warnings (in [0,1])
    -demean                      : demean each run (new mean of each run = 0.0)
+
    -derivative                  : take the temporal derivative of each vector
+                                  (done as backward difference)
+
+        Take the backward differences at each time point.  For each index > 0,
+        value[index] = value[index] - value[index-1], and value[0] = 0.
+
+        This option is identical to -backward_diff.
+
+        See also -backward_diff, -forward_diff, -set_nruns, -set_run_lens.
+
    -extreme_mask MIN MAX        : make mask of extreme values
 
         Convert to a 0/1 mask, where 1 means the given value is extreme
@@ -333,6 +416,17 @@ general options:
         Note: values = MIN or MAX will be in both extreme and moderate masks.
 
         Note: this was originally described incorrectly in the help.
+
+   -forward_diff                : take the temporal derivative of each vector
+
+        Take the forward differences at each time point.  For index < last,
+        value[index] = value[index+1] - value[index], and value[last] = 0.
+
+        The difference between -forward_diff and -backward_diff is a time shift
+        by one index.
+
+        See also -backward_diff, -derivative, -set_nruns, -set_run_lens.
+
 
    -moderate_mask MIN MAX       : make mask of moderate values
 
@@ -360,6 +454,15 @@ general options:
             - must be rectangular (same number of columns per row)
             - duration must match number of rows (if run lengths are given)
 
+   -looks_like_AM               : does the file have modulators?
+
+        Does the file seem to be in local or global times format, and
+        do the times have modulators?
+
+            - amplitude modulators should use '*' format (e.g. 127.3*5.1)
+            - duration modulators should use trailing ':' format (12*5.1:3.4)
+            - number of amplitude modulators should be constant
+
    -looks_like_local_times      : is the file in local stim_times format
 
         Does the input data file seem to be in the -stim_times format used by
@@ -384,10 +487,35 @@ general options:
 
    -looks_like_test_all         : run all -looks_like tests
 
-        Applies all "looks like" test options: -looks_like_1D,
+        Applies all "looks like" test options: -looks_like_1D, -looks_like_AM,
         -looks_like_local_times and -looks_like_global_times.
 
    -overwrite                   : allow overwriting of any output dataset
+
+   -pad_into_many_runs RUN NRUNS : pad as current run of num_runs
+
+        e.g. -pad_into_many_runs 2 7
+
+        This option is used to create a longer time series dataset where the
+        input is consider one particular run out of many.  The output is
+        padded with zero for all run TRs before and after this run.
+
+        Given the example, there would be 1 run of zeros, then the input would
+        be treated as run 2, and there would be 5 more runs of zeros.
+
+   -quick_censor_count LIMIT    : output # TRs that would be censored
+
+        e.g. -quick_censor_count 0.3
+
+        This is akin to -censor_motion, but it only outputs the number of TRs
+        that would be censored.  It does not actually create a censor file.
+
+        This option essentially replaces these:
+
+           -derivative -demean -collapse_cols euclidean_norm
+           -censor_prev_TR -verb 0 -show_censor_count 
+           -moderate_mask 0 LIMIT
+
    -reverse                     : reverse data over time
    -randomize_trs               : randomize the data over time
    -seed SEED                   : set random number seed (integer)
@@ -418,6 +546,7 @@ general options:
    -show_indices_interest       : display column indices for regs of interest
    -show_max_displace           : display max displacement (from motion params)
                                   - the maximum pairwise distance (enorm)
+   -show_mmms                   : display min, mean, max, stdev of columns
    -show_rows_cols              : display the number of rows and columns
    -sort                        : sort data over time (smallest to largest)
                                   - sorts EVERY vector
@@ -445,6 +574,18 @@ general options:
 
    -transpose                   : transpose the matrix (rows for columns)
    -write FILE                  : write the current 1D data to FILE
+
+   -weight_vec v1 v2 ...        : supply weighting vector
+
+        e.g. -weight_vec 0.9 0.9 0.9 1 1 1
+
+        This vector currently works only with the weighted_enorm method for
+        the -collapse_cols option.  If supplied (as with the example), it will
+        weight the angles at 0.9 times the weights of the shifts in the motion
+        parameters output by 3dvolreg.
+
+        See also -collapse_cols.
+
    -write_censor FILE           : write as boolean censor.1D
 
         e.g. -write_censor subjA_censor.1D
@@ -534,9 +675,19 @@ g_history = """
         - added -moderate_mask
         - fixed help (-extreme_mask was described backwards)
         - as noted by R Kuplicki
+   1.04 May  1, 2012 - added -look_like_AM
+   1.05 May  3, 2012
+        - added -backward_diff (same as -derivative) and new -forward_diff
+   1.06 May  7, 2012
+        - added weighted_enorm method for -collapse_cols
+        - added corresponding -weight_vec option
+   1.07 Jul 30, 2012 - added -show_mmms
+   1.08 Jul 30, 2012 - display -show_mmms output to 4 decimal places
+   1.09 Oct  3, 2012 - some options do not allow dashed parameters
+   1.10 Oct  5, 2012 - added option -quick_censor_count
 """
 
-g_version = "1d_tool.py version 1.03, February 24, 2012"
+g_version = "1d_tool.py version 1.10, October 5, 2012"
 
 
 class A1DInterface:
@@ -563,6 +714,7 @@ class A1DInterface:
       self.collapse_method = ''         # method for collapsing columns
       self.demean          = 0          # demean the data
       self.derivative      = 0          # take temporal derivative
+      self.direct          = 0          # for deriv: 0=backward diff, 1=forward
       self.overwrite       = 0          # whether to allow overwriting
       self.pad_to_runs     = []         # pad as run #A out of #B runs
       self.rand_trs        = 0          # randomize order of data over time
@@ -585,6 +737,7 @@ class A1DInterface:
                                         # (base, motion, regs of interest)
       self.show_label_ord  = 0          # show the label ordering
       self.show_labels     = 0          # show the labels
+      self.show_mmms       = 0          # show min, mean, max, stdev
       self.show_rows_cols  = 0          # show the number of rows and columns
                                 
 
@@ -595,8 +748,10 @@ class A1DInterface:
       self.collapse_file   = None       # output as 1D collapse file
       self.write_file      = None       # output filename
 
+      self.weight_vec      = None       # weight vector (for enorms?)
+
       # test variables
-      self.looks_like      = 0          # 1,2,4,8 = TEST,1D,local,global
+      self.looks_like      = 0          # 1,2,4,8,16 = TEST,1D,local,global,AM
 
       # general variables
       self.extreme_min     = 0          # minimum for extreme limit
@@ -677,6 +832,9 @@ class A1DInterface:
       self.valid_opts.add_opt('-add_cols', 1, [],
                       helpstr='extend dataset with columns from new file')
 
+      self.valid_opts.add_opt('-backward_diff', 0, [], 
+                      helpstr='take derivative using backward differences')
+
       self.valid_opts.add_opt('-censor_fill', 0, [], 
                       helpstr='zero-fill previously censored TRs')
 
@@ -696,7 +854,8 @@ class A1DInterface:
                       helpstr='if censoring a TR, also censor previous one')
 
       self.valid_opts.add_opt('-collapse_cols', 1, [], 
-                      acplist=['min','max','minabs','maxabs','euclidean_norm'],
+                      acplist=['min','max','minabs','maxabs',
+                               'euclidean_norm', 'weighted_enorm'],
                       helpstr='collapse into one column via supplied METHOD')
 
       self.valid_opts.add_opt('-cormat_cutoff', 1, [], 
@@ -711,11 +870,17 @@ class A1DInterface:
       self.valid_opts.add_opt('-extreme_mask', 2, [], 
                       helpstr='create mask for values outside (MIN,MAX)')
 
+      self.valid_opts.add_opt('-forward_diff', 0, [], 
+                      helpstr='take derivative using forward differences')
+
       self.valid_opts.add_opt('-moderate_mask', 2, [], 
                       helpstr='create mask for values within [MIN,MAX]')
 
       self.valid_opts.add_opt('-looks_like_1D', 0, [], 
                       helpstr='show whether file has 1D format')
+
+      self.valid_opts.add_opt('-looks_like_AM', 0, [], 
+                      helpstr='show whether file has amp/dur modulators')
 
       self.valid_opts.add_opt('-looks_like_local_times', 0, [], 
                       helpstr='show whether file has local stim_times format')
@@ -731,6 +896,9 @@ class A1DInterface:
 
       self.valid_opts.add_opt('-pad_into_many_runs', 2, [], 
                       helpstr='make data run #k of N runs (pad with 0)')
+
+      self.valid_opts.add_opt('-quick_censor_count', 1, [], 
+                      helpstr='show #TRs that would be censored at LIMIT')
 
       self.valid_opts.add_opt('-randomize_trs', 0, [], 
                       helpstr='randomize the data over time (fixed per TR)')
@@ -750,7 +918,7 @@ class A1DInterface:
       self.valid_opts.add_opt('-set_nruns', 1, [], 
                       helpstr='specify the number of runs in the input')
 
-      self.valid_opts.add_opt('-set_run_lengths', -1, [], 
+      self.valid_opts.add_opt('-set_run_lengths', -1, [], okdash=0,
                       helpstr='specify the lengths of all runs')
 
       self.valid_opts.add_opt('-set_tr', 1, [], 
@@ -780,6 +948,9 @@ class A1DInterface:
       self.valid_opts.add_opt('-show_max_displace', 0, [], 
                       helpstr='display maximum displacements over TRs')
 
+      self.valid_opts.add_opt('-show_mmms', 0, [], 
+                      helpstr='display min, mean, max, stdev, per column')
+
       self.valid_opts.add_opt('-show_rows_cols', 0, [], 
                       helpstr='display the number of rows and columns')
 
@@ -791,6 +962,9 @@ class A1DInterface:
 
       self.valid_opts.add_opt('-transpose', 0, [], 
                       helpstr='transpose the data')
+
+      self.valid_opts.add_opt('-weight_vec', -1, [], 
+                      helpstr='specify weights (for enorm computation)')
 
       self.valid_opts.add_opt('-write', 1, [], 
                       helpstr='write 1D data to the given file')
@@ -961,6 +1135,11 @@ class A1DInterface:
          elif opt.name == '-derivative':
             self.derivative = 1
 
+         elif opt.name == '-weight_vec':
+            val, err = uopts.get_type_list(float, '', opt=opt)
+            if err: return 1
+            self.weight_vec = val
+
          elif opt.name == '-extreme_mask':
             val, err = uopts.get_type_list(float, '', opt=opt)
             if err: return 1
@@ -971,6 +1150,13 @@ class A1DInterface:
             else:
                print '** -extreme_mask: must have min <= max'
                return 1
+
+         elif opt.name == '-backward_diff':
+            self.derivative = 1
+
+         elif opt.name == '-forward_diff':
+            self.derivative = 1
+            self.direct = 1
 
          elif opt.name == '-moderate_mask':
             val, err = uopts.get_type_list(float, '', opt=opt)
@@ -990,6 +1176,8 @@ class A1DInterface:
             self.looks_like |= 4
          elif opt.name == '-looks_like_global_times':
             self.looks_like |= 8
+         elif opt.name == '-looks_like_AM':
+            self.looks_like |= 16
          elif opt.name == '-looks_like_test_all':
             self.looks_like = -1
 
@@ -1001,6 +1189,43 @@ class A1DInterface:
                               len_name='-pad_into_many_runs', opt=opt)
             if err: return 1
             self.pad_to_runs = vals
+
+         elif opt.name == '-quick_censor_count':
+            val, err = uopts.get_string_list('', opt=opt)
+            if err: return 1
+            try: limit = float(val[0])
+            except:
+               print "** -censor_motion: bad limit '%s'" % val[0]
+               return 1
+            if limit < 0:
+               print "** -quick_censor_count: LIMIT must be > 0, have %g"%limit
+               return 1
+            # check for redundant options
+            errors = 0
+            olist = ['-derivative', '-demean', '-collapse_cols', '-verb',
+                     '-extreme_mask', 'moderate_mask', '-show_censor_count']
+            for oname in olist:
+               if uopts.find_opt(oname):
+                  print "** option %s is redundant with -quick_censor_count" \
+                        % oname
+                  errors += 1
+            olist = ['-censor_motion', '-write_censor']
+            for oname in olist:
+               if uopts.find_opt(oname):
+                  print "** option %s is not allowed with -quick_censor_count" \
+                        % oname
+                  errors += 1
+            if errors: return 1
+            # set implied options
+            self.censor_prev_TR  = 1
+            self.derivative      = 1
+            self.demean          = 1
+            self.collapse_method = 'euclidean_norm'
+            self.set_moderates   = 1
+            self.extreme_min     = 0
+            self.extreme_max     = limit
+            self.verb            = 0
+            self.show_censor_count = 1
 
          elif opt.name == '-randomize_trs':
             self.rand_trs = 1
@@ -1046,6 +1271,9 @@ class A1DInterface:
 
          elif opt.name == '-show_max_displace':
             self.show_displace = 3
+
+         elif opt.name == '-show_mmms':
+            self.show_mmms = 1
 
          elif opt.name == '-show_rows_cols':
             self.show_rows_cols = 1
@@ -1107,6 +1335,8 @@ class A1DInterface:
          self.adata.looks_like_global_times(run_lens=self.set_run_lengths,
                                             tr=self.set_tr, verb=verb)
 
+      if self.looks_like & 16: self.adata.show_married_info()
+
       return 0
 
    def process_data(self):
@@ -1158,7 +1388,7 @@ class A1DInterface:
       if self.set_tr > 0: self.adata.tr = self.set_tr
 
       if self.derivative:
-         if self.adata.derivative(): return 1
+         if self.adata.derivative(self.direct): return 1
 
       if self.demean:
          if self.adata.demean(): return 1
@@ -1187,7 +1417,8 @@ class A1DInterface:
          if self.adata.transpose(): return 1
 
       if self.collapse_method:
-         if self.adata.collapse_cols(self.collapse_method): return 1
+         if self.adata.collapse_cols(self.collapse_method, self.weight_vec):
+            return 1
          if self.collapse_file:
             if self.write_1D(self.collapse_file): return 1
 
@@ -1226,6 +1457,9 @@ class A1DInterface:
 
       if self.show_displace:
          print self.adata.get_max_displacement_str(verb=self.verb)
+
+      if self.show_mmms:
+         self.adata.show_min_mean_max_stdev(verb=self.verb)
 
       if self.show_rows_cols: self.adata.show_rows_cols(verb=self.verb)
 

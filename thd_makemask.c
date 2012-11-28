@@ -266,10 +266,96 @@ int THD_makedsetmask( THD_3dim_dataset *mask_dset ,
    return (nonzero) ;
 }
 
+/*
+   Zero out voxels vv in dset where cmask[vv]=0
+   Returns the number of voxels edited in dset (across all sub-bricks)
+      -1 if dset was null
+*/
+int THD_applydsetmask( THD_3dim_dataset *dset ,  byte *cmask )
+{
+   int ss, ii, jj, kk, vv, nedited = -1 ;
+   
+   ENTRY("THD_applydsetmask");
+   
+   if (!dset) RETURN(nedited);
+   
+   if (!cmask) RETURN(0);
+   
+   DSET_mallocize(dset); DSET_load(dset);
+   for (ss=0; ss<DSET_NVALS(dset); ++ss) {
+      switch (DSET_BRICK_TYPE(dset,ss)) {
+         case MRI_byte:
+            {  byte *bv = (byte *)DSET_ARRAY(dset,ss) ;
+               vv=0; 
+               for (kk=0; kk<DSET_NZ(dset); ++kk) {
+               for (jj=0; jj<DSET_NY(dset); ++jj) {
+               for (ii=0; ii<DSET_NX(dset); ++ii) {
+                  if (!cmask[vv]) {
+                     bv[vv] = 0; 
+                     ++nedited;
+                  }
+                  ++vv;
+               } } }
+            }
+            break;
+         case MRI_short:
+            {  short *sv = (short *)DSET_ARRAY(dset,ss) ;
+               vv=0; 
+               for (kk=0; kk<DSET_NZ(dset); ++kk) {
+               for (jj=0; jj<DSET_NY(dset); ++jj) {
+               for (ii=0; ii<DSET_NX(dset); ++ii) {
+                  if (!cmask[vv]) {
+                     sv[vv] = 0; 
+                     ++nedited;
+                  }
+                  ++vv;
+               } } }
+            }
+            break;
+         case MRI_float:
+            {  float *fv = (float *)DSET_ARRAY(dset,ss) ;
+               vv=0; 
+               for (kk=0; kk<DSET_NZ(dset); ++kk) {
+               for (jj=0; jj<DSET_NY(dset); ++jj) {
+               for (ii=0; ii<DSET_NX(dset); ++ii) {
+                  if (!cmask[vv]) {
+                     fv[vv] = 0; 
+                     ++nedited;
+                  }
+                  ++vv;
+               } } }
+            }
+            break;
+         case MRI_complex:
+            {  complex *cv = (complex *)DSET_ARRAY(dset,ss) ;
+               vv=0; 
+               for (kk=0; kk<DSET_NZ(dset); ++kk) {
+               for (jj=0; jj<DSET_NY(dset); ++jj) {
+               for (ii=0; ii<DSET_NX(dset); ++ii) {
+                  if (!cmask[vv]) {
+                     cv[vv].i = cv[vv].r = 0.0; 
+                     ++nedited;
+                  }
+                  ++vv;
+               } } }
+            }
+            break;
+         default:
+            ERROR_message(
+               "THD_applydsetmask: Dset type %d for subbrick %d not supported\n",
+                          DSET_BRICK_TYPE(dset,ss), ss);
+            break;
+      }
+   }
+
+   RETURN(nedited);
+}
+
 /*----------------------------------------------------------------------------*/
 extern int * UniqueInt (int *y, int ysz, int *kunq, int Sorted );
 
-int is_integral_sub_brick ( THD_3dim_dataset *dset, int isb, int check_values) {
+int is_integral_sub_brick ( THD_3dim_dataset *dset, int isb, int check_values)
+{
    float mfac = 0.0;
    void *vv=NULL;
 
@@ -312,7 +398,8 @@ int is_integral_sub_brick ( THD_3dim_dataset *dset, int isb, int check_values) {
    return(1);
 }
 
-int is_integral_dset ( THD_3dim_dataset *dset, int check_values) {
+int is_integral_dset ( THD_3dim_dataset *dset, int check_values)
+{
    int i=0;
 
    if(   !ISVALID_DSET(dset)  ) return(0);
@@ -422,7 +509,7 @@ the rank of the voxel value in mask_dset
 int *THD_unique_rank( THD_3dim_dataset *mask_dset ,
                         int miv,
                         byte *cmask,
-                        char *mapname, 
+                        char *mapname,
                         int **unqp, int *N_unq)
 {
    int nvox , ii, *unq = NULL, *vals=NULL, imax=0;
@@ -437,7 +524,7 @@ int *THD_unique_rank( THD_3dim_dataset *mask_dset ,
       fprintf(stderr,"** unqp (%p) not initialized properly to NULL", *unqp);
       return (vals) ;
    }
-   
+
    if( !ISVALID_DSET(mask_dset)    ||
        miv < 0                     ||
        miv >= DSET_NVALS(mask_dset)  ) {
@@ -925,7 +1012,7 @@ ENTRY("thd_mask_from_brick");
     {
         case MRI_byte:
         {
-            if (thresh <= (float)MRI_maxbyte) { /* ZSS: Oct 2011 
+            if (thresh <= (float)MRI_maxbyte) { /* ZSS: Oct 2011
                   Without this test, a high threshold value might end up
                   equal to MRI_maxbyte when BYTEIZED below, resulting in
                   the highest voxel making it to the mask no matter how

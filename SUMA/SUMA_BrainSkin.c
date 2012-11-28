@@ -17,7 +17,7 @@ void usage_SUMA_BrainSkin (SUMA_GENERIC_ARGV_PARSE *ps)
    sio  = SUMA_help_IO_Args(ps);
    printf ( 
 "\n"
-" A program to create a unfolded surface that wraps the brain (skin) \n"
+" A program to create an unfolded surface that wraps the brain (skin) \n"
 " and Gyrification Indices.\n"
 "\n"
 "Usage:\n"
@@ -1458,7 +1458,7 @@ int main (int argc,char *argv[])
       SUMA_S_Warn("Looks like 2000, 1001 was better than 1000, 10001\n"
                    "Could it be that 1000, 501 is also OK...");
       if (!SUMA_NN_GeomSmooth3_SO(SOinf, NULL, 0, 2000, 1001, SOfs,
-                                  distw, odsetvs)) {
+                                  distw, odsetvs, NULL)) {
          SUMA_S_Err("Failed to geom smooth 3 surface");
       } 
       #endif

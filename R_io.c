@@ -15,7 +15,7 @@ SEXP getListElement(SEXP list, const char *str)
    
    if (!debug) debug = get_odebug();
    
-   for (R_len_t i = 0; i < length(list); i++) {
+   for ( i = 0; i < length(list); i++) {
       if (debug) INFO_message("Element %d/%d: named %s\n", 
                      i, length(list), CHAR(STRING_ELT(names, i)));
       if(strcmp(CHAR(STRING_ELT(names, i)), str) == 0) {
@@ -87,7 +87,7 @@ SEXP R_THD_load_dset(SEXP Sfname, SEXP Opts)
       }
    }
    
-   NI_free(ngr); 
+   NI_free_element(ngr); 
    
    /* form one long array of data */
    PROTECT(brik = NEW_NUMERIC(DSET_NVOX(dset)*DSET_NVALS(dset)));
@@ -236,22 +236,33 @@ SEXP R_THD_write_dset(SEXP Sfname, SEXP Sdset, SEXP Opts)
       return(R_NilValue);
    }
    if (debug > 2) {
-         INFO_message("Have header of %d, %d, %d, %d\n", 
+         INFO_message("Have header of %d, %d, %d, %d, scale=%d\n", 
                        DSET_NX(dset), DSET_NY(dset), 
-                       DSET_NZ(dset), DSET_NVALS(dset));
+                       DSET_NZ(dset), DSET_NVALS(dset), scale);
    }
    
    for (i=0; i<DSET_NVALS(dset); ++i) {
-      if ( ( DSET_BRICK_TYPE(dset,i) != MRI_byte && 
-      	     DSET_BRICK_TYPE(dset,i) != MRI_short ) ||
-	     scale == 0 ) {
-      	EDIT_substitute_brick(dset, i, 
-                            MRI_double, dv+i*DSET_NVOX(dset));	
-      } else {
-      	EDIT_substscale_brick(dset, i, 
+      if (debug > 2) {
+         INFO_message("Putting values in sub-brick %d, type %d\n", 
+                       i, DSET_BRICK_TYPE(dset,i));
+      }
+                            
+      if (  ( DSET_BRICK_TYPE(dset,i) == MRI_byte || 
+      	     DSET_BRICK_TYPE(dset,i) == MRI_short ) ) {
+         EDIT_substscale_brick(dset, i, 
                             MRI_double, dv+i*DSET_NVOX(dset),
-                            DSET_BRICK_TYPE(dset,i), -1.0);
-      }                      
+                            DSET_BRICK_TYPE(dset,i), scale ? -1.0:1.0);
+      } else if ( DSET_BRICK_TYPE(dset,i) == MRI_double ) {
+        EDIT_substitute_brick(dset, i, 
+                            MRI_double, dv+i*DSET_NVOX(dset));
+      } else if ( DSET_BRICK_TYPE(dset,i) == MRI_float ) {
+        float *ff=(float*)calloc(DSET_NVOX(dset), sizeof(float));
+        double *dvi=dv+i*DSET_NVOX(dset);
+        for (ip=0; ip<DSET_NVOX(dset); ++ip) {
+         ff[ip] = dvi[ip];
+        }
+        EDIT_substitute_brick(dset, i, MRI_float, ff);
+      }
    }
    
    /* THD_update_statistics( dset ) ; */
@@ -266,8 +277,9 @@ SEXP R_THD_write_dset(SEXP Sfname, SEXP Sdset, SEXP Opts)
          mri_fdr_setmask( (nFDRmask == DSET_NVOX(dset)) ? FDRmask : NULL ) ;
          ip = THD_create_all_fdrcurves(dset) ;
          if( ip > 0 ){
-            if (debug) ININFO_message("created %d FDR curve%s in dataset header",
-                           ip,(ip==1)?"\0":"s") ;
+            if (debug) 
+               ININFO_message("created %d FDR curve%s in dataset header",
+                              ip,(ip==1)?"\0":"s") ;
          } else {
             if (debug) 
                ININFO_message("failed to create FDR curves in dataset header") ;

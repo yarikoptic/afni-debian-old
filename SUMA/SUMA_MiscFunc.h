@@ -53,6 +53,8 @@ void SUMA_alloc_problem (char *s1);
 char **SUMA_allocate2D (int rows,int cols,int element_size);
 void SUMA_free2D(char **a,int rows);
 void SUMA_error_message (char *s1,char *s2,int ext);
+char *SUMA_StringDiff(char *s1, char *s2);
+char *SUMA_StringMatch(char *s1, char *s2, int firstdiff, char filler);
 int SUMA_iswordin_ci (const char *sbig,const char *ssub);
 int SUMA_iswordin (const char *sbig,const char *ssub);
 int SUMA_iswordsame_ci (const char *sbig,const char *ssub);
@@ -62,23 +64,38 @@ int SUMA_etime2(char *name, char *str, char *strloc);
 char *SUMA_time(void);
 char *SUMA_time_stamp(void);
 byte * SUMA_isinpoly(float *P, float *NodeList, int *FaceSetList, int N_FaceSet, int FaceSetDim, int *dims, int *N_in, byte *usethis, byte *mask);
-SUMA_ISINBOX SUMA_isinbox (float * NodeList, int nr, float *S_cent , float *S_dim , int BoundIn);
+SUMA_ISINBOX SUMA_isinbox (float * NodeList, int nr, float *S_cent , 
+                           float *S_dim , int BoundIn);
+byte *SUMA_isinsphere_bm (float * NodeList, int nr, float *S_cent , 
+                          float S_rad , int BoundIn );
 SUMA_Boolean SUMA_Free_IsInBox (SUMA_ISINBOX *IB);
-SUMA_ISINSPHERE SUMA_isinsphere (float * NodeList, int nr, float *S_cent , float S_rad , int BoundIn);
+SUMA_ISINSPHERE SUMA_isinsphere (float * NodeList, int nr, float *S_cent , 
+                                 float S_rad , int BoundIn);
+
 SUMA_Boolean SUMA_Free_IsInSphere (SUMA_ISINSPHERE *IB);
-int SUMA_nodesinsphere2 (float *XYZ, int nr, float *S_cent , float S_dim , int *nodesin, float *dinsq);
-int SUMA_nodesinbox2 (float *XYZ, int nr, float *S_cent , float *S_dim , int *nodesin, float *dinsq);
+int SUMA_nodesinsphere2 (float *XYZ, int nr, float *S_cent , 
+                         float S_dim , int *nodesin, float *dinsq);
+byte *SUMA_nodesinsphere2_bm (float * NodeList, int nr, 
+                           float *S_cent , float S_rad,
+                           byte *bmu);
+int SUMA_nodesinbox2 (float *XYZ, int nr, float *S_cent , 
+                      float *S_dim , int *nodesin, float *dinsq);
+byte *SUMA_nodesinbox2_bm (float * NodeList, int nr, 
+                        float *S_cent , float *S_edge, 
+                        byte *bmu);
 float **SUMA_Point_At_Distance(float *U, float *P1, float d);
 double **SUMA_dPoint_At_Distance(double *U, double *P1, double d);
 int SUMA_Point_To_Triangle_Distance (float *Points, int N_points, 
                                      float *P0, float *P1, float *P2,int itri,
                                      float *tnorm,
-                                     float **distp, int **closestp, byte **sgnp);
+                                     float **distp, int **closestp, byte **sgnp,
+                                     byte city);
 SUMA_Boolean SUMA_Shortest_Point_To_Triangles_Distance(
          float *Points, int N_points, 
          float *NodeList, int *FaceSetList, int N_FaceSet,
          float *FaceNormList,
-         float **distp, int **closestp, byte **sgnp);
+         float **distp, int **closestp, byte **sgnp,
+         byte city);
 SUMA_Boolean SUMA_Point_To_Line_Distance (float *NodeList, int N_points, float *P1, float *P2, float *d2, float *d2min, int *i2min);
 SUMA_Boolean SUMA_Point_To_Point_Distance (float *NodeList, int N_points, float *P1, float *d2, float *d2min, int *i2min);
 int *SUMA_z_dqsort (int *x , int nx );
@@ -137,7 +154,7 @@ SUMA_MT_INTERSECT_TRIANGLE *SUMA_MT_intersect_triangle(
       float *P0, float *P1, 
       float *NodeList, int N_Node, 
       int *FaceSetList, int N_FaceSet, 
-      SUMA_MT_INTERSECT_TRIANGLE * PrevMTI);
+      SUMA_MT_INTERSECT_TRIANGLE * PrevMTI, int posonly);
 void * SUMA_Free_MT_intersect_triangle(SUMA_MT_INTERSECT_TRIANGLE *MTI);
 SUMA_Boolean SUMA_Show_MT_intersect_triangle(SUMA_MT_INTERSECT_TRIANGLE *MTI, 
                                              FILE *Out);

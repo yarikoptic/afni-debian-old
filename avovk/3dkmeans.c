@@ -15,11 +15,12 @@ static void display_help(int detail)
   printf ("USAGE: 3dkmeans [options]\n");
   printf ("options:\n");
   printf ("  -v, --version Version information\n");
-  printf ("  -f (or -input)  filename   File loading\n");
+  printf ("  -f filename: Input data to be clustered.   \n");
   printf ("                You can specify multiple filenames in sequence\n"
           "                and they will be catenated internally.\n"
           "         e.g: -f F1+orig F2+orig F3+orig ...\n"
           "           or -f F1+orig -f F2+orig -f F3+orig ...\n" );
+  printf ("  -input filename: Same as -f\n");
   printf(
  " -mask mset   Means to use the dataset 'mset' as a mask:\n"
  "                 Only voxels with nonzero values in 'mset'\n"
@@ -78,11 +79,11 @@ static void display_help(int detail)
           "                (default is derived from the input file name)\n");
   printf ("  -prefix PREFIX Allows you to specify a prefix for the output \n"
           "                 volumes. Default is the same as jobname\n");
-  printf ("  -g [0..8]     Specifies distance measure for gene clustering\n" );
+  printf ("  -g [0..8]     Specifies distance measure for clustering\n" );
   printf ("                Note: Weight is a vector as long as the signatures\n"
           "                and used when computing distances. However for the\n"
           "                moment, all weights are set to 1\n"
-          "                0: No gene clustering\n"
+          "                0: No clustering\n"
           "                1: Uncentered correlation distance\n"
           "                    Same as Pearson distance, except\n"
           "                    the means of v and s are not removed\n"
@@ -106,7 +107,8 @@ static void display_help(int detail)
           "                8: City-block distance\n"
           "                    = 1/sum(weight) * sum(weight[i]*abs(v[i]-s[i]))\n"
           "\n"
-          "                (default for -g is 1)\n");
+          "       (default for -g is 1, 7 if input has one value per voxel)\n"
+          "\n");
   printf ("  -k number     Specifies whether to run k-means clustering\n"
           "                instead of hierarchical clustering, and the number\n"
           "                of clusters k to use. \n"
@@ -153,6 +155,13 @@ static void display_help(int detail)
           "                SIGS.\n"
           "                With this option, no clustering is done.\n");
   printf ("  -verb         verbose \n");
+  printf ("  -write_dists  Output text files containing various measures.\n"
+          "                FILE.kgg.1D : Cluster assignments \n"
+          "                FILE.dis.1D : Distance between clusters\n"
+          "                FILE.cen.1D : Cluster centroids\n"
+          "                FILE.info1.1D: Within cluster sum of distances\n"
+          "                FILE.info2.1D: Maximum distance within each cluster\n"
+          "                FILE.vcd.1D: Distance from voxel to its centroid\n");
   printf ("  -voxdbg I J K Output debugging info for voxel I J K\n");    
   printf ("  -seed SEED    Seed for the random number generator.\n"
           "                Default is 1234567\n");    
@@ -165,16 +174,10 @@ static void display_help(int detail)
 
 int main(int argc, char **argv)
 { 
-   int ii=0, ncol=0, nrow=0, nl=0, nc=0, posi=0, posj=0, posk=0;
-
+   int ii=0, ncol=0, nrow=0, nl=0, nc=0;
    int i = 1;
    char* filename[256];
    int l = 0;
-   int s = 0;
-   int x = 2;
-   int y = 1;
-   int Rows, Columns;
-   char arraymetric = '\0';
    char method = 'm';
    char cg = '\0';
    char ca = '\0';
@@ -203,7 +206,7 @@ int main(int argc, char **argv)
    oc.k = 0;
    oc.kh = 0;
    oc.jobname = NULL;
-   oc.distmetric = 'u';
+   oc.distmetric = '*';
    oc.verb = 0;
    oc.rand_seed = 1234567;
    oc.remap = NONE;
@@ -240,6 +243,11 @@ int main(int argc, char **argv)
     if(     !strcmp(argument,"--verb") 
          || !strcmp(argument,"-verb") )
     { oc.verb=1;
+      continue;
+    }
+    if(     !strcmp(argument,"--write_dists") 
+         || !strcmp(argument,"-write_dists") )
+    { oc.writedists=1;
       continue;
     }
     if(     !strcmp(argument,"--remap") 
@@ -298,7 +306,7 @@ int main(int argc, char **argv)
       { printf ("Error: Need name after -prefix\n");
         RETURN(1);
       }
-      prefix = argv[i];
+      prefix = strdup(argv[i]);
       i++;
       continue;
     }
@@ -569,7 +577,8 @@ int main(int argc, char **argv)
    /* load dsets and prepare array data for sending to clustering functions */
    
    if (!prefix) {
-      prefix = oc.jobname; /* used to be "clusty" */
+      prefix = (char *)calloc(strlen(oc.jobname)+15,sizeof(char)); 
+      sprintf(prefix,"%s.k%d",oc.jobname, oc.k); 
       THD_force_ok_overwrite(1) ;   /* don't worry about overwriting */
    }
    
@@ -697,6 +706,11 @@ int main(int argc, char **argv)
          DSET_delete (in_set);
       }
 
+      if (oc.distmetric == '*') {
+         if (Ncoltot == 1) oc.distmetric = 'e';
+         else oc.distmetric = 'u';
+      }
+      
       /* Now allocate for D */
       D = (float **)calloc(sizeof(float*), nmask);
       for (ii=0;ii<(nmask);++ii) {
@@ -793,7 +807,7 @@ int main(int argc, char **argv)
 
    }
  
-   
+   if (prefix) free(prefix); prefix=NULL;
    if (mask) free(mask); mask = NULL;
    if (oc.jobname) free(oc.jobname); oc.jobname = NULL;
 

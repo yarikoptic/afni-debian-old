@@ -59,6 +59,10 @@ gen_ss_review_scripts.py - generate single subject analysis review scripts
            Note that if out_prefix is a directory, it will need a trailing
            '/', since it is a file name prefix.
 
+       2c. Simplified.  Use -prefix instead of -cvar out_prefix.
+
+                gen_ss_review_scripts.py -prefix test.
+
 ------------------------------------------
 
    required files/datasets (these must exist in the current directory):
@@ -66,9 +70,10 @@ gen_ss_review_scripts.py - generate single subject analysis review scripts
       variable name        example file name
       -------------        -----------------
       tcat_dset            pb00.FT.r01.tcat+orig.HEAD
-      outlier_dset         outcount.rall.1D
+      outlier_dset         outcount_rall.1D
       enorm_dset           motion_FT_enorm.1D
-      motion_dset          dfile.rall.1D
+      censor_dset          motion_FT_censor.1D
+      motion_dset          dfile_rall.1D
       volreg_dset          pb02.FT.r01.volreg+tlrc.HEAD
       xmat_regress         X.xmat.1D
       stats_dset           stats.FT+tlrc.HEAD
@@ -96,6 +101,7 @@ gen_ss_review_scripts.py - generate single subject analysis review scripts
    other options
 
       -exit0                    : regardless of errors, exit with status 0
+      -prefix OUT_PREFIX        : set prefix for script names
       -verb LEVEL               : set the verbosity level
 
    options for setting main variables
@@ -211,14 +217,22 @@ g_mot_n_trs_str = """
 
 echo "motion limit              : $mot_limit"
 
-set mmean = `3dTstat -prefix - -mean $enorm_dset\\' | & tail -n 1`
-echo "average motion (per TR)   : $mmean"
-
 set mcount = `1deval -a $enorm_dset -expr "step(a-$mot_limit)"      \\
                         | awk '$1 != 0 {print}' | wc -l`
 echo "num TRs above mot limit   : $mcount"
 
+set mmean = `3dTstat -prefix - -mean $enorm_dset\\' | & tail -n 1`
+echo "average motion (per TR)   : $mmean"
+
 if ( $?motion_dset ) then
+    if ( $was_censored ) then
+        # compute average censored motion
+        1deval -a $enorm_dset -b $censor_dset -expr 'a*b' > rm.ec.1D
+        set mmean = `3dTstat -prefix - -nzmean rm.ec.1D\\' | & tail -n 1`
+        echo "average censored motion   : $mmean"
+        \\rm -f rm.ec.1D
+    endif
+
     # compute the maximum motion displacement over all TR pairs
     set disp = `1d_tool.py -infile $motion_dset -show_max_displace -verb 0`
     echo "max motion displacement   : $disp"
@@ -396,8 +410,9 @@ g_eg_uvar.rm_trs          = 2
 g_eg_uvar.num_stim        = 2
 g_eg_uvar.tcat_dset       = 'pb00.FT.r01.tcat+orig.HEAD'
 g_eg_uvar.enorm_dset      = 'motion_FT_enorm.1D'
-g_eg_uvar.motion_dset     = 'dfile.rall.1D'
-g_eg_uvar.outlier_dset    = 'outcount.rall.1D'
+g_eg_uvar.censor_dset     = 'motion_FT_censor.1D'
+g_eg_uvar.motion_dset     = 'dfile_rall.1D'
+g_eg_uvar.outlier_dset    = 'outcount_rall.1D'
 g_eg_uvar.mot_limit       = 0.3
 g_eg_uvar.out_limit       = 0.1
 g_eg_uvar.xmat_regress    = 'X.xmat.1D'
@@ -416,9 +431,10 @@ g_uvar_dict = {
  'rm_trs'           :'set number of TRs removed per run',
  'num_stim'         :'set number of main stimulus classes',
  'tcat_dset'        :'set first tcat dataset',
+ 'censor_dset'      :'set motion_censor file',
  'enorm_dset'       :'set motion_enorm file',
  'motion_dset'      :'set motion parameter file',
- 'outlier_dset'     :'set outcount.rall file',
+ 'outlier_dset'     :'set outcount_rall file',
  'mot_limit'        :'set motion limit (maybe for censoring)',
  'out_limit'        :'set outlier limit (maybe for censoring)',
  'xmat_regress'     :'set X-matrix file used in regression',
@@ -487,9 +503,21 @@ g_history = """
         - use '3dinfo -ad3' for voxel resolution (so no negatives)
         - use 3 decimal places for TR censor fractions
    0.18 Apr 12, 2012: replace enumerate(), for backport to python 2.2
+   0.19 May 01, 2012: added -prefix option; added censoring to 1dplot commands
+   0.20 May 09, 2012: accomodate more than 99 runs
+   0.21 May 11, 2012: also output average censored motion (per TR)
+   0.22 Jun 14, 2012: use afni -com instead of plugout_drive
+                      (avoids issue on systems with multiple users)
+                      Thanks to V Razdan and N Adleman for noting the issue.
+   0.23 Jun 25, 2012: ick, fixed uninitilaized cpad1,2 (if no censoring)
+   0.24 Jul 17, 2012:
+        - add checks for volreg and uncensored X-mat
+        - probably init view from volreg
+   0.25 Aug 23, 2012: allow passing of -censor_dset
+   0.26 Sep 06, 2012: print missing xmat message w/out debug as it is fatal
 """
 
-g_version = "gen_ss_review_scripts.py version 0.18, April 12, 2012"
+g_version = "gen_ss_review_scripts.py version 0.26, September 6, 2012"
 
 g_todo_str = """
    - figure out template_space
@@ -553,6 +581,8 @@ class MyInterface:
       vopts.add_opt('-cvar', -2, [],
                     helpstr='set given control variable to given value(s)')
       vopts.add_opt('-exit0', 0, [], helpstr='force return of 0 on exit')
+      vopts.add_opt('-prefix', 1, [],
+                    helpstr='short for -cvar out_prefix')
       vopts.add_opt('-script_basic', 1, [],
                     helpstr='specify basic overview script name')
       vopts.add_opt('-script_driver', 1, [],
@@ -560,6 +590,8 @@ class MyInterface:
       vopts.add_opt('-uvar', -2, [],
                     helpstr='set given user variable to given value(s)')
       vopts.add_opt('-verb', 1, [], helpstr='set the verbose level (def=1)')
+
+      vopts.sort()
 
       return vopts
 
@@ -671,6 +703,13 @@ class MyInterface:
                         as_type=1, oname='cvars', verb=C.verb) < 0:
                errs += 1
                continue
+
+         elif opt.name == '-prefix':
+            val, err = uopts.get_string_opt('', opt=opt)
+            if val == None or err:
+               errs +=1
+               continue
+            C.out_prefix = val
 
          elif opt.name == '-script_basic':
             val, err = uopts.get_string_opt('', opt=opt)
@@ -784,7 +823,8 @@ class MyInterface:
       if len(xfiles) == 0: xfiles = glob.glob('X*.1D')
       if len(xfiles) == 0: xfiles = glob.glob('*.xmat.1D')
       if len(xfiles) == 0:
-         if verb > 1: print '** failed to match any x-matrix files'
+         # error is fatal so print message
+         print '** failed to match any x-matrix files'
          return 1
 
       # we have some list now, start looking through them
@@ -869,12 +909,12 @@ class MyInterface:
          print '** no xmat_ad to set xmat_uncensored from'
          return 1
 
-      copts = self.find_opt_and_params(ax.command, '-x1D_uncensored', 1)
+      copts = self.find_opt_and_params(ax.command, '-x1D_uncensored', 1, last=1)
       if len(copts) == 2:
          self.uvars.xmat_uncensored = copts[1]
          self.dsets.xmat_uncensored = BASE.afni_name(copts[1])
          if self.set_xmat_dset_from_name(self.uvars.xmat_uncensored, regress=0):
-            return 1
+            return 0  
 
          if self.cvars.verb > 2: print '-- xmat_uncensored exists = %d' \
                                        % self.dsets.xmat_uncensored.exist()
@@ -1035,23 +1075,25 @@ class MyInterface:
             print '-- already set: final_view = %s' % self.uvars.final_view
          return 0
 
-      if self.dsets.is_empty('stats_dset'):
+      if not self.dsets.is_empty('volreg_dset'):
+         view = self.dsets.volreg_dset.view
+      elif not self.dsets.is_empty('stats_dset'):
+         view = self.dsets.stats_dset.view
+      else:
          print '** no stats_dset to get final_view from'
-         return 1
+         view = ''
 
-      view = self.dsets.stats_dset.view
       if len(view) != 5: # maybe surface, go after volreg explicitly for now
-         glist = glob.glob('pb0??%s?r01?volreg+orig.HEAD'%(self.uvars.subj))
-         if len(glist) > 0: view = '+orig'
-         glist = glob.glob('pb0??%s?r01?volreg+tlrc.HEAD'%(self.uvars.subj))
-         if len(glist) > 0: view = '+tlrc'
+         vv = "+orig"
+         glist = glob.glob('pb0*%s?r0*volreg%s.HEAD'%(self.uvars.subj, vv))
+         if len(glist) == 0:
+            vv = "+tlrc"
+            glist = glob.glob('pb0*%s?r0*volreg%s.HEAD'%(self.uvars.subj, vv))
+         if len(glist) > 0: view = vv
 
       if len(view) != 5:
-         print "** unknown view '%s' in stats_dset %s" \
-               % (view,self.dsets.stats_dset.pv())
-         # print "** failing to set final_view"
-         # return 1
-
+         print "** could not find view in stats or volreg dsets"
+         return 1
 
       self.uvars.final_view = view[1:]
 
@@ -1060,12 +1102,12 @@ class MyInterface:
                % self.uvars.final_view
 
       # do a basic test of the subject ID and view
-      gform = 'pb0??%s?r01?volreg+%s.HEAD' \
+      gform = 'pb*%s?r0*volreg+%s.HEAD' \
               % (self.uvars.subj, self.uvars.final_view)
       glist = glob.glob(gform)
       if len(glist) == 0:
          # try a more general form
-         gform = 'pb*r01*volreg+%s.HEAD' % self.uvars.final_view
+         gform = 'pb*r*1*volreg+%s.HEAD' % self.uvars.final_view
          glist = glob.glob(gform)
 
       if len(glist) == 0:
@@ -1272,7 +1314,9 @@ class MyInterface:
          if self.cvars.verb > 3:
             print '-- already set: motion_dset = %s' % self.uvars.motion_dset
 
-      gstr = 'dfile.rall.1D'
+      gstr = 'dfile_rall.1D'
+      if not os.path.isfile(gstr): gstr = 'dfile.rall.1D'
+
       if os.path.isfile(gstr):
          self.uvars.motion_dset = gstr
          return 0
@@ -1298,7 +1342,9 @@ class MyInterface:
          if self.cvars.verb > 3:
             print '-- already set: outlier_dset = %s' % self.uvars.outlier_dset
 
-      gstr = 'outcount.rall.1D'
+      gstr = 'outcount_rall.1D'
+      if not os.path.isfile(gstr): gstr = 'outcount.rall.1D'
+
       if os.path.isfile(gstr):
          self.uvars.outlier_dset = gstr
          return 0
@@ -1362,17 +1408,13 @@ class MyInterface:
          if self.cvars.verb > 3:
             print '-- already set: volreg_dset = %s' % self.uvars.volreg_dset
 
-      gstr = 'pb??.*.r01.volreg+%s.HEAD' % self.uvars.final_view
-      glist = glob.glob(gstr)
-      if len(glist) == 1:
-         self.uvars.volreg_dset = glist[0]
-         self.dsets.volreg_dset = BASE.afni_name(glist[0])
-         return 0
+      glist = self.glob_slist_per_view(                                 \
+                ['pb??.*.r01.volreg+%s.HEAD', 'pb*r001*volreg+%s.HEAD', \
+                 'pb*r01*volreg+%s.HEAD'],                              \
+                ['tlrc', 'orig'])
 
-      # try again...
-      gstr = 'pb*r01*volreg+%s.HEAD' % self.uvars.final_view
-      glist = glob.glob(gstr)
-      if len(glist) == 1:
+      if len(glist) >= 1:
+         glist.sort()   # just to be sure
          self.uvars.volreg_dset = glist[0]
          self.dsets.volreg_dset = BASE.afni_name(glist[0])
          return 0
@@ -1380,6 +1422,14 @@ class MyInterface:
       print '** failed to find volreg dset, continuing...'
 
       return 0 # not failure
+
+   def glob_slist_per_view(self, slist, vlist):
+      """for each view, search for any files in slist"""
+      for v in vlist:
+         for s in slist:
+            glist = glob.glob(s % v)
+            if len(glist) > 0: return glist
+      return []
 
    def guess_sum_ideal(self):
       """set uvars.sum_ideal
@@ -1501,36 +1551,51 @@ class MyInterface:
             - warn if no mot/cen limit (and set to defaults)
       """
 
-      # check for -censor option in 3dD command
-      ax = self.dsets.val('xmat_ad')
-      if ax == None:
-         if self.cvars.verb: print '** no xmat_ad to check censoring with'
-         return 1
-
       # if empty, init the limits
       if self.uvars.is_empty('mot_limit'): self.uvars.mot_limit = 0.3
       if self.uvars.is_empty('out_limit'): self.uvars.out_limit = 0.1
 
-      opt = '-censor'
-      ax = self.dsets.xmat_ad
-      copts = self.find_opt_and_params(ax.command, opt, 1)
-      if len(copts) != 2: # no censoring
-         if self.cvars.verb > 1: print '-- no censoring...'
-      else:
-         cset = copts[1]
-         if not os.path.isfile(cset):
-            print '** have censoring in X-matrix, but no censor file'
+      # check if censor dset already set
+      if self.dsets.is_not_empty('censor_dset'):
+         if self.cvars.verb > 3:
+            print '-- already set: censor_dset = %s' \
+                  % self.dsets.censor_dset.prefix
+         return 0
+
+      # if we don't have one, try to figure it out
+      if self.uvars.is_empty('censor_dset'):
+         # check for -censor option in 3dD command
+         ax = self.dsets.val('xmat_ad')
+         if ax == None:
+            if self.cvars.verb: print '** no xmat_ad to check censoring with'
             return 1
-         self.uvars.censor_dset = cset
-         self.dsets.censor_dset = BASE.afni_name(cset)
-         if self.cvars.verb > 1:
-            print '-- setting censor_dset = %s' % cset
-         
-         # we should have some limit option
-         if self.uvars.is_empty('mot_limit') and \
-            self.uvars.is_empty('out_limit'):
-            print '** have censor file %s, but no passed -mot/out_limit' \
-                  % copts[1]
+
+         opt = '-censor'
+         ax = self.dsets.xmat_ad
+         copts = self.find_opt_and_params(ax.command, opt, 1)
+
+         if len(copts) != 2: # no censoring
+            if self.cvars.verb > 1: print '-- no censoring...'
+            return 0
+
+         cset = copts[1]
+      else: # we have a dset
+         cset = self.uvars.censor_dset
+
+      # now apply
+      if not os.path.isfile(cset):
+         print '** warning: have censoring in X-matrix, but no censor file'
+         return 0
+      self.uvars.censor_dset = cset
+      self.dsets.censor_dset = BASE.afni_name(cset)
+      if self.cvars.verb > 1:
+         print '-- setting censor_dset = %s' % cset
+      
+      # we should have some limit option
+      if self.uvars.is_empty('mot_limit') and \
+         self.uvars.is_empty('out_limit'):
+         print '** have censor file %s, but no passed -mot/out_limit' \
+               % copts[1]
 
       return 0
 
@@ -1766,34 +1831,33 @@ class MyInterface:
 
       aset = self.dsets.val('final_anat')
       if not self.check_for_dset('final_anat', ''):
-         s3 = '              -com "SWITCH_UNDERLAY %s"      \\\n'%aset.prefix
+         s3 = '     -com "SWITCH_UNDERLAY %s" \\\n'%aset.prefix
       else: s3 = ''
+
+      s4  = \
+          '# locate peak coords of biggest cluster and jump there\n'    \
+          'set maxcoords = ( `3dclust -1thresh $thresh -dxyz=1 1 2 \\\n'\
+          '    %s"[0]" | & awk \'/^ / {print $14, $15, $16}\' | head -n 1` )\n'\
+          'echo -- jumping to max coords: $maxcoords\n'                 \
+          % sset.pv()
 
       txt += '# get 90 percentile for thresholding in afni GUI\n'       \
              '%s'                                                       \
              '%s'                                                       \
              '\n'                                                       \
-             'afni -niml -yesplugouts &\n'                              \
-             'plugout_drive -com "OPEN_WINDOW A.axialimage"     \\\n'   \
-             '              -com "OPEN_WINDOW A.sagittalimage"  \\\n'   \
+             '%s\n' % (s1, s2, s4)
+
+      ac   = 'afni -com "OPEN_WINDOW A.axialimage"     \\\n'            \
+             '     -com "OPEN_WINDOW A.sagittalimage"  \\\n'            \
              '%s'                                                       \
-             '              -com "SWITCH_OVERLAY %s"   \\\n'            \
-             '              -com "SET_SUBBRICKS A 0 0 0"        \\\n'   \
-             '              -com "SET_THRESHNEW A $thresh"      \\\n'   \
-             '              -quit\n'                                    \
-             '\n' % (s1, s2, s3, sset.prefix)
-
-      s4  = 'set maxcoords = ( `3dclust -1thresh $thresh -dxyz=1 1 2 \\\n' \
-          '    %s"[0]" | & awk \'/^ / {print $14, $15, $16}\' | head -n 1` )\n'\
-          'echo -- jumping to max coords: $maxcoords\n'                     \
-          % sset.pv()
-
-      txt +=    \
-          '# locate peak coords of biggest cluster and jump there\n'   \
-          '%s'                                                         \
-          '\n'                                                         \
-          'plugout_drive -com "SET_DICOM_XYZ A $maxcoords" -quit\n'    \
-          % s4 
+             '     -com "SWITCH_OVERLAY %s"   \\\n'                     \
+             '     -com "SET_SUBBRICKS A 0 0 0"        \\\n'            \
+             '     -com "SET_THRESHNEW A $thresh"      \\\n'            \
+             '     -com "SET_DICOM_XYZ A $maxcoords"\n'                 \
+             '\n' % (s3, sset.prefix)
+      
+      txt += '# start afni with stats thresholding at peak location\n'  \
+             + ac
 
       txt += '\n'                                                      \
              'prompt_user -pause "                                 \\\n' \
@@ -1804,9 +1868,7 @@ class MyInterface:
              '   --- close afni and click OK when finished ---     \\\n' \
              '   "\n'                                                  \
 
-      self.commands_drive += s1 + s2 +  \
-          'afni -niml -yesplugouts &\n' \
-          + s4 
+      self.commands_drive += s1 + s2 + s4 + ac
 
       self.text_drive += txt + '\n\n'
 
@@ -2056,11 +2118,24 @@ class MyInterface:
          errs += 1
       if errs: return 1
 
+      # maybe include -censor option
+      cstr = ''
+      cpad1 = ''
+      cpad2 = ''
+      if self.uvars.is_not_empty('censor_dset'):
+         cfile = self.uvars.val('censor_dset')
+         if os.path.isfile(cfile):
+            cstr  = '-censor_RGB green -censor %s ' % cfile
+            cpad1 = '       %s \\\n' % cstr
+            cpad2 = '%s \\\n       ' % cstr
+
+
       txt = 'echo ' + UTIL.section_divider('outliers and motion',
                                            maxlen=60, hchar='-') + '\n\n'
 
       txt += '1dplot -wintitle "motion, outliers" -ynames Mot OFrac \\\n' \
-             '       -sepscl %s %s &\n' % (efile, ofile)
+             '%s'                                                         \
+             '       -sepscl %s %s &\n' % (cpad1, efile, ofile)
 
       # get total TRs from any uncensored X-matrix
       if self.dsets.is_not_empty('xmat_ad_nocen'):
@@ -2070,36 +2145,51 @@ class MyInterface:
       mlimit = self.uvars.mot_limit
       olimit = self.uvars.out_limit
 
-      txt += '1dplot -one %s "1D: %d@%g" &\n' % (ofile, nt, olimit)
-      txt += '1dplot -one %s "1D: %d@%g" &\n' % (efile, nt, mlimit)
+      colorstr = '(colored TRs are censored):'
+      if self.dsets.is_empty('censor_dset'):
+         colorstr = ':' + ' ' * len(colorstr)
+
+      txt += '1dplot -one %s%s "1D: %d@%g" &\n' % (cpad2, ofile, nt, olimit)
+      txt += '1dplot -one %s%s "1D: %d@%g" &\n' % (cpad2, efile, nt, mlimit)
 
       txt += '\n'                                                       \
              'prompt_user -pause "                              \\\n'   \
-             '   review plots:                                  \\\n'   \
+             '   review plots %s       \\\n'                            \
              '     - outliers and motion (plotted together)     \\\n'   \
-             '     - outliers with limit %3.1f                    \\\n'   \
-             '     - motion with limit %3.1f                      \\\n'   \
+             '     - outliers with limit %g                    \\\n' \
+             '     - motion with limit %g                      \\\n' \
              '                                                  \\\n'   \
              '   --- close plots and click OK when finished --- \\\n'   \
              '   "\n'                                                   \
-             'echo ""\n\n\n' % (olimit, mlimit)
+             'echo ""\n\n\n' % (colorstr, olimit, mlimit)
 
       self.commands_drive += \
-         '1dplot -wintitle "motion, outliers" -ynames OFrac Mot \\\n' \
-         '       -sepscl %s %s &\n' % (efile, ofile)
-      self.commands_drive += '1dplot -one %s "1D: %d@%g" &\n'%(ofile,nt,olimit)
-      self.commands_drive += '1dplot -one %s "1D: %d@%g" &\n'%(efile,nt,mlimit)
+         '1dplot -wintitle "motion, outliers" -ynames Mot OFrac \\\n' \
+         '       -sepscl %s%s %s &\n' % (cstr, efile, ofile)
+      self.commands_drive += '1dplot -one %s%s "1D: %d@%g" &\n' \
+                             % (cstr, ofile, nt, olimit)
+      self.commands_drive += '1dplot -one %s%s "1D: %d@%g" &\n' \
+                             % (cstr, efile, nt, mlimit)
 
       self.text_drive += txt
 
-   def find_opt_and_params(self, text, opt, nopt=0):
+   def find_opt_and_params(self, text, opt, nopt=0, last=0):
       """given some text, return the option with that text, as well as
-         the following 'nopt' parameters (truncated list if not found)"""
+         the following 'nopt' parameters (truncated list if not found)
+       
+         if last: return right-most position
+      """
       tlist = text.split()
 
       if not opt in tlist: return []
 
+      if last: tlist.reverse()
+
       tind = tlist.index(opt)
+
+      if last:
+         tlist.reverse()
+         tind = len(tlist) - 1 - tind
 
       return tlist[tind:tind+1+nopt]
 

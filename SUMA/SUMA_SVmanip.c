@@ -540,18 +540,10 @@ SUMA_SurfaceViewer *SUMA_Alloc_SurfaceViewer_Struct (int N)
       SV->X->CrappyDrawable = 0;
       SV->X->gc=NULL;
       SV->X->ToggleCrossHair_View_tglbtn=NULL;
-      for (iii=0; iii<SW_N_Tools; ++iii) {
-         SV->X->ToolsMenu[iii] = NULL;
-      }
-      for (iii=0; iii<SW_N_File; ++iii) {
-         SV->X->FileMenu[iii] = NULL;
-      }
-      for (iii=0; iii<SW_N_View; ++iii) {
-         SV->X->ViewMenu[iii] = NULL;
-      }
-      for (iii=0; iii<SW_N_Help; ++iii) {
-         SV->X->HelpMenu[iii] = NULL;
-      }
+      SV->X->ToolsMenu = SUMA_Alloc_Menu_Widget(SW_N_Tools);
+      SV->X->FileMenu = SUMA_Alloc_Menu_Widget(SW_N_File);
+      SV->X->ViewMenu = SUMA_Alloc_Menu_Widget(SW_N_View);
+      SV->X->HelpMenu = SUMA_Alloc_Menu_Widget(SW_N_Help);
       
       SV->Focus_SO_ID = -1;
       SV->Focus_DO_ID = -1;
@@ -1793,7 +1785,9 @@ int SUMA_WhichState (char *state, SUMA_SurfaceViewer *csv, char *ForceGroup)
    view states in the surface viewer's structure
    Essentially, it creates the vector VSv that is a part of the surface viewer structure
 */
-SUMA_Boolean SUMA_RegisterSpecSO (SUMA_SurfSpecFile *Spec, SUMA_SurfaceViewer *csv, SUMA_DO* dov, int N_dov, int viewopt)
+SUMA_Boolean SUMA_RegisterSpecSO (SUMA_SurfSpecFile *Spec, 
+                                  SUMA_SurfaceViewer *csv, 
+                                  SUMA_DO* dov, int N_dov, int viewopt)
 {
    static char FuncName[]={"SUMA_RegisterSpecSO"};
    int is, i, old_N_VSv = 0;
@@ -1827,7 +1821,8 @@ SUMA_Boolean SUMA_RegisterSpecSO (SUMA_SurfSpecFile *Spec, SUMA_SurfaceViewer *c
       if (!csv->VSv) { /* first pass */
          csv->VSv = SUMA_Alloc_ViewState (Spec->N_States);
          if (csv->VSv == NULL) {
-            fprintf(SUMA_STDERR,"Error %s: Failed to allocate for VSv.\n", FuncName);
+            fprintf(SUMA_STDERR,
+                    "Error %s: Failed to allocate for VSv.\n", FuncName);
             SUMA_RETURN (NOPE);
          }
          csv->N_VSv = 0;
@@ -2070,6 +2065,35 @@ SUMA_CommonFields * SUMA_Create_CommonFields ()
    cf->X->Clip_prmpt = NULL;
    cf->X->ClipObj_prmpt = NULL;
    cf->X->TableTextFontList = NULL;   
+   cf->X->CommonSurfContTLW = NULL;
+   cf->X->TopSurfContWidget = NULL;
+   cf->X->SameSurfContOpen = 0;
+   {
+      char *eee = getenv("SUMA_SameSurfCont");
+      if (eee) {
+         if (strcmp(eee,"NO") == 0) cf->X->UseSameSurfCont = NOPE;
+         else if (strcmp(eee,"YES") == 0) cf->X->UseSameSurfCont = YUP;
+         else {
+            fprintf (SUMA_STDERR,   
+                     "Warning %s:\n"
+                     "Bad value for environment variable UseSameSurfCont\n"
+                     "Assuming default of NOPE", FuncName);
+            cf->X->UseSameSurfCont = NOPE;
+         }
+      } else cf->X->UseSameSurfCont = NOPE;
+      if (cf->X->UseSameSurfCont) {
+         SUMA_S_Warn("Using the same surface controller is NOT ready for prime"
+                     "time. In particular, I don't handle 'closing' of"
+                     "controller properly. Macro SUMA_SURFCONT_CREATED() needs"
+                     "some more thought, perhaps. Annoying pointer focus theft"
+                     "When I raise the surface controller as I switch between"
+                     "hemis. Search for Raising Arizona in the code to locate"
+                     "attempts at fixing this."
+                     "Eventually, switch the default value to YES"
+                     "Also, turn off yoking then check for proper preservation"
+                     "of values separately set for each surface's controller.");
+      }
+   } 
    {
       char *eee = getenv("SUMA_NumForeSmoothing");
       if (eee) {
@@ -2272,6 +2296,8 @@ SUMA_CommonFields * SUMA_Create_CommonFields ()
    cf->autorecord = SUMA_SetAutoRecord(getenv("SUMA_AutoRecordPrefix"));
 
    cf->SaveList = NULL;
+   
+   cf->YokeIntToNode = 0;
    return (cf);
 
 }
@@ -2461,8 +2487,10 @@ void *SUMA_FreeViewContStruct (SUMA_X_ViewCont *ViewCont)
    if (ViewCont->TopLevelShell) {
       SUMA_SL_Warn("ViewCont->TopLevelShell is not being freed");
    }
-   if (ViewCont->SwitchGrouplst) ViewCont->SwitchGrouplst = SUMA_FreeScrolledList(ViewCont->SwitchGrouplst);
-   if (ViewCont->SwitchStatelst) ViewCont->SwitchStatelst = SUMA_FreeScrolledList(ViewCont->SwitchStatelst);
+   if (ViewCont->SwitchGrouplst) 
+      ViewCont->SwitchGrouplst = SUMA_FreeScrolledList(ViewCont->SwitchGrouplst);
+   if (ViewCont->SwitchStatelst) 
+      ViewCont->SwitchStatelst = SUMA_FreeScrolledList(ViewCont->SwitchStatelst);
    if (ViewCont) free(ViewCont);
    return (NULL);
 }
@@ -2493,7 +2521,7 @@ SUMA_X_SurfCont *SUMA_CreateSurfContStruct (char *idcode_str)
    SurfCont->DsetMap_fr = NULL;
    SurfCont->ColPlane_fr = NULL;
    SurfCont->Xhair_fr = NULL;
-   SurfCont->TopLevelShell = NULL;
+   SurfCont->TLS = NULL;
    SurfCont->SurfInfo_pb = NULL;
    SurfCont->SurfInfo_label = NULL;
    SurfCont->SurfInfo_TextShell = NULL;
@@ -2518,6 +2546,7 @@ SUMA_X_SurfCont *SUMA_CreateSurfContStruct (char *idcode_str)
    SurfCont->ShowZero_tb = NULL;
    SurfCont->SwitchDsetlst = NULL;
    SurfCont->ColPlaneLabelTable = SUMA_AllocTableField();;
+   SurfCont->SetClustTable = SUMA_AllocTableField();
    SurfCont->curColPlane = NULL;
    {
       char *eee = getenv("SUMA_ShowOneOnly");
@@ -2561,14 +2590,19 @@ SUMA_X_SurfCont *SUMA_CreateSurfContStruct (char *idcode_str)
    SurfCont->SwitchIntMenu = NULL;
    SurfCont->SwitchBrtMenu = NULL;
    SurfCont->SwitchThrMenu = NULL;
+   #if 0 /* Now in SwitchIntMenu */
    SurfCont->SwitchIntLst = NULL;
    SurfCont->SwitchThrLst = NULL;
    SurfCont->SwitchBrtLst = NULL;
+   SurfCont->SwitchIntArrow = NULL;
+   SurfCont->SwitchBrtArrow = NULL;
+   SurfCont->SwitchThrArrow = NULL;
+   #endif
    SurfCont->SwitchCmapMenu = NULL;
    SurfCont->rc_CmapCont = NULL;
-   SurfCont->N_CmapMenu = -1;
-   SurfCont->CoordBiasMenu[SW_CoordBias] = NULL;
-   SurfCont->LinkModeMenu[SW_LinkMode] = NULL;
+   SurfCont->CoordBiasMenu = SUMA_Alloc_Menu_Widget(SW_N_CoordBias);
+   SurfCont->LinkModeMenu = SUMA_Alloc_Menu_Widget(SW_N_LinkMode);
+   SurfCont->CmapModeMenu = SUMA_Alloc_Menu_Widget(SW_N_CmapMode);
    SurfCont->opts_rc = NULL;
    SurfCont->opts_form = NULL;
    SurfCont->rcvo = NULL;
@@ -2584,6 +2618,7 @@ SUMA_X_SurfCont *SUMA_CreateSurfContStruct (char *idcode_str)
    SurfCont->Brt_tb = NULL;
    SurfCont->IntRangeLocked = 0;
    SurfCont->BrtRangeLocked = 0;
+   SurfCont->rcclust = NULL;
    
 
   return (SurfCont);
@@ -2618,25 +2653,45 @@ void *SUMA_FreeSurfContStruct (SUMA_X_SurfCont *SurfCont)
    if (SurfCont->LabelTable) SUMA_FreeTableField (SurfCont->LabelTable); 
    if (SurfCont->ColPlaneLabelTable) 
       SUMA_FreeTableField (SurfCont->ColPlaneLabelTable); 
+   if (SurfCont->SetClustTable) SUMA_FreeTableField (SurfCont->SetClustTable);
    if (SurfCont->SwitchDsetlst) SUMA_FreeScrolledList (SurfCont->SwitchDsetlst);
    if (SurfCont->SurfInfo_TextShell) { 
       SUMA_SL_Warn("SurfCont->SurfInfo_TextShell is not being freed") };
-   if (SurfCont->SwitchIntMenu) { 
-      XtDestroyWidget(SurfCont->SwitchIntMenu[0]); 
-      SUMA_free(SurfCont->SwitchIntMenu); }
-   if (SurfCont->SwitchThrMenu) { 
-      XtDestroyWidget(SurfCont->SwitchThrMenu[0]); 
-      SUMA_free(SurfCont->SwitchThrMenu); }
-   if (SurfCont->SwitchBrtMenu) { 
-      XtDestroyWidget(SurfCont->SwitchBrtMenu[0]); 
-      SUMA_free(SurfCont->SwitchBrtMenu); }
-   if (SurfCont->SwitchCmapMenu) { 
-      XtDestroyWidget(SurfCont->SwitchCmapMenu[0]); 
-      SUMA_free(SurfCont->SwitchCmapMenu); }
+   SurfCont->SwitchIntMenu = SUMA_Free_Menu_Widget(SurfCont->SwitchIntMenu);
+   SurfCont->SwitchThrMenu = SUMA_Free_Menu_Widget(SurfCont->SwitchThrMenu); 
+   SurfCont->SwitchBrtMenu = SUMA_Free_Menu_Widget(SurfCont->SwitchBrtMenu); 
+   SurfCont->SwitchCmapMenu = SUMA_Free_Menu_Widget(SurfCont->SwitchCmapMenu); 
    if (SurfCont->curSOp) free(SurfCont->curSOp);
    if (SurfCont->cmp_ren) free(SurfCont->cmp_ren);
    if (SurfCont) free(SurfCont);
    return (NULL);
+}
+
+SUMA_MENU_WIDGET *SUMA_Free_Menu_Widget(SUMA_MENU_WIDGET *smw) 
+{
+   static char FuncName[]={"SUMA_Free_Menu_Widget"};
+   if (!smw) return(NULL);
+   if (smw->mw) {
+      XtDestroyWidget(smw->mw[0]);
+      SUMA_free(smw->mw);
+   }
+   if (smw->lw) {
+      SUMA_cb_CloseSwitchLst (NULL, (XtPointer)smw->lw, NULL);
+      smw->lw = SUMA_FreeScrolledList(smw->lw);
+   }
+   if (smw) SUMA_free(smw);
+   return(NULL);
+}
+
+SUMA_MENU_WIDGET *SUMA_Alloc_Menu_Widget(int nw) 
+{
+   SUMA_MENU_WIDGET *smw=NULL;
+   smw = (SUMA_MENU_WIDGET *)SUMA_calloc(1, sizeof(SUMA_MENU_WIDGET));
+   if (nw) {
+      smw->mw = (Widget *)SUMA_calloc(nw, sizeof(Widget));
+      smw->N_mw = nw;
+   }
+   return(smw);
 }
 
 /*! free SUMA_CommonFields 

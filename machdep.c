@@ -46,6 +46,8 @@ void machdep()
    be_quiet = AFNI_yesenv("AFNI_QUIET_STARTUP") ;  /* 08 Dec 2010 */
 
    if( AFNI_yesenv("AFNI_USE_FGETS") ) afni_fgets_setskip(1) ; /* 21 Dec 2011 */
+
+   AFNI_do_nothing() ; /* 02 Oct 2012 */
    return ;
 }
 
@@ -232,3 +234,14 @@ char *SOLARIS_strcasestr(const char *s1, const char *s2)
    if (so) return((char*)s1+off);
    return(NULL);
 }
+
+/*---------------------------------------------------------------------------*/
+
+void AFNI_do_nothing(void){
+  static int fdn=-666 ;
+  if( fdn == -666 ) fdn = open("/dev/null",O_WRONLY) ;
+  if( fdn >= 0 ) write(fdn," ",1) ;
+  return ;
+}
+
+/*---------------------------------------------------------------------------*/

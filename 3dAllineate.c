@@ -616,6 +616,9 @@ int main( int argc , char *argv[] )
 "                       Here, the identity transformation is specified\n"
 "                       by giving all 12 affine parameters as 0 (note\n"
 "                       the extra \\' at the end of the '1D: 12@0' input!).\n"
+"              **N.B.: Some expert options for modifying how the wsinc5\n"
+"                       method works are described far below, if you use\n"
+"                       '-HELP' instead of '-help'.\n"
 "            ****N.B.: The interpolation method used to produce a dataset\n"
 "                       is always given via the '-final' option, NOT via\n"
 "                       '-interp'.  If you forget this and use '-interp'\n"
@@ -712,8 +715,8 @@ int main( int argc , char *argv[] )
 "                       For comparison, quintic interpolation takes about\n"
 "                       0.3 s per 1 million voxels: 8 times faster than wsinc5.\n"
 "                  ++ The '5' refers to the width of the sinc interpolation\n"
-"                       weights: plus/minus 5 grid points in each direction\n"
-"                       (this is a tensor product interpolation, for speed).\n"
+"                       weights: plus/minus 5 grid points in each direction;\n"
+"                       this is a tensor product interpolation, for speed.\n"
 "\n"
 "TECHNICAL OPTIONS (used for fine control of the program):\n"
 "=================\n"
@@ -834,6 +837,13 @@ int main( int argc , char *argv[] )
 "                 then the default '-twofirst' makes sense if you don't expect\n"
 "                 large movements WITHIN the source, but expect large motions\n"
 "                 between the source and base.\n"
+"               * '-twopass' re-starts the alignment process for each sub-brick\n"
+"                 in the source dataset -- this option can be time consuming,\n"
+"                 and is really intended to be used when you might expect large\n"
+"                 movements between sub-bricks; for example, when the different\n"
+"                 volumes are gathered on different days.  For most purposes,\n"
+"                 '-twofirst' (the default process) will be adequate and faster,\n"
+"                 when operating on multi-volume source datasets.\n"
 
        , tbest , PARAM_MAXTRIAL  /* for -twobest */
       ) ;
@@ -1254,6 +1264,73 @@ int main( int argc , char *argv[] )
        printf("\n"
         "===========================================================================\n" );
        printf("\n"
+        "Modifying '-final wsinc5'\n"
+        "-------------------------\n"
+        " * The windowed (tapered) sinc function interpolation can be modified\n"
+        "     by several environment variables.  This is expert-level stuff, and\n"
+        "     you should understand what you are doing if you use these options.\n"
+        "     The simplest way to use these would be on the command line, as in\n"
+        "       -DAFNI_WSINC5_RADIUS=9 -DAFNI_WSINC5_TAPERFUN=Hamming\n"
+        "\n"
+        " * AFNI_WSINC5_TAPERFUN lets you choose the taper function.\n"
+        "     The default taper function is the minimum sidelobe 3-term cosine:\n"
+        "       0.4243801 + 0.4973406*cos(PI*x) + 0.0782793*cos(2*PI*x)\n"
+        "     If you set this environment variable to 'Hamming', then the\n"
+        "     minimum sidelobe 2-term cosine will be used instead:\n"
+        "       0.53836 + 0.46164*cos(PI*x)\n"
+        "     Here, 'x' is between 0 and 1, where x=0 is the center of the\n"
+        "     interpolation mask and x=1 is the outer edge.\n"
+        " ++  Unfortunately, the 3-term cosine doesn't have a catchy name; you can\n"
+        "       find it (and many other) taper functions described in the paper\n"
+        "         AH Nuttall, Some Windows with Very Good Sidelobe Behavior.\n"
+        "         IEEE Trans. ASSP, 29:84-91 (1981).\n"
+        "       In particular, see Fig.14 and Eq.36 in this paper.\n"
+        "\n"
+        " * AFNI_WSINC5_TAPERCUT lets you choose the start 'x' point for tapering:\n"
+        "     This value should be between 0 and 0.8; for example, 0 means to taper\n"
+        "     all the way from x=0 to x=1 (maximum tapering).  The default value\n"
+        "     is 0.  Setting TAPERCUT to 0.5 (say) means only to taper from x=0.5\n"
+        "     to x=1; thus, a larger value means that fewer points are tapered\n"
+        "     inside the interpolation mask.\n"
+        "\n"
+        " * AFNI_WSINC5_RADIUS lets you choose the radius of the tapering window\n"
+        "     (i.e., the interpolation mask region).  This value is an integer\n"
+        "     between 3 and 21.  The default value is 5 (which used to be the\n"
+        "     ONLY value, thus 'wsinc5').  RADIUS is measured in voxels, not mm.\n"
+        "\n"
+        " * AFNI_WSINC5_SPHERICAL lets you choose the shape of the mask region.\n"
+        "     If you set this value to 'Yes', then the interpolation mask will be\n"
+        "     spherical; otherwise, it defaults to cubical.\n"
+        "\n"
+        " * The Hamming taper function is a little faster than the 3-term function,\n"
+        "     but will have a little more Gibbs phenomenon.\n"
+        " * A larger TAPERCUT will give a little more Gibbs phenomenon; compute\n"
+        "     speed won't change much with this parameter.\n"
+        " * Compute time goes up with (at least) the 3rd power of the RADIUS; setting\n"
+        "     RADIUS to 21 will be VERY slow.\n"
+        " * Visually, RADIUS=3 is similar to quintic interpolation.  Increasing\n"
+        "     RADIUS makes the interpolated images look sharper and more well-\n"
+        "     defined.  However, values of RADIUS greater than or equal to 7 appear\n"
+        "     (to Zhark's eagle eye) to be almost identical.  If you really care,\n"
+        "     you'll have to experiment with this parameter yourself.\n"
+        " * A spherical mask is also VERY slow, since the cubical mask allows\n"
+        "     evaluation as a tensor product.  There is really no good reason\n"
+        "     to use a spherical mask; I only put it in for experimental purposes.\n"
+        "** For most users, there is NO reason to ever use these environment variables\n"
+        "     to modify wsinc5.  You should only do this kind of thing if you have a\n"
+        "     good and articulable reason!  (Or if you really like to screw around.)\n"
+        "** The wsinc5 interpolation function is parallelized using OpenMP, which\n"
+        "     makes its usage moderately tolerable.\n"
+#ifndef USE_OMP
+        "   ++ However, this binary copy of AFNI is NOT compiled with OpenMP support.\n"
+        "        You should consider getting such binaries, as several AFNI program\n"
+        "        (including this one) will become significantly faster.\n"
+#endif
+       ) ;
+
+       printf("\n"
+        "===========================================================================\n" );
+       printf("\n"
               "Hidden experimental cost functionals:\n"
               "-------------------------------------\n" ) ;
        for( ii=0 ; ii < NMETH ; ii++ )
@@ -1273,7 +1350,7 @@ int main( int argc , char *argv[] )
               " * The purpose of lpc+ is to avoid situations where the pure lpc cost\n"
               "   goes wild; this especially happens if '-source_automask' isn't used.\n"
               "   ++ Even with lpc+, you should use '-source_automask+2' (say) to be safe.\n"
-              " * You can later the weighting of the extra functionals by giving the\n"
+              " * You can alter the weighting of the extra functionals by giving the\n"
               "   option in the form (for example)\n"
               "     '-lpc+hel*0.5+nmi*0+mi*0+crA*1.0+ov*0.5'\n"
               " * The quotes are needed to prevent the shell from wild-card expanding\n"
@@ -4015,7 +4092,7 @@ STATUS("zeropad weight dataset") ;
 
      didtwo = 0 ;
      if( twopass && (!twofirst || !tfdone) ){
-       int tb , ib , ccode , nrand ;
+       int tb , ib , ccode , nrand ; char *eee ;
        if( verb ) INFO_message("Start coarse pass") ;
        ccode            = (interp_code == MRI_NN) ? MRI_NN : MRI_LINEAR ;
        stup.interp_code = ccode ;
@@ -4043,14 +4120,29 @@ STATUS("zeropad weight dataset") ;
 
          /* startup search only allows up to 6 parameters, so freeze excess */
 
-         nptwo = (int)AFNI_numenv("AFNI_TWOPASS_NUM") ;
-         if( nptwo < 1 || nptwo > 6 ) nptwo = 6 ;
-         if( nparam_free > nptwo ){
-           for( ii=jj=0 ; jj < stup.wfunc_numpar ; jj++ ){
-             if( !stup.wfunc_param[jj].fixed ){
-               ii++ ;  /* number free so far */
-               if( ii > nptwo ) stup.wfunc_param[jj].fixed = 1 ;  /* temp freeze */
+         eee = my_getenv("AFNI_TWOPASS_NUM") ;
+         if( eee == NULL || *eee != ':' ){
+           if( eee != NULL ) sscanf( eee , "%d" , &nptwo ) ;
+           if( nptwo < 1 || nptwo > 6 ) nptwo = 6 ;
+           if( nparam_free > nptwo ){  /* old way: just free first nptwo params */
+             for( ii=jj=0 ; jj < stup.wfunc_numpar ; jj++ ){
+               if( !stup.wfunc_param[jj].fixed ){
+                 ii++ ;  /* number free so far */
+                 if( ii > nptwo ) stup.wfunc_param[jj].fixed = 1 ;  /* temp freeze */
+               }
              }
+           }
+         } else {                      /* the new way: free from a list */
+           int npk[6]={-1,-1,-1,-1,-1,-1} ;
+           sscanf( eee , ":%d:%d:%d:%d:%d:%d" ,
+                   npk+0 , npk+1 , npk+2 , npk+3 , npk+4 , npk+5 ) ;
+           for( jj=0 ; jj < stup.wfunc_numpar ; jj++ ){
+             if( !stup.wfunc_param[jj].fixed ) stup.wfunc_param[jj].fixed = 1 ;
+           }
+           for( ii=0 ; ii < 6 ; ii++ ){
+             jj = npk[ii] ;
+             if( jj >= 0 && jj < stup.wfunc_numpar && stup.wfunc_param[jj].fixed == 1 )
+               stup.wfunc_param[jj].fixed = 0 ;
            }
          }
 
@@ -4762,34 +4854,45 @@ STATUS("zeropad weight dataset") ;
            static int fst[8] = { 12+3*NPOL(3) , 12+3*NPOL(4) , 12+3*NPOL(5) ,
                                  12+3*NPOL(6) , 12+3*NPOL(7) , 12+3*NPOL(8) ,
                                  12+3*NPOL(9)  } ;
-           int pq ;
-           for( pq=0 ; pq < 7 ; pq++ ){
-             for( jj=12 ; jj < NPNONI ; jj++ ) stup.wfunc_param[jj].fixed = 0 ;
-             FREEZE_POLYNO_PARAMS ;
-             for( jj=fst[pq] ; jj < NPNONI ; jj++ )
-               if( stup.wfunc_param[jj].fixed == 0 ) stup.wfunc_param[jj].fixed = 1 ;
-             COUNT_FREE_PARAMS(nbf) ;
+           int pq , ngite=2 , ig ; char *eee ; float gfac ;
+           eee = my_getenv("AFNI_NONIC_GRADUAL") ;
+           if( eee != NULL && isdigit(*eee) ) ngite = (int)strtod(eee,NULL) ;
+           for( ig=0 ; ig < ngite ; ig++ ){
              if( verb > 0 )
-               INFO_message("Level %d of Nonic/Poly9 warping: %d free parameters",pq+3,nbf) ;
-             if( nbf == 0 ) continue ;
-             if( pq > 0 ){
-               for( jj=0 ; jj < fst[pq] ; jj++ ){
-                 if( stup.wfunc_param[jj].fixed == 0 )
-                   stup.wfunc_param[jj].val_init = stup.wfunc_param[jj].val_out ;
+               INFO_message("Start iteration #%d/%d of Nonic/Poly9 gradual warp",ig+1,ngite) ;
+             for( pq=0 ; pq < 7 ; pq++ ){
+               for( jj=12 ; jj < NPNONI ; jj++ ) stup.wfunc_param[jj].fixed = 0 ;
+               FREEZE_POLYNO_PARAMS ;
+               for( jj=fst[pq] ; jj < NPNONI ; jj++ )
+                 if( stup.wfunc_param[jj].fixed == 0 ) stup.wfunc_param[jj].fixed = 1 ;
+               COUNT_FREE_PARAMS(nbf) ;
+               if( verb > 0 )
+                 ININFO_message("Level %d of Nonic/Poly9 warping: %d free parameters",pq+3,nbf) ;
+               if( nbf == 0 ) continue ;
+               if( pq > 0 || ig > 0 ){
+                 for( jj=0 ; jj < fst[pq] ; jj++ ){
+                   if( stup.wfunc_param[jj].fixed == 0 )
+                     stup.wfunc_param[jj].val_init = stup.wfunc_param[jj].val_out ;
+                 }
                }
-             }
-             if( verb ) ctim = COX_cpu_time() ;
-             rad  = 0.03f ; crad = 0.003f ;
-             nite = MAX(6*nbf,nwarp_itemax) ;
-             nbf  = mri_genalign_scalar_optim( &stup , rad, crad, nite );
-             if( verb ){
-               dtim = COX_cpu_time() ;
-               ININFO_message("- Nonic/Poly9 cost = %f ; %d funcs ; net CPU = %.1f s",
-                              stup.vbest,nbf,dtim-ctim) ;
-               ctim = dtim ;
-             }
-           }
-         }
+               if( verb ) ctim = COX_cpu_time() ;
+               gfac = 1.0f / sqrtf(ig+1.0f) ;
+               rad  = 0.05f*gfac ; crad = 0.003f*gfac ;
+               nite = MAX(19*nbf,nwarp_itemax) ;
+               nbf  = mri_genalign_scalar_optim( &stup , rad, crad, nite );
+               for( jj=0 ; jj < NPNONI ; jj++ ){        /* for fixers next time thru */
+                 if( stup.wfunc_param[jj].fixed == 0 )
+                   stup.wfunc_param[jj].val_fixed = stup.wfunc_param[jj].val_out ;
+               }
+               if( verb ){
+                 dtim = COX_cpu_time() ;
+                 ININFO_message("- Nonic/Poly9 cost = %f ; %d funcs ; net CPU = %.1f s",
+                                stup.vbest,nbf,dtim-ctim) ;
+                 ctim = dtim ;
+               }
+             } /* end of pq loop */
+           } /* end of ig loop */
+         } /* end of GRADUAL-osity */
 
          /** if( verb > 1 ) PAROUT("- Nonic/Poly9 final") ; **/
          strcpy(warp_code_string,"nonic") ;

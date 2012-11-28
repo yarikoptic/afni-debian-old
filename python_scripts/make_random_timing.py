@@ -688,9 +688,13 @@ g_history = """
          - noted by Z Saad and P Kaskan
     1.4  Jun 08, 2011: tr-lock test: fixed print and added min_rest to durs
     1.5  Apr 08, 2012: -ordered_stimuli can now use labels
+    1.6  May 01, 2012: -ordered_stimuli now works with -max_consec
+         - requested by Liat
+    1.7  Oct 03, 2012: some options do not allow dashed parameters
+    1.8  Nov 14, 2012: fixed checks for random space in -max_consec case
 """
 
-g_version = "version 1.5, April 8, 2012"
+g_version = "version 1.8, Nov 14, 2012"
 
 gDEF_VERB       = 1      # default verbose level
 gDEF_T_GRAN     = 0.1    # default time granularity, in seconds
@@ -771,11 +775,11 @@ class RandTiming:
         self.valid_opts.add_opt('-prefix', 1, [], req=1,
                         helpstr='prefix for output stimulus timing files')
 
-        self.valid_opts.add_opt('-num_reps', -1, [], req=1,
+        self.valid_opts.add_opt('-num_reps', -1, [], req=1, okdash=0,
                         helpstr='number of stimulus reps per run, per class')
-        self.valid_opts.add_opt('-run_time', -1, [], req=1,
+        self.valid_opts.add_opt('-run_time', -1, [], req=1, okdash=0,
                         helpstr='total length of each run, in seconds')
-        self.valid_opts.add_opt('-stim_dur', -1, [], req=1,
+        self.valid_opts.add_opt('-stim_dur', -1, [], req=1, okdash=0,
                         helpstr='length of each stimulus, in seconds')
 
         # optional arguments
@@ -783,7 +787,7 @@ class RandTiming:
                         helpstr='distribute stim reps across all runs')
         self.valid_opts.add_opt('-make_3dd_contrasts', 0, [],
                         helpstr='add contrasts pairs to 3dDeconvolve script')
-        self.valid_opts.add_opt('-max_consec', -1, [],
+        self.valid_opts.add_opt('-max_consec', -1, [], okdash=0,
                         helpstr='max consecutive occurances of each stim type')
         self.valid_opts.add_opt('-max_rest', 1, [],
                         helpstr='maximum rest time after each stimulus')
@@ -791,7 +795,7 @@ class RandTiming:
                         helpstr='minimum rest time after each stimulus')
         self.valid_opts.add_opt('-offset', 1, [],
                         helpstr='offset to add to every stimulus time')
-        self.valid_opts.add_opt('-ordered_stimuli', -1, [],
+        self.valid_opts.add_opt('-ordered_stimuli', -1, [], okdash=0,
                         helpstr='require these stimuli to be so ordered')
         self.valid_opts.add_opt('-pre_stim_rest', 1, [],
                         helpstr='time before first stimulus, in seconds')
@@ -803,7 +807,7 @@ class RandTiming:
                         helpstr='seed for random number generation (integer)')
         self.valid_opts.add_opt('-show_timing_stats', 0, [],
                         helpstr='show statistics for inter-stimulus intervals')
-        self.valid_opts.add_opt('-stim_labels', -1, [],
+        self.valid_opts.add_opt('-stim_labels', -1, [], okdash=0,
                         helpstr='specify stimulus labels for filenames')
         self.valid_opts.add_opt('-t_digits', 1, [],
                         helpstr='digits after decimal, for printing times')
@@ -1554,7 +1558,7 @@ class RandTiming:
         # catenate lists of event types that are either not in orderstim
         # or are the first element in one
 
-        # fill in unused stimuli
+        # fill elist with unused stimuli
         for stim in range(nstim):
             sval = stim+1 # stim val, for ease of typing
             if sval not in used:
@@ -1564,19 +1568,15 @@ class RandTiming:
         if self.verb > 3:
             print '++ elist (len %d, unordered): %s' % (len(elist), elist)
 
-        # now fill any that are first, and create 'firstdict' lookup table 
-        firstdict = {}
+        # and append 'first' entries to elist
         for ind in range(len(self.orderstim)):
             olist = self.orderstim[ind]
             sval = olist[0]
-            stim = olist[0] - 1
-            firstdict[sval] = ind # which list contains sval
+            elist += [sval for i in range(self.num_reps[sval-1])]
             if self.verb > 1: print '++ filling order[0] stim %d' % sval
-            elist += [sval for i in range(self.num_reps[stim])]
 
         if self.verb > 3:
             print '++ elist (len %d, order base): %s' % (len(elist), elist)
-            print '++ firstdict lookup table: %s' % firstdict
 
         # ------------------------- step 2 ---------------------------
         # randomize this list (other orderlist stimuli are not random)
@@ -1588,21 +1588,26 @@ class RandTiming:
         # ------------------------- step 3 ---------------------------
         # fill in orderstim events:
         # insert orderstim list at each orderstim initial element
+        # given: elist, firstdict, orderstim  ==> create new elist
 
-        enew = []
-        for val in elist:
-            if firstdict.has_key(val):          # then append orderlist
-                enew.extend(self.orderstim[firstdict[val]])
-            else: enew.append(val)
-        elist = enew    # replace
-        if self.verb > 3:
-            print '++ elist (len %d, all stim): %s' % (len(elist), elist)
+        # create 'firstdict' lookup table for follower insertion
+        firstdict = self.make_ordered_firstdict(self.orderstim)
+
+        elist = self.insert_order_followers(elist, firstdict, self.orderstim)
 
         # ------------------------- step 4 ---------------------------
         # randomly merge with rest:
         # - shuffle binary list of rest/stim
         # - for each stim val, replace with respective stim index
 
+        stat, mergelist = self.merge_elist_with_rest(elist, nrest)
+        if stat: return 1, None
+        
+        return 0, mergelist
+
+    def merge_elist_with_rest(self, elist, nrest):
+        """make a new list with rest elements randomly dispersed along elist
+        """
         mergelist = [0 for i in range(nrest)] + [1 for i in range(len(elist))]
         UTIL.shuffle(mergelist)
 
@@ -1617,6 +1622,39 @@ class RandTiming:
 
         return 0, mergelist
 
+    def make_ordered_firstdict(self, orderstim):
+        """return a dictionary of orderstim indices, indexed by first stims"""
+        firstdict = {}
+        for ind in range(len(orderstim)):
+            olist = self.orderstim[ind]
+            sval = olist[0]
+            firstdict[sval] = ind # which list contains sval
+
+        if self.verb > 3:
+            print '++ firstdict lookup table: %s' % firstdict
+
+        return firstdict
+
+    def insert_order_followers(self, elist, firstdict, orderstim):
+        """fill in followers from orderstim list
+           inputs:
+               elist    : current list of first and unordered elements
+               firstdict: dict of {first order element: index into orderstim}
+               orderstim: list of ordered stim lists
+           output:
+               new elist: with followers inserted
+        """
+        enew = []
+        for val in elist:
+            if firstdict.has_key(val):          # then append orderlist
+                enew.extend(orderstim[firstdict[val]])
+            else: enew.append(val)
+        if self.verb > 3:
+            print '++ elist with followers (len %d, all stim): %s' \
+                  % (len(enew), enew)
+        return enew
+
+
     def randomize_events(self, nrest):
         """make a list of all event types and then rest, randomize the list
            - this may be subject to lists of ordered stimuli (orderstim)
@@ -1627,11 +1665,12 @@ class RandTiming:
             print "** randomize_events: nrest < 0"
             return 1, []
 
-        if len(self.orderstim) > 0:
-            return self.randomize_ordered_events(nrest)
-
+        # might also handle orderstim case
         if len(self.max_consec) == self.num_stim:
             return self.randomize_limited_events(nrest)
+
+        if len(self.orderstim) > 0:
+            return self.randomize_ordered_events(nrest)
 
         nstim = self.num_stim
         reps_list = self.num_reps
@@ -1667,8 +1706,21 @@ class RandTiming:
              - finally, merge in rest
         """
 
+        # if stimuli are ordered, clear num_reps for followers
+        if len(self.orderstim) > 0:
+            if self.verb > 1: print '-- have limited events w/ordered stim...'
+            num_reps = self.num_reps[:]
+            for orderlist in self.orderstim:
+                # stim in lists are 1-based, num_reps_is 0-based
+                for follower in orderlist[1:]: num_reps[follower-1] = 0
+        else: 
+            num_reps = self.num_reps
+
+        # rcr - test this!
+
         # initial pass on creation of events list
-        rv, clist, rtype, rcount = self.init_limited_event_list()
+        rv, clist, rtype, rcount =  \
+            self.init_limited_event_list(num_reps, self.max_consec)
         if rv:
             print '** failure of randomize_limited_events'
             return 1, None
@@ -1676,7 +1728,9 @@ class RandTiming:
         # if we ran out of space for one event type, try to fill
         # prev must be remaining event type
         if rcount > 0:
-            rv, clist = self.fill_remaining_limited_space(clist, rtype, rcount)
+            rv, clist = self.fill_remaining_limited_space(self.max_consec,
+                                                          clist, rtype, rcount)
+            if rv: return 1, None
 
         # next, rewrite as elist   ---> convert to 1-based index list here 
         elist = []
@@ -1685,13 +1739,19 @@ class RandTiming:
         if self.verb > 2: print "== clist (0-based) %s" % clist
         if self.verb > 2: print "== elist (1-based) %s" % elist
 
+        # if orderstim, create a firstdict table and insert follower events
+        if len(self.orderstim) > 0:
+           if self.verb > 1: print '-- inserting order followers...'
+           firstdict = self.make_ordered_firstdict(self.orderstim)
+           elist = self.insert_order_followers(elist, firstdict, self.orderstim)
+
         # finally, merge with rest
         elist = UTIL.random_merge(elist, [0 for i in range(nrest)])
 
         return 0, elist
 
 
-    def init_limited_event_list(self):
+    def init_limited_event_list(self, num_reps, max_consec):
         """first pass on limited event list:
                 Given num_reps and max_consec of each type, create a list
                 [[event, count], ...] of event and consecutive counts.  Make
@@ -1709,20 +1769,23 @@ class RandTiming:
              Note clist has 0-based event indices, they should be incremented.
         """
 
-        remain   = self.num_reps[:]
+        remain   = num_reps[:]
         nremain  = sum(remain)
         t_remain = remain[:]            # same, but might get 0 at some index
 
         # convert max_consec, change any 0 to num_reps
-        max_consec = self.max_consec
+        max_consec = max_consec
         for i, m in enumerate(max_consec):
-            if m <= 0: max_consec[i] = self.num_reps[i]
+            if m <= 0: max_consec[i] = num_reps[i]
 
         if self.verb > 1:
             print "-- limited events reps = %s, max = %s" % (remain, max_consec)
 
         # create a list of [[event, count]], from which to generate elist
         # (so insertion of over-the-limit events will be easier)
+        #
+        # note t_remain = remain, except that if the previous event type
+        #      hit its consec limit, temporarily set that t_remain to 0
         clist = [[-1, 0]]       # init with no rest events, say
         cind = 0
         prev = -1
@@ -1758,9 +1821,9 @@ class RandTiming:
             if prev >= 0: t_remain[prev] = remain[prev]
 
             # modify clist and monitor limit
-            if eind == prev:
+            if eind == prev:    # if same as previous, increment
                 clist[cind][1] += 1
-            else:
+            else:               # else, have a new event type
                 clist.append([eind, 1])
                 cind += 1
                 prev = eind
@@ -1782,41 +1845,67 @@ class RandTiming:
 
         return 0, clist, prev, nremain
 
-    def fill_remaining_limited_space(self, clist, rtype, rcount):
+    def fill_remaining_limited_space(self, max_consec, clist, rtype, rcount):
+        """Try to add rcount events of type rtype into clist, subject to limits
+           imposed by max_consec.
+
+           Note that there should not be space for rtype at the end of the list
+           (else it would have already been added).
+
+           Note that if inserting an rtype event between two events of other
+           types, then there is actually space for max_consec[rtype] events in
+           that position.
         """
-        """
-        pmax = self.max_consec[rtype]
+        pmax = max_consec[rtype]
 
         if clist[-1] != [rtype, pmax]:
             print "** messed up max for limited events..."
             return 1, None
 
         # do we have enough space for remaining events?
-        space = self.count_limited_space(clist, rtype, pmax)
-        if space < pmax:        # we are in trouble
+        space, npos = self.count_limited_space(clist, rtype, max_consec)
+        if space < rcount:        # we are in trouble
             print '** limited_events: only %d positions for %d inserts' \
-                  % (space, pmax)
+                  % (space, rcount)
             return 1, None
-        if self.verb > 2: print '-- space for insert: %d' % space
-        if self.verb > 3: print '   clist %s' % clist
+        if self.verb > 2:
+           print '-- space for insert: %d, positions %d ' % (space, npos)
+           if self.verb > 3: print '   clist %s' % clist
 
-        # okay, insert the remaining pmax events of type rtype
-        # rely on pmax being small and do linear searches for each insert
-        for ind in range(rcount): # pmax times, insert rtype event
-            rind = int(space*random.random())  # insertion index
-            if self.verb > 2: print '-- random insertion index %d' % rind
+        # okay, insert the remaining rcount events of type rtype
+        # rely on rcount being small and do linear searches for each insert
+        for ind in range(rcount): # rcount times, insert rtype event
+            rind = int(npos*random.random())  # insertion index
+            if self.verb > 2:
+               print '-- random insertion index %d of %d' % (rind, npos)
             ecount = 0  # count of all potential events
-            # proceed until rind < nvalid at current index
+
+            # find valid position index rind (check positions per cind)
             for cind in range(1, len(clist)):
                 c0, c1 = clist[cind][0], clist[cind][1]
-                # how many valid positions are at the current index?
-                if c0 == rtype and c1 == pmax: continue  # no space
 
                 # if rind is too big to insert here, move on
                 # (take care if rtype bin is full)
-                if clist[cind-1] == [rtype, pmax] and rind >= c1-1:
-                    rind -= c1-1
-                    continue
+
+                # if rtype, either no postions or c1+1 postions available
+                # (consider after last as one more position)
+                if c0 == rtype:
+                   if c1 >= pmax: continue   # no postions
+
+                   if rind >= c1+1:
+                      rind -= c1+1
+                      continue
+                   # else, this is good
+
+                # if prev is rtype, one fewer position
+                elif clist[cind-1][0] == rtype:
+                   if rind >= c1-1:
+                       rind -= (c1-1)
+                       continue
+                   # else, this is good; add 1 to skip first element
+                   rind += 1
+
+                # else can go before any
                 elif rind >= c1:
                     rind -= c1
                     continue
@@ -1828,53 +1917,83 @@ class RandTiming:
                 print '** LE: failed to find insertion index'
                 return 1, None
 
-            if self.verb > 2: print '++ inserting at index %d' % cind
-
-            # if rtype bin is full, skip one event
-            if clist[cind-1] == [rtype, pmax]: rind += 1
+            if self.verb>3: print '++ inserting at index %d (of %d), rind %d' \
+                                  % (cind, len(clist), rind)
 
             # if adjacent to an 'rtype' event, increment event count
-            # (and adjust space, max event count means subtr pmax)
             if c0 == rtype:
                 clist[cind][1] += 1
-                if clist[cind][1] == pmax: space -= pmax+1
-            elif clist[cind-1][0] == rtype and rind == 0:
-                clist[cind-1][1] += 1
-                if clist[cind-1][1] == pmax: space -= pmax+1
-            # neither matches, so insert 'rtype', and possibly break c0
+            # if at beginning, insert a new event
             elif rind == 0:
                 clist.insert(cind, [rtype, 1])
             else: # must break clist[cind] apart
+                # decrement by rind, insert new event, insert prev rind
+                clist[cind][1] -= rind # decrement and insert by rind
+                clist.insert(cind, [rtype, 1])
                 clist.insert(cind, [c0, rind])
-                clist.insert(cind+1, [rtype, 1])
-                clist[cind+2][1] -= rind
 
             # fill cases subtraced pmax+1, so all can add 1 here
-            space += 1
-            if self.verb > 3: print '   clist %s' % clist # RCR
-            if self.verb > 3: print 'new space: %d' % space
-            if space != self.count_limited_space(clist, rtype, pmax):
-                print "** space count failure"
+            space -= 1
+            if self.verb > 5: print '   clist %s' % clist
+            snew, npos = self.count_limited_space(clist, rtype, max_consec)
+            if space != snew:
+               print "** space count failure, space = %d, count = %d" \
+                     % (space, snew)
+               return 1, None
 
-        if not self.limited_events_are_valid(clist, self.max_consec):
+        if not self.limited_events_are_valid(clist, max_consec):
             print '** LE fill remain failure, some events exceed maximum'
             return 1, None
 
         return 0, clist
 
-    def count_limited_space(self, clist, eind, emax):
-        """given an event class list, and event index and the maximum
-           number of sequential events of that type, return the number of
-           positions available to insert a new event"""
+    def count_limited_space(self, clist, eind, max_consec):
+        """Given an event class list, and event index and the maximum number
+           of sequential events of each type, return the number of such events
+           that could possibly be added, as well as the number of positions
+           available to insert a new event.
+
+           Note: eind must be last event type.
+        """
         space = 0
+        positions = 0
+        emax = max_consec[eind]
+        if self.verb > 5:
+           print '== eind, emax: %d, %d' % (eind, emax)
+           print '== CLS clist: %s' % clist
         for ind in range(1, len(clist)):
-            # if next is full, skip
-            if clist[ind] == [eind, emax]: continue
+            if self.verb > 5: print '  %02d  %s  ' % (ind, clist[ind]),
+            # if next is eind, can go up to max
+            ncur = clist[ind][1] # note number of current entries
+            if clist[ind][0] == eind:
+               space += emax - ncur
+               if emax - ncur > 0: positions += ncur
+               if self.verb > 5: print space, positions
+               continue
     
-            # if previous is full, subtract 1 (can go before all but first)
-            if clist[ind-1] == [eind, emax]: space += clist[ind][1] - 1
-            else:                            space += clist[ind][1]
-        return space
+            # have ncur postions times emax space, unless prev was eind
+            space += ncur*emax
+            positions += ncur
+
+            # now adjust if prev was eind:
+            #   no additional space before first event
+            #   if prev is full, position cannot be before first event
+            if clist[ind-1][0] == eind:
+               space -= emax
+               if clist[ind-1][1] == emax: positions -= 1
+
+            if self.verb > 5: print space, positions
+
+        # maybe there is space at the end
+        ind = len(clist)-1
+        if clist[ind][0] != eind:
+           print '** space at end (index %d of %d), this should not happen' \
+                 % (ind, len(clist))
+           print '== clist: %s' % clist
+           space += emax
+           positions += 1
+        
+        return space, positions
 
     def limited_events_are_valid(self, clist, maxlist):
         """verify that each event type in clist does not have too many

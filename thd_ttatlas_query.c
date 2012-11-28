@@ -41,6 +41,10 @@ static char wami_url[MAX_URL];
 
 /* global web browser is used here, not sure where else to put it...      */
 char *GLOBAL_browser = NULL ;   /* 30 Dec 2005, moved 22 Feb 2012 [rickr] */
+ 
+#define TINY_NUMBER 1E-10
+/* minimum probability (0.0-1.0) to consider with probabilistic atlases */
+static float wami_min_prob = -1.0;
 
 THD_string_array *recreate_working_atlas_name_list(void) {
    if (working_atlas_name_list) DESTROY_SARR(working_atlas_name_list);
@@ -1933,9 +1937,10 @@ char * TT_whereami_default_spc_name (void)
       } else if (strncasecmp(eee, "MNI", 3) == 0) {
          return (eee);
       } else {
-         WARNING_message(  "Bad value for AFNI_DEFAULT_STD_SPACE\n"
+/*         WARNING_message(  "Bad value for AFNI_DEFAULT_STD_SPACE\n"
                            "%s is unrecognized. Assuming TLRC\n", eee);
-         return ("TLRC");
+*/
+         return (eee);
       }
    } else {
       /* no env, return default */
@@ -4650,7 +4655,7 @@ char *get_updated_help_file(int force_recreate, byte verb, char *progname)
             trouble */
          if (THD_is_file( hout)) {
             snprintf(scomm, 1000*sizeof(char),
-               "chmod u+w %s", hout);
+               "chmod u+w %s > /dev/null 2>&1", hout);
             system(scomm); 
          }
          snprintf(scomm, 1000*sizeof(char),
@@ -4667,7 +4672,7 @@ char *get_updated_help_file(int force_recreate, byte verb, char *progname)
          } while (ml != mn && cnt < 20);
          
          snprintf(scomm, 1000*sizeof(char),
-               "chmod a-w %s", hout);
+               "chmod a-w %s > /dev/null 2>&1", hout);
          system(scomm); 
          prog_complete_command(etr, houtc);
       }
@@ -4711,15 +4716,21 @@ void web_prog_help(char *prog)
    
    if (!prog) return;
    
-   if (!(progname = THD_find_executable(prog))) {
-      ERROR_message("Could not find executable %s.\n",
-                     prog);
-      return;
+   if (!strcmp(prog,"ALL")) {
+      snprintf(weblink,1020*sizeof(char),
+               "http://afni.nimh.nih.gov/pub/dist/doc/program_help/%s.html",
+               "all-of-them");
+   } else {
+      if (!(progname = THD_find_executable(prog))) {
+         ERROR_message("Could not find executable %s.\n",
+                        prog);
+         return;
+      }
+
+      snprintf(weblink,1020*sizeof(char),
+               "http://afni.nimh.nih.gov/pub/dist/doc/program_help/%s.html",
+               THD_trailname(progname,0));
    }
-   
-   snprintf(weblink,1020*sizeof(char),
-            "http://afni.nimh.nih.gov/pub/dist/doc/program_help/%s.html",
-            THD_trailname(progname,0));
    
    if (!(view_web_link(weblink,NULL))) {
       ERROR_message("Failed to web view %s\n", weblink);
@@ -4757,7 +4768,7 @@ int view_web_link(char *link, char *browser)
    if (!browser) browser = GetAfniWebBrowser();
    
    if (!browser) {
-      ERROR_message("No Web browese defined.\n"
+      ERROR_message("No Web browse defined.\n"
               "Set AFNI_WEB_BROWSER in your .afnirc for this option to work.\n");
       return(0);
    }
@@ -5006,6 +5017,7 @@ THD_3dim_dataset *Atlas_Region_Mask(AFNI_ATLAS_REGION *aar,
    THD_3dim_dataset * maskset = NULL;
    char madeupname[500], madeuplabel[40];
    ATLAS *atlas=NULL;
+   float fval;
 
    ENTRY("Atlas_Region_Mask");
 
@@ -5146,7 +5158,10 @@ THD_3dim_dataset *Atlas_Region_Mask(AFNI_ATLAS_REGION *aar,
               if (ba) {
                  have_brik = 1;
                  for (ii=0; ii< nxyz; ++ii) {
-                    if (ba[ii]) bmask[ii] = ba[ii];
+                    fval = (float) ba[ii];
+                    if(fval>1.0) fval = fval / Get_PMap_Factor(); /* if >1.0, must be old pmap atlases*/
+                    if(fval<get_wami_minprob()) fval = 0.0; /* check against minimum probability */
+                    if (fval>0.0) bmask[ii] = ba[ii];
                  }
               }
               break;
@@ -5155,7 +5170,10 @@ THD_3dim_dataset *Atlas_Region_Mask(AFNI_ATLAS_REGION *aar,
               if (bba) {
                  have_brik = 1;
                  for (ii=0; ii< nxyz; ++ii) {
-                    if (bba[ii]) bmask[ii] = bba[ii];
+                    fval = (float) bba[ii];
+                    if(fval>1.0) fval = fval / Get_PMap_Factor(); /* if >1.0, must be old pmap atlases*/
+                    if(fval<get_wami_minprob()) fval = 0.0; /* check against minimum probability */
+                    if (fval>0.0) bmask[ii] = bba[ii];
                  }
               }
               break;
@@ -5164,7 +5182,9 @@ THD_3dim_dataset *Atlas_Region_Mask(AFNI_ATLAS_REGION *aar,
               if (fba) {
                  have_brik = 1;
                  for (ii=0; ii< nxyz; ++ii) {
-                    if (fba[ii]>0.0) bmask[ii] = 1;
+                    fval = (float) fba[ii];
+                    if(fval<get_wami_minprob()) fval = 0.0; /* check against minimum probability */
+                    if (fval>0.0) bmask[ii] = 1;
                  }
               }
               break;
@@ -7447,7 +7467,11 @@ int whereami_in_atlas(  char *aname,
                            sb, atlas->dset_name, fval);
          if( fval != 0.0 ){
             if(fval>1.0) fval = fval / Get_PMap_Factor(); /* if >1.0, must be old pmap atlases*/
+            if(fval<get_wami_minprob()) fval = 0.0; /* check against minimum probability */
+         }
 
+         /* check again with adjusted probability */
+         if( fval != 0.0 ){ 
             if( atlas->adh->adset->dblk->brick_lab == NULL || 
                 atlas->adh->adset->dblk->brick_lab[sb] == NULL) {
                if (LocalHead)  fprintf(stderr,"  ++ No Label!\n");
@@ -7512,7 +7536,7 @@ int whereami_3rdBase( ATLAS_COORD aci, ATLAS_QUERY **wamip,
 {
    ATLAS_QUERY *wami = NULL;
    ATLAS_COORD ac;
-   ATLAS_XFORM_LIST *xfl=NULL;
+   ATLAS_XFORM_LIST *xfl=NULL, *cxfl=NULL;
    ATLAS_SPACE_LIST *asl=get_G_space_list();
    ATLAS *atlas=NULL;
    int *iatl=NULL, ii;
@@ -7564,7 +7588,13 @@ int whereami_3rdBase( ATLAS_COORD aci, ATLAS_QUERY **wamip,
          ERROR_message("Should not happen here");
          RETURN(0);
       }
-      apply_xform_chain(xfl, aci.x, aci.y, aci.z, &xout, &yout, &zout);
+      cxfl = calc_xform_list(xfl);
+      apply_xform_chain(cxfl, aci.x, aci.y, aci.z, &xout, &yout, &zout);
+      if(cxfl)
+        free_xform_list(cxfl);
+      if(xfl)
+        free_xform_list(xfl);
+/*      apply_xform_chain(xfl, aci.x, aci.y, aci.z, &xout, &yout, &zout);*/
       if (wami_verb() > 1)
          INFO_message(
            "Coords in: %f, %f, %f (%s) -> out: %f, %f, %f (%s - %s)\n",
@@ -8139,12 +8169,26 @@ char *gen_space_str(char *space_str)
    ATLAS_SPACE_LIST *asl=get_G_space_list();
    ATLAS_SPACE *at_space;
 
+   ENTRY("gen_space_str");
+
+   if(asl==NULL){
+      ERROR_message("can not load spaces\n");
+      RETURN(NULL);
+   }
+
    for(i=0;i<asl->nspaces;i++){
       at_space = asl->space+i;
       if(strcmp(at_space->atlas_space, space_str)==0)
-         return(at_space->generic_space);
+         RETURN(at_space->generic_space);
    }
-   return(NULL);
+
+   if(strcmp(space_str, "ORIG")==0)
+      RETURN("ORIG");
+
+   if(strcmp(space_str, "ACPC")==0)
+      RETURN("ACPC");
+ 
+   RETURN(NULL);
 }
 
 int find_in_names_list(char **nl, int N_nl, char *name) {
@@ -8770,8 +8814,12 @@ elsevier_query(float xx, float yy, float zz, ATLAS *atlas)
      #else
         /* fprintf(stderr,"Using read_URL to read:\n%s\n", wamiqurl); */
         set_HTTP_11(1);
-        nread = read_URL_http( wamiqurl , 4448 , &page );
+        nread = read_URL_http( wamiqurl , 15000 , &page );
+/*         nread = read_URL_http( wamiqurl , 4448 , &page );*/
+
      #endif
+     if(wami_verb() && page==NULL)
+        fprintf(stdout,"***************No response from Elsevier\n");
      return(page);
 
 }
@@ -8962,12 +9010,55 @@ int whereami_browser(char *url)
       icall = 1;
    }
    if (!GLOBAL_browser) return(0);
-   
+
    sprintf(cmd ,
           "%s '%s' &" ,
           GLOBAL_browser, url ) ;
+   if(wami_verb())
+      printf("system command to send to browser is:\n%s\n",cmd);
    
    return(system(cmd));
+}
+
+/* return copy of input url with special characters escaped */
+char *
+cleanup_url(char *url)
+{
+   int i, bad_count=0;
+   char *clean_url = NULL;
+   char *clean_ptr;
+
+   if(url==NULL) return(NULL);
+
+   for(i=0;i<strlen(url);i++){
+      if(url[i]=='&'){
+         bad_count++;
+      }
+      if(url[i]==';'){
+         bad_count++;
+      }
+   }
+   if(bad_count==0){
+      NI_strncpy(clean_url, url, strlen(url));
+      return(clean_url);
+   }
+   clean_url = (char *)calloc(strlen(url)+bad_count, sizeof(char));
+   clean_ptr = clean_url;
+   for(i=0;i<strlen(url);i++){
+      if(url[i]=='&'){
+         *clean_ptr++ = '\\';
+         *clean_ptr++ = '&';
+      }
+      if(url[i]==';'){
+         *clean_ptr++ = '\\';
+         *clean_ptr++ = ';';
+      }
+      else{
+         *clean_ptr++ = url[i];
+      }
+   }
+   *clean_ptr = '\0'; 
+   return(clean_url);  
 }
 
 /* set static variable to show something was found/not found on a web atlas */
@@ -8997,11 +9088,15 @@ int get_wami_web_reqtype()
 /* set current webpage for whereami web request if needed */
 void set_wami_webpage(char *url)
 {
+/*   char *tempurl;*/
+
    if(url==NULL){
       wami_url[0] = '\0';
    }
    else {
+/*      tempurl = cleanup_url(url);*/
       strcpy(wami_url, url);
+/*      free(tempurl);*/
    }
 }
 
@@ -9048,3 +9143,21 @@ void set_AFNI_wami_output_mode(int webflag)
       AFNI_setenv("AFNI_WEBBY_WAMI=NO");
 }
 
+
+/* set minimum probabilty to use in probabilistic atlases */
+void set_wami_minprob(float val)
+{
+   if((val>0) && (val<=1.0))
+      wami_min_prob = val;
+}
+
+/* get minimum probability to use in probabilistic atlases */
+float get_wami_minprob()
+{
+   if(wami_min_prob>0)
+      return(wami_min_prob);
+   /* set wami_min_prob to environment value if it exists, otherwise tiny number */
+   wami_min_prob = (float) AFNI_numenv_def("AFNI_WHEREAMI_PROB_MIN", TINY_NUMBER);
+   if(wami_min_prob<=0)
+      wami_min_prob = TINY_NUMBER;
+}

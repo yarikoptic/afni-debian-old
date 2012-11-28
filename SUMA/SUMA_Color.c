@@ -1851,11 +1851,11 @@ SUMA_COLOR_MAP *SUMA_Read_Color_Map_NIML (char *Name)
       iselement = YUP; 
       SUMA_S_Err("Bad format");
       if (FullName) SUMA_free(FullName); FullName = NULL;
-      NI_free(nini); SUMA_RETURN(SM);
+      NI_free_element(nini); SUMA_RETURN(SM);
    } else {
       fprintf(SUMA_STDERR, "Note %s: %s has no element and no group. \n",
                             FuncName, Name);
-      NI_free(nini); SUMA_RETURN(SM);
+      NI_free_element(nini); SUMA_RETURN(SM);
       if (FullName) SUMA_free(FullName); FullName = NULL;
       SUMA_RETURN(NULL);
    }
@@ -1865,7 +1865,7 @@ SUMA_COLOR_MAP *SUMA_Read_Color_Map_NIML (char *Name)
    SM = SUMA_NICmapToCmap((NI_group *)nini);
 
    /* frees */
-   NI_free(nini); 
+   NI_free_element(nini); 
    if (FullName) SUMA_free(FullName); FullName = NULL;
    
    SUMA_RETURN (SM);
@@ -2534,6 +2534,18 @@ SUMA_Boolean SUMA_RemoveCoordBias(SUMA_OVERLAYS *ovr)
    SUMA_RETURN(YUP);
 } 
 
+SUMA_SurfaceObject *SUMA_SO_of_ColPlane(SUMA_OVERLAYS *Sover)
+{
+   static char FuncName[]={"SUMA_SO_of_ColPlane"};
+   SUMA_SurfaceObject *SO=NULL;
+   SUMA_ENTRY;
+   
+   if (!Sover || !Sover->dset_link) SUMA_RETURN(SO);
+   SO = SUMA_findSOp_inDOv(  SUMA_sdset_idmdom(Sover->dset_link), 
+                                 SUMAg_DOv, SUMAg_N_DOv);
+   SUMA_RETURN(SO);
+}
+
 /*!
    
    -  Some of the fields of SUMA_SCALE_TO_MAP_OPT are ignored here.
@@ -2551,6 +2563,7 @@ SUMA_Boolean SUMA_ScaleToMap_Interactive (   SUMA_OVERLAYS *Sover )
    static char FuncName[]={"SUMA_ScaleToMap_Interactive"};
    float *V=NULL, *T=NULL, *B=NULL;
    int i, icmap, i3, cnt, cnt3, loc[2], *nd=NULL;
+   float *nv = NULL;
    double Range[2];
    double minB, maxB, fact=0.0, floc = 0.0;
    SUMA_COLOR_MAP *ColMap = NULL;
@@ -2660,6 +2673,172 @@ SUMA_Boolean SUMA_ScaleToMap_Interactive (   SUMA_OVERLAYS *Sover )
       V = SUMA_DsetCol2Float (Sover->dset_link, Opt->find, 0);
       if (!V) { SUMA_SL_Err("Failed to get V"); SUMA_RETURN(NOPE); }
    }
+
+   /* setup nodedef so that it can be used along with V
+      for clusterinzing. V will get modified in subsequent
+      calls so got to do it now */
+   if (Opt->Clusterize && Opt->RecomputeClust) {
+      if (!(nv = (float *)SUMA_calloc(SDSET_VECFILLED(Sover->dset_link),
+                                          sizeof(float)))) {
+         SUMA_S_Crit("Failed to alloate!");
+         SUMA_RETURN(NOPE);
+      } 
+   }
+   nd = SUMA_GetNodeDef(Sover->dset_link);
+   if (nd) {
+      cnt = 0;
+      for (i=0; i<SDSET_VECFILLED(Sover->dset_link); ++i) {
+         if (!SV->isMasked[i]) {
+            Sover->NodeDef[cnt] = nd[i];
+            if (nv) nv[cnt] = V[i];
+            ++cnt;
+         }
+      }
+   } else {
+      cnt = 0;
+      for (i=0; i<SDSET_VECFILLED(Sover->dset_link); ++i) {
+         if (!SV->isMasked[i]) {
+            Sover->NodeDef[cnt] = i;
+            if (nv) nv[cnt] = V[i];               
+            ++cnt;
+         }
+      }
+   }
+   Sover->N_NodeDef = cnt;
+   Sover->FullList = NOPE;
+
+   /* Do we need clusterinzing ? */
+   if (Opt->Clusterize) {
+      if (Opt->RecomputeClust) {
+         SUMA_SurfaceObject *SO = NULL;
+         SUMA_LH("Clusterizing requested");
+         if (Sover->ClustList) { /* kill it, to make way for new one*/
+            SUMA_LH("Clearing old clusterlist");
+            dlist_destroy(Sover->ClustList); 
+            SUMA_free(Sover->ClustList); Sover->ClustList = NULL;
+            if (Sover->ClustOfNode) SUMA_free(Sover->ClustOfNode); 
+            Sover->ClustOfNode = NULL;
+         }
+         
+         if (!(SO = SUMA_SO_of_ColPlane(Sover))){
+            SUMA_S_Errv("Can't find dset's domain parent(%s, %s).\n"
+                        " No cluster for you!\n",
+                        SUMA_sdset_idmdom(Sover->dset_link),
+                        SDSET_LABEL(Sover->dset_link));
+         } else {
+            char *s=NULL;
+            if (!nv) {
+               SUMA_S_Err("NULL nv, this should not happen");
+            } else {
+               SUMA_LH("Hold on now, creating clusters...");
+               if (!Opt->ClustOpt) {
+                  Opt->ClustOpt = SUMA_create_SurfClust_Opt("InteractiveClust");
+               } 
+               Sover->ClustList = SUMA_FindClusters (SO, Sover->NodeDef, 
+                                                  nv, Sover->N_NodeDef, -1, 
+                                                  Opt->ClustOpt, SO->NodeAreas);
+               if (Sover->ClustList->size) {
+                  /* sort the list */
+                  SUMA_LH("Sorting List");
+                  if (!SUMA_Sort_ClustersList (Sover->ClustList, 
+                                               Opt->ClustOpt->SortMode)) {
+                     SUMA_S_Err("Failed to sort cluster list");
+                  }
+                  /* Now update what needs masking */
+                  if (!(Sover->ClustOfNode = SUMA_ClustList2Mask(
+                                                Sover->ClustList, SO->N_Node))) {
+                     SUMA_S_Err("No masks. Mille milliards de mille sabords");
+                  } else {
+                     /* condensing of SV is done below */
+                  }
+                  
+               }
+               /* mess around with options to create the equivalent 
+                  command line */
+               Opt->ClustOpt->labelcol = Opt->find;
+               Opt->ClustOpt->in_name = SDSET_FILENAME(Sover->dset_link);
+               Opt->ClustOpt->tind = Opt->tind;
+               switch(Opt->ThrMode) {
+                  case SUMA_LESS_THAN:
+                     Opt->ClustOpt->Thresh = Opt->ThreshRange[0];
+                     Opt->ClustOpt->DoThreshold = 1;
+                     break;
+                  case SUMA_ABS_LESS_THAN:
+                     Opt->ClustOpt->Thresh = Opt->ThreshRange[0];
+                     Opt->ClustOpt->DoThreshold = 2;
+                     break;
+                  case SUMA_THRESH_OUTSIDE_RANGE:
+                  case SUMA_THRESH_INSIDE_RANGE:
+                     SUMA_S_Warn("No such thresholding available for SurfClust");
+                     Opt->ClustOpt->DoThreshold = -1;
+                     break;
+                  default:
+                     Opt->ClustOpt->DoThreshold = 0;
+                     break;
+               }
+               if ((s = SUMA_ClustCommandLineFromOpt("SurfClust",
+                                              SO, Opt->ClustOpt, NULL))) {
+                  fprintf(SUMA_STDOUT,"\nInteractive Clustering Output:\n");
+                  SUMA_Show_SurfClust_list(Sover->ClustList, NULL, 0, 
+                                             s,"No1DColHead");
+                  SUMA_free(s); s = NULL;
+               } 
+               Opt->RecomputeClust = NOPE;
+            }
+         }
+      } else {
+         SUMA_LH("No need to muck about");
+      }
+      if (Sover->ClustOfNode) {
+         SUMA_LHv("Modifying SV->isMasked, etc\n"
+                  "     Have %d nodes defined \n"
+                  "     Last node now: %d\n",
+                  Sover->N_NodeDef,
+                  Sover->NodeDef[Sover->N_NodeDef-1]);
+         cnt = 0; 
+         for (i=0; i<SDSET_VECFILLED(Sover->dset_link); ++i) {
+            if (!SV->isMasked[i]) {
+               if (!Sover->ClustOfNode[Sover->NodeDef[cnt]]) {
+                  Sover->NodeDef[cnt] = -1; 
+                  SV->isMasked[i] = 1; /* hide it */
+               }
+               ++cnt;
+            }
+         }
+         /* Now condense Sover->NodeDef */
+         i = 0; cnt = 0;
+         for (cnt=0; cnt < Sover->N_NodeDef; ++cnt) {
+            if (Sover->NodeDef[cnt] >= 0) {
+               if (i<cnt) Sover->NodeDef[i] = Sover->NodeDef[cnt]; 
+               ++i;
+            }
+         }
+         Sover->N_NodeDef = i;
+         SUMA_LHv("     Now at %d nodes after clustering. \n"
+                  "     Last node now: %d\n",
+                  Sover->N_NodeDef,
+                  Sover->NodeDef[Sover->N_NodeDef-1]);
+      } else { /* we have no clusters that make it, mow 'em down */
+         for (i=0; i<SDSET_VECFILLED(Sover->dset_link); ++i) {
+            if (!SV->isMasked[i]) {
+               SV->isMasked[i] = 1;
+            }
+         }
+         Sover->N_NodeDef = 0;
+      }
+   } else {
+      SUMA_LH("No clustering wanted");
+      if (Sover->ClustList) { /* kill it, not needed any more*/
+         SUMA_LH("Clearing previous unloved clusterlist");
+         dlist_destroy(Sover->ClustList); 
+         SUMA_free(Sover->ClustList); Sover->ClustList = NULL;
+         if (Sover->ClustOfNode) SUMA_free(Sover->ClustOfNode); 
+            Sover->ClustOfNode = NULL;
+      }  
+   }
+   /* nv is no longer needed, only needed for clustering. */
+   if (nv) SUMA_free(nv); nv = NULL;
+
    
    /* colorizing */
    if ( (Opt->interpmode == SUMA_DIRECT)&& 
@@ -2683,7 +2862,7 @@ SUMA_Boolean SUMA_ScaleToMap_Interactive (   SUMA_OVERLAYS *Sover )
       }
    } else { 
       /* a la SUMA */
-      SUMA_LH("Scaling a la SUMA");
+      SUMA_LHv("Scaling a la SUMA %f %f\n", Opt->IntRange[0], Opt->IntRange[1]);
       if (!SUMA_ScaleToMap( V, SDSET_VECFILLED(Sover->dset_link),
                             Opt->IntRange[0], Opt->IntRange[1], 
                             ColMap, Opt,
@@ -2743,15 +2922,18 @@ SUMA_Boolean SUMA_ScaleToMap_Interactive (   SUMA_OVERLAYS *Sover )
       SUMA_RemoveCoordBias(Sover); 
    }
    
+   
    /* finally copy results */
    SUMA_LH("Copying into NodeDef");
-   nd = SUMA_GetNodeDef(Sover->dset_link);
    if (nd) {
       cnt = 0;
       for (i=0; i<SDSET_VECFILLED(Sover->dset_link); ++i) {
          if (!SV->isMasked[i]) {
             cnt3 = 3*cnt; i3 = 3*i;
-            Sover->NodeDef[cnt] = nd[i];
+            Sover->NodeDef[cnt] = nd[i]; /*This is a redundant operation
+                    clustering is on. But I leave it here for clarity. 
+                    Otherwise that line would have to be conditioned
+                    on the clustering options.*/
             Sover->ColVec[cnt3   ] = SV->cV[i3   ];
             Sover->ColVec[cnt3 +1] = SV->cV[i3 +1];
             Sover->ColVec[cnt3 +2] = SV->cV[i3 +2]; 
@@ -2766,7 +2948,8 @@ SUMA_Boolean SUMA_ScaleToMap_Interactive (   SUMA_OVERLAYS *Sover )
       for (i=0; i<SDSET_VECFILLED(Sover->dset_link); ++i) {
          if (!SV->isMasked[i]) {
             cnt3 = 3*cnt; i3 = 3*i;
-            Sover->NodeDef[cnt] = i;
+            Sover->NodeDef[cnt] = i; /* This is at times a redundant operation 
+                                        see above */
             Sover->ColVec[cnt3   ] = SV->cV[i3   ];
             Sover->ColVec[cnt3 +1] = SV->cV[i3 +1];
             Sover->ColVec[cnt3 +2] = SV->cV[i3 +2];
@@ -2777,9 +2960,7 @@ SUMA_Boolean SUMA_ScaleToMap_Interactive (   SUMA_OVERLAYS *Sover )
          }
       }
    }
-   Sover->N_NodeDef = cnt;
-   Sover->FullList = NOPE;
-   
+   Sover->N_NodeDef = cnt;  
    
    /* Add any coord bias ? */
    switch (HoldBiasOpt) {
@@ -2811,6 +2992,7 @@ SUMA_Boolean SUMA_ScaleToMap_Interactive (   SUMA_OVERLAYS *Sover )
          SUMA_LH("Bias None");
          break;   
    }
+
    
    /* Do we need to create contours */
    if (Opt->ColsContMode) {
@@ -2820,11 +3002,11 @@ SUMA_Boolean SUMA_ScaleToMap_Interactive (   SUMA_OVERLAYS *Sover )
          SUMA_ContourateDsetOverlay(Sover, SV);
    }
    
+   
    if (LocalHead) {
       SUMA_LH("In Scale_Interactive\n**********************");
       /* SUMA_Show_ColorOverlayPlanes (&Sover, 1, 1);  */
    }
-
    
    /* clean up */
    SUMA_LH("Cleanup, cleanup, everybody cleanup");
@@ -3742,6 +3924,7 @@ SUMA_Boolean SUMA_ScaleToMap (float *V, int N_V,
       SUMA_RETURN(NOPE);
    }
    
+   SUMA_LHv("Input Vmin..Vmax=%f..%f\n", Vmin, Vmax);
    /* No negative colormaps here */
    if (ColMap->Sgn < 0) {
       /* proceed, in SUMA options were given to the user to make 
@@ -3836,7 +4019,7 @@ SUMA_Boolean SUMA_ScaleToMap (float *V, int N_V,
       } 
    } else {
       if (top_frac > 0.0f) {
-         SUMA_S_Note("Using top_frac, not fully tested.");
+         SUMA_S_Notev("Using top_frac %f, not fully tested.", top_frac);
          Vmin *= top_frac;
          Vmax *= top_frac;
       }
@@ -3993,7 +4176,8 @@ SUMA_Boolean SUMA_ScaleToMap (float *V, int N_V,
                }
             }
          } else { /* interpolation mode */
-            SUMA_LH("Interp Mode");
+            SUMA_LHv("Interp Mode, Vmin %f, Vmax %f, Vrange %f\n", 
+                     Vmin, Vmax, Vrange);
             SV->N_VCont = 0;
             for (i=0; i < N_V; ++i) {
                i3 = 3*i;
@@ -4261,8 +4445,8 @@ SUMA_SCALE_TO_MAP_OPT * SUMA_ScaleToMapOptInit(void)
    Opt->BrightFact = 1.0;
    Opt->interpmode = SUMA_INTERP;
    Opt->alaAFNI = NOPE;
-   Opt->AutoIntRange = YUP;
-   Opt->AutoBrtRange = YUP;
+   Opt->AutoIntRange = -1;
+   Opt->AutoBrtRange = -1;
    Opt->ColsContMode = 0;
    {
       char *eee = getenv("SUMA_MaskZero");
@@ -4302,6 +4486,12 @@ SUMA_SCALE_TO_MAP_OPT * SUMA_ScaleToMapOptInit(void)
    Opt->DoBias = SW_CoordBias_None;
    Opt->BiasVect = NULL;
    Opt->CoordBiasRange[0] = 0.0; Opt->CoordBiasRange[1] = 10.0; 
+   
+   Opt->ClustOpt = SUMA_create_SurfClust_Opt("InteractiveClust");
+   Opt->Clusterize = NOPE;
+   Opt->RecomputeClust = NOPE;
+   
+   
    SUMA_RETURN (Opt);
 
 }
@@ -5083,7 +5273,8 @@ float * SUMA_PercRange (float *V, float *Vsort, int N_V, float *PercRange, float
       /* need to create my own sorted version */
         Vsort = (float *)SUMA_calloc (N_V, sizeof(float));
       if (!Vsort) {
-         fprintf (SUMA_STDERR, "Error %s: Failed to allocate for Vsort.\n", FuncName);
+         fprintf (SUMA_STDERR, 
+                  "Error %s: Failed to allocate for Vsort.\n", FuncName);
          SUMA_RETURN (NULL);
       }
       /* copy V to Vsort */
@@ -5244,7 +5435,11 @@ SUMA_OVERLAYS * SUMA_CreateOverlayPointerIdentifiers(
       Sover->LinkMode = SW_LinkMode_Same;
    } if (SUMA_EnvEquals("SUMA_IxT_LinkMode", "Stat",1,NULL)) {
       Sover->LinkMode = SW_LinkMode_Stat;
-   }     
+   }
+   
+   Sover->ClustList = NULL;
+   Sover->ClustOfNode = NULL;
+        
    SUMA_RETURN(Sover);   
 }
 
@@ -5396,7 +5591,7 @@ SUMA_OVERLAYS * SUMA_CreateOverlayPointer (
          }
       }
 
-      Sover->SymIrange = 0;
+      Sover->SymIrange = SUMA_isEnv("SUMA_Sym_I_Range","YES")?1:0;
    }
    
    SUMA_RETURN (Sover);
@@ -5462,6 +5657,12 @@ SUMA_Boolean SUMA_FreeOverlayPointerRecyclables (SUMA_OVERLAYS * Sover)
    if (Sover->LocalOpacity) SUMA_free(Sover->LocalOpacity); 
    Sover->LocalOpacity = NULL;
    
+   if (Sover->ClustList) {
+      dlist_destroy(Sover->ClustList); 
+      SUMA_free(Sover->ClustList); Sover->ClustList = NULL;
+      if (Sover->ClustOfNode) SUMA_free(Sover->ClustOfNode); 
+            Sover->ClustOfNode = NULL;   
+   }
    
    SUMA_RETURN (YUP);
 }
@@ -5508,13 +5709,24 @@ SUMA_Boolean SUMA_FreeOverlayPointer (SUMA_OVERLAYS * Sover)
    if (Sover->Label) SUMA_free(Sover->Label);
    if (Sover->Name) SUMA_free(Sover->Name);
    if (Sover->cmapname) SUMA_free(Sover->cmapname);
-   if (Sover->OptScl) SUMA_free(Sover->OptScl);
+   if (Sover->OptScl) {
+      if (Sover->OptScl->ClustOpt) { 
+         SUMA_free_SurfClust_Opt(Sover->OptScl->ClustOpt);
+      }
+      SUMA_free(Sover->OptScl);
+   }
    if (Sover->rowgraph_mtd) Sover->rowgraph_mtd = NULL; /* that struct is killed
                                                            with delete_memplot
                                                            which is called with
                                                            donebut_CB in
                                                            plot_motif.c*/
    SUMA_KillOverlayContours(Sover);
+   if (Sover->ClustList) {
+      dlist_destroy(Sover->ClustList); 
+      SUMA_free(Sover->ClustList); Sover->ClustList = NULL;
+      if (Sover->ClustOfNode) SUMA_free(Sover->ClustOfNode); 
+            Sover->ClustOfNode = NULL;   
+   }
    
    SUMA_free(Sover); Sover = NULL;
    
@@ -6361,6 +6573,14 @@ char *SUMA_ColorOverlayPlane_Info (SUMA_OVERLAYS **Overlays,
             SS = SUMA_StringAppend (SS,"\tNULL SUMA color maps.\n");
          }
          
+         if (Overlays[i]->ClustList) {
+            s2 = SUMA_Show_SurfClust_list_Info(Overlays[i]->ClustList, 1,
+                                   "Interactive Cluster Results", "No1DColHead");
+            SS = SUMA_StringAppend(SS, s2);
+            SUMA_free(s2); s2 = NULL;
+         } else {
+            SS = SUMA_StringAppend (SS, "NULL ClustList\n");
+         }
          
       } else {
          SS = SUMA_StringAppend (SS,"\tNULL overlay plane.\n");
@@ -6375,7 +6595,8 @@ char *SUMA_ColorOverlayPlane_Info (SUMA_OVERLAYS **Overlays,
    SUMA_RETURN(s);
 }
 
-SUMA_Boolean SUMA_ShowScaleToMapOpt(SUMA_SCALE_TO_MAP_OPT *OptScl, FILE *Out, int detail)
+SUMA_Boolean SUMA_ShowScaleToMapOpt(SUMA_SCALE_TO_MAP_OPT *OptScl, FILE *Out, 
+                                    int detail)
 {
    static char FuncName[]={"SUMA_ShowScaleToMapOpt"};
    char *s=NULL;
@@ -6445,6 +6666,16 @@ char *SUMA_ScaleToMapOpt_Info (SUMA_SCALE_TO_MAP_OPT *OptScl, int detail)
       if (OptScl->BiasVect) 
          SS = SUMA_StringAppend_va (SS, "BiasVect is NOT NULL\n");
       else SS = SUMA_StringAppend_va (SS, "BiasVect is NULL\n");
+      
+      SS = SUMA_StringAppend_va (SS,"Clusterize = %d, RecomputeCluseters = %d\n",
+             OptScl->Clusterize, OptScl->RecomputeClust);
+
+      if (OptScl->ClustOpt) {
+         SS = SUMA_StringAppend (SS, "Have ClustOpt, should show it ...\n");
+      } else {
+         SS = SUMA_StringAppend (SS, "NULL ClustOpt\n");
+      }
+      
    }        
    SUMA_SS2S(SS, s);
    SUMA_RETURN(s);
@@ -7514,15 +7745,18 @@ SUMA_ASSEMBLE_LIST_STRUCT * SUMA_AssembleColorPlaneList (SUMA_SurfaceObject *SO)
    /* need a list to store new names */
    list = (DList *)SUMA_calloc(1,sizeof(DList));
    dlist_init(list, NULL); /* you don't want to free the strings */
-   /* need a list to store the pointers, it is useless when SortByOrder is used, but I leave it in to keep the code simple */
+   /* need a list to store the pointers, it is useless when SortByOrder 
+      is used, but I leave it in to keep the code simple */
    listop = (DList *)SUMA_calloc(1,sizeof(DList)); 
-   dlist_init(listop, NULL); /* you don't want to free the data as it is copied from  OverlayPlanelist*/
+   dlist_init(listop, NULL); /* you don't want to free the data as it is 
+                                copied from  OverlayPlanelist*/
          
    clist = NULL;
    N_clist = -1;
    Elm_OverlayPlanelist = NULL;
    do {
-      if (!Elm_OverlayPlanelist) Elm_OverlayPlanelist = dlist_head(OverlayPlanelist);
+      if (!Elm_OverlayPlanelist) 
+         Elm_OverlayPlanelist = dlist_head(OverlayPlanelist);
       else Elm_OverlayPlanelist = Elm_OverlayPlanelist->next;
       
       OvD = (SUMA_OVERLAY_LIST_DATUM *) Elm_OverlayPlanelist->data;
@@ -7541,7 +7775,8 @@ SUMA_ASSEMBLE_LIST_STRUCT * SUMA_AssembleColorPlaneList (SUMA_SurfaceObject *SO)
 
       if (SortByOrder) {
          SUMA_LH("Sorting by order");
-         /* list is already sorted, just copy the string and object structure pointers to lists */
+         /* list is already sorted, just copy the string and object 
+            structure pointers to lists */
          dlist_ins_next(list, dlist_tail(list), (void*)store);
          /* this line is redundant with SortByOrder but it don't hoyt */
          dlist_ins_next(listop, dlist_tail(listop), (void*)OvD);
@@ -7769,9 +8004,11 @@ SUMA_Boolean SUMA_OKassign(SUMA_DSET *dset, SUMA_SurfaceObject *SO)
 void SUMA_LoadDsetOntoSO (char *filename, void *data)
 {
    static char FuncName[]={"SUMA_LoadDsetOntoSO"};
-   SUMA_SurfaceObject *SO = NULL;
-
+   SUMA_SurfaceObject *SO = NULL, *SOC=NULL;
+   char *fC=NULL;
+   
    SUMA_ENTRY;
+
    if (!data || !filename) {
       SUMA_SLP_Err("Null data"); 
       SUMA_RETURNe;
@@ -7783,6 +8020,27 @@ void SUMA_LoadDsetOntoSO (char *filename, void *data)
       SUMA_SLP_Err("Failed loading, and colorizing dset"); 
       SUMA_RETURNe;
    }
+   
+   if (!(SOC = SUMA_Contralateral_SO(SO, SUMAg_DOv, SUMAg_N_DOv))) {
+      SUMA_RETURNe;
+   }
+   if (!(fC = SUMA_Contralateral_file(filename))) {
+      SUMA_RETURNe;
+   }
+
+   /* have contralateral bunch, load 'em cowboy */
+   if (!(SUMA_OpenCloseSurfaceCont(NULL, SOC, NULL))) {
+      SUMA_free(fC);
+      SUMA_S_Err("Failed initializing contraleteral controller"); 
+      SUMA_RETURNe;
+   }
+   if (!SUMA_LoadDsetOntoSO_eng(fC, SOC, 1, 1, 1, NULL)) {
+      SUMA_free(fC);
+      SUMA_S_Err("Failed loading, and colorizing contralateral dset"); 
+      SUMA_RETURNe;
+   }
+   
+   SUMA_free(fC); fC=NULL;
    
    SUMA_RETURNe;
 }
@@ -7951,6 +8209,9 @@ SUMA_Boolean SUMA_LoadDsetOntoSO_eng (char *filename, SUMA_SurfaceObject *SO,
                SUMA_SLP_Err("Failed to remove coord bias");
                SUMA_RETURN(NOPE);
             }
+            /* have clusterize? Recompute */
+            if (colplanepre->OptScl->Clusterize) 
+               colplanepre->OptScl->RecomputeClust = 1;         
             OKdup = 1;
          } else { /* dset is considered new */
             colplanepre = NULL;
@@ -7985,27 +8246,78 @@ SUMA_Boolean SUMA_LoadDsetOntoSO_eng (char *filename, SUMA_SurfaceObject *SO,
          }
       } 
 
-
-      /* set the opacity, index column and the range */
-      NewColPlane->GlobalOpacity = YUP;
-      NewColPlane->ShowMode = SW_SurfCont_DsetViewCol;
-      if (!colplanepre) { /* only set this default if first time creating plane*/
-         NewColPlane->OptScl->BrightFact = 0.8;
-      }
-      NewColPlane->OptScl->find = 0;
-      NewColPlane->OptScl->tind = 0;
-      NewColPlane->OptScl->bind = 0;
-      SUMA_GetDsetColRange(dset, 0, NewColPlane->OptScl->IntRange, loc);
-
-
-      /* stick a colormap onto that plane ? */
-      dsetcmap = NI_get_attribute(dset->ngr,"SRT_use_this_cmap");
-      if (dsetcmap) {
-         SUMA_STRING_REPLACE(NewColPlane->cmapname, dsetcmap);
+      /* Match the old settings? */
+      if (colplanepre == NewColPlane) { /* old col plane found for this dset*/
+         /* Don't change settings. Before Aug 2012, it would reset as below */
+      } else if (SUMA_PreserveOverlaySettings(SO->SurfCont->curColPlane,
+                                             NewColPlane)) {
+                        /* attempt to preserve current situation */
+         SUMA_OVERLAYS *settingPlane = NULL;
+         settingPlane = SO->SurfCont->curColPlane;
+         NewColPlane->GlobalOpacity = settingPlane->GlobalOpacity;
+         NewColPlane->ShowMode = settingPlane->ShowMode;
+         NewColPlane->OptScl->BrightFact = settingPlane->OptScl->BrightFact;
+         NewColPlane->OptScl->find = settingPlane->OptScl->find;
+         NewColPlane->OptScl->tind = settingPlane->OptScl->tind;
+         NewColPlane->OptScl->bind = settingPlane->OptScl->bind;
+         NewColPlane->OptScl->UseThr = settingPlane->OptScl->UseThr;
+         NewColPlane->OptScl->UseBrt = settingPlane->OptScl->UseBrt;
+         NewColPlane->OptScl->ThrMode = settingPlane->OptScl->ThrMode;
+         NewColPlane->OptScl->ThreshRange[0] = 
+                                       settingPlane->OptScl->ThreshRange[0];
+         NewColPlane->OptScl->ThreshRange[1] = 
+                                       settingPlane->OptScl->ThreshRange[1];
+         NewColPlane->OptScl->BrightRange[0] = 
+                                       settingPlane->OptScl->BrightRange[0];
+         NewColPlane->OptScl->BrightRange[1] = 
+                                       settingPlane->OptScl->BrightRange[1];
+         NewColPlane->OptScl->BrightMap[0] = 
+                                       settingPlane->OptScl->BrightMap[0];
+         NewColPlane->OptScl->BrightMap[1] = 
+                                       settingPlane->OptScl->BrightMap[1];
+         NewColPlane->SymIrange = settingPlane->SymIrange;
+         NewColPlane->OptScl->IntRange[0] = settingPlane->OptScl->IntRange[0];
+         NewColPlane->OptScl->IntRange[1] = settingPlane->OptScl->IntRange[1];
+         dsetcmap = NI_get_attribute(dset->ngr,"SRT_use_this_cmap");
+         if (dsetcmap) {
+            SUMA_STRING_REPLACE(NewColPlane->cmapname, dsetcmap);
+         } else {
+            SUMA_STRING_REPLACE(NewColPlane->cmapname, settingPlane->cmapname);
+         }         
+         NewColPlane->OptScl->Clusterize = settingPlane->OptScl->Clusterize;
+         NewColPlane->OptScl->ClustOpt->AreaLim = 
+            settingPlane->OptScl->ClustOpt->AreaLim;
+         NewColPlane->OptScl->ClustOpt->DistLim = 
+            settingPlane->OptScl->ClustOpt->DistLim;
       } else {
-         /* don't worry, there's a default one */
-      }
+         /* set the opacity, index column and the range */
+         NewColPlane->GlobalOpacity = YUP;
+         NewColPlane->ShowMode = SW_SurfCont_DsetViewCol;
+         if (!colplanepre) {/* only set this if first time creating plane*/
+            NewColPlane->OptScl->BrightFact = 0.8;
+         }
+         NewColPlane->OptScl->find = 0;
+         NewColPlane->OptScl->tind = 0;
+         NewColPlane->OptScl->bind = 0;
+         SUMA_GetDsetColRange(dset, 0, NewColPlane->OptScl->IntRange, loc);
+         if (NewColPlane->SymIrange) {
+            NewColPlane->OptScl->IntRange[0] = 
+               -fabs(SUMA_MAX_PAIR( NewColPlane->OptScl->IntRange[0],
+                                    NewColPlane->OptScl->IntRange[1]));
+            NewColPlane->OptScl->IntRange[1] = 
+               -NewColPlane->OptScl->IntRange[0];
+         }
 
+         /* stick a colormap onto that plane ? */
+         dsetcmap = NI_get_attribute(dset->ngr,"SRT_use_this_cmap");
+         if (dsetcmap) {
+            SUMA_STRING_REPLACE(NewColPlane->cmapname, dsetcmap);
+         } else {
+            /* don't worry, there's a default one */
+         }
+      }
+      if (NewColPlane->OptScl->Clusterize) 
+         NewColPlane->OptScl->RecomputeClust = 1;
       /* colorize the plane */
       SUMA_ColorizePlane(NewColPlane);
 
@@ -8037,25 +8349,27 @@ SUMA_Boolean SUMA_LoadDsetOntoSO_eng (char *filename, SUMA_SurfaceObject *SO,
          if (!LW->isShaded) SUMA_RefreshDsetList (SO);  
       }  
       
+      SUMA_LH("Refreshing sub-brick selectors");            
       /* if lists for switching sub-bricks are not shaded, update them too */
-      if ((LW = SO->SurfCont->SwitchIntLst) && !LW->isShaded) {
-         SUMA_DsetColSelectList(SO, 0, 0, 1);
-      }
-      if ((LW = SO->SurfCont->SwitchThrLst) && !LW->isShaded) {
-         SUMA_DsetColSelectList(SO, 1, 0, 1);
-      }
-      if ((LW = SO->SurfCont->SwitchBrtLst) && !LW->isShaded) {
-         SUMA_DsetColSelectList(SO, 2, 0, 1);
-      }
-      
-      if (LocalHead) 
-         fprintf (SUMA_STDERR,
-                  "%s: Updating Dset frame, OverInd=%d\n", 
-                  FuncName, OverInd);
-      /* update the Dset frame */
-      if (OverInd >= 0)        
-         SUMA_InitializeColPlaneShell(SO, SO->Overlays[OverInd]);
+      if (SO->SurfCont->SwitchIntMenu) {
+         if ((LW = SO->SurfCont->SwitchIntMenu->lw) && !LW->isShaded) {
+            SUMA_DsetColSelectList(SO, 0, 0, 1);
+         }
+         if ((LW = SO->SurfCont->SwitchThrMenu->lw) && !LW->isShaded) {
+            SUMA_DsetColSelectList(SO, 1, 0, 1);
+         }
+         if ((LW = SO->SurfCont->SwitchBrtMenu->lw) && !LW->isShaded) {
+            SUMA_DsetColSelectList(SO, 2, 0, 1);
+         }
 
+         if (LocalHead) 
+            fprintf (SUMA_STDERR,
+                     "%s: Updating Dset frame, OverInd=%d\n", 
+                     FuncName, OverInd);
+         /* update the Dset frame */
+         if (OverInd >= 0)        
+            SUMA_InitializeColPlaneShell(SO, SO->Overlays[OverInd]);
+      }
    }
    
    if (used_over) *used_over = SO->Overlays[OverInd];
@@ -8155,6 +8469,30 @@ void SUMA_LoadColorPlaneFile (char *filename, void *data)
    SUMA_RETURNe;
 }
 
+/*!
+   Decide whether or not to keep Rick Reynolds happy and preserve
+   the overlay settings for a newly loaded dset
+*/
+SUMA_Boolean SUMA_PreserveOverlaySettings(SUMA_OVERLAYS *colplanepre, 
+                                   SUMA_OVERLAYS *NewColPlane)
+{
+   static char FuncName[]={"SUMA_PreserveOverlaySettings"};
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   
+   if (!colplanepre || !NewColPlane) SUMA_RETURN(NOPE);
+   if (colplanepre == NewColPlane) SUMA_RETURN(YUP); /* happens in reload */
+   
+   if (!colplanepre->dset_link || !NewColPlane->dset_link) SUMA_RETURN(NOPE);
+   
+      
+   /* Now check the sub-brick types. They should all match */
+   if (SUMA_isSameDsetColTypes(NewColPlane->dset_link, colplanepre->dset_link)) 
+         SUMA_RETURN(YUP);
+   
+   SUMA_RETURN(NOPE);
+}
 
 /*** AFNI setup functions taken and trimmed from afni_setup.c
 Reason for duplicating the functions is the complicated dependencies 
@@ -8863,14 +9201,22 @@ SUMA_Boolean SUMA_SetConvexityPlaneDefaults(SUMA_SurfaceObject *SO,
    }
    if (Vsort) SUMA_free(Vsort); Vsort = NULL;
    
+   SUMA_LHv("Settled on range of %f to %f\n", IntRange[0], IntRange[1]);   
    ConvPlane->OptScl->find = 0; /* the intensity column */
    ConvPlane->OptScl->tind = 0; /* the threshold column */
    ConvPlane->OptScl->bind = 0; /* the brightness modulation column */
    ConvPlane->OptScl->IntRange[0] = IntRange[0]; 
    ConvPlane->OptScl->IntRange[1] = IntRange[1];
+   if (ConvPlane->SymIrange) {
+     ConvPlane->OptScl->IntRange[1] = 
+                     SUMA_LARG_ABS(ConvPlane->OptScl->IntRange[0], 
+                                   ConvPlane->OptScl->IntRange[1]);
+     ConvPlane->OptScl->IntRange[0] = -ConvPlane->OptScl->IntRange[1]; 
+   }
    /* Force Auto Range to these percentile values */
    ConvPlane->ForceIntRange[0] = IntRange[0]; 
    ConvPlane->ForceIntRange[1] = IntRange[1];
+
 
    SUMA_RETURN(YUP);
 }

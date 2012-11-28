@@ -3011,7 +3011,7 @@ ENTRY("PLUG_finalize_dataset_CB") ;
 
    XtVaGetValues( w , XmNuserData , &av , NULL ) ;
    if( plint == NULL || av == NULL ) EXRETURN ;
-   
+
    shrtit = TrimString(av->dset_link[cbs->ival].title, 20); /* ZSS Jan 2012*/
    if( ! av->multi ){
       xstr = XmStringCreateLtoR( shrtit ,
@@ -4998,6 +4998,7 @@ ENTRY("PLUTO_histoplot") ;
    for( jj=0 ; jj < njist ; jj++ )
      yzar[jj+1][0] = yzar[jj+1][2*nbin+1] = 0.0f ;
 
+   X11_SET_NEW_PLOT ;
    plot_ts_lab( GLOBAL_library.dc->display ,
                 nx , xar , ny , yzar ,
                 xlab,ylab,tlab , NULL , NULL ) ;
@@ -5099,7 +5100,7 @@ ENTRY("PLUTO_scatterplot") ;
       else if( y[ii] > ytop ) ytop = y[ii] ;
    }
    if( xbot >= xtop || ybot >= ytop ){
-      fprintf(stderr,"*** Data has no range in PLUTO_scatterplot!\n\a");
+      ERROR_message("Data has no range in PLUTO_scatterplot!\a") ;
       EXRETURN ;
    }
 
@@ -5164,7 +5165,7 @@ ENTRY("PLUTO_scatterplot") ;
 
    /* x-axis label? */
 
-   set_color_memplot( 0.0 , 0.0 , 0.0 ) ; set_thick_memplot( 0.004f ) ;
+   set_color_memplot( 0.0 , 0.0 , 0.0 ) ; set_thick_memplot( 0.002f ) ;
    if( STGOOD(xlab) )
       plotpak_pwritf( 0.5*(xobot+xotop) , yobot-0.06 , xlab , 16 , 0 , 0 ) ;
 
@@ -5180,14 +5181,15 @@ ENTRY("PLUTO_scatterplot") ;
 
    /* plot axes */
 
-   set_thick_memplot( 0.0f ) ;
+   set_thick_memplot( 0.001f ) ;
    plotpak_set( xobot,xotop , yobot,yotop , xbot,xtop , ybot,ytop , 1 ) ;
    plotpak_periml( nnax,mmax , nnay,mmay ) ;
 
    /* plot data */
 
-#define DSQ 0.001
+#define DSQ 0.0011111
 
+   set_thick_memplot( 0.0f ) ;
    set_color_memplot( 0.0 , 0.0 , 0.4 ) ;        /* 28 Feb 2011 */
    dsq = AFNI_numenv( "AFNI_SCATPLOT_FRAC" ) ;   /* 15 Feb 2005 */
    if( dsq <= 0.0 || dsq >= 0.01 ){
@@ -5215,13 +5217,33 @@ ENTRY("PLUTO_scatterplot") ;
       plotpak_line( xb,ya , xa,ya ) ;
    }
 
+   /* draw a line (showing the least squares linear fit of y to x) */
+
    if( a != 0.0f || b != 0.0f ){              /* 02 May 2005 */
-     set_color_memplot( 0.8 , 0.0 , 0.0 ) ; set_thick_memplot( 0.003f ) ;
-     plotpak_line( xbot,a*xbot+b , xtop,a*xtop+b ) ;
+
+     /* endpoints of line passing from left edge to right edge */
+
+     xa = xbot ; ya = a*xa+b ; xb = xtop ; yb = a*xb+b ;
+
+     /* clip line at left end */
+
+          if( ya < ybot && a > 0.0f ){ xa = (ybot-b)/a ; ya = ybot ; }
+     else if( ya > ytop && a < 0.0f ){ xa = (ytop-b)/a ; ya = ytop ; }
+
+     /* clip line at right end */
+
+          if( yb < ybot && a < 0.0f ){ xb = (ybot-b)/a ; yb = ybot ; }
+     else if( yb > ytop && a > 0.0f ){ xb = (ytop-b)/a ; yb = ytop ; }
+
+     set_color_memplot(0.7f,0.0f,0.0f) ; set_thick_memplot(0.003456789f) ;
+     plotpak_setlin(2) ;             /* dashed line mode */
+     plotpak_line( xa,ya , xb,yb ) ; /* draw it */
+     plotpak_setlin(1) ;             /* back to solid line mode */
    }
 
    mp = get_active_memplot() ;
 
+   X11_SET_NEW_PLOT ;
    (void) memplot_to_topshell( GLOBAL_library.dc->display , mp , NULL ) ;
 
    EXRETURN ;

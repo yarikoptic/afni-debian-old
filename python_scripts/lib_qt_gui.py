@@ -220,14 +220,18 @@ def static_TextWindow(fname='', text='', title='', parent=None):
       win.show()
       return win
 
-def create_button_list_widget(labels, tips=None, cb=None, dir=0, hstr=0):
+def create_button_list_widget(labels, tips=None, cb=None, dir=0, hstr=0,
+                              hind=-1, style=None):
    """create a layout of buttons within a QWidget
-        - buttons will be stored as 'blist' within the returned QWidget
+        - buttons will be stored as 'bdict' within the returned QWidget
+           - bdict[label] = button
         - if tips is set (length should match), setStatusTip
         - if cb is set, connect all call-backs to it
         - if dir = 1, layout direction is vertical, else horizontal
         - hstr is for Horizontal stretch policy, 1 to stretch
-      return a QWidget (with layout and buttons in blist)
+        - hind is index for help widget: add spacer and setIcon
+           - if style: use for help icon
+      return a QWidget (with layout and buttons in dict)
    """
 
    # main widget to return
@@ -242,15 +246,20 @@ def create_button_list_widget(labels, tips=None, cb=None, dir=0, hstr=0):
    if dir: layout  = QtGui.QVBoxLayout()
    else:   layout  = QtGui.QHBoxLayout()
 
-   bwidget.blist = [QtGui.QPushButton(lab) for lab in labels]
-   for ind, button in enumerate(bwidget.blist):
+   bwidget.bdict = {}
+   for ind, lab in enumerate(labels):
+      button = QtGui.QPushButton(lab)
       # if cb: button.clicked.connect(cb)
-      if cb: bwidget.connect(button, QtCore.SIGNAL('clicked()'), cb)
+      if cb: button.connect(button, QtCore.SIGNAL('clicked()'), cb)
       policy = button.sizePolicy()
       policy.setHorizontalPolicy(hstr)
       button.setSizePolicy(policy)
       if tips != None: button.setStatusTip(tips[ind])
       _set_button_style(button)
+      bwidget.bdict[lab] = button
+      if ind > 0: layout.addStretch()
+      if ind == hind and style:
+         button.setIcon(style.standardIcon(QtGui.QStyle.SP_MessageBoxQuestion))
       layout.addWidget(button)
 
    bwidget.setLayout(layout)
@@ -259,7 +268,7 @@ def create_button_list_widget(labels, tips=None, cb=None, dir=0, hstr=0):
    return bwidget
 
 def make_button(label, tip=None, cb=None, hstr=0):
-   """create a single button, possibly with a tp, callback and stretch
+   """create a single button, possibly with a tip, callback and stretch
       policy"""
    button = QtGui.QPushButton(label)
    if cb: button.connect(button, QtCore.SIGNAL('clicked()'), cb)
@@ -328,7 +337,7 @@ def create_button_grid(labels, tips=None, cb=None, rlen=4):
    layout = QtGui.QGridLayout()
 
    # bwidget.blist = [QtGui.QPushButton(lab) for lab in labels]
-   bwidget.blist = []
+   bwidget.bdict = {}
    row, col = 0, 0
    for ind, label in enumerate(labels):
       if label == None:         # start a new row
@@ -340,7 +349,7 @@ def create_button_grid(labels, tips=None, cb=None, rlen=4):
          row += 1
 
       button = QtGui.QPushButton(label)
-      bwidget.blist.append(button)
+      bwidget.bdict[label] = button
 
       # if cb: button.clicked.connect(cb)
       if cb: bwidget.connect(button, QtCore.SIGNAL('clicked()'), cb)
@@ -418,13 +427,36 @@ def create_menu_button(parent, name, menu_list, call_back=None):
 
    menu = QtGui.QMenu(parent)
 
+   act_dict = {}
    for item in menu_list:
       action = menu.addAction(item)
       # if call_back: action.triggered.connect(call_back)
       if call_back: menu.connect(action,QtCore.SIGNAL('triggered()'),call_back)
+      act_dict[item] = action
    pushb.setMenu(menu)
+   pushb.act_dict = act_dict
 
    return pushb
+
+def create_label_lineedit_widget(ltext, ltip='', etext='', ecb=None):
+   """create a widget with H Layout containing label and lineedit
+        QLabel    QLineEdit
+        (name)    (display text)                        16 Oct 2012
+
+      return widget"""
+
+   widget = QtGui.QWidget()
+   layout = QtGui.QHBoxLayout()
+   label  = make_label(ltext, ltip)
+   line   = make_line(etext, cb=ecb)
+
+   layout.addWidget(label)
+   layout.addWidget(line)
+
+   widget.setLayout(layout)
+   widget.LineEdit = line
+
+   return widget
 
 def create_display_label_pair(name, text, tip=''):
    """create a non-editable label pair (sunken panel) with the given text
@@ -493,6 +525,7 @@ def valid_as_int(text, name, warn=0, wparent=None, empty_ok=1):
    if len(text) == 0:
       if empty_ok: return 1  
       extext = "<empty>"
+      valid = 0
    else:
       try: val = int(text)
       except:
@@ -520,6 +553,7 @@ def valid_as_float(text, name, warn=0, wparent=None, empty_ok=1):
    if len(text) == 0:
       if empty_ok: return 1  
       extext = "<empty>"
+      valid = 0
    else:
       try: val = float(text)
       except:
@@ -531,9 +565,44 @@ def valid_as_float(text, name, warn=0, wparent=None, empty_ok=1):
    if warn: guiWarning(                                                 \
                "Error: invalid identifier",                             \
                "bad text: %s%s\n\n"                                     \
-               "Characters in field '%s' must be alphabetic, numeric\n" \
-               "or '_' (underscore), starting with alphabetic."         \
+               "Expected float in field '%s'.\n"                        \
                % (text, extext, name), wparent)
+
+   return 0
+
+def valid_as_float_list(text, name, warn=0, wparent=None, empty_ok=1, clen=0):
+   """the text can be either empty (if empty_ok) or be a float
+      - if not and 'warn' is set, show a warning message
+      - if clen > 0 and length does not match, report an error
+      return 1 if valid, 0 otherwise
+   """
+   # search for valid cases
+   valid = 1
+   if len(text) == 0:
+      if empty_ok: return 1  
+      extext = "<empty>"
+      valid = 0
+   else:
+      slist = text.split()
+      if clen > 0 and len(slist) != clen:
+         extext = '   <%d floats are required>'
+         valid = 0
+      else:
+         try: flist = [float(sval) for sval in slist]
+         except:
+            extext = '   <not valid as list of floats>'
+            valid = 0
+
+   if valid: return 1
+
+   if clen == 0: fstr = 'float list'
+   else:         fstr = '%d float entries' % clen
+
+   if warn: guiWarning(                                                 \
+               "Error: invalid identifier",                             \
+               "bad text: %s%s\n\n"                                     \
+               "Expected %s in field '%s'.\n"                           \
+               % (text, extext, fstr, name), wparent)
 
    return 0
 
@@ -552,6 +621,7 @@ def valid_as_identifier(text, name, warn=0, wparent=None, empty_ok=1):
    if len(text) == 0:
       if empty_ok: return 1  
       extext = "<empty>"
+      valid = 0
    else:
       # check for valid characters
       # replace '_' with alpha, then check s[0].isalpha and rest isalphanum
@@ -1167,9 +1237,8 @@ class DsetChooser(QtGui.QDialog):
       labels = ['delete selected entries', 'clear table', 'help']
       tips   = ['delete highlighted rows from table',
                 'delete all entries in table', 'display help for this section']
-      bwidget = create_button_list_widget(labels, cb=self.cb_pushb, tips=tips)
-      bwidget.blist[2].setIcon(self.style().standardIcon(
-                            QtGui.QStyle.SP_MessageBoxQuestion))
+      bwidget = create_button_list_widget(labels, cb=self.cb_pushb, tips=tips,
+                                          hind=2)
 
       self.gvars.table_widget = DatasetTableWidget(self,
                         button_widgets=[bwidget], verb=self.lvars.verb)
@@ -1298,7 +1367,7 @@ class label_opt_exec_widget(object):
         menulist : list of menu item names
         pbtext   : pushbutton text
         cb       : callback to apply to PB 'clicked()' event, if set
-                  (otherwise, callbacks might be applied via blist)
+                  (otherwise, callbacks might be applied via bdict)
         name     : optional name to apply to object
    """
 
@@ -1339,14 +1408,14 @@ class button_list_widget(object):
         parent : parent widget
         labels : list for the names
         cb     : callback to apply to all 'clicked()' events, if set
-                 (otherwise, callbacks might be applied via blist)
+                 (otherwise, callbacks might be applied via bdict)
         ltype  : layout type: 0=vertical, 1=horizontal"""
 
    def __init__(self, parent, labels, cb=None, ltype=0):
 
       self.mainw = QtGui.QWidget(parent)                # main widget
       self.name = 'QWidget with button list'
-      self.blist = []                                   # button list
+      self.bdict = {}                                   # button dictionary
 
       if ltype == 0: layout = QtGui.QVBoxLayout(self.mainw)
       else:          layout = QtGui.QHBoxLayout(self.mainw)
@@ -1355,13 +1424,16 @@ class button_list_widget(object):
          b = QtGui.QPushButton(self.mainw)
          b.setText(label)
          if cb: b.connect(b, QtCore.SIGNAL("clicked()"), cb)
-         self.blist.append(b)
+         self.bdict[label] = b
          layout.addWidget(b)
 
    def get_button_text(self, index=-1, button=None):
       """return text for button
             index  : if apppropriate, return text for this button index
             button : else, locate this button and return text
+
+        rcr - fix this, no blist, probably just
+              return button.text().toAscii().data()
 
         if no button is found, return 'NO_SUCH_BUTTON'"""
 

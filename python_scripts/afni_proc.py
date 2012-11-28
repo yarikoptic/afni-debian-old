@@ -332,12 +332,42 @@ g_history = """
     3.15 Apr 12, 2012: backport to python 2.2
         - thanks to L Broster for noting 2.2 problems
     3.16 Apr 16, 2012: added -regress_bandpass, to bandpass during regression
+    3.17 May 10, 2012:
+        - allow for processing more than 99 runs
+        - catenated 'rall' files will use '_' until prefix
+    3.18 May 19, 2012: small help update for resting state examples
+    3.19 May 21, 2012: added -regress_stim_types
+    3.20 Jun 03, 2012: suggest -regress_motion_censor of 0.2 for resting-state
+    3.21 Jun 05, 2012: verify that married types match
+    3.22 Jun 06, 2012: check for EPI +tlrc view in NIfTI datasets
+    3.23 Jun 15, 2012: added -regress_censor_extern
+    3.24 Jun 28, 2012: help mistake on IM, thanks to I Blair for noting
+    3.25 Jul 10, 2012: let user know whether 3dClustSim will be run
+    3.26 Jul 11, 2012: fill gaps and holes in anatomical masks
+                       (now requires AFNI from 7 May, 2012)
+    3.27 Jul 26, 2012: now requires AFNI from 8 May, 2012
+        - added -mask_segment_anat and -mask_rm_segsy
+        - if anat is stripped, create segmented anat unless user says not to
+    3.28 Jul 30, 2012: if surf analysis, create run_suma script
+    3.29 Jul 31, 2012: have -mask_segment_anat default to no
+    3.30 Aug 08, 2012: do not update tlrc anat with strip if passed in
+    3.31 Aug 14, 2012:
+        - match default class order for 3dSeg
+        - copy labeltable into resampled dataset
+    3.32 Sep 04, 2012: added -regress_ROI, for tissue-based regression
+    3.33 Sep 25, 2012: fixed 2 REML problems
+        - if 3dD_stop and reml_exec, use errts_REML for blur estimation
+          (thanks to P Molfese for noting the problem)
+        - apply compute_fitts for non-reml case
+    3.34 Oct 01, 2012: added 'file' type for -regress_stim_types
+    3.35 Oct 03, 2012: make dashed parameters illegal for many options
+    3.36 Oct 17, 2012: remove unneeded -set_tr from 1d_tool.py -censor_motion
 """
 
-g_version = "version 3.16, April 16, 2012"
+g_version = "version 3.36, October 17, 2012"
 
 # version of AFNI required for script execution
-g_requires_afni = "9 Mar 2012"
+g_requires_afni = "8 May 2012"
 
 # ----------------------------------------------------------------------
 # dictionary of block types and modification functions
@@ -390,15 +420,16 @@ class SubjProcSream:
 
         self.vr_ext_base= None          # name of external volreg base 
         self.vr_ext_pre = 'external_volreg_base' # copied volreg base prefix
-
+        self.volreg_prefix = ''         # prefix for volreg dataset ($run)
+                                        #   (using $subj and $run)
         self.mot_labs   = []            # labels for motion params
         # motion parameter file (across all runs)
-        self.mot_file   = 'dfile.rall.1D' # either mot_default or mot_extern
+        self.mot_file   = 'dfile_rall.1D' # either mot_default or mot_extern
         # for regression, maybe just mot_file, maybe per run, external
         # or might include demean and/or derivatives
         self.mot_regs   = []            # motion files to use in regression
         self.mot_per_run= 0             # motion regression per run
-        self.mot_default= ''            # probably 'dfile.rall.1D', if set
+        self.mot_default= ''            # probably 'dfile_rall.1D', if set
         self.mot_extern = ''            # from -regress_motion_file
         self.mot_demean = ''            # from demeaned motion file
         self.mot_deriv  = ''            # motion derivatives
@@ -429,6 +460,8 @@ class SubjProcSream:
         self.align_epre = 'ext_align_epi' # copied align epi base prefix
         self.rm_rm      = 1             # remove rm.* files (user option)
         self.have_rm    = 0             # have rm.* files (such files exist)
+        self.rm_dirs    = 0             # do we have dirs to remove?
+        self.rm_list    = ['rm.*']      # array of items to nuke
         self.epi_review = '@epi_review.$subj' # filename for gen_epi_review.py
         self.made_ssr_scr = 0           # did we make subj review scripts
         self.ssr_basic    = '@ss_review_basic' # basic review script
@@ -458,8 +491,14 @@ class SubjProcSream:
         self.mask_anat  = None          # mask dataset (from subject anat)
         self.mask_group = None          # mask dataset (from tlrc base)
         self.mask_extents = None        # mask dataset (of EPI extents)
+        self.mask_classes = None        # Segsy result at EPI resolution
+
+        # options for tissue based time series
+        self.roi_dict   = {}            # dictionary of ROI vs afni_name
+
         self.censor_file  = ''          # for use as '-censor FILE' in 3dD
         self.censor_count = 0           # count times censoring
+        self.censor_extern = ''         # from -regress_censor_extern
         self.exec_cmd   = ''            # script execution command string
         self.bash_cmd   = ''            # bash formatted exec_cmd
         self.tcsh_cmd   = ''            # tcsh formatted exec_cmd
@@ -478,6 +517,7 @@ class SubjProcSream:
         self.surf_A     = 'smoothwm'
         self.surf_B     = 'pial'
         self.surf_blur_fwhm = 8.0       # target FWHM (from -blur_size)
+        self.suma_cmd_file = 'run_suma' # script to contain suma command
 
         # computed surf variables
         self.surf_sv       = None       # either surf_anat or aligned version
@@ -488,6 +528,7 @@ class SubjProcSream:
         self.surf_spec_var = ''         # variable to use for spec file
                                         # (because of lh, rh)
         self.surf_spec_var_iter = ''    # iteration variable (e.g. hemi)
+        self.surf_spec_base = ''        # basename of first spec
         self.surf_svi_ref  = ''         # iter var reference (e.g. ${hemi})
         self.surf_hemilist = ''         # e.g. ['lh', 'rh']
 
@@ -534,11 +575,11 @@ class SubjProcSream:
                         helpstr="show module version")
 
         # general execution options
-        self.valid_opts.add_opt('-blocks', -1, [],
+        self.valid_opts.add_opt('-blocks', -1, [], okdash=0,
                         helpstr='specify ordered list of blocks to apply')
-        self.valid_opts.add_opt('-do_block', -1, [],
+        self.valid_opts.add_opt('-do_block', -1, [], okdash=0,
                         helpstr='add extra blocks to the default list')
-        self.valid_opts.add_opt('-dsets', -1, [],
+        self.valid_opts.add_opt('-dsets', -1, [], okdash=0,
                         helpstr='EPI datasets to process, ordered by run')
 
         self.valid_opts.add_opt('-out_dir', 1, [],
@@ -551,7 +592,7 @@ class SubjProcSream:
                         helpstr="output filename separator char, def='.'")
         self.valid_opts.add_opt('-subj_curly', 0, [],
                         helpstr="always use {} around $subj")
-        self.valid_opts.add_opt('-subj_id', -1, [],
+        self.valid_opts.add_opt('-subj_id', 1, [],
                         helpstr='subject ID, used in most filenames')
 
         self.valid_opts.add_opt('-anat_has_skull', 1, [],
@@ -572,7 +613,7 @@ class SubjProcSream:
                         helpstr='terminate on setup errors')
         self.valid_opts.add_opt('-copy_anat', 1, [],
                         helpstr='anatomy to copy to results directory')
-        self.valid_opts.add_opt('-copy_files', -1, [],
+        self.valid_opts.add_opt('-copy_files', -1, [], okdash=0,
                         helpstr='list of files to copy to results directory')
         self.valid_opts.add_opt('-execute', 0, [],
                         helpstr='execute script as suggested to user')
@@ -632,7 +673,7 @@ class SubjProcSream:
                         helpstr="use stimuli 'per-run' or 'across-runs'")
         self.valid_opts.add_opt('-ricor_regress_solver', 1, [],
                         helpstr="regression via 'OLSQ' or 'REML'")
-        self.valid_opts.add_opt('-ricor_regs', -1, [],
+        self.valid_opts.add_opt('-ricor_regs', -1, [], okdash=0,
                         helpstr='slice-based regressors for RETROICOR')
         self.valid_opts.add_opt('-ricor_regs_nfirst', 1, [],
                         helpstr='num first TRs to remove from ricor_regs')
@@ -719,6 +760,12 @@ class SubjProcSream:
                         helpstr="select mask to apply in regression")
         self.valid_opts.add_opt('-mask_dilate', 1, [],
                         helpstr="dilation to be applied in automask")
+        self.valid_opts.add_opt('-mask_rm_segsy', 1, [],
+                        acplist=['yes', 'no'],
+                        helpstr="remove Segsy directory (yes/no)")
+        self.valid_opts.add_opt('-mask_segment_anat', 1, [],
+                        acplist=['yes', 'no'],
+                        helpstr="automatic segmentation using 3dSeg (yes/no)")
         self.valid_opts.add_opt('-mask_test_overlap', 1, [],
                         acplist=['yes','no'],
                         helpstr='test anat/EPI mask overlap (yes/no)')
@@ -742,7 +789,7 @@ class SubjProcSream:
                         helpstr="bandpass in this range during regression")
         self.valid_opts.add_opt('-regress_basis', 1, [],
                         helpstr="basis function to use in regression")
-        self.valid_opts.add_opt('-regress_basis_multi', -1, [],
+        self.valid_opts.add_opt('-regress_basis_multi', -1, [], okdash=0,
                         helpstr="one basis function per stimulus class")
         self.valid_opts.add_opt('-regress_basis_normall', 1, [],
                         helpstr="specify magnitude of basis functions")
@@ -753,6 +800,8 @@ class SubjProcSream:
                         acplist=['yes','no'],
                         helpstr="request cbucket dataset of all betas (yes/no)")
 
+        self.valid_opts.add_opt('-regress_censor_extern', 1, [],
+                        helpstr="apply external censor file")
         self.valid_opts.add_opt('-regress_censor_motion', 1, [],
                         helpstr="censor TR if motion derivative exceeds limit")
         self.valid_opts.add_opt('-regress_censor_prev', 1, [],
@@ -765,24 +814,24 @@ class SubjProcSream:
         self.valid_opts.add_opt('-regress_skip_first_outliers', 1, [],
                         helpstr="ignore outliers in first few TRs of each run")
 
-        self.valid_opts.add_opt('-regress_cormat_warnigns', 1, [],
-                        acplist=['yes','no'],
-                        helpstr="show cormat warnings from X-matrix (def: yes)")
         self.valid_opts.add_opt('-regress_fout', 1, [],
                         acplist=['yes','no'],
                         helpstr="output individual F-stats? (def: yes)")
         self.valid_opts.add_opt('-regress_polort', 1, [],
                         helpstr="baseline polynomial degree per run")
-        self.valid_opts.add_opt('-regress_stim_files', -1, [],
+        self.valid_opts.add_opt('-regress_stim_files', -1, [], okdash=0,
                         helpstr="0/1 or pre-convolved stimulus files")
-        self.valid_opts.add_opt('-regress_stim_labels', -1, [],
+        self.valid_opts.add_opt('-regress_stim_labels', -1, [], okdash=0,
                         helpstr="labels for specified regressors")
-        self.valid_opts.add_opt('-regress_stim_times', -1, [],
+        self.valid_opts.add_opt('-regress_stim_times', -1, [], okdash=0,
                         helpstr="stimulus timing files")
         self.valid_opts.add_opt('-regress_no_stim_times', 0, [],
                         helpstr="do not convert stim_files to timing")
         self.valid_opts.add_opt('-regress_stim_times_offset', 1, [],
                         helpstr="add offset when converting to timing")
+        self.valid_opts.add_opt('-regress_stim_types', -1, [], okdash=0,
+                        acplist=['times', 'AM1', 'AM2', 'IM', 'file'],
+                        helpstr="specify times/AM1/AM2/IM for each stim class")
         self.valid_opts.add_opt('-regress_use_stim_files', 0, [],
                         helpstr="do not convert stim_files to timing")
 
@@ -798,9 +847,9 @@ class SubjProcSream:
         self.valid_opts.add_opt('-regress_no_motion_deriv', 0, [],
                         helpstr="do not compute motion param derivatives")
 
-        self.valid_opts.add_opt('-regress_extra_stim_files', -1, [],
+        self.valid_opts.add_opt('-regress_extra_stim_files', -1, [], okdash=0,
                         helpstr="extra -stim_files to apply")
-        self.valid_opts.add_opt('-regress_extra_stim_labels', -1, [],
+        self.valid_opts.add_opt('-regress_extra_stim_labels', -1, [], okdash=0,
                         helpstr="labels for extra -stim_files")
 
         self.valid_opts.add_opt('-regress_compute_fitts', 0, [],
@@ -839,13 +888,15 @@ class SubjProcSream:
                         helpstr='additional options directly to 3dREMLfit')
         self.valid_opts.add_opt('-regress_reml_exec', 0, [],
                         helpstr="execute 3dREMLfit command script")
-        self.valid_opts.add_opt('-regress_RONI', -1, [],
+        self.valid_opts.add_opt('-regress_ROI', -1, [], okdash=0,
+                        helpstr="regress out known ROIs")
+        self.valid_opts.add_opt('-regress_RONI', -1, [], okdash=0,
                         helpstr="1-based list of regressors of no interest")
 
         # surface options
         self.valid_opts.add_opt('-surf_anat', 1, [],
                         helpstr="specify SurfVol dataset")
-        self.valid_opts.add_opt('-surf_spec', -1, [],
+        self.valid_opts.add_opt('-surf_spec', -1, [], okdash=0,
                         helpstr="list lh and/or rh surface spec file(s)")
         self.valid_opts.add_opt('-surf_anat_aligned', 1, [],
                         acplist=['yes','no'],
@@ -1013,10 +1064,16 @@ class SubjProcSream:
                         missing = 1
                 if missing: return 1
 
+            # and check for EPI view
             if self.dsets[0].view and self.dsets[0].view != self.view:
                 self.view = self.dsets[0].view
                 self.origview = self.view
                 if self.verb > 0: print '-- applying view as %s' % self.view
+            elif self.dsets[0].view == '':
+                view = dset_view(self.dsets[0].ppve())
+                self.view = view
+                self.origview = self.view
+                if self.verb>0: print '-- applying orig view as %s' % self.view
 
         # next, check for -surf_anat, which defines whether to do volume
         # or surface analysis
@@ -1333,11 +1390,12 @@ class SubjProcSream:
                 return 1
 
         # note data type and whether data is scaled
-        err, vlist = get_typed_dset_attr_list(dset, "BRICK_TYPES", int)
+        err, vlist = get_typed_dset_attr_list(dset, "BRICK_TYPES", int, verb=0)
         if not err and len(vlist) >= 1:
             self.datatype = vlist[0]
 
-        err, vlist = get_typed_dset_attr_list(dset, "BRICK_FLOAT_FACS", int)
+        err, vlist = get_typed_dset_attr_list(dset, "BRICK_FLOAT_FACS", int,
+                                              verb=0)
         if not err and len(vlist) >= 1:
             if vals_are_constant(vlist, 0) or vals_are_constant(vlist, 1):
                 self.scaled = 0
@@ -1581,7 +1639,10 @@ class SubjProcSream:
                 '    exit\n'                                              \
                 'endif\n\n' % self.od_var)
         self.fp.write('# set list of runs\n')
-        self.fp.write('set runs = (`count -digits 2 1 %d`)\n\n' % self.runs)
+        digs = 2
+        if self.runs > 99: digs = 3
+        self.fp.write('set runs = (`count -digits %d 1 %d`)\n\n' \
+                      % (digs,self.runs) )
 
         self.fp.write('# create results and stimuli directories\n')
         self.fp.write('mkdir %s\nmkdir %s/stimuli\n%s\n' \
@@ -1638,6 +1699,18 @@ class SubjProcSream:
             self.fp.write(add_line_wrappers(str))
             self.fp.write("%s\n" % stat_inc)
 
+        opt = self.user_opts.find_opt('-regress_censor_extern')
+        if opt and len(opt.parlist) > 0:
+            fname = opt.parlist[0]
+            str = '# copy external censor file into results dir\n' \
+                  'cp %s %s\n' % (fname,self.od_var)
+            self.fp.write(add_line_wrappers(str))
+            self.fp.write("%s\n" % stat_inc)
+            self.censor_file = os.path.basename(fname)
+            self.censor_count += 1
+            if self.verb > 1:
+                print '++ copying external censor file to %s'%self.censor_file
+
         opt = self.user_opts.find_opt('-copy_files')
         if opt and len(opt.parlist) > 0:
             str = '# copy extra files into results dir\n' \
@@ -1666,21 +1739,25 @@ class SubjProcSream:
         str = '# %s\n\n' % block_header('auto block: finalize')
         self.fp.write(str)
 
-        if self.rm_rm and self.have_rm:
-            self.fp.write('# remove temporary rm.* files\n'
-                          '\\rm -f rm.*\n\n')
+        if self.rm_rm and self.have_rm and len(self.rm_list) > 0:
+            if self.rm_dirs: ropt = 'r'
+            else:            ropt = ''
+            # make a list of things to delete, starting with rm.*
+            delstr = ' '.join(self.rm_list)
+            self.fp.write('# remove temporary files\n'
+                          '\\rm -f%s %s\n\n' % (ropt, delstr))
 
         # move or remove pre-processing files
         if self.user_opts.find_opt('-move_preproc_files'):
             cmd_str = \
               "# move preprocessing files to 'preproc.data' directory\n"   \
               "mkdir preproc.data\n"                                       \
-              "mv dfile.r??.1D outcount* pb??.$subj.r??.* rm.* preproc.data\n\n"
+              "mv dfile.r*.1D outcount* pb*.$subj.r*.* rm.* preproc.data\n\n"
             self.fp.write(add_line_wrappers(cmd_str))
         elif self.user_opts.find_opt('-remove_preproc_files'):
             cmd_str = \
               "# remove preprocessing files to save disk space\n"   \
-              "\\rm dfile.r??.1D pb??.$subj.r??.* rm.*\n\n"
+              "\\rm dfile.r*.1D pb*.$subj.r*.* rm.*\n\n"
             self.fp.write(add_line_wrappers(cmd_str))
 
         # at the end, if the basic review script is here, run it
@@ -1734,6 +1811,8 @@ class SubjProcSream:
     # if surf_names: pbNN.SUBJ.rMM.BLABEL.HEMI.niml.dset
     # (pass as 0/1, -1 for default)
     def prefix_form(self, block, run, view=0, surf_names=-1):
+        if self.runs > 99: rstr = 'r%03d' % run
+        else:              rstr = 'r%02d' % run
         if view: vstr = self.view
         else:    vstr = ''
         # if surface, change view to hemisphere and dataset suffix
@@ -1743,12 +1822,12 @@ class SubjProcSream:
            hstr = '%s%s' % (self.sep_char, self.surf_svi_ref)
         else: hstr = ''
         if self.sep_char == '.': # default
-           return 'pb%02d.%s%s.r%02d.%s%s' %    \
-                  (self.bindex, self.subj_label, hstr, run, block.label, vstr)
+           return 'pb%02d.%s%s.%s.%s%s' %    \
+                  (self.bindex, self.subj_label, hstr, rstr, block.label, vstr)
         else:
            s = self.sep_char
-           return 'pb%02d%s%s%s%sr%02d%s%s%s' %    \
-                  (self.bindex, s, self.subj_label, hstr, s, run, s,
+           return 'pb%02d%s%s%s%s%s%s%s%s' %    \
+                  (self.bindex, s, self.subj_label, hstr, s, rstr, s,
                    block.label, vstr)
 
     # same, but leave run as a variable
@@ -1773,6 +1852,8 @@ class SubjProcSream:
     # (so we don't need the block)
     # if self.surf_names: pbNN.SUBJ.rMM.BLABEL.HEMI.niml.dset
     def prev_prefix_form(self, run, view=0, surf_names=-1):
+        if self.runs > 99: rstr = 'r%03d' % run
+        else:              rstr = 'r%02d' % run
         if view: vstr = self.view
         else:    vstr = ''
         # if surface, change view to hemisphere and dataset suffix
@@ -1782,12 +1863,12 @@ class SubjProcSream:
            hstr = '%s%s' % (self.sep_char, self.surf_svi_ref)
         else: hstr = ''
         if self.sep_char == '.': # default
-           return 'pb%02d.%s%s.r%02d.%s%s' %    \
-                  (self.bindex-1, self.subj_label,hstr,run, self.pblabel, vstr)
+           return 'pb%02d.%s%s.%s.%s%s' %    \
+                  (self.bindex-1, self.subj_label,hstr,rstr, self.pblabel,vstr)
         else:
            s = self.sep_char
-           return 'pb%02d%s%s%s%sr%02d%s%s%s' %    \
-                  (self.bindex-1, s, self.subj_label, hstr, s, run, s,
+           return 'pb%02d%s%s%s%s%s%s%s%s' %    \
+                  (self.bindex-1, s, self.subj_label, hstr, s, rstr, s,
                   self.pblabel, vstr)
 
     # same, but leave run as a variable
@@ -1820,11 +1901,11 @@ class SubjProcSream:
            vstr = '%s.HEAD' % self.view
            hstr = ''
         if self.sep_char == '.': # default
-           return 'pb%02d.%s%s.r??.%s%s' %    \
+           return 'pb%02d.%s%s.r*.%s%s' %    \
                 (self.bindex-1, self.subj_label, hstr, self.pblabel, vstr)
         else:
            s = self.sep_char
-           return 'pb%02d%s%s%s%sr??%s%s%s' %    \
+           return 'pb%02d%s%s%s%sr*%s%s%s' %    \
                 (self.bindex-1, s, self.subj_label,hstr, s, s,
                 self.pblabel, vstr)
 
@@ -1846,11 +1927,11 @@ class SubjProcSream:
            vstr = '%s.HEAD' % self.view
            hstr = ''
         if self.sep_char == '.': # default
-           return 'pb%02d.%s%s.r??.%s%s' %      \
+           return 'pb%02d.%s%s.r*.%s%s' %      \
                (bind, self.subj_label, hstr, blabel, vstr)
         else:
            s = self.sep_char
-           return 'pb%02d%s%s%s%sr??%s%s%s' %      \
+           return 'pb%02d%s%s%s%sr*%s%s%s' %      \
                (bind, s, self.subj_label, hstr, s, s, blabel, vstr)
 
 class ProcessBlock:

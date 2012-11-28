@@ -5173,6 +5173,10 @@ void RT_finish_dataset( RT_input * rtin )
          yar[3][ii] = rtin->reg_phi[ iar[ii] ] ;
       }
 
+#if 0 /* leave out for now           20 Jun 2012 [rickr] */
+      X11_SET_NEW_PLOT ;          /* 01 May 2012 - RWCox */
+      plot_ts_setTHIK(0.004f) ; plot_ts_setthik(0.0015f) ;
+#endif
       plot_ts_lab( THE_DISPLAY ,
                    nn , yar[0] , -3 , yar+1 ,
                    "time" , NULL , DSET_FILECODE(rtin->dset[0]) , nar , NULL ) ;
@@ -5216,9 +5220,17 @@ void RT_finish_dataset( RT_input * rtin )
          yar[1] = rtin->reg_eval;
       }
 
+#if 0 /* leave out for now          20 Jun 2012 [rickr] */
+
+      /***** note: doing this results in a white image window in RT
+                   (i.e. when registering, at the end of a run) *****/
+
+      X11_SET_NEW_PLOT ;         /* 01 May 2012 - RWCox */
+      plot_ts_setTHIK(0.004f) ; plot_ts_setthik(0.0015f) ;
+#endif
       plot_ts_lab( THE_DISPLAY ,
                    nn , yar[0] , ycount , yar+1 ,
-                   "reps" , NULL , ttl , nar , NULL ) ;
+                   "Reps (TR)" , "Motion parameters" , ttl , nar , NULL ) ;
 
       free(ttl) ;
    }
@@ -5632,10 +5644,11 @@ void RT_registration_3D_realtime( RT_input *rtin )
          if ( rtin->p_code )
             ycount = 1;
 
+         plot_ts_setTHIK(0.005f) ; plot_ts_setthik(0.002f) ;
          rtin->mp = plot_ts_init( GLOBAL_library.dc->display ,
                                   0.0,rtin->reg_graph_xr-1 ,
                                   ycount,-rtin->reg_graph_yr,rtin->reg_graph_yr,
-                                  "reps", NULL, ttl, nar , NULL ) ;
+                                  "reps (TR)", "motion parameters" , ttl, nar , NULL ) ;
 
          if( rtin->mp != NULL ) rtin->mp->killfunc = MTD_killfunc ;
 

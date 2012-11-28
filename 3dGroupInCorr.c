@@ -3,16 +3,17 @@
 /***
   Ideas for making this program more cromulently embiggened:
    ++ 2-way case: produce 1-way result sub-bricks as well  -- DONE!
-   ++ Rank or other robust analog to t-test (slow)         -- TBD
+   ++ Rank or other robust analog to t-test (slow)         -- DONE!
    ++ Send sub-brick data as scaled shorts                 -- TBD
    ++ Fix shm: bug in AFNI libray (but how?)               -- TBD
    ++ Have non-server modes:
     -- To input a 1D file as the seed vector set           -- DONE!
     -- To input a mask file to define the seed vector set  -- DONE!
     -- To output dataset(s) to disk                        -- DONE!
-    -- 3dTcorrMap-like scan through whole brain as seed    -- TBD
+    -- 3dTcorrMap-like scan through whole brain as seed    -- DONE!
    ++ Per-subject covariates                               -- DONE!
    ++ Send per-subject correlations to AFNI (as an option) -- DONE!
+   ++ Allow a sub-range of time indexes                    -- TBD
 ***/
 
 #include "mrilib.h"
@@ -35,6 +36,10 @@ static int debug = 0 ;  /* default non-debug mode */
 
 static unsigned short xran[3] = { 0x330e , 0x747a , 0x9754 } ;
 
+static int tbot=999999999 , ttop = 0 ;  /* 23 Apr 2012 */
+#undef  USE_TRANGE
+#define USE_TRANGE (ttop-tbot > 8)
+
 #undef  UINT32
 #define UINT32 unsigned int  /* 20 May 2010 */
 #undef  MAXCOV
@@ -44,6 +49,9 @@ static unsigned short xran[3] = { 0x330e , 0x747a , 0x9754 } ;
 #define CENTER_DIFF 1
 #define CENTER_SAME 2
 #define CENTER_VALS 3
+
+#define CENTER_SAME_MEDIAN 4  /* 23 May 2012 */
+#define CENTER_DIFF_MEDIAN 5
 
 static int center_code = CENTER_DIFF ;
 static MRI_IMAGE *center_valimA=NULL , *center_valimB=NULL ;
@@ -58,6 +66,16 @@ void regress_toz( int numA , float *zA ,
 void GRINCOR_many_regress( int nvec , int numx , float **xxar ,
                                       int numy , float **yyar ,
                                       int nout , float **dtar  ) ;
+
+/*--------------------------------------------------------------------------*/
+
+static int do_atanh = 1 ;  /* 15 May 2012 */
+
+#undef  MYatanh
+#define MYatanh(x) ( ((x)<-0.999329f) ? -4.0f                \
+                    :((x)>+0.999329f) ? +4.0f : atanhf(x) )
+
+#define UNROLL  /* to speed things up in the correlation inner loop */
 
 /*----------------------------------------------------------------------------*/
 
@@ -166,6 +184,9 @@ typedef struct {
   ( ((shd)->ivec == NULL) ? (ijk)  \
                           : mybsearch_int((ijk),(shd)->nvec,(shd)->ivec) )
 
+#undef  INDEX_TO_IJK
+#define INDEX_TO_IJK(shd,vvv) ( (shd->ivec==NULL) ? (vvv) : (shd)->ivec[(vvv)] )
+
 /*------ for creating output dataset internally (rather than in AFNI) ------*/
 
 #if 0    /* will use GICOR_setup instead           ZSS: Jan 2012*/
@@ -202,7 +223,7 @@ MRI_shindss * GRINCOR_read_input( char *fname )
    char *dfname=NULL , *atr ;
    NI_float_array *facar ; NI_int_array *nvar, *nnode=NULL, *ninmask=NULL;
    MRI_shindss *shd ;
-   long long nbytes_needed , nbytes_dfname ; int fdes ;
+   long long nbytes_needed , nbytes_dfname=0 ; int fdes ;
    void *var ; int ids , nvmax , nvtot ;
    int datum , datum_size ;
 
@@ -215,10 +236,11 @@ MRI_shindss * GRINCOR_read_input( char *fname )
 
    /* get data element */
 
-   if (!THD_is_ondisk(fname)) {
-      GQUIT("not on disk");
-   }
+   if (!THD_is_ondisk(fname))
+     GQUIT("not on disk") ;
+
    nel = NI_read_element_fromfile(fname) ;
+
    if( nel == NULL || nel->type != NI_ELEMENT_TYPE )
      GQUIT("not properly formatted") ;
    if( strcmp(nel->name,"3dGroupInCorr") != 0 )
@@ -317,12 +339,18 @@ MRI_shindss * GRINCOR_read_input( char *fname )
    /* name of data file: check its size against what's needed */
 
    atr = NI_get_attribute(nel,"datafile") ;
-   if( atr == NULL ) GQUIT("datafile attribute missing") ;
-   dfname = strdup(atr) ; nbytes_dfname = THD_filesize(dfname) ;
-   if( nbytes_dfname <= 0 && strstr(dfname,"/") != NULL ){
-     char *tnam = THD_trailname(atr,0) ;
-     nbytes_dfname = THD_filesize(tnam) ;
-     if( nbytes_dfname > 0 ){ free(dfname); dfname = strdup(tnam); }
+   if( atr != NULL ){
+     dfname = strdup(atr) ; nbytes_dfname = THD_filesize(dfname) ;
+     if( nbytes_dfname <= 0 && strstr(dfname,"/") != NULL ){
+       char *tnam = THD_trailname(atr,0) ;
+       nbytes_dfname = THD_filesize(tnam) ;
+       if( nbytes_dfname > 0 ){ free(dfname); dfname = strdup(tnam); }
+     }
+   }
+   if( nbytes_dfname <= 0 && strstr(fname,".niml") != NULL ){
+     if( dfname != NULL ) free(dfname) ;
+     dfname = strdup(fname) ; strcpy(dfname+strlen(dfname)-5,".data") ;
+     nbytes_dfname = THD_filesize(dfname) ;
    }
    if( nbytes_dfname <= 0 ){
      char mess[THD_MAX_NAME+256] ;
@@ -330,10 +358,13 @@ MRI_shindss * GRINCOR_read_input( char *fname )
    } else if( nbytes_dfname < nbytes_needed ){
      char mess[THD_MAX_NAME+1024] ;
      sprintf(mess,"datafile %s has %s bytes but needs at least %s",
-              dfname , 
+              dfname ,
               commaized_integer_string(nbytes_dfname) ,
               commaized_integer_string(nbytes_needed) ) ;
      GQUIT(mess) ;
+   } else {
+     INFO_message("GIC: data file %s found with %s bytes of data",
+                  dfname , commaized_integer_string(nbytes_dfname) ) ;
    }
    fdes = open( dfname , O_RDONLY ) ;
    if( fdes < 0 ){
@@ -439,13 +470,86 @@ MRI_shindss * GRINCOR_read_input( char *fname )
 
 #undef GQUIT
 
+#if 0
+/*==========================================================================*/
+/* Stuff for mean dot product as an extra covariate */
+/*==========================================================================*/
+
+void GRINCOR_meanvec_short( MRI_shindss *shd, int ids, float *vv )
+{
+   int nvec = shd->nvec , nvals = shd->nvals[ids] , iv,ii ;
+   short *sv = shd->sv[ids] , *svv ;
+
+   for( ii=0 ; ii < nvals ; ii++ ) vv[ii] = 0.0f ;
+   for( iv=0 ; iv < nvec ; iv++ ){
+     svv = sv + iv*nvals ;
+     for( ii=0 ; ii < nvals ; ii++ ) vv[ii] += svv[ii] ;
+   }
+   (void)THD_normalize( nvals , vv ) ;
+   return ;
+}
+
 /*--------------------------------------------------------------------------*/
 
-#undef  MYatanh
-#define MYatanh(x) ( ((x)<-0.999329f) ? -4.0f                \
-                    :((x)>+0.999329f) ? +4.0f : atanhf(x) )
+void GRINCOR_meanvec_sbyte( MRI_shindss *shd, int ids, float *vv )
+{
+   int nvec = shd->nvec , nvals = shd->nvals[ids] , iv,ii ;
+   sbyte *sv = shd->bv[ids] , *svv ;
 
-#define UNROLL  /* to speed things up in the correlation inner loop */
+   for( ii=0 ; ii < nvals ; ii++ ) vv[ii] = 0.0f ;
+   for( iv=0 ; iv < nvec ; iv++ ){
+     svv = sv + iv*nvals ;
+     for( ii=0 ; ii < nvals ; ii++ ) vv[ii] += svv[ii] ;
+   }
+   (void)THD_normalize( nvals , vv ) ;
+   return ;
+}
+
+/*--------------------------------------------------------------------------*/
+
+void GRINCOR_meanvec( MRI_shindss *shd, int ids, float *vv )
+{
+  if( shd->datum == 1 ) GRINCOR_meanvec_sbyte( shd, ids, vv ) ;
+  else                  GRINCOR_meanvec_short( shd, ids, vv ) ;
+  return ;
+}
+
+/*--------------------------------------------------------------------------*/
+
+float GRINCOR_meandot( MRI_shindss *shd , int ids )
+{
+   int nvals=shd->nvals[ids] , nvec=shd->nvec , iv ;
+   float *mv , *dp , sum ;
+
+   mv = (float *)malloc(sizeof(float)*nvals) ;
+   GRINCOR_meanvec( shd , ids , mv ) ;
+
+   dp = (float *)malloc(sizeof(float)*nvec) ;
+   GRINCOR_dotprod( shd, ids, mv, dp ) ;
+
+   for( sum=0.0f,iv=0 ; iv < nvec ; iv++ ) sum += dp[iv] ;
+   free(dp) ; free(mv) ; return (sum/nvec) ;
+}
+
+/*--------------------------------------------------------------------------*/
+
+float GRINCOR_zmeandot( MRI_shindss *shd , int ids )
+{
+   int nvals=shd->nvals[ids] , nvec=shd->nvec , iv ;
+   float *mv , *dp , sum ;
+
+   mv = (float *)malloc(sizeof(float)*nvals) ;
+   GRINCOR_meanvec( shd , ids , mv ) ;
+
+   dp = (float *)malloc(sizeof(float)*nvec) ;
+   GRINCOR_dotprod( shd, ids, mv, dp ) ;
+
+   for( sum=0.0f,iv=0 ; iv < nvec ; iv++ ) sum += MYatanh(dp[iv]) ;
+   free(dp) ; free(mv) ; return (sum/nvec) ;
+}
+
+/*==========================================================================*/
+#endif
 
 /*--------------------------------------------------------------------------*/
 /* This cute little function consumes a lot of CPU time. */
@@ -460,23 +564,27 @@ void GRINCOR_dotprod_short( MRI_shindss *shd, int ids, float *vv, float *dp )
    for( iv=0 ; iv < nvec ; iv++ ){
      svv = sv + iv*nvals ;
      for( sum=0.0f,ii=0 ; ii < nvals ; ii++ ) sum += vv[ii]*svv[ii] ;
-     sum *= fac ; dp[iv] = MYatanh(sum) ;
+     dp[iv] = sum*fac ;
    }
 #else
    if( nvals%2 == 0 ){  /* even number of samples */
      for( iv=0 ; iv < nvec ; iv++ ){
        svv = sv + iv*nvals ; sum = 0.0f ;
        for( ii=0 ; ii < nvals ; ii+=2 ) sum += vv[ii]*svv[ii] + vv[ii+1]*svv[ii+1] ;
-       sum *= fac ; dp[iv] = MYatanh(sum) ;
+       dp[iv] = sum*fac ;
      }
    } else {             /* odd number of samples */
      for( iv=0 ; iv < nvec ; iv++ ){
        svv = sv + iv*nvals ; sum = vv[0]*svv[0] ;
        for( ii=1 ; ii < nvals ; ii+=2 ) sum += vv[ii]*svv[ii] + vv[ii+1]*svv[ii+1] ;
-       sum *= fac ; dp[iv] = MYatanh(sum) ;
+       dp[iv] = sum*fac ;
      }
    }
 #endif
+
+   if( do_atanh ){
+     for( iv=0 ; iv < nvec ; iv++ ) dp[iv] = MYatanh(dp[iv]) ;
+   }
 
    return ;
 }
@@ -494,23 +602,27 @@ void GRINCOR_dotprod_sbyte( MRI_shindss *shd, int ids, float *vv, float *dp )
    for( iv=0 ; iv < nvec ; iv++ ){
      bvv = bv + iv*nvals ;
      for( sum=0.0f,ii=0 ; ii < nvals ; ii++ ) sum += vv[ii]*bvv[ii] ;
-     sum *= fac ; dp[iv] = MYatanh(sum) ;
+     dp[iv] = sum*fac ;
    }
 #else
    if( nvals%2 == 0 ){  /* even number of samples */
      for( iv=0 ; iv < nvec ; iv++ ){
        bvv = bv + iv*nvals ; sum = 0.0f ;
        for( ii=0 ; ii < nvals ; ii+=2 ) sum += vv[ii]*bvv[ii] + vv[ii+1]*bvv[ii+1] ;
-       sum *= fac ; dp[iv] = MYatanh(sum) ;
+       dp[iv] = sum*fac ;
      }
    } else {             /* odd number of samples */
      for( iv=0 ; iv < nvec ; iv++ ){
        bvv = bv + iv*nvals ; sum = vv[0]*bvv[0] ;
        for( ii=1 ; ii < nvals ; ii+=2 ) sum += vv[ii]*bvv[ii] + vv[ii+1]*bvv[ii+1] ;
-       sum *= fac ; dp[iv] = MYatanh(sum) ;
+       dp[iv] = sum*fac ;
      }
    }
 #endif
+
+   if( do_atanh ){
+     for( iv=0 ; iv < nvec ; iv++ ) dp[iv] = MYatanh(dp[iv]) ;
+   }
 
    return ;
 }
@@ -547,10 +659,35 @@ void GRINCOR_many_dotprod( MRI_shindss *shd , float **vv , float **ddp )
        for( nbad=iv=0 ; iv < nvec ; iv++ ){
          if( !isfinite(ddp[ids][iv]) ){ ddp[ids][iv] = 0.0f; nbad++; }
        }
-       if( nbad > 0 ) WARNING_message("GIC: %d bad correlations in dataset #%d",nbad,ids) ;
+       if( nbad > 0 )
+         WARNING_message("GIC: %d bad correlations in dataset #%d",nbad,ids) ;
      }
    }
 #endif
+
+   return ;
+}
+
+/*----------------------------------------------------------------------------*/
+/* Remove the mean and make the sum of squares = 1. */
+
+void GRINCOR_standardize_vector( int nv , float *vv )
+{
+   int ibot=0 , itop=nv-1 , ii ; float vs , vq ;
+
+   if( USE_TRANGE ){
+     ibot = tbot ; if( ttop < itop ) itop = ttop ;
+   }
+
+   for( vs=0.0f,ii=ibot ; ii <= itop ; ii++ ) vs += vv[ii] ;
+   vs /= (itop-ibot+1) ;
+   for( vq=0.0f,ii=ibot ; ii <= itop ; ii++ ){
+     vv[ii] -= vs ; vq += vv[ii] * vv[ii] ;
+   }
+   if( vq > 0.0f ){
+     vq = 1.0f / sqrtf(vq) ;
+     for( ii=ibot ; ii <= itop ; ii++ ) vv[ii] *= vq ;
+   }
 
    return ;
 }
@@ -835,9 +972,14 @@ static int ttest_opcode_max =  2   ;
 
 static UINT32 testA, testB, testAB ;  /* 23 May 2010 */
 static int mcov = 0 ;
-static int nout = 0 ;
+static int nout = 0 , nout_mcov = 0 ;
 static float *axx , *axx_psinv , *axx_xtxinv ;
 static float *bxx , *bxx_psinv , *bxx_xtxinv ;
+
+ /* Jun 2012: for voxel-wise covariates */
+
+static float **axxM=NULL , **axxM_psinv=NULL , **axxM_xtxinv=NULL ;
+static float **bxxM=NULL , **bxxM_psinv=NULL , **bxxM_xtxinv=NULL ;
 
 static int   oform = SUMA_NO_DSET_FORMAT; /* output format for surface-based */
 
@@ -855,9 +997,13 @@ static int   oform = SUMA_NO_DSET_FORMAT; /* output format for surface-based */
 #define VECTORS_MODE 7
 #define NODE_MODE    8
 
+#define LIST_MODE    9  /* 01 Aug 2012 */
+#define LIST_RAND  666
+#define LIST_GRID  667
+
 int main( int argc , char *argv[] )
 {
-   int nopt , kk , nn , ii,jj, TalkToAfni=1;
+   int nopt , kk , nn , ii,jj, TalkToAfni=1 , do_nocov=0 ;
    char nsname[2048]  ; /* NIML socket name */
    NI_element *nelset ; /* NIML element with dataset to send to AFNI */
    NI_element *nelcmd ; /* NIML element with command from AFNI */
@@ -873,7 +1019,7 @@ int main( int argc , char *argv[] )
    int nvals_AAA_max=0 , nvals_BBB_max=0 , nvals_max=0 ;
    float **seedvec_AAA=NULL , **dotprod_AAA=NULL ;
    float **seedvec_BBB=NULL , **dotprod_BBB=NULL ;
-   int ctim,btim,atim , do_shm=2 , nsend=0 , shm_active=0 ;
+   int ctim=0,btim=0,atim=0 , do_shm=2 , nsend=0 , shm_active=0 ;
    char label_AAA[MAX_LABEL_SIZE]="AAA" , label_BBB[MAX_LABEL_SIZE]="BBB" ;
    char *qlab_AAA=NULL , *qlab_BBB=NULL ;
    int   lset_AAA=0    ,  lset_BBB=0 ;
@@ -881,10 +1027,14 @@ int main( int argc , char *argv[] )
 
    NI_element   *covnel=NULL ;       /* covariates */
    NI_str_array *covlab=NULL ;
-   MRI_IMAGE *axxim , *axxim_psinv , *axxim_xtxinv ;
-   MRI_IMAGE *bxxim=NULL, *bxxim_psinv , *bxxim_xtxinv ;
+   MRI_IMAGE *axxim=NULL , *axxim_psinv=NULL , *axxim_xtxinv=NULL ;
+   MRI_IMAGE *bxxim=NULL , *bxxim_psinv=NULL , *bxxim_xtxinv=NULL ;
+   MRI_IMARR *covimar=NULL ;  /* 14 May 2012 */
    float **dtar=NULL ;
    int no_ttest = 0 ;  /* 02 Nov 2010 */
+
+   NI_element *sclnel=NULL ;         /* scale factors [19 Sep 2012] */
+   float *scl_AAA=NULL , *scl_BBB=NULL ;
 
    int do_sendall=0 , nsaar=0 ; /* 22 Jan 2011 */
    char *bricklabels=NULL ;
@@ -894,7 +1044,13 @@ int main( int argc , char *argv[] )
    char *bname=NULL ;
    char *bfile=NULL , *bprefix=NULL ;
    FILE *bfp=NULL ;
+   int   blist_type=0, blist_num=0, blist_index=0 ; /* 01 Aug 2012 -- batch list */
+   int  *blist=NULL;
+   char *blist_prefix=NULL ;
    GICOR_setup *giset=NULL ;
+
+   char *clust_NN1=NULL, *clust_NN2=NULL, *clust_NN3=NULL, *clust_mask=NULL ;
+   char *clatr[4] = { NULL , NULL , NULL , NULL } ;
 
 #ifdef COVTEST
    float *ctarA=NULL , *ctarB=NULL ; char *ctnam ;
@@ -960,6 +1116,10 @@ int main( int argc , char *argv[] )
       "   -- Correlate it with all other voxel time series in the same dataset\n"
       "        [you could do this manually with 3dDeconvolve or 3dfim]\n"
       "   -- Result is one 3D correlation map per input dataset\n"
+      "   -- The standard processing uses Pearson correlation between time series\n"
+      "        vectors.  You can also pre-process the data to use Spearman (rank)\n"
+      "        correlation instead.  This alteration must be done in program\n"
+      "        3dSetupGroupInCorr, or with program 3dTransformGroupInCorr.\n"
       " ++ Then carry out the t-test between/among these 3D correlation maps,\n"
       "      possibly allowing for dataset-level covariates.\n"
       "   -- Actually, between the arctanh() of these maps:\n"
@@ -969,7 +1129,7 @@ int main( int argc , char *argv[] )
       "       [the t-statistics to Z-scores using yet another 3dcalc run.]\n"
       "   -- To be overly precise, if the correlation is larger than 0.999329,\n"
       "       then the arctanh is clipped to 4.0, to avoid singularities.\n"
-      "       If you consider this to be a problem, please go away.\n"
+      "       If you consider this clipping to be a problem, please go away.\n"
       " ++ The dataset returned to AFNI converts the t-statistic maps\n"
       "    to Z-scores, for various reasons of convenience.\n"
       "   -- Conversion is done via the same mechanism used in program\n"
@@ -984,11 +1144,12 @@ int main( int argc , char *argv[] )
       " ++ If your computer DOESN'T have enough RAM to hold all the data,\n"
       "    then this program will be very slow -- buy more memory!\n"
       " ++ Note that the .data file(s) are mapped directly into memory (mmap),\n"
-      "    rather than being read with standard input methods.  This operation\n"
-      "    may not work well on network-mounted drives, in which case you\n"
-      "    will have to run 3dGroupInCorr on the same computer with the data\n"
-      "    files.  However, 3dGroupInCorr does NOT need to be run on the same\n"
-      "    computer as AFNI or SUMA: see the '-ah' option (far below).\n"
+      "    rather than being read with standard file input methods (fread).\n"
+      " ++ This memory-mapping operation may not work well on network-mounted\n"
+      "    drives, in which case you will have to run 3dGroupInCorr on the same\n"
+      "    computer with the data files.\n"
+      " ++ However, 3dGroupInCorr does NOT need to be run on the same computer\n"
+      "    as AFNI or SUMA: see the '-ah' option (described far below).\n"
 #ifdef USE_OMP
       "\n"
       "* One reason this program is a server (rather than being built in\n"
@@ -1152,6 +1313,10 @@ int main( int argc , char *argv[] )
       "            -- At present, there is no way to tell 3dGroupInCorr not to send\n"
       "               all this information back to AFNI/SUMA.\n"
       "\n"
+      "        ++ The '-donocov' option, described later, lets you get the results\n"
+      "            calculated without covariates in addition to the results with\n"
+      "            covariate regression included, for comparison fun.\n"
+      "\n"
       "        ++ EXAMPLE:\n"
       "           If there are 2 groups of datasets (with setA labeled 'Pat', and setB\n"
       "           labeled 'Ctr'), and one covariate (labeled IQ), then the following\n"
@@ -1202,7 +1367,11 @@ int main( int argc , char *argv[] )
       " -center DIFF = Each set will have the means removed separately [default].\n"
       "\n"
       " -center SAME = The means across both sets will be computed and subtracted.\n"
-      "                (This option only applies to a 2-sample unpaired test.)\n"
+      "               * This option only applies to a 2-sample unpaired test.\n"
+      "               * You can attach '_MEDIAN' after 'DIFF' or 'SAME' to have the\n"
+      "                 centering be done at the median of covariate values, rather\n"
+      "                 than the mean, as in 'DIFF_MEDIAN' or 'SAME_MEDIAN'.\n"
+      "                 (Why you would do this is up to you, as always.)\n"
       "\n"
       " -center VALS A.1D [B.1D]\n"
       "                This option (for Gang Chen) allows you to specify the\n"
@@ -1245,6 +1414,28 @@ int main( int argc , char *argv[] )
       "                might happen! (e.g., your computer runs out of memory.)\n"
       "             ++ This option is also known as the 'Tim Ellmore special'.\n"
       "\n"
+      " -donocov   = If covariates are used, this option tells 3dGroupInCorr to also\n"
+      "              compute the results without using covariates, and attach those\n"
+      "              to the output dataset -- presumably to facilitate comparison.\n"
+      "             ++ These extra output sub-bricks have 'NC' attached to their labels.\n"
+      "             ++ If covariates are NOT used, this option has no effect at all.\n"
+      "\n"
+      " -clust PP  = This option lets you input the results from a 3dClustSim run,\n"
+      "              to be transmitted to AFNI to aid with the interactive Clusterize.\n"
+      "              3dGroupInCorr will look for files named\n"
+      "                PP.NN1.niml  PP.NN2.niml  PP.NN3.niml  PP.mask\n"
+      "              and if at least one of these .niml files is found, will send\n"
+      "              it to AFNI to be incorporated into the dataset.  For example,\n"
+      "              if the datasets' average smoothness is 8 mm, you could do\n"
+      "                3dClustSim -fwhm 8 -mask Amask+orig -niml -prefix Gclus\n"
+      "                3dGroupInCorr ... -clust Gclus\n"
+      "              Presumably the mask would be the same as used when you ran\n"
+      "              3dSetupGroupInCorr, and the smoothness you would have estimated\n"
+      "              via 3dFWHMx, via sacred divination, or via random guesswork.\n"
+      "             ++ This option only applies to AFNI usage, not to SUMA.\n"
+      "             ++ See the Clusterize notes, far below, for more information on\n"
+      "                using the interactive clustering GUI in AFNI with 3dGroupInCorr.\n"
+      "\n"
       " -ah host = Connect to AFNI/SUMA on the computer named 'host', rather than\n"
       "            on the current computer system 'localhost'.\n"
       "     ++ This allows 3dGroupInCorr to run on a separate system than\n"
@@ -1262,7 +1453,7 @@ int main( int argc , char *argv[] )
       "      -- Start 3dGroupInCorr with a command like\n"
       "           3dGroupInCorr -ah 137.168.0.3 ...\n"
       "      -- You may use hostnames in place of IP addresses, but numerical\n"
-      "         IP addresses may work more reliably.\n"
+      "         IP addresses will work more reliably.\n"
       "      -- If you are very trusting, you can set NIML_COMPLETE_TRUST to YES\n"
       "         to allow NIML socket connections from anybody. (This only affects\n"
       "         AFNI programs, not any other software on your computer.)\n"
@@ -1277,7 +1468,8 @@ int main( int argc , char *argv[] )
       "            SUMA].  You must give the corresponding option to AFNI to\n"
       "            get proper communication going.  Using '-np' properly is the\n"
       "            only way to have multiple copies of 3dGroupInCorr and AFNI\n"
-      "            talking to each other!\n"  ZSS June 2011*/
+      "            talking to each other!\n"
+ ZSS June 2011 */
       "%s"
 #ifndef DONT_USE_SHM
       "\n"
@@ -1291,7 +1483,7 @@ int main( int argc , char *argv[] )
       "          use '-NOshm' to use TCP/IP for all communications.\n"
       "       ++ If you use '-VERB', you will get a very detailed progress report\n"
       "          from 3dGroupInCorr as it computes, including elapsed times for\n"
-      "          each stage of the process.\n"
+      "          each stage of the process, including transmit time to AFNI.\n"
 #endif
       "\n"
       " -suma = Talk to suma instead of afni, using surface-based i/o data.\n"
@@ -1352,7 +1544,37 @@ int main( int argc , char *argv[] )
       "      your GrpInCorr seed in the A image viewers but view the results\n"
       "      you want to see in the B image viewers.  And scrolling around in\n"
       "      the unlocked image viewers can also be annoying.\n"
-     , get_np_help()) ;
+      "\n"
+      "If you use '-covariates' and '-sendall', 3dGroupInCorr will send to AFNI\n"
+      "a set of 1D files containing the covariates.  You can use one of these\n"
+      "as a 'Scat.1D' file in the Clusterize GUI to plot the individual subject\n"
+      "correlations (averaged across a cluster) vs. the covariate values -- this\n"
+      "graph can be amusing and even useful.\n"
+      " --  If you don't know how to use this feature in Clusterize, then learn!\n"
+
+     , get_np_help() ) ;
+
+      printf(
+      "\n"
+      "---------------*** Dataset-Level Scale Factors [Sep 2012] ***---------------\n"
+      "\n"
+      " -scale sf = Read file 'sf' that contains a scale factor value for each dataset\n"
+      "             The file format is essentially the same as that for covariates:\n"
+      "             * first line contains labels (which are ignored)\n"
+      "             * each later line contains a dataset identifying label and a number\n"
+      "     FIRST LINE  -->  subject factor\n"
+      "     LATER LINES -->  Elvis   42.1\n"
+      "                      Fred    37.2\n"
+      "                      Ethel   2.71828\n"
+      "                      Lucy    3.14159\n"
+      "             * The arctanh(correlation) values from dataset Elvis will be\n"
+      "               multiplied by 42.1 before being put into the t-test analysis.\n"
+      "             * All values reported and computed by 3dGroupInCorr will reflect\n"
+      "               this scaling (e.g., the results from '-sendall').\n"
+      "             * This option is for the international man of mystery, PK.\n"
+      "               -- And just for PK, if you use this option in the form '-SCALE',\n"
+      "                  then each value X in the 'sf' file is replaced by sqrt(X-3).\n"
+      ) ;
 
      printf(
      "\n"
@@ -1408,7 +1630,7 @@ int main( int argc , char *argv[] )
 "                 coordinates are given ('-seedrad' also applies).\n"
 "              ** If you insist on using LPI (neurological) coordinates, as\n"
 "                 Some other PrograMs (which are Fine Software tooLs) do,\n"
-"                 set environmentment variable AFNI_INSTACORR_XYZ_LPI to YES,\n"
+"                 set environment variable AFNI_INSTACORR_XYZ_LPI to YES,\n"
 "                 before running this program.\n"
 "             -- FILE line format:  prefix x y z\n"
 "\n"
@@ -1418,7 +1640,7 @@ int main( int argc , char *argv[] )
 "                 if you include the extension. See also -sdset_TYPE option.\n"
 "                 for controlling output format.\n"
 "                 The node number specifies the seed node. Because you might\n"
-"                 have two surfaces (-LRpairs option in 3dSetupGroupInCorr)\n"  
+"                 have two surfaces (-LRpairs option in 3dSetupGroupInCorr)\n"
 "                 you can add 'L', or 'R' to the node index to specify its\n"
 "                 hemisphere.\n"
 "                 For example:\n"
@@ -1456,6 +1678,37 @@ int main( int argc , char *argv[] )
 "             -- FILE line format:  prefix 1Dfilename\n"
      ) ;
 
+     printf(
+     "\n"
+     "-----------------------*** NEW BATCH MODES [Aug 2012] ***--------------------\n"
+"\n"
+" * These new modes allow you to specify a LOT of output datasets directly on the\n"
+"   command line with a single option.  They are:\n"
+"\n"
+" -batchRAND n prefix ==> scatter n seeds around in space and compute the\n"
+"                         output dataset for each of these seed points, where\n"
+"                         'n' is an integer greater than 1.\n"
+"\n"
+" -batchGRID d prefix ==> for every d-th point along each of the x,y,z axes,\n"
+"                         create an output dataset, where 'd' is an integer\n"
+"                         in the range 1..9.  Note that setting d=1 will use\n"
+"                         every voxel as a seed, and presumably produce a vast\n"
+"                         armada of datasets through which you'll have to churn.\n"
+"\n"
+" * Each output dataset gets a filename of the form 'prefix_xxx_yyy_zzz', where\n"
+"   'prefix' is the second argument after the '-batchXXXX' option, and 'xxx'\n"
+"   is the x-axis index of the seed voxel, 'yyy' is the y-axis index of the\n"
+"   seed voxel, and 'zzz' is the z-axis index of the seed voxel.\n"
+"\n"
+" * These options are like using the 'IJK' batch mode of operation at each seed\n"
+"   voxel.  The only difference is that the set of seed points is generated by\n"
+"   the program rather than being given by the user (i.e., you).  These two options\n"
+"   differ only in the way the seed points are chosen (pseudo-randomly or regularly).\n"
+"\n"
+"** You should be prepared for a LONG run and filling up a  **\n"
+"** LOT of disk space when you use either of these options! **\n"
+     ) ;
+
      PRINT_AFNI_OMP_USAGE("3dGroupInCorr",NULL) ;
      printf("++ Authors: Bob Cox and Ziad Saad\n") ;
      PRINT_COMPILE_DATE ; exit(0) ;
@@ -1476,8 +1729,16 @@ int main( int argc , char *argv[] )
      }
 #endif
 
+     if( strcasecmp(argv[nopt],"-noatanh") == 0 ){  /* 15 May 2012 */
+       do_atanh = 0 ; nopt++ ; continue ;
+     }
+
      if( strcasecmp(argv[nopt],"-sendall") == 0 ){  /* 22 Jan 2011 */
        do_sendall++ ; nopt++ ; continue ;
+     }
+
+     if( strcasecmp(argv[nopt],"-donocov") == 0 ){  /* 17 May 2012 */
+       do_nocov++ ; nopt++ ; continue ;
      }
 
      if( strcasecmp(argv[nopt],"-quiet") == 0 ){
@@ -1498,7 +1759,7 @@ int main( int argc , char *argv[] )
      }
 
      if( strncasecmp(argv[nopt],"-sdset_",7) == 0 ){
-       oform = SUMA_FormatFromFormString(argv[nopt]+7); 
+       oform = SUMA_FormatFromFormString(argv[nopt]+7);
        if (oform != SUMA_ERROR_DSET_FORMAT) {
          nopt++ ; continue ;
        } else {
@@ -1514,8 +1775,71 @@ int main( int argc , char *argv[] )
        nosix = 1 ; nopt++ ; continue ;
      }
 
+     if( strcasecmp(argv[nopt],"-clust") == 0 ){    /* 23 May 2012 */
+       char *cpref , *cname ;
+       if( clust_NN1 != NULL || clust_NN2 != NULL || clust_NN3 != NULL )
+         ERROR_exit("GIC: can't use '%s' twice!",argv[nopt]) ;
+       if( ++nopt >= argc ) ERROR_exit("GIC: need an argument after option '%s'",argv[nopt-1]) ;
+       cpref = argv[nopt] ;
+       if( *cpref == '\0' ) ERROR_exit("Illegal prefix after option '%s'",argv[nopt-1]) ;
+       cname = (char *)malloc(sizeof(char)*(strlen(cpref)+16)) ;
+       sprintf(cname,"%s.NN1.niml",cpref) ; clust_NN1  = AFNI_suck_file(cname) ;
+       sprintf(cname,"%s.NN2.niml",cpref) ; clust_NN2  = AFNI_suck_file(cname) ;
+       sprintf(cname,"%s.NN3.niml",cpref) ; clust_NN3  = AFNI_suck_file(cname) ;
+       sprintf(cname,"%s.mask"    ,cpref) ; clust_mask = AFNI_suck_file(cname) ;
+       if( clust_NN1 == NULL && clust_NN2 == NULL && clust_NN3 == NULL )
+         WARNING_message("Can't read any -clust files, such as %s.NN1.niml",cpref) ;
+
+       kk = 0 ;
+       if( clust_NN1 != NULL ){
+         clatr[kk] = (char *)malloc(sizeof(char)*(strlen(clust_NN1)+128)) ;
+         strcpy(clatr[kk],"AFNI_CLUSTSIM_NN1 ==> ") ; strcat(clatr[kk],clust_NN1) ; kk++ ;
+       }
+       if( clust_NN2 != NULL ){
+         clatr[kk] = (char *)malloc(sizeof(char)*(strlen(clust_NN2)+128)) ;
+         strcpy(clatr[kk],"AFNI_CLUSTSIM_NN2 ==> ") ; strcat(clatr[kk],clust_NN2) ; kk++ ;
+       }
+       if( clust_NN3 != NULL ){
+         clatr[kk] = (char *)malloc(sizeof(char)*(strlen(clust_NN3)+128)) ;
+         strcpy(clatr[kk],"AFNI_CLUSTSIM_NN3 ==> ") ; strcat(clatr[kk],clust_NN3) ; kk++ ;
+       }
+       if( kk > 0 && clust_mask != NULL ){
+         clatr[kk] = (char *)malloc(sizeof(char)*(strlen(clust_mask)+128)) ;
+         strcpy(clatr[kk],"AFNI_CLUSTSIM_MASK ==> ") ; strcat(clatr[kk],clust_mask) ; kk++ ;
+       }
+       nopt++ ; continue ;
+     }
+
+     if( strcasecmp(argv[nopt],"-batchGRID") == 0 ){ /* Aug 2012 */
+       if( bmode )            ERROR_exit("GIC: can't use '-batch' twice!") ;
+       if( ++nopt >= argc+1 ) ERROR_exit("GIC: need 2 arguments after option '%s'",argv[nopt-1]) ;
+       bmode = LIST_MODE ; blist_type = LIST_GRID ;
+       blist_num = (int)strtod(argv[nopt],NULL) ;
+       if( blist_num < 1 || blist_num > 9 )
+         ERROR_exit("GIC: '-batchGRID' spacing %d is out of range 1..9",blist_num) ;
+       blist_prefix = strdup(argv[++nopt]) ;
+       if( !THD_filename_ok(blist_prefix) )
+         ERROR_exit("GIC: '-batchGRID' prefix '%s' is not OK",blist_prefix) ;
+       THD_force_ok_overwrite(1) ;
+       nopt++ ; continue ;
+     }
+
+     if( strcasecmp(argv[nopt],"-batchRAND") == 0 ){ /* Aug 2012 */
+       if( bmode )            ERROR_exit("GIC: can't use '-batch' twice!") ;
+       if( ++nopt >= argc+1 ) ERROR_exit("GIC: need 2 arguments after option '%s'",argv[nopt-1]) ;
+       bmode = LIST_MODE ; blist_type = LIST_RAND ;
+       blist_num = (int)strtod(argv[nopt],NULL) ;
+       if( blist_num < 1 )
+         ERROR_exit("GIC: '-batchRAND' count %d is too small",blist_num) ;
+       blist_prefix = strdup(argv[++nopt]) ;
+       if( !THD_filename_ok(blist_prefix) )
+         ERROR_exit("GIC: '-batchRAND' prefix '%s' is not OK",blist_prefix) ;
+       THD_force_ok_overwrite(1) ;
+       nopt++ ; continue ;
+     }
+
      if( strcasecmp(argv[nopt],"-batch") == 0 ){  /* Feb 2011 */
-       if( bmode )            ERROR_exit("GIC: can't use '%s' twice!",argv[nopt]) ;
+       if( bmode )            ERROR_exit("GIC: can't use '-batch' twice!") ;
        if( ++nopt >= argc+1 ) ERROR_exit("GIC: need 2 arguments after option '%s'",argv[nopt-1]) ;
             if( strcasecmp(argv[nopt],"IJK")     == 0 ) bmode = IJK_MODE ;
        else if( strcasecmp(argv[nopt],"IJKAVE")  == 0 ) bmode = IJK_MODE ;
@@ -1583,38 +1907,40 @@ int main( int argc , char *argv[] )
      if( strcmp(argv[nopt],"-center") == 0 ){  /* 15 Jul 2011 */
        if( ++nopt >= argc )
          ERROR_exit("Need argument after '%s'",argv[nopt-1]) ;
-       switch( argv[nopt][0] ){
-         case 'n': case 'N': center_code = CENTER_NONE ; break ;
-         case 'd': case 'D': center_code = CENTER_DIFF ; break ;
-         case 's': case 'S': center_code = CENTER_SAME ; break ;
 
-         case 'v': case 'V':
-           center_code = CENTER_VALS ;
-           if( ++nopt > argc )
-             ERROR_exit("Need a second argument after '%s %s'",argv[nopt-2],argv[nopt-1]) ;
-           center_valimA = mri_read_1D( argv[nopt] ) ;
-           if( center_valimA == NULL )
-             ERROR_exit("Can't read 1D file '%s'",argv[nopt]) ;
-           if( ++nopt < argc && argv[nopt][0] != '-' ){
-             if( strcasecmp(argv[nopt],"DITTO") == 0 ){
-               center_valimB = center_valimA ;
-             } else {
-               center_valimB = mri_read_1D( argv[nopt] ) ;
-               if( center_valimB == NULL )
-                 ERROR_exit("Can't read 1D file '%s'",argv[nopt]) ;
-             }
+       if( strcasecmp(argv[nopt],"NONE") == 0 ){
+         center_code = CENTER_NONE ;
+       } else if( strcasecmp(argv[nopt],"DIFF") == 0 ){
+         center_code = CENTER_DIFF ;
+       } else if( strcasecmp(argv[nopt],"DIFF_MEDIAN") == 0 ){  /* 23 May 2012 */
+         center_code = CENTER_DIFF_MEDIAN ;
+       } else if( strcasecmp(argv[nopt],"SAME") == 0 ){
+         center_code = CENTER_SAME ;
+       } else if( strcasecmp(argv[nopt],"SAME_MEDIAN") == 0 ){  /* 23 May 2012 */
+         center_code = CENTER_SAME_MEDIAN ;
+       } else if( strcasecmp(argv[nopt],"VALS") == 0 ){
+         center_code = CENTER_VALS ;
+         if( ++nopt > argc )
+           ERROR_exit("Need a second argument after '%s %s'",argv[nopt-2],argv[nopt-1]) ;
+         center_valimA = mri_read_1D( argv[nopt] ) ;
+         if( center_valimA == NULL )
+           ERROR_exit("Can't read 1D file '%s'",argv[nopt]) ;
+         if( ++nopt < argc && argv[nopt][0] != '-' ){
+           if( strcasecmp(argv[nopt],"DITTO") == 0 ){
+             center_valimB = center_valimA ;
+           } else {
+             center_valimB = mri_read_1D( argv[nopt] ) ;
+             if( center_valimB == NULL )
+               ERROR_exit("Can't read 1D file '%s'",argv[nopt]) ;
            }
-         break ;
-
-         default:
+         }
+       } else {
            WARNING_message(
              "Unknown -center option '%s' -- using 'DIFF'",argv[nopt]) ;
            center_code = CENTER_DIFF ;
-         break ;
        }
        nopt++ ; continue ;
      }
-
 
      if( strcasecmp(argv[nopt],"-covariates") == 0 ){  /* 20 May 2010 */
        char *lab ; float sig ; int nbad ;
@@ -1653,6 +1979,43 @@ int main( int argc , char *argv[] )
            covlab->str[kk][MAX_LABEL_SIZE] = '\0' ;
        }
        if( nbad > 0 ) ERROR_exit("GIC: Cannot continue :-(") ;
+       nopt++ ; continue ;
+     }
+
+     if( strcasecmp(argv[nopt],"-scale") == 0 ){  /* 19 Sep 2012 */
+       float *sff ; int nbad , mscl , dosqrt=(strcmp(argv[nopt],"-SCALE")==0) ;
+       if( ++nopt >= argc ) ERROR_exit("GIC: need 1 argument after option '%s'",argv[nopt-1]);
+       if( sclnel != NULL ) ERROR_exit("GIC: can't use -scale twice!") ;
+       sclnel = THD_simple_table_read( argv[nopt] ) ;
+       if( sclnel == NULL ){
+         ERROR_message("GIC: Can't read table from -scale file '%s'",argv[nopt]) ;
+         ERROR_message("GIC: Try re-running this program with the extra option -DAFNI_DEBUG_TABLE=YES") ;
+         ERROR_exit(   "GIC: Can't continue after the above error :-(") ;
+       }
+       mscl = sclnel->vec_num - 1 ;
+       if( mscl < 1 )
+         ERROR_exit("GIC: Need at least 2 columns in -scale file!") ;
+       else if( mscl > 1 )
+         WARNING_message(
+           "GIC: -scale file: %d numeric columns ==> ignoring all but first one!", mscl ) ;
+       if( dosqrt )
+         INFO_message("GIC: -SCALE implies using sqrt(X-3)") ;
+       sff = (float *)sclnel->vec[1] ;
+       for( nbad=kk=0 ; kk < sclnel->vec_len ; kk++ ){  /* check for errors */
+         if( dosqrt ){
+           if( sff[kk] >= 3.0f ){
+             sff[kk] = sqrtf(sff[kk]-3.0f) ;
+           } else {
+             WARNING_message("GIC: -SCALE factor in row %d is %g < 3 -- which is bad",
+                             kk+2,sff[kk]) ; nbad++ ; sff[kk] = 0.0f ;
+           }
+         } else {
+           if( sff[kk] == 0.0f ){
+             WARNING_message("GIC: scale factor in row %d is zero :-(",kk+2) ; nbad++ ;
+           }
+         }
+       }
+       if( nbad == sclnel->vec_len ) ERROR_exit("GIC: Cannot continue :-(") ;
        nopt++ ; continue ;
      }
 
@@ -1749,35 +2112,11 @@ int main( int argc , char *argv[] )
      exit(1);
    }
 
-   /*-- check inputs for OK-ness --*/
-
-   do_lpi = AFNI_yesenv("AFNI_INSTACORR_XYZ_LPI") ;  /* 07 Feb 2011 */
-
-   if( 0 && bmode && !TalkToAfni ) /* Now wait a doggone minute! */
-     ERROR_exit("GIC: Alas, -batch and -suma are not compatible :-(") ;
-
-   if( seedrad == 0.0f && (bmode == IJKPV_MODE || bmode == XYZPV_MODE) ){
-     char *bold=bname ;
-     if( bmode == IJKPV_MODE ){ bname = "IJKAVE" ; bmode = IJK_MODE ; }
-     else                     { bname = "XYZAVE" ; bmode = XYZ_MODE ; }
-     WARNING_message("GIC: seedrad=0 means -batch %s is changed to %s",bold,bname) ;
-   }
-   
-   if (bmode == NODE_MODE && seedrad != 0.0f) {
-      WARNING_message("GIC: seedrad must be 0 with NODE mode.\n"
-                      "     Resetting seedrad of %f to 0.0\n", seedrad);
-      seedrad = 0.0;
-   }  
+   /* check for the worst possible news (i.e., clueless user) */
 
    if( shd_AAA == NULL ) ERROR_exit("GIC:  !! You must use the '-setA' option !!") ;
 
-   /* 18 Mar 2010: if -labelA not used, get it from input filename (mm for B) */
-
-   if( !lset_AAA && qlab_AAA != NULL )
-     NI_strncpy(label_AAA,qlab_AAA,MAX_LABEL_SIZE) ;
-
-   if( !lset_BBB && qlab_BBB != NULL )
-     NI_strncpy(label_BBB,qlab_BBB,MAX_LABEL_SIZE) ;
+   /** store some info about the datasets we will be constructing **/
 
    nvec      = shd_AAA->nvec  ;
    ndset_AAA = shd_AAA->ndset ;
@@ -1788,6 +2127,107 @@ int main( int argc , char *argv[] )
      ndset_BBB = 0 ; nvals_BBB = NULL ; dosix = 0 ;
    }
    ndset_tot = ndset_AAA + ndset_BBB ;
+
+   nx = DSET_NX(shd_AAA->tdset) ; dx = fabsf(DSET_DX(shd_AAA->tdset)) ;
+   ny = DSET_NY(shd_AAA->tdset) ; dy = fabsf(DSET_DY(shd_AAA->tdset)) ;
+   nz = DSET_NZ(shd_AAA->tdset) ; dz = fabsf(DSET_DZ(shd_AAA->tdset)) ;
+   dmin = MIN(dx,dy) ; dmin = MIN(dmin,dz) ; nxy = nx*ny ;
+
+   /*-- check inputs for OK-ness --*/
+
+   do_lpi = AFNI_yesenv("AFNI_INSTACORR_XYZ_LPI") ;  /* 07 Feb 2011 */
+
+   if( do_nocov && mcov == 0 ) do_nocov = 0 ;        /* 17 May 2012 */
+
+   if( 0 && bmode && !TalkToAfni ) /* Now wait a doggone minute! */
+     ERROR_exit("GIC: Alas, -batch and -suma are not compatible :-(") ;
+
+   if( seedrad == 0.0f && (bmode == IJKPV_MODE || bmode == XYZPV_MODE) ){
+     char *bold=bname ;
+     if( bmode == IJKPV_MODE ){ bname = "IJKAVE" ; bmode = IJK_MODE ; }
+     else                     { bname = "XYZAVE" ; bmode = XYZ_MODE ; }
+     WARNING_message("GIC: seedrad=0 means -batch %s is changed to %s",bold,bname) ;
+   }
+
+   if (bmode == NODE_MODE && seedrad != 0.0f) {
+      WARNING_message("GIC: seedrad must be 0 with NODE mode.\n"
+                      "     Resetting seedrad of %f to 0.0\n", seedrad);
+      seedrad = 0.0;
+   }
+
+   /* 01 Aug 2012: setup for batch LIST mode now */
+
+   if( bmode == LIST_MODE ){
+
+     if( blist_type == LIST_RAND ){   /* random set of seeds */
+
+       if( blist_num >= nvec ){    /* All of them, Frank */
+         if( blist_num > nvec ){
+           WARNING_message(
+             "GIC: -batchRAND %d bigger than number of voxels %d -- doing all voxels",
+             blist_num,nvec);
+           blist_num = nvec ;
+         }
+         blist = (int *)malloc(sizeof(int)*blist_num) ;
+         for( ii=0 ; ii < blist_num ; ii++ )
+           blist[ii] = INDEX_TO_IJK(shd_AAA,ii) ;
+       } else {                     /* just some of them */
+         int *qlist , mm ;
+         blist = (int *)malloc(sizeof(int)*blist_num) ;
+         qlist = (int *)malloc(sizeof(int)*nvec) ;
+         for( ii=0 ; ii < nvec ; ii++ ) qlist[ii] = ii ;
+         for( ii=0 ; ii < blist_num ; ii++ ){
+           while(1){
+             mm = lrand48() % nvec ;
+             if( qlist[mm] >= 0 ){
+               blist[ii] = INDEX_TO_IJK(shd_AAA,mm) ; qlist[mm] = -1 ; break ;
+             }
+           }
+         }
+         free(qlist) ;
+       }
+
+     } else if( blist_type == LIST_GRID ){  /* regular grid of seeds */
+
+       int del=blist_num , xx,yy,zz, mm,nbl ;
+       blist_num = 666 ; nbl = 0 ;
+       blist     = (int *)malloc(sizeof(int)*blist_num) ;
+       for( zz=0 ; zz < nz ; zz += del ){
+         for( yy=0 ; yy < ny ; yy += del ){
+           for( xx=0 ; xx < nx ; xx += del ){
+             mm = THREE_TO_IJK(xx,yy,zz,nx,nxy) ;
+             kk = IJK_TO_INDEX(shd_AAA,mm) ;
+             if( kk < 0 ) continue ;
+             if( nbl == blist_num ){
+               blist_num += 666 ;
+               blist = (int *)realloc(blist,sizeof(int)*blist_num) ;
+             }
+             blist[nbl++] = mm ;
+        }}}
+        if( nbl < blist_num ){
+          blist = (int *)realloc(blist,sizeof(int)*nbl) ; blist_num = nbl ;
+        }
+        if( blist_num < 1 )
+          ERROR_exit("GIC: -batchGRID %d: no voxels in the grid!",del) ;
+        else
+          INFO_message("GIC: -batchGRID %d: %d voxels in the grid",del,blist_num) ;
+
+     } else {  /* should never transpire */
+
+       ERROR_exit("GIC: internal logic error: bad value of blist_type = %d",blist_type) ;
+
+     }
+
+     qsort_int( blist_num , blist ) ;  /* at the end, sort them (for fun) */
+   }
+
+   /* 18 Mar 2010: if -labelA not used, get it from input filename (mm for B) */
+
+   if( !lset_AAA && qlab_AAA != NULL )
+     NI_strncpy(label_AAA,qlab_AAA,MAX_LABEL_SIZE) ;
+
+   if( !lset_BBB && qlab_BBB != NULL )
+     NI_strncpy(label_BBB,qlab_BBB,MAX_LABEL_SIZE) ;
 
    if( shd_BBB != NULL && shd_AAA->nvec != shd_BBB->nvec )
      ERROR_exit("GIC: -setA and -setB don't have same number of voxels") ;
@@ -1811,8 +2251,12 @@ int main( int argc , char *argv[] )
 
    if( shd_BBB == NULL && center_code == CENTER_SAME )  /* 15 Jul 2011 */
      center_code = CENTER_DIFF ;
+   else if( shd_BBB == NULL && center_code == CENTER_SAME_MEDIAN )
+     center_code = CENTER_DIFF_MEDIAN ;
    else if( shd_BBB != NULL && ttest_opcode == 2 && center_code == CENTER_SAME )
      center_code = CENTER_DIFF ;
+   else if( shd_BBB != NULL && ttest_opcode == 2 && center_code == CENTER_SAME_MEDIAN )
+     center_code = CENTER_DIFF_MEDIAN ;
 
 #if 0
    /*-- attach use list to dataset collections [07 Apr 2010] --*/
@@ -1840,6 +2284,56 @@ int main( int argc , char *argv[] )
    }
 #endif
 
+   /*---------- Process scale element into arrays [19 Sep 2012] ----------*/
+
+   if( sclnel != NULL ){
+     int nbad=0 ; float *sff=(float *)sclnel->vec[1] ;
+
+     if( shd_AAA->dslab == NULL ){
+       ERROR_message("GIC: Can't use -scale, since setA doesn't have dataset labels!") ;
+       nbad++ ;
+     if( shd_BBB != NULL && shd_BBB->dslab == NULL && ttest_opcode != 2 )
+       ERROR_message("GIC: Can't use -scale, since setB doesn't have dataset labels!") ;
+       nbad++ ;
+     }
+
+     if( nbad ) ERROR_exit("GIC: Can't continue after such simple misteaks :-(") ;
+     if( verb ) INFO_message("GIC: Setting up scale factors for datasets") ;
+
+     scl_AAA = (float *)calloc(sizeof(float),shd_AAA->ndset) ;
+     for( kk=0 ; kk < shd_AAA->ndset ; kk++ ){  /* loop over datasets */
+       ii = string_search( shd_AAA->dslab[kk] , /* find which scale factor */
+                           sclnel->vec_len , (char **)sclnel->vec[0] ) ;
+       if( ii < 0 ){
+         ERROR_message("GIC: Can't find setA dataset label '%s' in -scale file" ,
+                       shd_AAA->dslab[kk] ) ;
+         nbad++ ;
+       } else {                   /* ii-th row of scale factors == kk-th dataset */
+         scl_AAA[kk] = sff[ii] ;
+       }
+     }
+
+     if( shd_BBB != NULL ){
+       if( ttest_opcode != 2 ){                   /* un-paired case */
+         scl_BBB = (float *)calloc(sizeof(float),shd_BBB->ndset) ;
+         for( kk=0 ; kk < shd_BBB->ndset ; kk++ ){
+           ii = string_search( shd_BBB->dslab[kk] ,
+                               sclnel->vec_len , (char **)sclnel->vec[0] ) ;
+           if( ii < 0 ){
+             ERROR_message("GIC: Can't find setB dataset label '%s' in -scale file" ,
+                           shd_BBB->dslab[kk] ) ;
+             nbad++ ;
+           } else {
+             scl_BBB[kk] = sff[ii] ;
+           }
+         }
+       }
+     } else {  /* paired case */
+       scl_BBB = scl_AAA ;
+     }
+
+   } /* end of scale setup */
+
    /*---------- Process covariates into matrices [23 May 2010] ----------*/
 
 #undef  AXX
@@ -1851,8 +2345,9 @@ int main( int argc , char *argv[] )
      int nbad=0 , nA , nB=0;
      float *ctrA=NULL , *ctrB=NULL ;
      MRI_IMARR *impr ;
+     int cdebug = AFNI_yesenv("3dGroupInCorr_DEBUG") ;
 
-     /* simmple tests to gaurd against stoopid users [is there any other kind?] */
+     /* simmple tests to gaurd against stoopid users [am there any other kind?] */
 
      if( shd_AAA->dslab == NULL ){
        ERROR_message("GIC: Can't use covariates, since setA doesn't have dataset labels!") ;
@@ -1897,6 +2392,9 @@ int main( int argc , char *argv[] )
            AXX(kk,jj) = ((float *)covnel->vec[jj])[ii] ;
        }
      }
+     if( cdebug ){
+       INFO_message("un-centered axx matrix") ; mri_write_1D( "-" , axxim ) ;
+     }
 
      /*--- ditto for the setB matrix (uncentered), if any ---*/
 
@@ -1916,6 +2414,9 @@ int main( int argc , char *argv[] )
            for( jj=1 ; jj <= mcov ; jj++ )
              BXX(kk,jj) = ((float *)covnel->vec[jj])[ii] ;
          }
+       }
+       if( cdebug ){
+         INFO_message("un-centered bxx matrix") ; mri_write_1D( "-" , bxxim ) ;
        }
      }
 
@@ -1964,6 +2465,27 @@ int main( int argc , char *argv[] )
        }
        break ;
 
+       case CENTER_DIFF_MEDIAN:{  /* 23 May 2012 */
+         float *qar ; int nqar ;
+         nqar = shd_AAA->ndset ;
+         if( shd_BBB != NULL && shd_BBB->ndset > nqar ) nqar = shd_BBB->ndset ;
+         qar = (float *)malloc(sizeof(float)*nqar) ;
+         center_valimA = mri_new(mcov,1,MRI_float) ; ctrA = MRI_FLOAT_PTR(center_valimA) ;
+         for( jj=1 ; jj <= mcov ; jj++ ){  /* average the columns */
+           for( kk=0 ; kk < shd_AAA->ndset ; kk++ ) qar[kk] = AXX(kk,jj) ;
+           ctrA[jj-1] = qmed_float( shd_AAA->ndset , qar ) ;
+         }
+         if( shd_BBB != NULL && ttest_opcode != 2 ){  /* unpaired */
+           center_valimB = mri_new(mcov,1,MRI_float) ; ctrB = MRI_FLOAT_PTR(center_valimB) ;
+           for( jj=1 ; jj <= mcov ; jj++ ){  /* average the columns */
+             for( kk=0 ; kk < shd_BBB->ndset ; kk++ ) qar[kk] = BXX(kk,jj) ;
+             ctrB[jj-1] = qmed_float( shd_BBB->ndset , qar ) ;
+           }
+         }
+         free(qar) ;
+       }
+       break ;
+
        case CENTER_SAME:{  /* only possible in 2 sample unpaired case */
          float sum ;
          center_valimA = mri_new(mcov,1,MRI_float) ; ctrA = MRI_FLOAT_PTR(center_valimA) ;
@@ -1976,6 +2498,19 @@ int main( int argc , char *argv[] )
        }
        break ;
 
+       case CENTER_SAME_MEDIAN:{  /* 23 May 2012 */
+         float *qar ; int nqar = shd_AAA->ndset + shd_BBB->ndset ;
+         qar = (float *)malloc(sizeof(float)*nqar) ;
+         center_valimA = mri_new(mcov,1,MRI_float) ; ctrA = MRI_FLOAT_PTR(center_valimA) ;
+         for( jj=1 ; jj <= mcov ; jj++ ){  /* average the columns */
+           for( kk=0 ; kk < shd_AAA->ndset ; kk++ ) qar[kk]                = AXX(kk,jj) ;
+           for( kk=0 ; kk < shd_BBB->ndset ; kk++ ) qar[kk+shd_AAA->ndset] = BXX(kk,jj) ;
+           ctrA[jj-1] = qmed_float( nqar , qar ) ;
+         }
+         center_valimB = center_valimA ; free(qar) ;
+       }
+       break ;
+
      } /* end of switch on center_code */
 
      /*--- process the matrix for setA ---*/
@@ -1984,11 +2519,22 @@ int main( int argc , char *argv[] )
      for( jj=1 ; jj <= mcov ; jj++ ){  /* center the columns */
        for( kk=0 ; kk < shd_AAA->ndset ; kk++ ) AXX(kk,jj) -= ctrA[jj-1] ;
      }
+     if( verb > 1 && center_code != CENTER_NONE ){
+       fprintf(stderr," + setA covariates centering:") ;
+       for( jj=1 ; jj <= mcov ; jj++ )
+         fprintf(stderr," %s=%g",covlab->str[jj],ctrA[jj-1]) ;
+       fprintf(stderr,"\n") ;
+     }
      /* Compute inv[X'X] and the pseudo-inverse inv[X'X]X' for this matrix */
      impr = mri_matrix_psinv_pair( axxim , 0.0f ) ;
      if( impr == NULL ) ERROR_exit("GIC: Can't process setA covariate matrix?! :-(") ;
      axxim_psinv  = IMARR_SUBIM(impr,0) ; axx_psinv  = MRI_FLOAT_PTR(axxim_psinv ) ;
      axxim_xtxinv = IMARR_SUBIM(impr,1) ; axx_xtxinv = MRI_FLOAT_PTR(axxim_xtxinv) ;
+     if( cdebug ){
+       INFO_message("centered axx matrix")       ; mri_write_1D( "-" , axxim )       ;
+       INFO_message("centered axx_psinv matrix") ; mri_write_1D( "-" , axxim_psinv ) ;
+       INFO_message("axx_xtxinv matrix")         ; mri_write_1D( "-" , axxim_xtxinv) ;
+     }
 
      /*--- process the setB matrix ---*/
 
@@ -1997,11 +2543,22 @@ int main( int argc , char *argv[] )
        for( jj=1 ; jj <= mcov ; jj++ ){  /* center the columns */
          for( kk=0 ; kk < shd_BBB->ndset ; kk++ ) BXX(kk,jj) -= ctrB[jj-1] ;
        }
+       if( verb > 1 && center_code != CENTER_NONE ){
+         fprintf(stderr," + setB covariates centering:") ;
+         for( jj=1 ; jj <= mcov ; jj++ )
+           fprintf(stderr," %s=%g",covlab->str[jj],ctrB[jj-1]) ;
+         fprintf(stderr,"\n") ;
+       }
        /* Compute inv[X'X] and the pseudo-inverse inv[X'X]X' for this matrix */
        impr = mri_matrix_psinv_pair( bxxim , 0.0f ) ;
        if( impr == NULL ) ERROR_exit("GIC: Can't process setB covariate matrix?! :-(") ;
        bxxim_psinv  = IMARR_SUBIM(impr,0) ; bxx_psinv  = MRI_FLOAT_PTR(bxxim_psinv ) ;
        bxxim_xtxinv = IMARR_SUBIM(impr,1) ; bxx_xtxinv = MRI_FLOAT_PTR(bxxim_xtxinv) ;
+       if( cdebug ){
+         INFO_message("centered bxx matrix")       ; mri_write_1D( "-" , bxxim )       ;
+         INFO_message("centered bxx_psinv matrix") ; mri_write_1D( "-" , bxxim_psinv ) ;
+         INFO_message("bxx_xtxinv matrix")         ; mri_write_1D( "-" , bxxim_xtxinv) ;
+       }
 
      } else if( shd_BBB != NULL && ttest_opcode == 2 ){  /* paired case */
 
@@ -2009,14 +2566,33 @@ int main( int argc , char *argv[] )
 
      }
 
+     /*--- create array of all covariates to send to AFNI as 1D files [14 May 2012] ---*/
+
+     { MRI_IMAGE *aim,*bim,*qim ; char clab[MAX_LABEL_SIZE+16] ;
+       INIT_IMARR(covimar) ;
+       for( jj=1 ; jj <= mcov ; jj++ ){
+         aim = mri_cut_2D( axxim , 0 , shd_AAA->ndset-1 , jj,jj ) ; /* A column #jj */
+         if( bxxim != NULL ){
+           MRI_IMAGE *bim,*qim ; MRI_IMARR *qar ;           /* append column from B */
+           bim = mri_cut_2D( bxxim , 0 , shd_BBB->ndset-1 , jj,jj ) ;
+           INIT_IMARR(qar) ; ADDTO_IMARR(qar,aim) ; ADDTO_IMARR(qar,bim) ;
+           qim = mri_catvol_1D(qar,1) ;
+           DESTROY_IMARR(qar) ; aim = qim ;
+         }
+         sprintf(clab,"GIC:%s",covlab->str[jj]) ; mri_add_name(clab,aim) ;
+         ADDTO_IMARR(covimar,aim) ;
+       }
+     }
+
    } /*---------- covariates regression matrices now setup ----------*/
 
    /*--- scan through all the data, which will make it be page faulted
          into RAM, which will make the correlation-izing process faster;
-         the downside is that this may take quite a while, which is boring ---*/
+         the downside is that this may take quite a while, which is boring,
+         but it's better to wait now than to wait for the 1st result, IMHO ---*/
 
 #undef  BSTEP
-#define BSTEP 256
+#define BSTEP 64
    { long long pp , vstep=9 ; char *qv ; float sum=0.0f ;
      if( verb ) INFO_message("GIC: page faulting (reading) data into memory") ;
      if( shd_AAA->datum == 1 ) qv = (char *)shd_AAA->bv[0] ;
@@ -2059,32 +2635,11 @@ int main( int argc , char *argv[] )
 
    /*----- if no covariates, do it the olden style way -----*/
 
-   if( mcov == 0 ){ /* create columns in nelset, 1 for each output sub-brick */
+   nout = nout_mcov = 0 ;
 
-     NI_add_column( nelset, NI_FLOAT, NULL );
-     NI_add_column( nelset, NI_FLOAT, NULL );
-     neldar = (float *)nelset->vec[0];          /* neldar = delta  sub-brick */
-     nelzar = (float *)nelset->vec[1];          /* nelzar = Zscore sub-brick */
-     if( neldar == NULL || nelzar == NULL )
-       ERROR_exit("GIC: Can't setup output dataset?") ; /* should never transpire */
+   if( mcov > 0 ){  /* setup for covariates result */
 
-     /* for a 2-sample test, create arrays for the 1-sample results as well */
-
-     if( dosix ){
-       NI_add_column( nelset, NI_FLOAT, NULL ); neldar_AAA = (float *)nelset->vec[2];
-       NI_add_column( nelset, NI_FLOAT, NULL ); nelzar_AAA = (float *)nelset->vec[3];
-       NI_add_column( nelset, NI_FLOAT, NULL ); neldar_BBB = (float *)nelset->vec[4];
-       NI_add_column( nelset, NI_FLOAT, NULL ); nelzar_BBB = (float *)nelset->vec[5];
-       if( neldar_AAA == NULL || nelzar_AAA == NULL ||
-           neldar_BBB == NULL || nelzar_BBB == NULL   )
-        ERROR_exit("GIC: Can't setup output dataset?") ; /* should never transpire */
-     }
-
-     nout = (dosix) ? 6 : 2 ;
-
-   } else {  /* alternative setup for covariates results */
-
-     nout = (dosix) ? 6*(mcov+1) : 2*(mcov+1) ;
+     nout_mcov = nout = (dosix) ? 6*(mcov+1) : 2*(mcov+1) ;
      dtar = (float **)malloc(sizeof(float *)*nout) ;
      for( kk=0 ; kk < nout ; kk++ ){
        NI_add_column( nelset , NI_FLOAT , NULL ) ;
@@ -2098,6 +2653,30 @@ int main( int argc , char *argv[] )
        testAB = testB = 0 ; testA = (UINT32)(-1) ;
      }
 
+   }
+
+   if( mcov == 0 || do_nocov ){  /* do_nocov changes: 17 May 2012 */
+
+     NI_add_column( nelset, NI_FLOAT, NULL );
+     NI_add_column( nelset, NI_FLOAT, NULL );
+     neldar = (float *)nelset->vec[nout+0];          /* neldar = delta  sub-brick */
+     nelzar = (float *)nelset->vec[nout+1];          /* nelzar = Zscore sub-brick */
+     if( neldar == NULL || nelzar == NULL )
+       ERROR_exit("GIC: Can't setup output dataset?") ; /* should never transpire */
+
+     /* for a 2-sample test, create arrays for the 1-sample results as well */
+
+     if( dosix ){
+       NI_add_column( nelset, NI_FLOAT, NULL ); neldar_AAA = (float *)nelset->vec[nout+2];
+       NI_add_column( nelset, NI_FLOAT, NULL ); nelzar_AAA = (float *)nelset->vec[nout+3];
+       NI_add_column( nelset, NI_FLOAT, NULL ); neldar_BBB = (float *)nelset->vec[nout+4];
+       NI_add_column( nelset, NI_FLOAT, NULL ); nelzar_BBB = (float *)nelset->vec[nout+5];
+       if( neldar_AAA == NULL || nelzar_AAA == NULL ||
+           neldar_BBB == NULL || nelzar_BBB == NULL   )
+        ERROR_exit("GIC: Can't setup output dataset?") ; /* should never transpire */
+     }
+
+     nout += (dosix) ? 6 : 2 ;
    }
 
    /* add columns for the individual dataset arctanh(corr) results */
@@ -2158,13 +2737,6 @@ int main( int argc , char *argv[] )
      if( kk <= 0 ){ fprintf(stderr," ** Connection times out :-(\n"); exit(1); }
    }
 
-   /** store some info about the dataset we are constructing **/
-
-   nx = DSET_NX(shd_AAA->tdset) ; dx = fabsf(DSET_DX(shd_AAA->tdset)) ;
-   ny = DSET_NY(shd_AAA->tdset) ; dy = fabsf(DSET_DY(shd_AAA->tdset)) ;
-   nz = DSET_NZ(shd_AAA->tdset) ; dz = fabsf(DSET_DZ(shd_AAA->tdset)) ;
-   dmin = MIN(dx,dy) ; dmin = MIN(dmin,dz) ; nxy = nx*ny ;
-
    /** now create an element to describe our setup info to AFNI **/
 
    if( shd_AAA->nvec == shd_AAA->nvox ){
@@ -2203,51 +2775,61 @@ int main( int argc , char *argv[] )
    NI_set_attribute_int( nelcmd , "target_nvals" , nout+nsaar ) ;
 
    bricklabels = (char *)calloc(sizeof(char),(5*MAX_LABEL_SIZE+16)*(nout+nsaar+1)) ;
-   if( mcov == 0 ){
 
-     if( shd_BBB == NULL ){  /* 1 sample */
-       sprintf( bricklabels , "%s_mean ; %s_Zscr" , label_AAA , label_AAA ) ;
-     } else {                /* 2 samples */
-       sprintf( bricklabels , "%s-%s_mean ; %s-%s_Zscr" ,
-                label_AAA , label_BBB , label_AAA , label_BBB ) ;
-       if( dosix )           /* plus the extras */
-         sprintf( bricklabels+strlen(bricklabels) ,
-                  " ; %s_mean ; %s_Zscr ; %s_mean ; %s_Zscr" ,
-                  label_AAA , label_AAA , label_BBB , label_BBB ) ;
-     }
-
-   } else {  /* labels for the myriad of covariates results [23 May 2010] */
+   if( mcov > 0 ){ /* labels for the myriad of covariates results [23 May 2010] */
 
      if( testAB ){
-       sprintf( bricklabels , "%s-%s_mean ; %s-%s_Zscr ;" ,
+       sprintf( bricklabels+strlen(bricklabels) ,
+                "%s-%s_mean ; %s-%s_Zscr ;" ,
                 label_AAA , label_BBB , label_AAA , label_BBB ) ;
        for( kk=1 ; kk <= mcov ; kk++ )
          sprintf( bricklabels+strlen(bricklabels) ,
-                  "%s-%s_%s ; %s-%s_%s_Zscr ;" ,
+                  " %s-%s_%s ; %s-%s_%s_Zscr ;" ,
                 label_AAA , label_BBB , covlab->str[kk] ,
                 label_AAA , label_BBB , covlab->str[kk]  ) ;
      }
      if( testA ){
        sprintf( bricklabels+strlen(bricklabels) ,
-                "%s_mean ; %s_mean_Zscr ;" , label_AAA , label_AAA ) ;
+                " %s_mean ; %s_mean_Zscr ;" , label_AAA , label_AAA ) ;
        for( kk=1 ; kk <= mcov ; kk++ )
          sprintf( bricklabels+strlen(bricklabels) ,
-                  "%s_%s ; %s_%s_Zscr ;" ,
+                  " %s_%s ; %s_%s_Zscr ;" ,
                   label_AAA , covlab->str[kk] ,
                   label_AAA , covlab->str[kk]  ) ;
      }
      if( testB ){
        sprintf( bricklabels+strlen(bricklabels) ,
-                "%s_mean ; %s_Zscr ;" , label_BBB , label_BBB ) ;
+                " %s_mean ; %s_Zscr ;" , label_BBB , label_BBB ) ;
        for( kk=1 ; kk <= mcov ; kk++ )
          sprintf( bricklabels+strlen(bricklabels) ,
-                  "%s_%s ; %s_%s_Zscr ;" ,
+                  " %s_%s ; %s_%s_Zscr ;" ,
                   label_BBB , covlab->str[kk] ,
                   label_BBB , covlab->str[kk]  ) ;
      }
 
-     kk = strlen(bricklabels) ; bricklabels[kk-1] = '\0' ;  /* truncate last ';' */
    }
+
+   if( mcov == 0 || do_nocov ){
+
+     char *Clab = (mcov == 0) ? "\0" : "NC" ;
+
+     if( shd_BBB == NULL ){  /* 1 sample */
+       sprintf( bricklabels+strlen(bricklabels) ,
+                " %s_mean%s ; %s_Zscr%s" , label_AAA,Clab , label_AAA,Clab ) ;
+     } else {                /* 2 samples */
+       sprintf( bricklabels+strlen(bricklabels) ,
+                " %s-%s_mean%s ; %s-%s_Zscr%s" ,
+                label_AAA,label_BBB,Clab , label_AAA,label_BBB,Clab ) ;
+       if( dosix )           /* plus the extras */
+         sprintf( bricklabels+strlen(bricklabels) ,
+                  " ; %s_mean%s ; %s_Zscr%s ; %s_mean%s ; %s_Zscr%s" ,
+                  label_AAA,Clab , label_AAA,Clab , label_BBB,Clab , label_BBB,Clab ) ;
+     }
+
+   }
+
+   kk = strlen(bricklabels) ;
+   if( bricklabels[kk-1] == ';' ) bricklabels[kk-1] = '\0' ;  /* truncate last ';' */
 
    /* add labels for the subject-level bricks, if needed */
 
@@ -2266,7 +2848,7 @@ int main( int argc , char *argv[] )
        sprintf( bricklabels+strlen(bricklabels) , "%s_zcorr ; " , buf ) ;
      }
 
-     kk = strlen(bricklabels) ; bricklabels[kk-1] = '\0' ;  /* truncate last ';' */
+     kk = strlen(bricklabels) ; bricklabels[kk-2] = '\0' ;  /* truncate last ';' */
    }
 
    /* set the brick labels into the header being sent to AFNI/SUMA */
@@ -2274,7 +2856,28 @@ int main( int argc , char *argv[] )
    NI_set_attribute( nelcmd , "target_labels" , bricklabels ) ;
    free(bricklabels) ;
 
-   /* ZSS: set surface attributes [note Ziad's TERRIBLE use of spaces] 
+   /* 23 May 2012: set the ClustStim attributes? */
+
+   if( TalkToAfni ){
+     if( clatr[0] != NULL ){
+       NI_set_attribute( nelcmd, "string_attribute_000000", clatr[0] ); free(clatr[0]);
+     }
+     if( clatr[1] != NULL ){
+       NI_set_attribute( nelcmd, "string_attribute_000001", clatr[1] ); free(clatr[1]);
+     }
+     if( clatr[2] != NULL ){
+       NI_set_attribute( nelcmd, "string_attribute_000002", clatr[2] ); free(clatr[2]);
+     }
+     if( clatr[3] != NULL ){
+       NI_set_attribute( nelcmd, "string_attribute_000003", clatr[3] ); free(clatr[3]);
+     }
+     if( clust_NN1  != NULL ) free(clust_NN1 ) ;
+     if( clust_NN2  != NULL ) free(clust_NN2 ) ;
+     if( clust_NN3  != NULL ) free(clust_NN3 ) ;
+     if( clust_mask != NULL ) free(clust_mask) ;
+   }
+
+   /* ZSS: set surface attributes [note Ziad's TERRIBLE use of spaces]
             Perhaps, but   at least      he wraps at 80             . */
 
    if (shd_AAA->nnode[0] >= 0) {
@@ -2284,6 +2887,13 @@ int main( int argc , char *argv[] )
    if (shd_AAA->ninmask[0] >= 0) {
       sprintf(buf,"%d, %d", shd_AAA->ninmask[0], shd_AAA->ninmask[1]);
       NI_set_attribute( nelcmd , "LRpair_ninmask", buf);
+   }
+
+   if( verb > 3 && !bmode ){
+     INFO_message("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++") ;
+     INFO_message("Header being sent to AFNI follows:") ;
+     NI_write_element_tofile( "stderr:" , nelcmd , NI_TEXT_MODE | NI_HEADERONLY_FLAG ) ;
+     INFO_message("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++") ;
    }
 
    /*-- either tell AFNI what's going on, or setup stuff ourselves --*/
@@ -2296,17 +2906,31 @@ int main( int argc , char *argv[] )
        ERROR_exit("GIC: Can't send setup data to %s!?",pname) ;
      }
 
+     /* 14 May 2012: send covariate 1D vectors now (covimar) */
+
+     if( covimar != NULL && TalkToAfni ){
+       NI_element *nel1D ;
+       if( verb > 1 ) INFO_message("GIC: Sending covariate 1D vectors to %s",pname) ;
+       for( jj=0 ; jj < IMARR_COUNT(covimar) ; jj++ ){
+         nel1D = mri_to_niml( IMARR_SUBIM(covimar,jj) ) ;
+         nn = NI_write_element( GI_stream , nel1D , NI_BINARY_MODE ) ;
+         if( nn < 0 ) ERROR_exit("GIC: Can't send 1D vector to %s :-(",pname) ;
+         NI_free_element(nel1D) ;
+       }
+       DESTROY_IMARR(covimar) ; covimar = NULL ;  /* done with this sucker */
+     }
+
    } else {       /* batch mode ==> setup internally */
-     if (bmode != NODE_MODE) { 
+     if (bmode != NODE_MODE) {
       giset = GRINCOR_setup_dataset( nelcmd ) ;
       if( giset == NULL )
          ERROR_exit("Can't setup batch mode dataset for some reason :-(") ;
      } else {
       giset = (GICOR_setup*)calloc(1,sizeof(GICOR_setup)) ;
-      if (!SUMA_init_GISET_setup(NULL , nelcmd, giset)) {
-         ERROR_exit("Failed to setup batch mode dataset for some reason >:-(") ; 
+      if (!SUMA_init_GISET_setup(NULL , nelcmd, giset, 1)) {
+         ERROR_exit("Failed to setup batch mode dataset for some reason >:-(") ;
       }
-     }  
+     }
    }
 
    NI_free_element(nelcmd) ;  /* setup is done (here or there) */
@@ -2376,11 +3000,12 @@ int main( int argc , char *argv[] )
    }
 #endif
 
-   /** now wait for commands from AFNI */
+   /**--------- now wait for commands from AFNI ---------*/
 
-   while(1){  /* loop forever? */
+   while(1){  /*----- loop forever? -----*/
 
      if( !bmode ){   /* read command from AFNI or SUMA */
+
        nelcmd = NI_read_element( GI_stream , 333 ) ;
 
        atim = btim = NI_clock_time() ;  /* start timer, for user info */
@@ -2407,10 +3032,26 @@ int main( int argc , char *argv[] )
        }
 
      } else {   /* create command internally in batch mode [Feb 2011] */
+
        char cline[6666], buf[666] , *cpt ; static int nbatch=0 ;
        static NI_str_array *bsar=NULL ;
        static int nwarn=0;
-       
+
+       if( bmode == LIST_MODE ){  /* Aug 2012 -- special case */
+         static char blp[THD_MAX_NAME] ; char *cname ;
+         int ix,jy,kz ;
+         if( blist_index >= blist_num ) goto GetOutOfDodge ;  /* done */
+         voxijk = blist[blist_index++] ;
+         IJK_TO_THREE(voxijk,ix,jy,kz,nx,nxy) ;
+         sprintf(blp,"%s_%03d_%03d_%03d",blist_prefix,ix,jy,kz) ;
+         bprefix = blp ;
+         cname   = "SETREF_ijk"    ;
+         nelcmd  = NI_new_data_element( cname , 0 ) ;
+         sprintf( buf , "%d" , voxijk ) ;
+         NI_set_attribute( nelcmd , "index" , buf ) ;
+         goto BatchFinalize ;
+       }
+
        if( bfp == NULL && nbatch > 0 ) goto GetOutOfDodge ;  /* done */
 
        atim = btim = NI_clock_time() ;  /* start timer, for user info */
@@ -2442,7 +3083,7 @@ int main( int argc , char *argv[] )
        switch( bmode ){  /* each mode must create the correct nelcmd NI_element */
          default:
            ERROR_message("GIC: you should never see this message!"); goto GetOutOfDodge;
-         
+
          case NODE_MODE:
             if( bsar->num != 2) {
                ERROR_message("GIC: bad batch command line: "
@@ -2473,17 +3114,17 @@ int main( int argc , char *argv[] )
                               "or"
                               "   %s L%s\n"
                               "This message is only shown once.\n",
-                               bsar->str[1], 
+                               bsar->str[1],
                                bsar->str[0], bsar->str[1],
                                bsar->str[0], bsar->str[1]);
-                  
+
                }
                qijk = (int)strtod(bsar->str[1],NULL);
             }
             sprintf( buf , "%d" , qijk ) ;
             NI_set_attribute( nelcmd , "index" , buf ) ;
             break ;
-            
+
          case XYZPV_MODE:   /* x y z */
          case XYZ_MODE:     /* x y z */
          case IJKPV_MODE:   /* i j k */
@@ -2590,6 +3231,7 @@ int main( int argc , char *argv[] )
 
        } /* end of switch over the various batch modes */
 
+BatchFinalize:
        nbatch++ ;  /* keep track of how many we've done */
 
        if( verb > 2 ) INFO_message("GIC: generated %s command",nelcmd->name) ;
@@ -2799,14 +3441,14 @@ int main( int argc , char *argv[] )
        goto LoopBack ;
 
      }
-     
+
      /** boomerang message **/
-     { 
+     {
        char *boomerang = NI_get_attribute(nelcmd,"boomerang_msg");
-       if (nelset && boomerang) 
-          NI_set_attribute(nelset, "boomerang_msg", boomerang);
+       if( nelset && boomerang )
+         NI_set_attribute(nelset, "boomerang_msg", boomerang);
      }
-     
+
      /**--- throw away the message from AFNI ---**/
 
      NI_free_element( nelcmd ) ;
@@ -2826,6 +3468,23 @@ int main( int argc , char *argv[] )
      if( shd_BBB != NULL ){
        if( verb > 3 ) ININFO_message("GIC:  start correlation-izing for %s",label_BBB) ;
        GRINCOR_many_dotprod( shd_BBB , seedvec_BBB , dotprod_BBB ) ;
+     }
+
+     /* step 2a: scale results? [19 Sep 2012] */
+
+     if( scl_AAA != NULL ){
+       float *vv , ff ;
+       for( kk=0 ; kk < ndset_AAA ; kk++ ){
+         vv = dotprod_AAA[kk] ; ff = scl_AAA[kk] ;
+         for( ii=0 ; ii < nvec ; ii++ ) vv[ii] *= ff ;
+       }
+     }
+     if( scl_BBB != NULL ){
+       float *vv , ff ;
+       for( kk=0 ; kk < ndset_BBB ; kk++ ){
+         vv = dotprod_BBB[kk] ; ff = scl_BBB[kk] ;
+         for( ii=0 ; ii < nvec ; ii++ ) vv[ii] *= ff ;
+       }
      }
 
 #if 0
@@ -2867,10 +3526,11 @@ int main( int argc , char *argv[] )
 
      /* step 3: lots of t-test-ification */
 
-     if( mcov == 0 ){   /*-- no covariates ==> pure t-tests --*/
+     if( mcov == 0 || do_nocov ){   /*-- no covariates ==> pure t-tests --*/
 
        if( verb > 3 )
          ININFO_message("GIC:  start %d-sample t-test-izing" , (ndset_BBB > 0) ? 2 : 1 ) ;
+
        GRINCOR_many_ttest( nvec , ndset_AAA , dotprod_AAA ,
                                   ndset_BBB , dotprod_BBB , neldar,nelzar ) ;
 
@@ -2891,13 +3551,15 @@ int main( int argc , char *argv[] )
          btim = ctim ;
        }
 
-     } else {  /*-- covariates ==> regression analyses --*/
+     }
+
+     if( mcov > 0 ){  /*-- covariates ==> regression analyses --*/
 
        if( verb > 3 )
          ININFO_message("GIC:  start %d-sample regression-izing" , (ndset_BBB > 0) ? 2 : 1 ) ;
 
        GRINCOR_many_regress( nvec , ndset_AAA , dotprod_AAA ,
-                                    ndset_BBB , dotprod_BBB , nout , dtar ) ;
+                                    ndset_BBB , dotprod_BBB , nout_mcov , dtar ) ;
 
        if( verb > 2 || (verb==1 && nsend < NSEND_LIMIT) ){
          ctim = NI_clock_time() ;
@@ -2971,6 +3633,7 @@ int main( int argc , char *argv[] )
          ERROR_message("3dGroupInCorr: failure when writing to %s",pname) ;
        }
      } else {
+       giset->dset->idcode = MCW_new_idcode() ;
        kk = GRINCOR_output_dataset( giset, nelset , bprefix ) ;
      }
 
@@ -3519,6 +4182,7 @@ void GRINCOR_many_regress( int nvec , int numx , float **xxar ,
                                       int nout , float **dtar  )
 {
    if( numy > 0 && yyar != NULL ){  /*--- 2 sample ---*/
+
    AFNI_OMP_START ;
 #pragma omp parallel
    { int ii,kk ; float *xar,*yar,*var,*wss ;
@@ -3626,11 +4290,35 @@ GICOR_setup * GRINCOR_setup_dataset( NI_element *nel )
      for( ii=0 ; ii < nn ; ii++ ) giset->ivec[ii] = iv[ii] ;
    }
 
+   /* 23 May 2012: extra string attributes to set? */
+
+   { ATR_string *aatr ; int nn ;
+     char aaname[THD_MAX_NAME], *aastr, *nnatr, nnam[128], *cpt ;
+
+     for( nn=0 ; ; nn++ ){
+       sprintf(nnam,"string_attribute_%06d",nn) ;
+       nnatr = NI_get_attribute( nel , nnam ) ;
+       if( nnatr == NULL || *nnatr == '\0' ) break ;
+       cpt = strstr(nnatr," ==> ") ;
+       if( cpt == NULL || cpt == nnatr || cpt-nnatr > 256 ) continue ;
+       strncpy(aaname,nnatr,cpt-nnatr) ; aaname[cpt-nnatr] = '\0' ;
+       cpt += 5 ; if( *cpt == '\0' ) continue ;
+       aatr = (ATR_string *)XtMalloc(sizeof(ATR_string)) ;
+       aatr->type = ATR_STRING_TYPE ;
+       aatr->name = XtNewString(aaname) ;
+       aatr->nch  = strlen(cpt+1) ;
+       aatr->ch   = (char *)XtMalloc( sizeof(char) * aatr->nch ) ;
+       memcpy( aatr->ch , cpt , sizeof(char) * aatr->nch ) ;
+       THD_insert_atr( dset->dblk , (ATR_any *)aatr ) ;
+     }
+   }
+
    return giset ;
 }
 
 /*---------------------------------------------------------------------------*/
-int GRINCOR_output_srf_dataset(GICOR_setup *giset, NI_element *nel, 
+
+int GRINCOR_output_srf_dataset(GICOR_setup *giset, NI_element *nel,
                                 char *target_name )
 {
 
@@ -3645,58 +4333,58 @@ int GRINCOR_output_srf_dataset(GICOR_setup *giset, NI_element *nel,
    NI_str_array *labar=NULL ;
    long sszz=0;
    int LocalHead = NOPE;
-   
+
    if( nel == NULL || nel->vec_num < 2 ) return(-1) ;
 
    if (giset->nnode_domain[0] <= 0 && giset->nnode_domain[1] <= 0) {
       ERROR_message("Bad values");
       return;
    }
-   
+
    if (giset->nnode_domain[1] > 0) {
       targetv[0] = SUMA_ModifyName(target_name, "append", ".lh", NULL);
       targetv[1] = SUMA_ModifyName(target_name, "append", ".rh", NULL);
    } else {
       targetv[0] = SUMA_copy_string(target_name);
    }
-   
+
    if (sdsetv[0] == NULL) { /* create output sets */
       for (i=0; i<2; ++i) {
          if (targetv[i]) {
             SUMA_LHv("Working %s\n", targetv[i]);
             /* dset names */
-            sdsetv[i] = SUMA_CreateDsetPointer (targetv[i], 
+            sdsetv[i] = SUMA_CreateDsetPointer (targetv[i],
                                         SUMA_NODE_BUCKET,
                                         NULL,
                                         NULL,
                                         giset->nnode_domain[i]);
             sprintf(giset->sdset_ID[i],"%s", SDSET_ID(sdsetv[i]));
-            
+
             SUMA_LHv("Adding columns %d\n", i);
             /* add the columns */
             Ti = (int *) SUMA_calloc(SDSET_VECLEN(sdsetv[i]), sizeof(int));
             for (ii=0; ii <SDSET_VECLEN(sdsetv[i]); ++ii) Ti[ii]=ii;
-            SUMA_AddDsetNelCol (sdsetv[i], "node index", 
+            SUMA_AddDsetNelCol (sdsetv[i], "node index",
                                 SUMA_NODE_INDEX, Ti, NULL, 1);
             SUMA_free(Ti); Ti=NULL;
 
             if (!(atr = NI_get_attribute( nel , "target_nvals" ))) {
                nvals = giset->nvals;
             } else {
-               nvals = (int)strtod(atr,NULL) ;  nvals = MAX(1,nvals);     
+               nvals = (int)strtod(atr,NULL) ;  nvals = MAX(1,nvals);
             }
-         
+
             if (nvals < 1) {
                WARNING_message("Bad nvals %d. Going with 6\n",nvals);
                nvals = 6;
             }
-            
+
             if (!(atr = NI_get_attribute( nel , "target_labels" ))) {
                atr = giset->brick_labels;
             }
             if( atr != NULL )
                labar = NI_decode_string_list( atr , ";" ) ;
-            
+
             for( vv=0 ; vv < nvals ; vv++ ){
                if (labar != NULL && vv < labar->num) atr = labar->str[vv];
                else if (vv < 6) {
@@ -3710,25 +4398,25 @@ int GRINCOR_output_srf_dataset(GICOR_setup *giset, NI_element *nel,
                                 SUMA_NODE_FLOAT, NULL, NULL, 1);
                } else { /* zscore */
                   SUMA_AddDsetNelCol (sdsetv[i], atr,
-                                SUMA_NODE_ZSCORE, NULL, NULL, 1);  
+                                SUMA_NODE_ZSCORE, NULL, NULL, 1);
                }
             }
             if (labar) SUMA_free_NI_str_array(labar); labar=NULL;
          }
       }
    }
-   
+
    /* have dsets, populate them */
    if (!SUMA_PopulateDsetsFromGICORnel(nel, giset, sdsetv)) {
       SUMA_S_Err("Failed to populate. Not fun.");
       return;
    }
-   
+
    /* write them and quit */
    for (i=0; i<2; ++i) {
       if (targetv[i]) {
          SUMA_NewDsetID2(sdsetv[i],targetv[i]);
-         if (!(oname = SUMA_WriteDset_ns (targetv[i], sdsetv[i], 
+         if (!(oname = SUMA_WriteDset_ns (targetv[i], sdsetv[i],
                                        oform, 1, 1))) {
             ERROR_message("Failed to write %s\n", targetv[i]);
          } else {
@@ -3741,10 +4429,13 @@ int GRINCOR_output_srf_dataset(GICOR_setup *giset, NI_element *nel,
    return;
 }
 
+/*---------------------------------------------------------------------------*/
+
 int GRINCOR_output_dataset( GICOR_setup *giset, NI_element *nel, char *pref )
 {
    float *nelar , *dsdar ;
    int nvec,nn,vv , vmul ; float thr ;
+   static int ncall=0 ;
 
    if( nel == NULL || nel->vec_num < 2 ) return(-1) ;
 
@@ -3752,7 +4443,7 @@ int GRINCOR_output_dataset( GICOR_setup *giset, NI_element *nel, char *pref )
       /* go to surfac output */
       return(GRINCOR_output_srf_dataset(giset, nel, pref));
    }
-   
+
    /* copy NIML data into dataset */
 
    nvec = nel->vec_len ;
@@ -3775,8 +4466,9 @@ int GRINCOR_output_dataset( GICOR_setup *giset, NI_element *nel, char *pref )
      EDIT_dset_items( giset->dset , ADN_prefix,pref , ADN_none ) ;
 
    giset->dset->dblk->diskptr->allow_directwrite = 1 ;
-   DSET_write(giset->dset) ;
-   if( verb ) WROTE_DSET(giset->dset) ;
+   DSET_write(giset->dset) ; ncall++ ;
+   if( verb )
+     INFO_message("Output dataset #%d %s",ncall,DSET_BRIKNAME(giset->dset)) ;
+
    return ((int)DSET_TOTALBYTES(giset->dset));
 }
-

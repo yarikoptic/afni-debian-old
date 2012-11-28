@@ -315,6 +315,7 @@ typedef enum {
    SUMA_NODE_STRING,   /*!< Generic String */
    SUMA_NODE_SHORT,      /*!< Generic short */
    SUMA_NODE_DOUBLE,     /*!< Generic double */
+   SUMA_NODE_COMPLEX,     /*!< Generic complex */
    SUMA_NODE_XCORR,      /*!< Cross Correlation Coefficient */
    SUMA_NODE_ZSCORE,      /*!< Zscore */
    SUMA_NODE_VFR,       /* Visual Field Ration */
@@ -1214,7 +1215,16 @@ If ind is NULL, then the index will be the line number.
 }
 /*!
    replace a string positioned in column col, row row in NI_element * nel.
-   str is a copy of the pointer to that string and must not be freed
+   
+   This macro, when called from SUMA_AddColAtt_CompString ends up reporting
+   a NI_malloc post corruption, at least when starting the dot-product 
+   demo script "tcsh @bugy" under directory
+      /Volumes/Data/ziad/SUMA_test_dirs/suma/srf
+   I can't figure out how m_rc[(row)] is getting corrupted. For now, 
+   allocating for 10 chars more gets rid of the problem.
+   Set +10 to +1 if you want to reproduce the problem.
+   Search for comment tagged: TAG09102012 to find calling 
+   culprit. 
 */
 #define SUMA_NEL_REPLACE_STRING(nel, row, col, str) {\
    char **m_rc;   \
@@ -1222,7 +1232,7 @@ If ind is NULL, then the index will be the line number.
    if (m_rc[(row)]) NI_free(m_rc[(row)]); \
    m_rc[(row)] = NULL;\
    if (str) { \
-      m_rc[(row)] = (char*)NI_malloc(char, (strlen((str))+1)*sizeof(char));\
+      m_rc[(row)] = (char*)NI_malloc(char, (strlen((str))+10)*sizeof(char));\
       strcpy( m_rc[(row)], str );   \
    }  \
 }
@@ -1532,6 +1542,8 @@ int SUMA_FindDsetColLabeled(SUMA_DSET *dset, char *label);
 char **SUMA_AllDsetColLabels(SUMA_DSET *dset);
 char **SUMA_FreeAllDsetColLabels(char **);
 char *SUMA_ColLabelCopy(NI_element *nel, int i, int addcolnum);
+int SUMA_FloatScanDset ( SUMA_DSET *odset, int doNan, int doInf, 
+                         int zeroout, int fixrange);
 SUMA_DSET * SUMA_PaddedCopyofDset ( SUMA_DSET *odset, int MaxNodeIndex );
 SUMA_DSET * SUMA_MaskedCopyofDset(SUMA_DSET *odset, byte *rowmask, byte *colmask, int masked_only, int keep_node_index);
 SUMA_DSET * SUMA_MaskedByOrderedNodeIndexCopyofDset(
@@ -1662,6 +1674,7 @@ char *SUMA_OutputDsetFileStatus(char *prefix, char *inname,
                             char *pre, char *app, int *exists);
 char *SUMA_FnameGet(char *Fname, char *sel, char *cwd);
 int SUMA_NumStringUnits (char *s, int marktip); 
+int SUMA_strtod(char *n, double *valp);
 int SUMA_StringToNum (char *s, void *vv, int N, int p);
 int SUMA_StringToNumSide (char *s, void *vv, int N, int p, int *sd);
 int SUMA_isNumString (char *s, void *p);
@@ -1676,6 +1689,7 @@ char *args_in_quotes(char **argv, int *kar, int N_argv, char *opq,
 char *args_in_niml_quotes(char **argv, int *kar, int N_argv, int clearused);
 char *args_in_simple_quotes(char **argv, int *kar, int N_argv, int clearused);
 char * SUMA_append_string(char *s1, char *s2);
+char * SUMA_append_extension(char *s1, char *s2);
 char * SUMA_append_replace_string(  char *s1, char *s2, 
                                     char *Spc, int whichTofree);
 char * SUMA_append_replace_num(char *s1, char *form, double num, SUMA_VARTYPE tp, int whichTofree);
@@ -1713,9 +1727,12 @@ int SUMA_GetNodeIndex_FromNodeRow_eng(SUMA_DSET *dset, int row, int N_Node);
 double SUMA_GetDsetNodeValInCol2(SUMA_DSET *dset, int ind, 
                                  int node, int N_Node);
 NI_str_array *SUMA_free_NI_str_array(NI_str_array *nisa);
+NI_str_array *SUMA_NI_str_array(NI_str_array *clss, char *what, char *action); 
+int SUMA_NI_str_array_find( char *targ , NI_str_array *sar , 
+                            int partial, int ci);
 NI_str_array *SUMA_comp_str_2_NI_str_ar(char *s, char *sep);
+void SUMA_Show_NI_str_ar(NI_str_array *nisa, FILE *out);
 char *SUMA_NI_str_ar_2_comp_str (NI_str_array *nisa, char *sep);
-NI_str_array *SUMA_free_NI_str_array(NI_str_array *nisa);
 char *SUMA_Get_Sub_String(char *cs, char *sep, int ii);
 int SUMA_AddColAtt_CompString(NI_element *nel, int col, char *lbl, 
                               char *sep, int insert_mode);
@@ -1758,7 +1775,8 @@ int afni_write_gifti_surf( NI_group *aSO, char * fname,
 
 
 /******** END functions for surface structure  ******************** */
-int SUMA_init_GISET_setup(NI_stream nsg , NI_element *nel, GICOR_setup *giset);
+int SUMA_init_GISET_setup(NI_stream nsg , NI_element *nel, GICOR_setup *giset,
+                          int bmode);   /* 17 Aug 2012 [rickr] */
 int SUMA_PopulateDsetsFromGICORnel(NI_element *nel, GICOR_setup *giset, 
                                    SUMA_DSET **sdsetv);
 #endif

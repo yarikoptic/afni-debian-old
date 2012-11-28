@@ -488,9 +488,11 @@ SUMA_Boolean SUMA_Save_Surface_Object (void * F_name, SUMA_SurfaceObject *SO,
 SUMA_Boolean SUMA_PrepSO_GeomProp_GL(SUMA_SurfaceObject *SO)
 {
    static char FuncName[]={"SUMA_PrepSO_GeomProp_GL"};
+   static int iwarn=0;
    int k, ND, id;
    SUMA_SURF_NORM SN;
    byte *PatchNodeMask=NULL;
+   SUMA_SurfaceViewer *sv=NULL;
    SUMA_Boolean LocalHead = NOPE;
    
    SUMA_ENTRY;
@@ -551,6 +553,7 @@ SUMA_Boolean SUMA_PrepSO_GeomProp_GL(SUMA_SurfaceObject *SO)
       }
    }
    #ifdef DO_SCALE_RANGE
+   SUMA_LH("In scale range");
    { float tmpfact;
    /* Now do some scaling */
    tmpfact = (SO->aMaxDims - SO->aMinDims)/100;
@@ -581,6 +584,7 @@ SUMA_Boolean SUMA_PrepSO_GeomProp_GL(SUMA_SurfaceObject *SO)
    #endif
    #ifdef DO_SCALE
    /* Now do some scaling */
+   SUMA_LH("In scale section");
    if ((SO->aMaxDims - SO->aMinDims) > SUMA_TESSCON_DIFF_FLAG) {
       fprintf (stdout,  "\n"
                         "\n"
@@ -618,8 +622,24 @@ SUMA_Boolean SUMA_PrepSO_GeomProp_GL(SUMA_SurfaceObject *SO)
       SO->aMaxDims /= SUMA_TESSCON_TO_MM;
    } 
    #endif
-    
    
+   SUMA_LHv("Checking too small a surface: %f\n", SO->MaxCentDist);
+   /* check for too small a surface */
+   if (SO->MaxCentDist < 10.0 && !iwarn) {
+      if (!(sv = SUMA_BestViewerForSO(SO))) sv = SUMAg_SVv;
+      if (sv) { /* This can be null when surfaces are created on the fly,
+                   No need to warn in that case though.*/
+         if (sv->GVS[sv->StdView].DimSclFac < 5 && !iwarn) {
+            ++iwarn;
+            SUMA_SLP_Warn(
+               "Surface size is quite small, rendering errors might occur.\n"
+               "If your coordinate units are in cm, set SUMA_NodeCoordsUnits \n"
+               "In your ~/.sumarc to 'cm' instead of the default 'mm'\n"
+            "If you do not have a '~/.sumarc', just run 'suma -update_env'\n");
+         }
+      }
+   }
+   SUMA_LH("Computing normals");
    /* Calculate SurfaceNormals */
    if (SO->NodeNormList && SO->FaceNormList) {
       SUMA_LH("Node normals already computed, skipping...");
@@ -997,11 +1017,34 @@ SUMA_SurfaceObject * SUMA_Load_Surface_Object_eng (
          break;
          
      case SUMA_BRAIN_VOYAGER:
-         if (!SUMA_BrainVoyager_Read ((char *)SO_FileName_vp, SO, 1, 1)) {
-            fprintf (SUMA_STDERR,
-                     "Error %s: Failed in SUMA_BrainVoyager_Read.\n", 
-                     FuncName);
-            SUMA_RETURN(NULL);
+         if (0 && SUMA_GuessSurfFormatFromExtension((char *)SO_FileName_vp,     
+                                                         NULL)==SUMA_GIFTI) {
+            /* Allowing for cases where BrainVoyager.gii surfaces are in the same
+            coordinate system as their native format and so will require
+            the VolPar transform below. I did not think this should happen
+            with GIFTI. The surface coords should correspond directly to those
+            of the NIFTI volume 
+            Exception added for Adam Greenberg, surfaces are not well 
+            centered in the viewer. This will need fixing is this condition
+            is to be allowed. Problem is that it appears BV's gifti surfaces
+            might still be in their native coord system, not as set by
+            the transform matrix in the gii file */
+            SUMA_S_Warn("This should not be used regularly.\n"
+                        "Surfaces will not display in the proper place\n"
+                        "in SUMA.\n");
+            if (!SUMA_GIFTI_Read ((char *)SO_FileName_vp, SO, 1)) {
+               fprintf (SUMA_STDERR,
+                     "Error %s: Failed in SUMA_GIFTI_Read.\n", FuncName);
+               SUMA_RETURN(NULL);
+            }
+            SO->FileType = SUMA_BRAIN_VOYAGER;
+         } else {
+            if (!SUMA_BrainVoyager_Read ((char *)SO_FileName_vp, SO, 1, 1)) {
+               fprintf (SUMA_STDERR,
+                        "Error %s: Failed in SUMA_BrainVoyager_Read.\n", 
+                        FuncName);
+               SUMA_RETURN(NULL);
+            }
          }
          SUMA_NEW_ID(SO->idcode_str,(char *)SO_FileName_vp); 
          
@@ -3361,6 +3404,14 @@ SUMA_Boolean SUMA_PrepAddmappableSO(SUMA_SurfaceObject *SO, SUMA_DO *dov,
       }
       #endif
 
+      /* Store it into dov, if not there already */
+      if (SUMA_whichDO(SO->idcode_str, dov, *N_dov) < 0) {
+         if (!SUMA_AddDO(dov, N_dov, (void *)SO,  SO_type, SUMA_WORLD)) {
+            fprintf(SUMA_STDERR,"Error %s: Error Adding DO\n", FuncName);
+            SUMA_RETURN(NOPE);
+         }
+      }
+      
       /* create the surface controller */
       if (!SO->SurfCont) {
          SO->SurfCont = SUMA_CreateSurfContStruct(SO->idcode_str);
@@ -3426,13 +3477,6 @@ SUMA_Boolean SUMA_PrepAddmappableSO(SUMA_SurfaceObject *SO, SUMA_DO *dov,
       /*turn on the viewing for the axis */
       SO->ShowMeshAxis = NOPE;
 
-      /* Store it into dov, if not there already */
-      if (SUMA_whichDO(SO->idcode_str, dov, *N_dov) < 0) {
-         if (!SUMA_AddDO(dov, N_dov, (void *)SO,  SO_type, SUMA_WORLD)) {
-            fprintf(SUMA_STDERR,"Error %s: Error Adding DO\n", FuncName);
-            SUMA_RETURN(NOPE);
-         }
-      }
 
    }
    SUMA_RETURN(YUP);
@@ -5400,8 +5444,13 @@ SUMA_SurfSpecFile *SUMA_IO_args_2_spec(SUMA_GENERIC_ARGV_PARSE *ps, int *nspec)
             strcpy(spec->State[spec->N_Surfs], ps->i_state[i]); 
             ++spec->N_States;
          } else { 
-            sprintf(spec->State[spec->N_Surfs], "iS_%d", spec->N_States); 
-            ++spec->N_States; 
+            if (!ps->onestate) {
+               sprintf(spec->State[spec->N_Surfs], "iS_%d", spec->N_States); 
+               ++spec->N_States; 
+            } else {
+               sprintf(spec->State[spec->N_Surfs], "iS");
+               spec->N_States = 1;
+            }  
          }
          if (ps->i_group[i])  { 
             strcpy(spec->Group[spec->N_Surfs], ps->i_group[i]); 

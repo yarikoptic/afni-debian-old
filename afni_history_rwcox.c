@@ -43,7 +43,129 @@
 
 afni_history_struct rwcox_history[] = {
 /*=====BELOW THIS LINE=====*/
-  { 18 , APR , 2012 , RWC , "3dDeconvolve" , MINOR , TYPE_BUG_FIX ,
+  { 23 , NOV , 2012 , RWC , "afni instacorr" , MINOR , TYPE_MODIFY ,
+   "Allow Start and End indexes, rather than Ignore (=Start)" ,
+   "To allow Instacorr-ing a subset of a time series.  Per the request of\n"
+   "the Exceptional Javier Gonzalez-Castillo" } ,
+
+ { 18 , OCT , 2012 , RWC , "afni" , MICRO , TYPE_NEW_ENV ,
+   "AFNI_CREEPTO modifies 'jumpto xyz' behavior" ,
+   NULL } ,
+
+ { 17 , OCT , 2012 , RWC , "afni" , MICRO , TYPE_GENERAL ,
+   "Add 'j' and 'f' keystrokes for image viewers" ,
+   "Like 'Jump' and 'Flash' in the Clusterize Rpt windows, for the cluster\n"
+   "in which the crosshairs currently reside." } ,
+
+ { 15 , OCT , 2012 , RWC , "1dplot" , MICRO , TYPE_BUG_FIX ,
+   "Fixed bug with -CENSORTR run wildcards and coloring" ,
+   NULL } ,
+
+ { 15 , OCT , 2012 , RWC , "1dplot" , MICRO , TYPE_BUG_FIX ,
+   "Fixed bug with 'push' and '-yaxis' interacting badly." ,
+   NULL } ,
+
+ { 15 , OCT , 2012 , RWC , "afni" , MICRO , TYPE_MODIFY ,
+   "Add 'range=a,b' option to ALTER_WINDOW command in AFNI driver" ,
+   NULL } ,
+
+ { 19 , SEP , 2012 , RWC , "3dGroupInCorr" , MINOR , TYPE_NEW_OPT ,
+   "Add -scale option for the Person from Kolkata" ,
+   NULL } ,
+
+ { 3 , AUG , 2012 , RWC , "2perm" , MICRO , TYPE_NEW_PROG ,
+   "For generating 2 random subsets of a sequence of integers" ,
+   NULL } ,
+
+ { 26 , JUL , 2012 , RWC , "3dAllineate" , MICRO , TYPE_GENERAL ,
+   "Modify wsinc5 (again) to be more flexible" ,
+   NULL } ,
+
+ { 23 , JUL , 2012 , RWC , "3dAllineate" , MICRO , TYPE_GENERAL ,
+   "Also, change wsinc5 taper from Hanning to Hamming" ,
+   NULL } ,
+
+ { 23 , JUL , 2012 , RWC , "3dAllineate" , MICRO , TYPE_NEW_ENV ,
+   "Allow 7x7x7 interpolation in wsinc5 + spherical mask" ,
+   "via environment variables" } ,
+
+ { 12 , JUL , 2012 , RWC , "3dDeconvolve" , MICRO , TYPE_NEW_OPT ,
+   "added ':a:b:c' appendage to -stim_times_AM2" ,
+   "To allow user to specify what values to subtract from modulation\n"
+   "parameters (over-riding the default subtraction of the average)." } ,
+
+ { 19 , JUN , 2012 , RWC , "3dttest++" , MINOR , TYPE_GENERAL ,
+   "Internal wildcard expansion with SHORT FORM '-set' options." ,
+   NULL } ,
+
+  { 23 , MAY , 2012 , RWC , "3dGroupInCorr" , MINOR , TYPE_NEW_OPT ,
+   "Add -clust option, to allow 3dClustSim stuff to be used" ,
+   NULL } ,
+
+ { 21 , MAY , 2012 , RWC , "FDR calculations" , MICRO , TYPE_NEW_ENV ,
+   "AFNI_NON_INDEPENDENT_FDR == YES --> like '-cdep' in 3dFDR." ,
+   NULL } ,
+
+ { 17 , MAY , 2012 , RWC , "3dGroupInCorr" , MINOR , TYPE_NEW_OPT ,
+   "Add -donocov option" ,
+   "When -covariates is used, -donocov says to also do the NO covariates\n"
+   "analyses and tack them onto the end of the results -- for comparison fun" } ,
+
+ { 8 , MAY , 2012 , RWC , "1ddot" , MICRO , TYPE_NEW_OPT ,
+   "Add -rank option to do Spearman correlations" ,
+   NULL } ,
+
+ { 7 , MAY , 2012 , RWC , "FIRdesign" , MICRO , TYPE_NEW_PROG ,
+   "Finite Impulse Design filter design program -- for bandpass" ,
+   NULL } ,
+
+ { 7 , MAY , 2012 , RWC , "AFNI instacorr" , MICRO , TYPE_MODIFY ,
+   "Modify treatment of Global Ort file" ,
+   "If too short to allow for Ignore, then doesn't do Ignore on the Global\n"
+   "Ort time series.  Otherwise, does the initial Ignore on that input.  The\n"
+   "Help also reflects this change.  In the past, it always did the Ignore\n"
+   "on the Global Ort data, and if it couldn't, then it skipped them\n"
+   "entirely." } ,
+
+ { 4 , MAY , 2012 , RWC , "1dBport" , MICRO , TYPE_NEW_OPT ,
+   "Add -quad option = linear and quadratic trend regressors" ,
+   NULL } ,
+
+ { 2 , MAY , 2012 , RWC , "coxplot" , MICRO , TYPE_GENERAL ,
+   "More minor changes to timeseries plotting" ,
+   "Rounded joins for lines drawn in 'new' mode.  Use new mode for final\n"
+   "rendering in plug_realtime.c (but not for realtime graphing).  Etc." } ,
+
+ { 1 , MAY , 2012 , RWC , "mri_stats" , MICRO , TYPE_BUG_FIX ,
+   "Fixed student_t2z problem with very tiny p values (roundoff error)" ,
+   NULL } ,
+
+ { 30 , APR , 2012 , RWC , "1dplot" , MICRO , TYPE_GENERAL ,
+   "Add anti-aliasing rendering to X11 drawing as well." ,
+   "Set AFNI_1DPLOT_RENDEROLD to YES to turn this feature off (but why?)." } ,
+
+ { 27 , APR , 2012 , RWC , "1dplot" , MICRO , TYPE_GENERAL ,
+   "Modify rendering of images (jpeg, png) to look nicer" ,
+   NULL } ,
+
+ { 27 , APR , 2012 , RWC , "3dANOVA and 3dRegANA" , MICRO , TYPE_GENERAL ,
+   "Modified to use a random SUFFIX for temp filenames" ,
+   "To avoid conflict when running 2+ copies in the same directory.  Per the\n"
+   "request of Tom Holroyd." } ,
+
+ { 26 , APR , 2012 , RWC , "3dLocalBistat" , MINOR , TYPE_NEW_OPT ,
+   "Allow 1 volume vs. multi-volume; Add slope options" ,
+   NULL } ,
+
+ { 25 , APR , 2012 , RWC , "3dNormalityTest" , MICRO , TYPE_NEW_OPT ,
+   "Add -pval option, to get a 'pure' p-value out" ,
+   NULL } ,
+
+ { 24 , APR , 2012 , RWC , "1dplot" , MINOR , TYPE_NEW_OPT ,
+   "Add censor stuff to 1dplot, for Colm" ,
+   NULL } ,
+
+ { 18 , APR , 2012 , RWC , "3dDeconvolve" , MINOR , TYPE_BUG_FIX ,
    "Patch BLOCK and dmBLOCK to have their old non-unit-peak behavior" ,
    "New functions UBLOCK and dmUBLOCK now have the unit-peak behavior." } ,
 

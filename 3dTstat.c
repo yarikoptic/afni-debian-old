@@ -60,8 +60,10 @@
 #define METH_CVARINVNOD   33
 
 #define METH_ZCOUNT       34
+#define METH_NZMEDIAN     35   /* RCR 27 Jun 2012 */
+#define METH_SIGNED_ABSMAX 36  /* RCR 31 Aug 2012 */
 
-#define MAX_NUM_OF_METHS  35
+#define MAX_NUM_OF_METHS  37
 
 /* allow single inputs for some methods (test as we care to add) */
 #define NUM_1_INPUT_METHODS 4
@@ -88,7 +90,8 @@ static char *meth_names[] = {
    "CentDuration"  , "Absolute Sum" , "Non-zero Mean" , "Onset"       ,
    "Offset"        , "Accumulate"   , "SS"            , "BiwtMidV"    ,
    "ArgMin+1"      , "ArgMax+1"     , "ArgAbsMax+1"   , "CentroMean"  ,
-   "CVarInv"       , "CvarInv (NOD)", "ZeroCount"
+   "CVarInv"       , "CvarInv (NOD)", "ZeroCount"     , "NZ Median"   ,
+   "Signed Absmax"
 };
 
 static void STATS_tsfunc( double tzero , double tdelta ,
@@ -101,25 +104,10 @@ static int Calc_duration(float *ts, int npts, float vmax, int max_index,
    int *onset, int *offset);
 static float Calc_centroid(float *ts, int npts);
 
-
-int main( int argc , char *argv[] )
+void usage_3dTstat(int detail) 
 {
-   THD_3dim_dataset *old_dset , *new_dset ;  /* input and output datasets */
-   THD_3dim_dataset *mask_dset=NULL  ;
-   float mask_bot=666.0 , mask_top=-666.0 ;
-   byte *cmask=NULL ; int ncmask=0 ;
-   byte *mmm   = NULL ;
-   int mcount=0, verb=0;
-   int nopt, nbriks, ii ;
-   int addBriks = 0 ;   /* n-1 sub-bricks out */
-   int fullBriks = 0 ;  /* n   sub-bricks out */
-   int tsout = 0 ;      /* flag to output a time series (not a stat bucket) */
-   int numMultBriks,methIndex,brikIndex;
 
-   /*----- Help the pitiful user? -----*/
-
-   if( argc < 2 || strcasecmp(argv[1],"-help") == 0 ){
-      printf(
+     printf(
 "Usage: 3dTstat [options] dataset\n"
  "Computes one or more voxel-wise statistics for a 3D+time dataset\n"
  "and stores them in a bucket dataset.  If no statistic option is\n"
@@ -143,18 +131,20 @@ int main( int argc , char *argv[] )
  "                   options only, to turn off detrending, as in\n"
  "                     -stdevNOD  and/or  -cvarNOD  and/or  -cvarinvNOD\n"
  "\n"
- " -MAD    = compute MAD (median absolute deviation) of\n"
- "             input voxels = median(|voxel-median(voxel)|)\n"
- "             [N.B.: the trend is NOT removed for this]\n"
- " -DW    = compute Durbin-Watson Statistic of input voxels\n"
- "             [N.B.: the trend IS removed for this]\n"
- " -median = compute median of input voxels  [undetrended]\n"
- " -bmv    = compute biweight midvariance of input voxels [undetrended]\n"
- "             [actually is 0.989*sqrt(biweight midvariance), to make]\n"
- "             [the value comparable to the standard deviation output]\n"
- " -min    = compute minimum of input voxels [undetrended]\n"
- " -max    = compute maximum of input voxels [undetrended]\n"
+ " -MAD       = compute MAD (median absolute deviation) of\n"
+ "                input voxels = median(|voxel-median(voxel)|)\n"
+ "                [N.B.: the trend is NOT removed for this]\n"
+ " -DW        = compute Durbin-Watson Statistic of input voxels\n"
+ "                [N.B.: the trend IS removed for this]\n"
+ " -median    = compute median of input voxels  [undetrended]\n"
+ " -nzmedian  = compute median of non-zero input voxels [undetrended]\n"
+ " -bmv       = compute biweight midvariance of input voxels [undetrended]\n"
+ "                [actually is 0.989*sqrt(biweight midvariance), to make]\n"
+ "                [the value comparable to the standard deviation output]\n"
+ " -min       = compute minimum of input voxels [undetrended]\n"
+ " -max       = compute maximum of input voxels [undetrended]\n"
  " -absmax    = compute absolute maximum of input voxels [undetrended]\n"
+ " -signed_absmax = (signed) value with absolute maximum [undetrended]\n"
  " -argmin    = index of minimum of input voxels [undetrended]\n"
  " -argmin1   = index + 1 of minimum of input voxels [undetrended]\n"
  " -argmax    = index of maximum of input voxels [undetrended]\n"
@@ -260,22 +250,46 @@ int main( int argc , char *argv[] )
   "option, then the output will be written into a NIML-formatted 1D\n"
   "dataset, which you might find slightly confusing (but still usable).\n"
  ) ;
-      PRINT_COMPILE_DATE ; exit(0) ;
-   }
+   
+   PRINT_COMPILE_DATE ;  
+   
+   return;
+}
+
+int main( int argc , char *argv[] )
+{
+   THD_3dim_dataset *old_dset , *new_dset ;  /* input and output datasets */
+   THD_3dim_dataset *mask_dset=NULL  ;
+   float mask_bot=666.0 , mask_top=-666.0 ;
+   byte *cmask=NULL ; int ncmask=0 ;
+   byte *mmm   = NULL ;
+   int mcount=0, verb=0;
+   int nopt, nbriks, ii ;
+   int addBriks = 0 ;   /* n-1 sub-bricks out */
+   int fullBriks = 0 ;  /* n   sub-bricks out */
+   int tsout = 0 ;      /* flag to output a time series (not a stat bucket) */
+   int numMultBriks,methIndex,brikIndex;
+
+   /*----- Help the pitiful user? -----*/
+
 
    /* bureaucracy */
-
    mainENTRY("3dTstat main"); machdep(); AFNI_logger("3dTstat",argc,argv);
    PRINT_VERSION("3dTstat"); AUTHOR("KR Hammett & RW Cox");
 
    /*--- scan command line for options ---*/
 
+   if (argc == 1) { usage_3dTstat(1); exit(0); } /* Bob's help shortcut */
    nopt = 1 ;
    nbriks = 0 ;
    nmeths = 0 ;
    verb = 0;
    while( nopt < argc && argv[nopt][0] == '-' ){
-
+      if (strcmp(argv[nopt], "-h") == 0 || strcmp(argv[nopt], "-help") == 0) {
+         usage_3dTstat(strlen(argv[nopt]) > 3 ? 2:1);
+         exit(0);
+      }
+      
       /*-- methods --*/
 
       if( strcasecmp(argv[nopt],"-centromean") == 0 ){ /* 01 Nov 2010 */
@@ -292,6 +306,12 @@ int main( int argc , char *argv[] )
 
       if( strcasecmp(argv[nopt],"-median") == 0 ){
          meth[nmeths++] = METH_MEDIAN ;
+         nbriks++ ;
+         nopt++ ; continue ;
+      }
+
+      if( strcasecmp(argv[nopt],"-nzmedian") == 0 ){
+         meth[nmeths++] = METH_NZMEDIAN ;
          nbriks++ ;
          nopt++ ; continue ;
       }
@@ -397,6 +417,12 @@ int main( int argc , char *argv[] )
 
       if( strcasecmp(argv[nopt],"-absmax") == 0 ){
          meth[nmeths++] = METH_ABSMAX ;
+         nbriks++ ;
+         nopt++ ; continue ;
+      }
+
+      if( strcasecmp(argv[nopt],"-signed_absmax") == 0 ){
+         meth[nmeths++] = METH_SIGNED_ABSMAX ;
          nbriks++ ;
          nopt++ ; continue ;
       }
@@ -578,8 +604,15 @@ int main( int argc , char *argv[] )
 
       /*-- Quien sabe'? --*/
 
-      ERROR_exit("Unknown option: %s\n",argv[nopt]) ;
+      ERROR_message("Unknown option: %s\n",argv[nopt]) ;
+      suggest_best_prog_option(argv[0], argv[nopt]);
+      exit(1);
    }
+
+    if (argc < 2) {
+      ERROR_message("Too few options, use -help for details");
+      exit(1);
+    }
 
    /*--- If no options selected, default to single stat MEAN -- KRH ---*/
 
@@ -874,6 +907,21 @@ static void STATS_tsfunc( double tzero, double tdelta ,
       }
       break ;
 
+      case METH_NZMEDIAN:{      /* 27 Jun 2012 [rickr] */
+        float* ts_copy;
+        int    lind, lnzcount;
+        ts_copy = (float*)calloc(npts, sizeof(float));
+        /* replace memcpy with non-zero copy */
+        lnzcount=0;
+        for (lind=0; lind < npts; lind++)
+           if( ts[lind] ) ts_copy[lnzcount++] = ts[lind];
+        /* and get the result from the possibly shortened array */
+        if( lnzcount > 0 ) val[out_index] = qmed_float( lnzcount , ts_copy ) ;
+        else               val[out_index] = 0.0 ;
+        free(ts_copy);
+      }
+      break ;
+
       case METH_CENTROMEAN:{  /* 01 Nov 2010 */
         float* ts_copy;
         ts_copy = (float*)calloc(npts, sizeof(float));
@@ -950,6 +998,7 @@ static void STATS_tsfunc( double tzero, double tdelta ,
       case METH_OFFSET:
       case METH_DURATION:
       case METH_ABSMAX:
+      case METH_SIGNED_ABSMAX:
       case METH_ARGMAX:
       case METH_ARGMAX1:
       case METH_ARGABSMAX:
@@ -958,7 +1007,7 @@ static void STATS_tsfunc( double tzero, double tdelta ,
       case METH_CENTDURATION:
       case METH_CENTROID:{
          register int ii, outdex=0 ;
-         register float vm=ts[0] ;
+         register float vm=ts[0];
          if ( (meth[meth_index] == METH_ABSMAX) ||
                (meth[meth_index] == METH_ARGABSMAX) ||
                (meth[meth_index] == METH_ARGABSMAX1)  ) {
@@ -966,6 +1015,16 @@ static void STATS_tsfunc( double tzero, double tdelta ,
            for( ii=1 ; ii < npts ; ii++ ) {
              if( fabs(ts[ii]) > vm ) {
                vm = fabs(ts[ii]) ;
+               outdex = ii ;
+             }
+           }
+         } else if ( meth[meth_index] == METH_SIGNED_ABSMAX ) {
+           /* for P Hamilton    31 Aug 2012 [rickr] */
+           register float avm=fabs(vm);
+           for( ii=1 ; ii < npts ; ii++ ) {
+             if( fabs(ts[ii]) > avm ) {
+               vm = ts[ii] ;
+               avm = fabs(vm) ;
                outdex = ii ;
              }
            }
@@ -980,6 +1039,7 @@ static void STATS_tsfunc( double tzero, double tdelta ,
        switch( meth[meth_index] ){
             default:
             case METH_ABSMAX:
+            case METH_SIGNED_ABSMAX:
             case METH_MAX:
                val[out_index] = vm ;
             break;

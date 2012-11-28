@@ -1,5 +1,6 @@
 
 #include "stdlib.h"
+#include "string.h"
 #include "list_struct.h"
 
 
@@ -361,7 +362,7 @@ int init_voidp_list( voidp_list * d_list, int nel, int len )
  *   return:
  *       success: nel (>= 1)
  *----------------------------------------------------------------------*/
-int add_to_float_list( float_list * d_list, float fval, int inc_size )
+int add_to_float_list( float_list * d_list, float val, int inc_size )
 {
     int llen;
 
@@ -373,11 +374,59 @@ int add_to_float_list( float_list * d_list, float fval, int inc_size )
         else               llen = d_list->nall + inc_size;
         d_list->nall = llen;
         d_list->list = (float *)realloc(d_list->list, llen*sizeof(float));
+        if( !d_list->list ) return -1;
     }
 
-    d_list->list[d_list->num++] = fval;
+    d_list->list[d_list->num++] = val;
 
     return d_list->num;
+}
+
+int add_to_int_list( int_list * d_list, int val, int inc_size )
+{
+    int llen;
+
+    if ( !d_list ) return -1;
+
+    /* maybe we need more space */
+    if ( d_list->num >= d_list->nall ) {
+        if (inc_size <= 0) llen = d_list->nall + 1;
+        else               llen = d_list->nall + inc_size;
+        d_list->nall = llen;
+        d_list->list = (int *)realloc(d_list->list, llen*sizeof(int));
+        if( !d_list->list ) return -1;
+    }
+
+    d_list->list[d_list->num++] = val;
+
+    return d_list->num;
+}
+
+/*----------------------------------------------------------------------
+ * extend_XXXX_list:                                         26 Apr 2012
+ *
+ * extend first list by another, returning the new length (or -1 on error)
+ *----------------------------------------------------------------------*/
+int extend_int_list( int_list * L1, int_list * L2 )
+{
+    int newlen;
+
+    if ( !L1 || !L2 ) return -1;
+
+    newlen = L1->num + L2->num;
+
+    /* maybe we need more space */
+    if ( newlen >= L1->nall ) {
+        L1->nall = newlen;
+        L1->list = (int *)realloc(L1->list, newlen*sizeof(int));
+        if( !L1->list ) return -1;
+    }
+
+    /* now append L2 to L1 */
+    memcpy(L1->list+L1->num, L2->list, L2->num * sizeof(int));
+    L1->num = newlen;
+
+    return L1->num;
 }
 
 

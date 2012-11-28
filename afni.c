@@ -1,7 +1,7 @@
 /*****************************************************************************
    Major portions of this software are copyrighted by the Medical College
    of Wisconsin, 1994-2000, and are released under the Gnu General Public
-   License, Version 2.  See the file README.Copyright for details.
+   License, Version 2 (or later).  See the file README.Copyright for details.
 ******************************************************************************/
 
 /**********************************************************************/
@@ -1425,8 +1425,10 @@ void AFNI_sigfunc_alrm(int sig)
      "I will not say 'do not weep', for not all tears are an evil"   ,
      "Calo anor na ven -- May the sun shine upon your road"          ,
      "Little by little, one travels far"                             ,
+     "Beyond all hope, set free to light"                            ,
      "Divide By Cucumber Error; Please Reinstall Universe and Reboot",
      "Out of Cheese Error; Please Install Wensleydale and Try Again" ,
+     "Out of Cheese Error; Please Install Stilton and Try Again"     ,
      "If at first you don't succeed -- call it version 1.0"          ,
      "Never trust a statistic you haven't faked yourself"            ,
      "May your teeth never be replaced by damp woolen socks"         ,
@@ -1436,18 +1438,20 @@ void AFNI_sigfunc_alrm(int sig)
      "Ta ta, and may an elephant caress you gently with his toes"    ,
      "The Square Root of -1 said to Pi, 'Be Rational'"               ,
      "Pi told the Square Root of -1 to 'Get Real'"                   ,
+     "And the world begins to tremble"                               ,
      "By Grapthar's Hammer, you SHALL be avenged"                    ,
      "We live to tell the tale"                                      ,
      "Are we there yet?"                                             ,
      "Never give up, never surrender"                                ,
-     "Activate the Omega 13"                                         ,
-     "No time for pleasantries Kyle; we have a Level 5 emergency!"   ,
+     "Mathesar, Activate the Omega-13!"                              ,
+     "No time for pleasantries, Kyle; we have a Level 5 emergency!"  ,
      "Digitize me, Fred"                                             ,
      "Drink to me only with thine eyes, and I will drink with mine"  ,
      "O Captain, My Captain, rise up and hear the bells"             ,
      "Ever returning spring, trinity sure to me you bring"           ,
      "What a long strange trip it's been"                            ,
      "Sometime the light shines on me, other times I can barely see" ,
+     "Tomorrow we feast with us at home"                             ,
 
      "May the Dark Side of the Force get lost on the way to your data"                ,
      "The Andromeda Galaxy is on a collision course with us -- be prepared"           ,
@@ -1458,7 +1462,8 @@ void AFNI_sigfunc_alrm(int sig)
      "Sometimes you've got to let go to see if there was anything worth holding onto" ,
      "Remember me and smile, for it's better to forget than remember me and cry"      ,
      "So now I say goodbye, but I feel sure we will meet again sometime"              ,
-     "If you're anything like me, you're both smart and incredibly good looking"
+     "If you're anything like me, you're both smart and incredibly good looking"      ,
+     "In battle we may yet meet again, though all the hosts of Mordor stand between"
    } ;
 #undef NTOP
 #ifdef USE_SONNETS
@@ -1834,6 +1839,8 @@ int main( int argc , char *argv[] )
         MCW_new_DC( MAIN_shell , GLOBAL_argopt.ncolor ,
                     INIT_ncolovr , INIT_colovr , INIT_labovr ,
                     GLOBAL_argopt.gamma , GLOBAL_argopt.install_cmap ) ;
+
+   memplot_to_X11_set_DC(MAIN_dc) ; /* 30 Apr 2012 */
 
    if( MAIN_dc->depth < 9 && MAIN_dc->visual_class != TrueColor && GLOBAL_argopt.unique_dcs ){
      GLOBAL_argopt.unique_dcs = False ;
@@ -3968,6 +3975,22 @@ STATUS("read next file") ;
    RETURN( dset ) ;
 }
 
+/*----------------------------------------------------------------------*/
+/* Jumpto current cluster peak */
+
+void AFNI_jumpto_clus( Three_D_View *im3d )  /* 19 Oct 2012 */
+{
+  int ic ; float px,py,pz , xx,yy,zz ;
+  AFNI_clu_widgets *cwid = im3d->vwid->func->cwid ;
+  mri_cluster_detail *cld = im3d->vwid->func->clu_det ;
+  if( cwid == NULL || cld == NULL ){ BEEPIT ; return ; }
+  ic = AFNI_clus_find_xyz( im3d ,
+                           im3d->vinfo->xi , im3d->vinfo->yj , im3d->vinfo->zk ) ;
+  if( ic < 0 ){ BEEPIT ; return ; }
+  AFNI_clus_action_CB( cwid->clu_jump_pb[ic] , (XtPointer)im3d , (XtPointer)666 ) ;
+  return ;
+}
+
 /*----------------------------------------------------------------------
    respond to events that one of the MCW_imseq's sends to us
 ------------------------------------------------------------------------*/
@@ -4293,6 +4316,22 @@ if(PRINT_TRACING)
                  if( nff < 0.0f          ) nff = 0.0f ;
             else if( nff > THR_top_value ) nff = THR_top_value ;
             if( nff != fff ) AFNI_set_threshold( im3d , nff ) ;
+          }
+          break ;
+
+          case 'j':        /* jump to cluster peak -- for Dale [17 Oct 2012] */
+            AFNI_jumpto_clus(im3d) ;
+          break ;
+
+          case 'f':{       /* flash cluster [17 Oct 2012] */
+            int ic ; float px,py,pz , xx,yy,zz ;
+            AFNI_clu_widgets *cwid = im3d->vwid->func->cwid ;
+            mri_cluster_detail *cld = im3d->vwid->func->clu_det ;
+            if( cwid == NULL || cld == NULL ){ BEEPIT ; break ; }
+            ic = AFNI_clus_find_xyz( im3d ,
+                                     im3d->vinfo->xi , im3d->vinfo->yj , im3d->vinfo->zk ) ;
+            if( ic < 0 ){ BEEPIT ; break ; }
+            AFNI_clus_action_CB( cwid->clu_flsh_pb[ic] , (XtPointer)im3d , NULL ) ;
           }
           break ;
 
@@ -5812,6 +5851,9 @@ static char * AFNI_image_help =
  "Shift+keyboard arrow keys = pan crop region around\n"
  "Ctrl+keyboard arrow keys  = expand/shrink crop region\n"
  "Shift+Home = center crop region on current crosshairs\n"
+ "--- THESE NEXT KEYSTROKES OPERATE WITH CLUSTERIZE ---\n"
+ "j = Jump to current cluster's peak (or cmass)\n"
+ "f = Flash current cluster\n"
 ;
 
 static char * AFNI_arrowpad_help =
@@ -6498,8 +6540,7 @@ DUMP_IVEC3("  new_id",new_id) ;
        switch( VEDIT_CODE(im3d->vedset) ){
          case VEDIT_CLUST:
            im3d->vedset.param[0] = (float)im3d->vinfo->thr_index ;
-           im3d->vedset.param[1] = im3d->vinfo->func_threshold
-                                  *im3d->vinfo->func_thresh_top ;
+           im3d->vedset.param[1] = get_3Dview_func_thresh(im3d,1);
            im3d->vedset.param[4] = im3d->vinfo->thr_sign ;
            im3d->vedset.param[5] = im3d->vinfo->use_posfunc ;
            im3d->vedset.exinfo   = NULL ;
@@ -9170,6 +9211,13 @@ ENTRY("AFNI_imag_pop_CB") ;
       }
    }
 
+   /*-- 19 Oct 2012: jump to cluster peak --*/
+
+   else if( w == im3d->vwid->imag->pop_jumpto_clus_pb &&
+            im3d->type == AFNI_3DDATA_VIEW            ){
+     AFNI_jumpto_clus(im3d) ;
+   }
+
    /*-- 06 Mar 2002: jump to a node in a surface --*/
 
    else if( w == im3d->vwid->imag->pop_sumato_pb &&
@@ -9666,6 +9714,7 @@ ENTRY("AFNI_jumpto_CB") ;
 
    THD_coorder_to_dicom( &GLOBAL_library.cord , &xx,&yy,&zz ) ;
 
+   SAVE_VPT(im3d) ;  /* save current place as old one */
    nn = AFNI_jumpto_dicom( im3d , xx,yy,zz ) ;
    if( nn < 0 ){ BEEPIT ; WARNING_message("Jumpto failed!") ; }
 
@@ -9675,13 +9724,13 @@ ENTRY("AFNI_jumpto_CB") ;
 
 /*---------------------------------------------------------------------*/
 
-int AFNI_jumpto_dicom( Three_D_View *im3d , float xx, float yy, float zz )
+int AFNI_jumpto_dicom_OLD( Three_D_View *im3d , float xx, float yy, float zz )
 {
    THD_dataxes  *daxes ;
    THD_fvec3 fv ; THD_ivec3 iv ;
    int ii,jj,kk ;
 
-ENTRY("AFNI_jumpto_dicom") ;
+ENTRY("AFNI_jumpto_dicom_OLD") ;
 
    LOAD_ANAT_VIEW(im3d) ;  /* 02 Nov 1996 */
 
@@ -9693,13 +9742,51 @@ ENTRY("AFNI_jumpto_dicom") ;
    if( ii >= 0 && ii < daxes->nxx &&
        jj >= 0 && jj < daxes->nyy && kk >= 0 && kk < daxes->nzz ){
 
-      SAVE_VPT(im3d) ;
       AFNI_set_viewpoint( im3d , ii,jj,kk , REDISPLAY_ALL ) ; /* jump */
       RETURN(1) ;
    } else {
       BEEPIT ; WARNING_message("Jumpto DICOM failed -- bad coordinates?!") ;
       RETURN(-1) ;
    }
+}
+
+/*---------------------------------------------------------------------*/
+
+int AFNI_creepto_dicom( Three_D_View *im3d , float xx, float yy, float zz )
+{
+   float xc,yc,zc , dxx,dyy,dzz ; int ndd,qq,ii  ;
+
+ENTRY("AFNI_creepto_dicom") ;
+
+   xc = im3d->vinfo->xi ; yc = im3d->vinfo->yj ; zc = im3d->vinfo->zk ;
+
+   dxx = fabsf( (xx-xc) / DSET_DX(im3d->anat_now) ) ;
+   dyy = fabsf( (yy-yc) / DSET_DY(im3d->anat_now) ) ;
+   dzz = fabsf( (zz-zc) / DSET_DZ(im3d->anat_now) ) ;
+   ndd = (int)sqrtf(dxx*dxx+dyy*dzz+dzz*dzz) ; ndd = MIN(ndd,32) ;
+
+   SAVE_VPT(im3d) ;
+   if( ndd < 2 ){ ii = AFNI_jumpto_dicom_OLD(im3d,xx,yy,zz) ; RETURN(ii) ; }
+
+   dxx = (xx-xc) / ndd ; dyy = (yy-yc) / ndd ; dzz = (zz-zc) / ndd ;
+
+   for( qq=ndd-1 ; qq >= 0  ; qq-- )
+     ii = AFNI_jumpto_dicom_OLD( im3d , xx-dxx*qq , yy-dyy*qq , zz-dzz*qq ) ;
+
+   RETURN(ii) ;
+}
+
+/*---------------------------------------------------------------------*/
+
+int AFNI_jumpto_dicom( Three_D_View *im3d , float xx, float yy, float zz )
+{
+   int ii ;
+   SAVE_VPT(im3d) ;
+   if( AFNI_yesenv("AFNI_CREEPTO") )
+     ii = AFNI_creepto_dicom(im3d,xx,yy,zz) ;
+   else 
+     ii = AFNI_jumpto_dicom_OLD(im3d,xx,yy,zz) ;
+   return ii ;
 }
 
 /*----------- the two functions below date to 19 Aug 1999 -------------*/

@@ -291,7 +291,6 @@ static void AFNI_clus_make_widgets( Three_D_View *, int ) ;
 static void AFNI_clus_done_CB  ( Widget,XtPointer,XtPointer ) ;
 
 static void AFNI_clus_av_CB( MCW_arrowval * , XtPointer ) ;
-static void AFNI_clus_action_CB( Widget,XtPointer,XtPointer ) ;
 
 /*---------------------------------------------------------------------------*/
 
@@ -1028,6 +1027,7 @@ static void AFNI_cluster_widgize( Three_D_View *im3d , int force )
                    XtWindow (im3d->vwid->func->cwid->wtop)  ) ;
      im3d->vwid->func->cwid->is_open = 1 ;
    }
+   SENSITIZE(im3d->vwid->imag->pop_jumpto_clus_pb,True) ;
    return ;
 }
 
@@ -1042,13 +1042,14 @@ static void AFNI_cluster_widgkill( Three_D_View *im3d )
    XtUnmapWidget( im3d->vwid->func->cwid->wtop ) ;
    im3d->vwid->func->cwid->is_open = 0 ;
    DESTROY_CLARR(im3d->vwid->func->clu_list) ;
+   SENSITIZE(im3d->vwid->imag->pop_jumpto_clus_pb,False) ;
    return ;
 }
 
 /*---------------------------------------------------------------------------*/
 /* Get the cluster index of the DICOM coords, if it exists. */
 
-static int AFNI_clus_find_xyz( Three_D_View *im3d , float x,float y,float z )
+int AFNI_clus_find_xyz( Three_D_View *im3d , float x,float y,float z )
 {
    float xf,yf,zf ; int xi,yi,zi , ii,jj,npt,nclu ;
    MCW_cluster_array *clar ; MCW_cluster *cl ;
@@ -1319,6 +1320,7 @@ ENTRY("AFNI_clus_done_CB") ;
      cwid->hbot = cwid->htop = 0.0f ; MCW_set_bbox( cwid->histsqrt_bbox , 0 ) ;
      XtUnmapWidget(cwid->wtop) ; cwid->is_open = 0 ;
      DESTROY_CLARR(im3d->vwid->func->clu_list) ;
+     SENSITIZE(im3d->vwid->imag->pop_jumpto_clus_pb,False) ;
    }
    EXRETURN ;
 }
@@ -1379,7 +1381,7 @@ ENTRY("AFNI_clus_finalize_scat1D_CB") ;
 /*---------------------------------------------------------------------------*/
 /* Callback for all pushbuttons (except 'Done') on the report window. */
 
-static void AFNI_clus_action_CB( Widget w , XtPointer cd , XtPointer cbs )
+void AFNI_clus_action_CB( Widget w , XtPointer cd , XtPointer cbs )
 {
    Three_D_View *im3d = (Three_D_View *)cd ;
    AFNI_clu_widgets *cwid ;
@@ -1422,11 +1424,18 @@ ENTRY("AFNI_clus_action_CB") ;
 
    /*--------- Scat.1D button ----------*/
 
-   if( w == cwid->splot_pb && IMARR_COUNT(GLOBAL_library.timeseries) > 0 ){
-     int init_ts = AFNI_ts_in_library( cwid->splotim ) ;
-     MCW_choose_timeseries( cwid->top_lab , "Scatterplot x-axis" ,
-                                   GLOBAL_library.timeseries , init_ts ,
-                                   AFNI_clus_finalize_scat1D_CB , (XtPointer)im3d ) ;
+   if( w == cwid->splot_pb ){
+     if( IMARR_COUNT(GLOBAL_library.timeseries) > 0 ){
+       int init_ts = AFNI_ts_in_library(cwid->splotim) ;
+       MCW_choose_timeseries( cwid->top_lab , "Scatterplot x-axis" ,
+                                     GLOBAL_library.timeseries , init_ts ,
+                                     AFNI_clus_finalize_scat1D_CB , (XtPointer)im3d ) ;
+     } else {
+       MCW_popup_message( w , " \n"
+                              "** No 1D files have  **\n"
+                              "** been read in yet! **\n " ,
+                          MCW_USER_KILL | MCW_TIMER_KILL ) ;
+     }
      EXRETURN ;
    }
 
@@ -1630,7 +1639,8 @@ ENTRY("AFNI_clus_action_CB") ;
          case CMASS_MODE: xx=cld[ii].xcm; yy=cld[ii].ycm; zz=cld[ii].zcm; break;
        }
        MAT44_VEC( im3d->fim_now->daxes->ijk_to_dicom , xx,yy,zz , px,py,pz ) ;
-       AFNI_jumpto_dicom( im3d , px,py,pz ) ;
+       if( 666 == (int)cbs ) AFNI_creepto_dicom( im3d , px,py,pz ) ;
+       else                  AFNI_jumpto_dicom ( im3d , px,py,pz ) ;
        EXRETURN ;
 
      /*----------- Process the cluster data -----------*/
@@ -1693,7 +1703,9 @@ ENTRY("AFNI_clus_action_CB") ;
                if( htop < val ) htop = val ;
              }
            }
-           if( hbot >= htop ){ DESTROY_IMARR(imar); SHOW_AFNI_READY; EXRETURN; } /* bad */
+           if( hbot >= htop ){
+             DESTROY_IMARR(imar); SHOW_AFNI_READY; EXRETURN;  /* bad */
+           }
          }
          if( (int)hbot == hbot && (int)htop == htop ){
            nbin = htop - hbot ;
@@ -1726,7 +1738,7 @@ ENTRY("AFNI_clus_action_CB") ;
            strcat(ylab,(dosqrt)?" [SqrtHist]" : " [Hist]") ;
            sprintf(tlab,"\\noesc %s[%d..%d]",
                    THD_trailname(DSET_HEADNAME(cwid->dset),SESSTRAIL) , ibot,itop ) ;
-           plot_ts_xypush(0,-1) ; plot_ts_setthik(0.005f) ;
+           plot_ts_xypush(0,-1) ; plot_ts_setTHIK(0.004f) ; plot_ts_setthik(0.0015f) ;
            PLUTO_histoplot_f( nbin,hbot,htop , hbin , xlab,ylab,tlab , 0,NULL ) ;
 
          } else {         /*----- save histogram -----*/
@@ -1798,7 +1810,7 @@ ENTRY("AFNI_clus_action_CB") ;
        } else if( doscat ){  /* scatterplot */
          float *xar=NULL, *yar=NULL ; int nix=0, niy=0, nixy=0, jj,kk ;
          float a=0,b=0,pcor=0,p025=0,p975=0 ;
-         char xlab[64] , ylab[64] , tlab[THD_MAX_NAME+2] ;
+         char xlab[256] , ylab[256] , tlab[THD_MAX_NAME+256] ;
          if( dosmea ){
            im = mri_meanvector( imar , ibot,itop ) ; xar = MRI_FLOAT_PTR(im) ;
            nix = im->nx ; niy = 1 ; nixy = nix*niy ;
@@ -1810,16 +1822,26 @@ ENTRY("AFNI_clus_action_CB") ;
            yar = (float *)malloc(sizeof(float)*nixy) ;
            for( kk=0 ; kk < niy ; kk++ ){
              xar= MRI_FLOAT_PTR(IMARR_SUBIM(imar,kk)) ;
-             for( jj=0 ; jj < nix ; jj++ ) yar[jj+kk*nix] = xar[jj] ;
+             for( jj=0 ; jj < nix ; jj++ ) yar[jj+kk*nix] = xar[jj+ibot] ;
            }
          }
          xar = (float *)malloc(sizeof(float)*nixy) ;
-         if( cwid->splotim != NULL && cwid->splotim->nx >= nix+ibot ){
-           float *spar = MRI_FLOAT_PTR(cwid->splotim) ;
-           for( kk=0 ; kk < niy ; kk++ ){
-             for( jj=0 ; jj < nix ; jj++ ) xar[jj+kk*nix] = spar[jj+ibot] ;
+         if( cwid->splotim != NULL && cwid->splotim->nx >= nix ){
+           float *spar = MRI_FLOAT_PTR(cwid->splotim) ; int sbot ; char *eee ;
+           eee = getenv("AFNI_CLUSTER_SCAT1D_START") ;
+           if( eee != NULL && isdigit(*eee) ){
+             sbot = (int)strtod(eee,NULL) ;
+           } else {
+#if 0
+             sbot = cwid->splotim->nx - nix ;
+#else
+             sbot = (cwid->splotim->nx >= nix+ibot) ? ibot : 0 ;
+#endif
            }
-           sprintf(xlab,"%.62s",cwid->splotim->name) ;
+           for( kk=0 ; kk < niy ; kk++ ){
+             for( jj=0 ; jj < nix ; jj++ ) xar[jj+kk*nix] = spar[jj+sbot] ;
+           }
+           sprintf(xlab,"%.62s[%d..%d]",cwid->splotim->name,sbot,sbot+nix-1) ;
          } else {
            for( kk=0 ; kk < niy ; kk++ )
              for( jj=0 ; jj < nix ; jj++ ) xar[jj+kk*nix] = jj+ibot ;
@@ -1867,9 +1889,10 @@ ENTRY("AFNI_clus_action_CB") ;
            sprintf(tlab,"\\noesc %s[%d..%d]",
                    THD_trailname(DSET_HEADNAME(cwid->dset),SESSTRAIL),
                    ibot,itop) ;
-           plot_ts_xypush(1,0) ; plot_ts_setthik(0.006f) ;
+           plot_ts_xypush(1,0) ; plot_ts_setTHIK(0.006f) ; plot_ts_setthik(0.0015f) ;
            xax = (float *)malloc(sizeof(float)*im->nx) ;
            for( jj=0 ; jj < im->nx ; jj++ ) xax[jj] = ibot+jj ;
+           X11_SET_NEW_PLOT ;
            if( sim == NULL ){
               plot_ts_lab( im3d->dc->display ,
                            im->nx , xax , 1 , &far ,
@@ -1935,8 +1958,7 @@ ENTRY("AFNI_clus_action_CB") ;
        if( ISVALID_DSET(fset) && fset->dblk->vedim == NULL ){
          im3d->vedset.ival     = im3d->vinfo->fim_index ;
          im3d->vedset.param[0] = (float)im3d->vinfo->thr_index ;
-         im3d->vedset.param[1] = im3d->vinfo->func_threshold
-                                *im3d->vinfo->func_thresh_top ;
+         im3d->vedset.param[1] = get_3Dview_func_thresh(im3d,1);
          im3d->vedset.param[4] = im3d->vinfo->thr_sign ;
          im3d->vedset.param[5] = im3d->vinfo->use_posfunc ;
          im3d->vedset.exinfo   = NULL ;

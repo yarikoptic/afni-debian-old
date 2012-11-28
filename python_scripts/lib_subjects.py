@@ -34,6 +34,16 @@ class VarsObject(object):
 
       return 1
 
+   def get_type(self, atr):
+      """return the type of an object, if atomic, else None
+         return one of int, float, str, list or None
+      """
+
+      val = getattr(self, atr)
+      if type(val) in g_valid_atomic_types: return type(val)
+
+      return None       # not a simple atomic type
+
    def get_atomic_type(self, atr):
       """return the atomic type of an object
          return one of int, float, str, list
@@ -87,21 +97,32 @@ class VarsObject(object):
       """return a copy of this class item by creating a new instance
          and copying all simple attributes
 
-         if as_strings: copy any simple type (int, float) as string
+         if as_strings: copy any simple type (int, float) or depth 1 list
+         as string
       """
 
       dupe = VarsObject()
       for atr in self.attributes():
-         if as_strings:
-            val = getattr(self, atr)
-            if type(val) == int or type(val) == float:
-               setattr(dupe, atr, '%s'%val)
-               continue
-         # if wasn't converted from int or float, just copy
-         setattr(dupe, atr, self.valcopy(atr))
+         if as_strings: val = self.copy_2_str(getattr(self, atr))
+         else:          val = self.valcopy(atr)
+         setattr(dupe, atr, val)
+
       if name: dupe.name = name
 
       return dupe
+
+   def copy_2_str(self, value):
+      """copy value as a string, using recursion for lists    16 Oct 2012
+
+         if int or float, return string version
+         else if list, return string list from recursive calls
+         else, return value
+      """
+      tv = type(value)
+      if   tv == int:   return '%s' % value
+      elif tv == float: return '%s' % value
+      elif tv == list:  return [self.copy_2_str(lv) for lv in value]
+      else:             return value
 
    def merge(self, v2, typedef=None, verb=1):
       """merge in attributes from v2
@@ -260,6 +281,12 @@ class VarsObject(object):
       if val == '' or val == []: return True
       return False
 
+   def val_len(self, atr):
+      """return 0 or len(atr)"""
+      val = self.val(atr)
+      if type(val) == list: return len(val)
+      return 0
+
    def is_not_empty(self, atr):
       """true if set and neither '' nor []"""
       return not self.is_empty(atr)
@@ -292,6 +319,95 @@ class VarsObject(object):
       if vobj.get_atomic_type(atr) not in g_valid_atomic_types: return False
 
       return self.val(atr) == vobj.val(atr)
+
+   def changed_attrs(self, vobj):
+      """return a list of attributes that differ from those in passed vobj
+      """
+
+      retlist = []
+      for attr in self.attributes():
+         if not self.get_atomic_type(attr): continue
+         if self.val(attr) != vobj.val(attr): retlist.append(attr)
+
+      return retlist
+
+   def deleted_attrs(self, vobj):
+      """return a list of attributes that no longer exist
+         (i.e. they are in the passed vobj, but not the local instance)
+      """
+
+      retlist = []
+      for attr in vobj.attributes():
+         if not hasattr(self, attr): retlist.append(attr)
+
+      return retlist
+
+   def changed_attrs_str(self, checkobj, skiplist=[], showskip=1, showdel=1):
+      """return a string that lists differences between self and vobj
+
+         do not report those in skiplist
+
+         for each changed_attrs()
+            if in skiplist: continue
+            else list
+         for each changed in skiplist (and not 'name')
+            list
+
+         return a printable string
+      """
+      rlist = []
+
+      # start with options (things not in skiplist)
+      clist = self.changed_attrs(checkobj)
+      acount = 0
+      if len(clist) > 0:
+         for attr in clist:
+            if attr in skiplist: continue
+            acount += 1
+            if self.get_type(attr) == list:
+               # show list if short enough
+               lstr = ' '.join(self.val(attr))
+               if len(lstr)>52: lstr='[list of %d elements]'%self.val_len(attr)
+               rlist.append('  %-20s : %s' % (attr,lstr))
+            else: rlist.append('  %-20s : %s' % (attr, self.val(attr)))
+         if acount > 0:
+            rlist.insert(0, 'options changed from defaults (%d):\n' % acount)
+            rlist.append('')
+         else:
+            rlist.insert(0, 'options: using all defaults\n')
+
+      # now go after ONLY skiplist attrs (these are not as options)
+      acount = 0
+      nlist = []
+      if showskip and len(skiplist) > 0 and len(clist) > 0:
+         for attr in clist:
+            if attr not in skiplist: continue
+            if attr == 'name': continue
+            acount += 1
+            if self.get_type(attr) == list:
+               # show list if short enough
+               lstr = ' '.join(self.val(attr))
+               if len(lstr)>52: lstr='[list of %d elements]'%self.val_len(attr)
+               nlist.append('  %-20s : %s' % (attr,lstr))
+            else: nlist.append('  %-20s : %s' % (attr, self.val(attr)))
+         if acount > 0:
+            nlist.insert(0, 'applied subject variables (%d):\n' % acount)
+         else:
+            nlist.insert(0, '** no subject variables set?\n')
+         nlist.append('')
+         rlist.extend(nlist)
+
+      if showdel:
+         clist = self.deleted_attrs(checkobj)
+         if len(clist) > 0:
+            rlist.append('deleted vars (%d):\n' % len(clist))
+            for attr in clist:
+               rlist.append('  %s' % attr)
+            rlist.append('')
+
+      if len(rlist) == 0: return '** using all defaults'
+
+      return '\n'.join(rlist)
 
    def valid_atr_type(self, atr='noname', atype=None, alevel=0, exists=0):
       """check for the existence and type of the given variable 'atr'
@@ -457,7 +573,7 @@ def subj_compare(subj0, subj1):
    if cval != 0: return subj0._order*cval
    return subj0._order*cmp(subj0.sid, subj1.sid)
 
-def set_var_str_from_def(obj, name, vlist, vars, defs,
+def set_var_str_from_def(obj, name, vlist, vobj, defs,
                          verb=1, csort=1, spec=None):
    """try to set name = value based on vlist
         (just set as string)
@@ -499,7 +615,7 @@ def set_var_str_from_def(obj, name, vlist, vars, defs,
       try: vv = dtype(val)
       except:
          print '** SVSFD %s.%s, cannot convert value %s to %s' \
-               (obj, name, val, dtype)
+               % (obj, name, val, dtype)
          return -1
    elif dtype == list: val = vlist
    else: 
@@ -507,7 +623,7 @@ def set_var_str_from_def(obj, name, vlist, vars, defs,
       return -1
 
    # actually set the value
-   rv = vars.set_var(name, val)
+   rv = vobj.set_var(name, val)
    if verb > 1:
       if rv: print '++ %s: updating %s to %s %s' % (obj, name, val, type(val))
       else:  print '++ %s: no update for %s to %s' % (obj, name, val)
@@ -521,7 +637,7 @@ def set_var_str_from_def(obj, name, vlist, vars, defs,
 
    # this function must be passed, since it will vary per library
 
-   if spec != None: spec(name, vars, check_sort=csort)
+   if spec != None: spec(name, vobj, check_sort=csort)
 
    return rv
 
@@ -803,6 +919,8 @@ class SubjectList(object):
       if hpad < 0 or tpad < 0:
          print '** set_ids_from_dsets: will not apply negative padding'
          return 1
+
+      # try filenames without paths, first
       dlist = [s.dset.split('/')[-1] for s in self.subjects]
       if UTIL.vals_are_constant(dlist):
          print '** constant dataset names (%s)' % dlist[0]
@@ -826,6 +944,7 @@ class SubjectList(object):
 
       if not UTIL.vals_are_unique(slist):
          print '** cannot set IDs from dsets, labels not unique: %s' % slist
+         print '-- labels come from dsets: %s' % dlist
          return 1
 
       for ind, subj in enumerate(self.subjects):
@@ -838,6 +957,180 @@ class SubjectList(object):
       Subject._sort_key = key     # None or otherwise
       Subject._order = order      # 1 for small first, -1 for reverse
       self.subjects.sort(cmp=subj_compare)
+
+   def make_anova2_command(self, bsubs=None, prefix=None, options=None, verb=1):
+      """create a basic 3dANOVA2 -type 3 command
+
+         ** bsubs should be lists of strings, even if integral sub-bricks
+            (they are applied as sub-brick selectors)
+         
+         attach options after subject lists
+
+            bsubs          - beta sub-bricks (1 list of sub-brick selectors)
+            prefix         - prefix for command output
+            options        - other options added to the command
+            verb           - verbose level
+
+         return None on failure, command on success
+      """
+
+      if prefix == '' or prefix == None: prefix = 'anova2_result'
+      if verb > 1: print '-- make_anova2_command: have prefix %s' % prefix
+
+      if bsubs == None:
+         print '** missing sub-brick selection list'
+         return None
+      if len(bsubs) < 2:
+         print '** anova2_command: need at least 2 sub-bricks (have %d)' \
+               % len(bsubs)
+         return None
+
+      indent = 9  # minimum indent: spaces to following -set option
+
+      cmd   = '#!/bin/tcsh\n\n'
+
+      # maybe we will use directory variables
+      self.set_common_data_dir()
+      if not UTIL.is_trivial_dir(self.common_dir):
+         self.common_dname = 'data'
+         cmd += '# apply any data directories with variables\n' \
+               'set %s = %s\n' % (self.common_dname, self.common_dir)
+         cmd += '\n'
+
+      cmd += '# note: factor A is condition, B is subject\n\n'
+
+      # command and first set of subject files
+      cmd += '3dANOVA2 -type 3 \\\n' \
+             '%s' %  self.make_anova2_set_list(bsubs, indent)
+
+      if len(options) > 0: cmd += '%*s%s \\\n' % (indent,'', ' '.join(options))
+      else:     # add some basic option
+         opt = '-amean 1 amean1'
+         cmd += '%*s%s \\\n' % (indent, '', opt)
+         print '++ no contrast options given, adding simple: %s' % opt
+
+      if prefix.find('/') >= 0: pp = prefix
+      else:                     pp = './%s' % prefix
+      cmd += '%*s-bucket %s\n' % (indent, '', pp)
+
+      cmd += '\n'
+
+      return cmd
+
+   def make_anova3_command(self, bsubs=None, prefix=None, subjlists=None,
+                           options=None, factors=[], verb=1):
+      """create a basic 3dANOVA3 -type 5 command
+
+         ** other types may be added later...
+
+         ** bsubs should be lists of strings, even if integral sub-bricks
+            (they are applied as sub-brick selectors)
+         
+         attach options after subject lists
+
+            bsubs          - beta sub-bricks (1 list of sub-brick selectors)
+            prefix         - prefix for command output
+            subjlists      - len > 1 for type 5
+            options        - other options added to the command
+            atype          - 3dANOVA3 -type (should be 4 or 5)
+            factors        - if type 4, #factors of each type (f0*f1 = len(b))
+            verb           - verbose level
+
+         Note: for type 5: factor A is group, B is condition, C is subject
+
+         return None on failure, command on success
+      """
+
+      if prefix == '' or prefix == None: prefix = 'anova3_result'
+      if verb > 1: print '-- make_anova2_command: have prefix %s' % prefix
+
+      if bsubs == None:
+         print '** missing sub-brick selection list'
+         return None
+      if len(bsubs) < 2:
+         print '** anova3_command: need at least 2 sub-bricks (have %d)' \
+               % len(bsubs)
+         return None
+
+      ncond = len(factors)
+      ngroups = len(subjlists)
+
+      atype = 0
+      if ngroups > 1: atype = 5
+      elif ncond == 2: atype = 4
+
+      if atype == 4:
+         if ngroups != 1:
+            print '** anova3_cmd: -type 4 requires only 1 dset group'
+            return None
+         if ncond != 2:
+            print '** anova3_cmd: -type 4 requires 2 factor lengths'
+            print '               (product should be length -subs_betas)'
+            return None
+         if factors[0]*factors[1] != len(bsubs):
+            print '** anova3_cmd: -type 4 factor mismatch'
+            print '               (%d x %d design requires %d betas, have %d' \
+                  % (factors[0], factors[1], factors[0]*factors[1], len(bsubs))
+            return None
+      elif atype == 5:
+         if ngroups < 2:
+            print '** anova3_cmd: -type 5 requires >= 2 subject lists'
+            return None
+         if ncond > 1:
+            print '** anova3_cmd: -type 5 should not have sets of factors'
+            return None
+      else:
+         print '** anova3_cmd: cannot detect -type 4 or -type 5, seek -help!'
+         return None
+
+      indent = 4  # indent after main command
+
+      # maybe we will use directory variables
+      cmd   = '#!/bin/tcsh\n\n'
+      found = 0
+      slen0 = len(subjlists[0].subjects)
+      subjlists[0].set_common_data_dir()
+      cd0 = subjlists[0].common_dir
+
+      for ilist, slist in enumerate(subjlists):
+         slist.set_common_data_dir()
+         if not UTIL.is_trivial_dir(slist.common_dir):
+            if not found: # first time found
+               cmd += '# apply any data directories with variables\n'
+               found = 1
+            if ilist > 0 and slist.common_dir == cd0:
+               slist.common_dname = 'data1'
+            else:
+               slist.common_dname = 'data%d' % (ilist+1)
+               cmd += 'set %s = %s\n' % (slist.common_dname, slist.common_dir)
+      if found: cmd += '\n'
+
+      if atype == 4:
+         cmd += '# note: factor A is cond 1, B is cond 2, C is subject\n\n'
+         sfunc = self.make_anova3_t4_set_list
+      else:
+         cmd += '# note: factor A is group, B is condition, C is subject\n\n'
+         sfunc = self.make_anova3_t5_set_list
+
+      # command and first set of subject files
+      cstr = sfunc(bsubs, subjlists, factors, indent)
+      if cstr == None: return None
+      cmd += '3dANOVA3 -type %d \\\n' '%s' % (atype, cstr)
+
+      if len(options) > 0: cmd += '%*s%s \\\n' % (indent,'', ' '.join(options))
+      else:     # add some basic options
+         opt = '-amean 1 amean1 -bmean 1 bmean1'
+         cmd += '%*s-amean 1 amean1 \\\n' \
+                '%*s-bmean 1 bmean1 \\\n' % (indent, '', indent, '')
+         print '++ no contrast options given, adding simple: %s' % opt
+
+      if prefix.find('/') >= 0: pp = prefix
+      else:                     pp = './%s' % prefix
+      cmd += '%*s-bucket %s\n' % (indent, '', pp)
+
+      cmd += '\n'
+
+      return cmd
 
    def make_ttestpp_command(self, set_labs=None, bsubs=None, subjlist2=None,
                              prefix=None, comp_dir=None, options=None, verb=1):
@@ -1109,6 +1402,124 @@ class SubjectList(object):
             dset = '$%s/%s%s' % (sdir, cstr, subj.dfile)
          else:    dset = subj.dset
          sstr += '%*s%s "%s[%s]" \\\n' % (indent, '', subj.sid, dset, bsub)
+
+      return sstr
+
+   def make_anova2_set_list(self, bsub, indent=0):
+      """return a multi-line string of the form:
+                -alevels #bsub
+                -blevels #subj
+                -dset ALEVEL BLEVEL "dset#A[bsub#B]"
+                ...
+         indent is the initial indentation
+      """
+      sdir = self.common_dname
+      sstr = '%*s-alevels %d \\\n' \
+             '%*s-blevels %d \\\n' \
+             % (indent,'', len(bsub), indent, '', len(self.subjects))
+
+      for isubj, subj in enumerate(self.subjects):
+         if sdir:
+            # see if the dataset is in a directory underneath
+            cdir = UTIL.child_dir_name(self.common_dir, subj.ddir)
+            if UTIL.is_trivial_dir(cdir): cstr = ''
+            else: cstr = '%s/' % cdir
+            dset = '$%s/%s%s' % (sdir, cstr, subj.dfile)
+         else: dset = subj.dset
+         for ibeta, beta in enumerate(bsub):
+            sstr += '%*s-dset %2d %2d "%s[%s]" \\\n' \
+                    % (indent, '', ibeta+1, isubj+1, dset, beta)
+
+      return sstr
+
+   def make_anova3_t4_set_list(self, bsub, subjlists, factors, indent=0):
+      """return a multi-line string of the form:
+                -alevels #alevels
+                -blevels #blevels
+                -clevels #subj
+                -dset ALEVEL BLEVEL SUBJ "dset#A[bsub#B]"
+                ...
+         - factors should be of length 2
+         - indent is the initial indentation
+         - as in type 5, have A change slower than B, but subj be slowest
+           (so factor order per subject matches command line)
+      """
+
+      errs  = 0
+
+      if len(subjlists) != 1:
+         print '** MAt4SL: bad subject list count = %d' % len(subjlists)
+         return None
+
+      nA = factors[0]
+      nB = factors[1]
+      slist = subjlists[0]
+      if nA*nB != len(bsub):
+         print '** MAt4SL: bad factor count: %d, %d, %d' % (nA, nB, len(bsub))
+         return None
+
+      sstr = ''
+      sstr += '%*s-alevels %d \\\n' % (indent, '', nA)
+      sstr += '%*s-blevels %d \\\n' % (indent, '', nB)
+      sstr += '%*s-clevels %d \\\n' % (indent, '', len(slist.subjects))
+
+      sdir = slist.common_dname
+      for isubj, subj in enumerate(slist.subjects):
+         if sdir:
+            # see if the dataset is in a directory underneath
+            cdir = UTIL.child_dir_name(slist.common_dir, subj.ddir)
+            if UTIL.is_trivial_dir(cdir): cstr = ''
+            else: cstr = '%s/' % cdir
+            dset = '$%s/%s%s' % (sdir, cstr, subj.dfile)
+         else: dset = subj.dset
+
+         for iA in range(nA):
+            for iB in range(nB):
+               sstr += '%*s-dset %2d %2d %2d "%s[%s]" \\\n' \
+                       % (indent, '', iA+1, iB+1, isubj+1, dset,
+                          bsub[iA*nB+iB])
+
+      if errs: return None
+
+      return sstr
+
+   def make_anova3_t5_set_list(self, bsub, subjlists, factors=0, indent=0):
+      """return a multi-line string of the form:
+                -alevels #subjlists
+                -blevels #bsub
+                -clevels #subj
+                -dset GROUP BLEVEL SUBJ "dset#A[bsub#B]"
+                ...
+         factors is ignored, and exists only to match type4 function
+         indent is the initial indentation
+      """
+      sstr = ''
+      sstr += '%*s-alevels %d \\\n' % (indent, '', len(subjlists))
+      sstr += '%*s-blevels %d \\\n' % (indent, '', len(bsub))
+      sstr += '%*s-clevels %d \\\n' % (indent, '', len(subjlists[0].subjects))
+
+      slen0 = len(subjlists[0].subjects)
+      errs  = 0
+      for ilist, slist in enumerate(subjlists):
+         if len(slist.subjects) != slen0:
+            print '** subject list %d length differs from SL 1 (%d != %d)\n'\
+                  % (ilist+1, len(slist.subjects), slen0)
+            errs += 1
+         sdir = slist.common_dname
+
+         for isubj, subj in enumerate(slist.subjects):
+            if sdir:
+               # see if the dataset is in a directory underneath
+               cdir = UTIL.child_dir_name(slist.common_dir, subj.ddir)
+               if UTIL.is_trivial_dir(cdir): cstr = ''
+               else: cstr = '%s/' % cdir
+               dset = '$%s/%s%s' % (sdir, cstr, subj.dfile)
+            else: dset = subj.dset
+            for ibeta, beta in enumerate(bsub):
+               sstr += '%*s-dset %2d %2d %2d "%s[%s]" \\\n' \
+                       % (indent, '', ilist+1, ibeta+1, isubj+1, dset, beta)
+
+      if errs: return None
 
       return sstr
 

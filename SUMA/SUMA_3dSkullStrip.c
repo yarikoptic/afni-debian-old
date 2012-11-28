@@ -1,6 +1,28 @@
 #include "SUMA_suma.h"
 #include "../thd_brainormalize.h"
 
+/* 
+   Load mask from file mname and apply it to dataset iset 
+*/
+#define DSET_MASK(iset, mname) {\
+   if (mname) {   \
+      THD_3dim_dataset *mset=NULL;  \
+      byte *mmm = NULL; \
+      if (!(mset=THD_open_dataset(mname))) { \
+         ERROR_message("Could not read mask dset %s\n", mname);   \
+      } else if (THD_dataset_mismatch(mset, iset)) { \
+         ERROR_message("grid mismatch between input set and %s\n", mname);\
+         DSET_delete(mset);   \
+      } else { \
+         if ((mmm = THD_makemask( mset , 0 , 1, -1 ))) { \
+            THD_applydsetmask( iset ,  mmm );   \
+            free(mmm);  \
+         }  \
+         DSET_delete(mset);   \
+      }  \
+   }  \
+}
+
 
 #if 1
 void usage_SUMA_BrainWrap (SUMA_GENERIC_ARGV_PARSE *ps, int detail)
@@ -310,7 +332,7 @@ void usage_SUMA_BrainWrap (SUMA_GENERIC_ARGV_PARSE *ps, int detail)
 "                         However, few surfaces might have small stubborn\n"
 "                         intersections that produce a few holes.\n"
 "                         PERC_INT should be a small number, typically\n"
-"                         between 0 and 0.1\n. A -1 means do not do\n"
+"                         between 0 and 0.1. A -1 means do not do\n"
 "                         any testing for intersection.\n"
 "     -max_inter_iter N_II: Number of iteration to remove intersection\n"
 "                           problems. With each iteration, the program\n"
@@ -346,6 +368,34 @@ void usage_SUMA_BrainWrap (SUMA_GENERIC_ARGV_PARSE *ps, int detail)
 "     -skull_outer_xyz_file SKULL_OUTER_XYZ.1D\n"
 "     -help: The help you need\n"
 "\n"
+"  Special Head Mask Creation:\n"
+"  ---------------------------\n"
+"     Note:    These options are used to generate a mask of the head. They are\n"
+"           meant to work in noisy data with bright skull outline.\n"
+"              The output is a surface outline and a mask volume with names\n"
+"           derived from the -prefix option.\n" 
+"              The program will stop immeadiately after the mask is generated.\n"
+"           No skull stripping is performed.\n"
+"              Voxel values are listed in 3dSurfMask -help (see FAST method).\n"
+"           In general, you'll want to keep voxel values > 1\n"
+"     -head: Create a head mask \n"
+"     -head_auto_vol: Create a head mask, look for optimal volume threshold\n"
+"                     A waste of time, this optimizatio is not needed.\n"
+"     -head_at_vol VOL: Set volume threshold to VOL in liters. The default\n"
+"                       with -head is 1.0 and it should work just fine.\n"
+"                       If you are to use this option, you'd be lowering the\n"
+"                       value to 0.75, or 0.45, ...\n"
+"     -cut_below ZCUT: Cut out any voxels in the input image below ZCUT mm\n"
+"                      ZCUT is the Z coord (I-S DICOMM) shown in AFNI's top\n"
+"                      left corner. This is useful when you have lots of junk\n"
+"                      under the brains\n"
+"     -head_max_height HH: After the mask is created, mask out voxels that are\n"
+"                          more than HH mm from the top 1%% of voxels in\n"
+"                          the mask. The default is 160mm, if you do not \n"
+"                          use option -cut_below. \n" 
+"     Example: 3dSkullStrip -head -input DemoSubj_SurfVol+orig.HEAD \\\n"
+"                           -prefix toy_head\n"
+"\n"
 /*
 "     -sm_fac SMFAC: Smoothing factor (Default is 1)\n"
 "     -d1 D1: Distance to search inward (Default 20 mm)\n"
@@ -355,7 +405,7 @@ void usage_SUMA_BrainWrap (SUMA_GENERIC_ARGV_PARSE *ps, int detail)
 "     -t98 T98: Force t98 to be T98 (Default automated)\n"
 */
 "%s"
-"\n", sio,  s);
+"\n", detail > 1 ? sio:"", detail > 1 ? s:"");
       }
       SUMA_free(s); s = NULL; SUMA_free(st); st = NULL; 
       SUMA_free(sio); sio = NULL; SUMA_free(sts); sts = NULL;         
@@ -398,6 +448,7 @@ SUMA_GENERIC_PROG_OPTIONS_STRUCT *SUMA_BrainWrap_ParseInput (
    Opt->N_surf = -1;
    Opt->in_name = NULL;
    Opt->cmask = NULL;
+   Opt->dmask = NULL;
    Opt->MaskMode = 0;
    for (i=0; i<SUMA_GENERIC_PROG_MAX_SURF; ++i) { Opt->surf_names[i] = NULL; }
    outname = NULL;
@@ -445,8 +496,11 @@ SUMA_GENERIC_PROG_OPTIONS_STRUCT *SUMA_BrainWrap_ParseInput (
    Opt->PercInt = 0;
    Opt->UseSkull = 0;
    Opt->send_hull = 1;
-   Opt->bot_lztclip = -1; /* 0.5 is OK but causes too much leakage below cerebellum in most dsets, 0.65 seems better. 0 if you do not want to use it*/
-	Opt->var_lzt = 1.0; /* a flag at the moment, set it to 1 to cause shirnk fac to vary during iterations. Helps escape certain large 
+   Opt->bot_lztclip = -1; /* 0.5 is OK but causes too much leakage below 
+                             cerebellum in most dsets, 0.65 seems better. 
+                             0 if you do not want to use it*/
+	Opt->var_lzt = 1.0; /* a flag at the moment, set it to 1 to cause shirnk fac 
+                          to vary during iterations. Helps escape certain large 
                            chunks of CSF just below the brain */
    Opt->DemoPause = SUMA_3dSS_NO_PAUSE;
    Opt->DoSpatNorm = 1;
@@ -473,6 +527,10 @@ SUMA_GENERIC_PROG_OPTIONS_STRUCT *SUMA_BrainWrap_ParseInput (
    Opt->cog[0]=-9000.0f;
    Opt->cog[1]=-9000.0f;
    Opt->cog[2]=-9000.0f;
+   Opt->permask = -1.0;
+   memset(Opt->PlEq, 0, 4*sizeof(float));
+   Opt->flt1 = -160.0;
+   
    brk = NOPE;
 	while (kar < argc) { /* loop accross command ine options */
 		/*fprintf(stdout, "%s verbose: Parsing command line...\n", FuncName);*/
@@ -487,6 +545,53 @@ SUMA_GENERIC_PROG_OPTIONS_STRUCT *SUMA_BrainWrap_ParseInput (
          Opt->UseExpansion = 1;
          brk = YUP;
       }
+      
+      if (!brk && (strcmp(argv[kar], "-head") == 0)) {
+         Opt->permask = 1.0; /* 1 liter volume is good 
+                                for human heads */
+         brk = YUP;
+      }
+      
+      if (!brk && (strcmp(argv[kar], "-head_auto_vol") == 0)) {
+         Opt->permask = 0.0;
+         brk = YUP;
+      }
+      
+      if (!brk && (strcmp(argv[kar], "-head_at_vol") == 0)) {
+         kar ++;
+			if (kar >= argc)  {
+		  		fprintf (SUMA_STDERR, "need volume in liters after -head_at_vol \n");
+				exit (1);
+			}
+			Opt->permask = atof(argv[kar]);
+         if ( (Opt->permask < 0.0 && Opt->permask > 2.0) ) {
+            SUMA_S_Errv("Parameter after -head_at_vol should be "
+                        "between 0.0 and 2.0 (have %f) \n", Opt->permask);
+				exit (1);
+         }
+         brk = YUP;
+		}
+      
+      if (!brk && (strcmp(argv[kar], "-head_max_height") == 0)) {
+         kar ++;
+			if (kar >= argc)  {
+		  		fprintf(SUMA_STDERR,"need max height in mm with -head_max_height\n");
+				exit (1);
+			}
+			Opt->flt1 = atof(argv[kar]);
+         brk = YUP;
+		}
+      
+      if (!brk && (strcmp(argv[kar], "-cut_below") == 0)) {
+         kar ++;
+			if (kar >= argc)  {
+		  		fprintf (SUMA_STDERR, "need Z coordinate in mm after -cut_below \n");
+				exit (1);
+			}
+			Opt->PlEq[2] = 1.0;
+         Opt->PlEq[3] = atof(argv[kar]);
+         brk = YUP;
+		}
       
       if (!brk && ( (strcmp(argv[kar], "-4Tom") == 0) 
          || (strcmp(argv[kar], "-skulls") == 0) ) ) {
@@ -568,7 +673,9 @@ SUMA_GENERIC_PROG_OPTIONS_STRUCT *SUMA_BrainWrap_ParseInput (
 			}
          Opt->fillhole = atoi(argv[kar]);
          if ( (Opt->fillhole < 0 || Opt->fillhole > 50) ) {
-            fprintf (SUMA_STDERR, "parameter after -fill_hole (%d) should be >= 0 and <= 50 \n", Opt->fillhole);
+            fprintf (SUMA_STDERR, 
+               "parameter after -fill_hole (%d) should be >= 0 and <= 50 \n", 
+               Opt->fillhole);
 				exit (1);
          }
          brk = YUP;
@@ -582,7 +689,10 @@ SUMA_GENERIC_PROG_OPTIONS_STRUCT *SUMA_BrainWrap_ParseInput (
 			}
 			Opt->PercInt = atof(argv[kar]);
          if ( (Opt->PercInt < 0 && Opt->PercInt != -1) || Opt->PercInt > 10) {
-            fprintf (SUMA_STDERR, "parameter after -perc_int should be -1 or between 0 and 10 (have %f) \n", Opt->PercInt);
+            fprintf (SUMA_STDERR, 
+               "parameter after -perc_int should be -1 or between 0 and 10"
+               " (have %f) \n", 
+               Opt->PercInt);
 				exit (1);
          }
          brk = YUP;
@@ -608,7 +718,9 @@ SUMA_GENERIC_PROG_OPTIONS_STRUCT *SUMA_BrainWrap_ParseInput (
 			}
 			Opt->SpatNormDxyz = atof(argv[kar]);
          if ( Opt->SpatNormDxyz < 0  || Opt->SpatNormDxyz > 10) {
-            fprintf (SUMA_STDERR, "parameter after -spatnorm_dxyz should be between 0 and 10 (have %f) \n", 
+            fprintf (SUMA_STDERR, 
+               "parameter after -spatnorm_dxyz should be between 0 and 10 "
+               "(have %f) \n", 
                      Opt->SpatNormDxyz);
 				exit (1);
          }
@@ -623,7 +735,10 @@ SUMA_GENERIC_PROG_OPTIONS_STRUCT *SUMA_BrainWrap_ParseInput (
 			}
 			Opt->blur_fwhm = atof(argv[kar]);
          if ( Opt->blur_fwhm < 0 || Opt->blur_fwhm > 50) {
-            fprintf (SUMA_STDERR, "parameter after -blur_fwhm should be between 0 and 50 (have %f) \n", Opt->blur_fwhm);
+            fprintf (SUMA_STDERR, 
+               "parameter after -blur_fwhm should be between 0 and 50 "
+               "(have %f) \n", 
+                     Opt->blur_fwhm);
 				exit (1);
          }
          brk = YUP;
@@ -637,7 +752,9 @@ SUMA_GENERIC_PROG_OPTIONS_STRUCT *SUMA_BrainWrap_ParseInput (
 			}
 			Opt->r = atof(argv[kar]);
          if ( Opt->r <= 0 || Opt->r > 100) {
-            fprintf (SUMA_STDERR, "parameter after -init_radius should be between 0 and 100 (have %f) \n", Opt->r);
+            fprintf (SUMA_STDERR, 
+               "parameter after -init_radius should be between 0 and 100 "
+               "(have %f) \n", Opt->r);
 				exit (1);
          }
          brk = YUP;
@@ -655,7 +772,8 @@ SUMA_GENERIC_PROG_OPTIONS_STRUCT *SUMA_BrainWrap_ParseInput (
       if (!brk && (strcmp(argv[kar], "-brain_contour_xyz_file") == 0)) {
          kar ++;
 			if (kar >= argc)  {
-		  		fprintf (SUMA_STDERR, "need argument after -brain_contour_xyz_file \n");
+		  		fprintf (SUMA_STDERR, 
+               "need argument after -brain_contour_xyz_file \n");
 				exit (1);
 			}
 			Opt->UseThisBrain = argv[kar];
@@ -675,7 +793,8 @@ SUMA_GENERIC_PROG_OPTIONS_STRUCT *SUMA_BrainWrap_ParseInput (
       if (!brk && (strcmp(argv[kar], "-skull_outer_xyz_file") == 0)) {
          kar ++;
 			if (kar >= argc)  {
-		  		fprintf (SUMA_STDERR, "need argument after -skull_outer_xyz_file \n");
+		  		fprintf (SUMA_STDERR, 
+               "need argument after -skull_outer_xyz_file \n");
 				exit (1);
 			}
 			Opt->UseThisSkullOuter = argv[kar];
@@ -721,7 +840,8 @@ SUMA_GENERIC_PROG_OPTIONS_STRUCT *SUMA_BrainWrap_ParseInput (
 			}
 			Opt->MaxIntIter = atoi(argv[kar]);
          if (Opt->MaxIntIter < 0 || Opt->MaxIntIter > 10) {
-            fprintf (SUMA_STDERR, "-max_inter_iter parameter should be between 0 and 10 \n");
+            fprintf (SUMA_STDERR, 
+               "-max_inter_iter parameter should be between 0 and 10 \n");
 				exit (1);
          }  
          brk = YUP;
@@ -733,13 +853,18 @@ SUMA_GENERIC_PROG_OPTIONS_STRUCT *SUMA_BrainWrap_ParseInput (
 				exit (1);
 			}
 			Opt->smooth_end = atoi(argv[kar]);
-         if (Opt->smooth_end < 0 || Opt->smooth_end > 100 || Opt->smooth_end % 2) {
-            fprintf (SUMA_STDERR, "irrational or exhuberant values for smooth_final\n Must use even number between 0 to 100 (%d entered)\n", Opt->smooth_end);
+         if (Opt->smooth_end < 0 || Opt->smooth_end > 100 || 
+             Opt->smooth_end % 2) {
+            fprintf (SUMA_STDERR, 
+               "irrational or exhuberant values for smooth_final\n"
+               " Must use even number between 0 to 100 (%d entered)\n", 
+               Opt->smooth_end);
 				exit (1);
          }
          brk = YUP;
 		}
-      if (!brk && (strcmp(argv[kar], "-NNsmooth") == 0 || strcmp(argv[kar], "-NN_smooth") == 0)) {
+      if (!brk && (strcmp(argv[kar], "-NNsmooth") == 0 
+                  || strcmp(argv[kar], "-NN_smooth") == 0)) {
          kar ++;
 			if (kar >= argc)  {
 		  		fprintf (SUMA_STDERR, "need argument after -NN_smooth \n");
@@ -747,13 +872,16 @@ SUMA_GENERIC_PROG_OPTIONS_STRUCT *SUMA_BrainWrap_ParseInput (
 			}
 			Opt->NNsmooth = atoi(argv[kar]);
          if (Opt->NNsmooth % 2) {
-            fprintf (SUMA_STDERR, "Number of smoothing steps must be an even positive number (not %d) \n", Opt->NNsmooth);
+            fprintf (SUMA_STDERR, 
+         "Number of smoothing steps must be an even positive number (not %d) \n",
+               Opt->NNsmooth);
 				exit (1);
          }
          brk = YUP;
 		}
       
-      if (!brk && ((strcmp(argv[kar], "-shrink_fac") == 0) || (strcmp(argv[kar], "-bf") == 0))) {
+      if (!brk && ((strcmp(argv[kar], "-shrink_fac") == 0) || 
+                   (strcmp(argv[kar], "-bf") == 0))) {
          kar ++;
 			if (kar >= argc)  {
 		  		fprintf (SUMA_STDERR, "need argument after -shrink_fac || -bf \n");
@@ -831,13 +959,16 @@ SUMA_GENERIC_PROG_OPTIONS_STRUCT *SUMA_BrainWrap_ParseInput (
 				exit (1);
 			}
 			Opt->ExpFrac = atof(argv[kar]);
-         if (Opt->ExpFrac < -1 || Opt->ExpFrac > 1) { /* accroding to algo, should be between 0 and 1 */
-            fprintf (SUMA_STDERR, "%f is a bad expantion fraction.\n", Opt->ExpFrac);
+         if (Opt->ExpFrac < -1 || Opt->ExpFrac > 1) { /* accroding to algo, 
+                                             should be between 0 and 1 */
+            fprintf (SUMA_STDERR, "%f is a bad expantion fraction.\n", 
+                     Opt->ExpFrac);
 				exit (1);
          }
          brk = YUP;
 		}
-      if (!brk && ( (strcmp(argv[kar], "-node_dbg") == 0) || (strcmp(argv[kar], "-node_debug") == 0)) ) {
+      if (!brk && (  (strcmp(argv[kar], "-node_dbg") == 0) || 
+                     (strcmp(argv[kar], "-node_debug") == 0)) ) {
          kar ++;
 			if (kar >= argc)  {
 		  		fprintf (SUMA_STDERR, "need argument after -node_debug \n");
@@ -859,7 +990,9 @@ SUMA_GENERIC_PROG_OPTIONS_STRUCT *SUMA_BrainWrap_ParseInput (
 			}
 			Opt->su1 = atof(argv[kar]);
          if (Opt->su1 < 0 || Opt->su1 > 1.5) {
-            fprintf (SUMA_STDERR, "%f is a bad smoothness factor (acceptable range is 0 to 1\nbut values up to 1.5 are allowed for amusement).\n", Opt->su1);
+            fprintf (SUMA_STDERR, 
+               "%f is a bad smoothness factor (acceptable range is 0 to 1\n"
+               "but values up to 1.5 are allowed for amusement).\n", Opt->su1);
 				exit (1);
          }
          brk = YUP;
@@ -901,6 +1034,16 @@ SUMA_GENERIC_PROG_OPTIONS_STRUCT *SUMA_BrainWrap_ParseInput (
          brk = YUP;
 		}
       
+      if (!brk && (strcmp(argv[kar], "-mask") == 0)) {
+         kar ++;
+			if (kar >= argc)  {
+		  		fprintf (SUMA_STDERR, "need argument after -mask \n");
+				exit (1);
+			}
+			Opt->dmask = argv[kar];
+         brk = YUP;
+		}
+      
       if (!brk && (strcmp(argv[kar], "-edge_thr") == 0)) {
          kar ++;
 			if (kar >= argc)  {
@@ -909,7 +1052,8 @@ SUMA_GENERIC_PROG_OPTIONS_STRUCT *SUMA_BrainWrap_ParseInput (
 			}
 			Opt->efrac = atof(argv[kar]);
          if (Opt->efrac < 0.0f || Opt->efrac > 1.0f) { 
-            fprintf (SUMA_STDERR, " -edge_thr must be between 0.0 and 1.0. Have %f\n", Opt->efrac);
+            fprintf (SUMA_STDERR, 
+               " -edge_thr must be between 0.0 and 1.0. Have %f\n", Opt->efrac);
 				exit (1); 
          }
          brk = YUP;
@@ -984,17 +1128,22 @@ SUMA_GENERIC_PROG_OPTIONS_STRUCT *SUMA_BrainWrap_ParseInput (
       }
       
       if (!brk && (strcmp(argv[kar], "-k98") == 0)) {
-         SUMA_SL_Warn("Bad option, causes trouble (big clipping) in other parts of brain.");
+         SUMA_SL_Warn("Bad option, causes trouble (big clipping)"
+                      " in other parts of brain.");
          Opt->Kill98 = 1;
          brk = YUP;
       }
       
-      if (!brk && ( (strcmp(argv[kar], "-noeyes") == 0) || (strcmp(argv[kar], "-no_eyes") == 0) || (strcmp(argv[kar], "-avoid_eyes") == 0)) ) {
+      if (!brk && ( (strcmp(argv[kar], "-noeyes") == 0) || 
+                    (strcmp(argv[kar], "-no_eyes") == 0) || 
+                  (strcmp(argv[kar], "-avoid_eyes") == 0)) ) {
          Opt->NoEyes = 1;
          brk = YUP;
       }
       
-      if (!brk && ( (strcmp(argv[kar], "-no_noeyes") == 0) || (strcmp(argv[kar], "-no_no_eyes") == 0) || (strcmp(argv[kar], "-no_avoid_eyes") == 0)) ) {
+      if (!brk && ( (strcmp(argv[kar], "-no_noeyes") == 0) || 
+                    (strcmp(argv[kar], "-no_no_eyes") == 0) || 
+                    (strcmp(argv[kar], "-no_avoid_eyes") == 0)) ) {
          Opt->NoEyes = 0;
          brk = YUP;
       }
@@ -1021,7 +1170,7 @@ SUMA_GENERIC_PROG_OPTIONS_STRUCT *SUMA_BrainWrap_ParseInput (
    if (Opt->PushToEdge < 0) Opt->PushToEdge = 0;
    
    if (Opt->PushToEdge > 0 && Opt->Use_emask <= 0) {
-      fprintf(SUMA_STDERR,"Error %s:\nCannot use -push_to_edge without -use_edge\n", FuncName);
+      SUMA_S_Err("Cannot use -push_to_edge without -use_edge");
       exit (1);      
    }
    
@@ -1071,36 +1220,49 @@ SUMA_GENERIC_PROG_OPTIONS_STRUCT *SUMA_BrainWrap_ParseInput (
       fprintf (SUMA_STDERR,"Error %s:\n-input  must be used.\n", FuncName);
       exit(1);
    }
+   
    /* what is the view of the input ?*/
    if (!SUMA_AfniView (Opt->in_name, cview)) {
-      fprintf (SUMA_STDERR,"Error %s:\nCould not guess view from input dset %s\n", FuncName, Opt->in_name);
+      SUMA_S_Errv("Could not guess view from input dset %s\n", Opt->in_name);
       exit(1);
    }
 
    if (!Opt->out_prefix) Opt->out_prefix = SUMA_copy_string("skull_strip_out");
    if (!Opt->out_vol_prefix) {
-      if (!Opt->out_prefix) Opt->out_vol_prefix = SUMA_AfniPrefix("skull_strip_out", NULL, NULL, &exists);
-      else Opt->out_vol_prefix = SUMA_AfniPrefix(Opt->out_prefix, NULL, NULL, &exists);
+      if (!Opt->out_prefix) Opt->out_vol_prefix = 
+                     SUMA_AfniPrefix("skull_strip_out", NULL, NULL, &exists);
+      else Opt->out_vol_prefix = 
+                     SUMA_AfniPrefix(Opt->out_prefix, NULL, NULL, &exists);
    } else {
       char *stmp = Opt->out_vol_prefix;
       Opt->out_vol_prefix = SUMA_AfniPrefix(stmp, NULL, NULL, &exists); 
       SUMA_free(stmp); stmp = NULL;
    }
    if (!THD_ok_overwrite() && SUMA_AfniExistsView(exists, cview)) {
-      fprintf (SUMA_STDERR,"Error %s:\nOutput dset %s%s exists, will not overwrite\n", FuncName, Opt->out_vol_prefix, cview);
+      SUMA_S_Errv("Output dset %s%s exists, will not overwrite\n", 
+                  Opt->out_vol_prefix, cview);
       exit(1);
    }
 
    
    if (Opt->t2 >= 0 || Opt->t98 >= 0 || Opt->tm >= 0  || Opt->t >= 0 ) {
       if (!(Opt->t2 >= 0 && Opt->t98 > 0 && Opt->tm > 0 && Opt->t > 0)){
-         fprintf (SUMA_STDERR,"Error %s: \nAll or none of the t parameters are to be specified on command line:\nt2 %f t %f tm %f t98 %f\n", 
-            FuncName, Opt->t2, Opt->t, Opt->tm, Opt->t98);
+         SUMA_S_Errv("All or none of the t parameters are to be "
+                     "specified on command line:\n"
+                     "t2 %f t %f tm %f t98 %f\n", 
+                     Opt->t2, Opt->t, Opt->tm, Opt->t98);
          exit(1);
       }
    }
    
-    
+   if ((Opt->PlEq[0] != 0.0f || Opt->PlEq[1] != 0.0f || Opt->PlEq[2] != 0.0f) &&
+        Opt->flt1 < 0) {
+      Opt->flt1 = 0.0;
+   }
+   if (Opt->flt1 < 0.0) Opt->flt1 = -Opt->flt1;
+   
+   SUMA_setBrainWrap_NodeDbg(Opt->NodeDbg);
+   
    SUMA_RETURN(Opt);
 }
 
@@ -1114,7 +1276,8 @@ int main (int argc,char *argv[])
    int ii,jj,kk,ll,ijk , nx,ny,nz , nn, nint = 0 , nseg;
    void *SO_name=NULL, *SO_name_hull=NULL, *SO_name_bhull = NULL, 
          *SO_name_iskull = NULL, *SO_name_oskull = NULL;
-   float vol, *isin_float=NULL, pint, *dsmooth = NULL, XYZrai_shift[3];
+   float min=0.0, max=0.0, vol, 
+         *isin_float=NULL, pint, *dsmooth = NULL, XYZrai_shift[3];
    SUMA_SurfaceObject *SO = NULL, *SOhull=NULL;
    SUMA_GENERIC_PROG_OPTIONS_STRUCT *Opt;  
    char  stmp[200], stmphull[200], *hullprefix=NULL, 
@@ -1210,6 +1373,106 @@ int main (int argc,char *argv[])
    Opt->dbg_eyenodes = fopen("eyenodes.1D.dset", "w");
    #endif
    
+   /* see if SUMA talk is turned on */
+   if (ps->cs->talk_suma) {
+      ps->cs->istream = SUMA_BRAINWRAP_LINE;
+      ps->cs->afni_istream = SUMA_AFNI_STREAM_INDEX2;
+      ps->cs->kth = 1; /* make sure all surfaces get sent */
+      if (!SUMA_SendToSuma (NULL, ps->cs, NULL, SUMA_NO_DSET_TYPE, 0)) {
+         SUMA_SL_Err("Failed to initialize SUMA_SendToSuma");
+         ps->cs->Send = NOPE;
+         ps->cs->afni_Send = NOPE;
+         ps->cs->talk_suma = NOPE;
+      } else if (!SUMA_SendToAfni (ps->cs, NULL,  0)) {
+         SUMA_SL_Err("Failed to initialize SUMA_SendToAfni");
+         ps->cs->afni_Send = NOPE;
+         ps->cs->Send = NOPE;
+      } 
+   }
+
+   
+   /* head extraction? */
+   if (Opt->permask >= 0.0) {
+      SUMA_SurfaceObject *SOhh=NULL;
+      THD_3dim_dataset *headset=NULL;
+      char *hhullprefix = SUMA_append_string(Opt->out_vol_prefix,"_head");
+      char *SO_name_hhull = SUMA_Prefix2SurfaceName(hhullprefix, NULL, NULL,
+                                          Opt->SurfFileType, &exists);
+      char *radcon= SUMA_append_string(Opt->out_vol_prefix,"_rc");
+      if (Opt->debug) {
+         SUMA_S_Notev("Loading dset, extracting head area, volthr=%f\n",
+                      Opt->permask);
+      }
+      if (!(Opt->iset = THD_open_dataset( Opt->in_name ))) {
+         SUMA_S_Errv("Failed to read %s\n",Opt->in_name);
+         exit(1);
+      }
+      DSET_load(Opt->iset);
+      if( !ISVALID_DSET(Opt->iset) ){
+        SUMA_S_Errv("can't open dataset %s\n",Opt->in_name) ;
+        exit(1);
+      }
+      
+      DSET_MASK(Opt->iset, Opt->dmask);
+      
+      #if 0
+      {
+         THD_3dim_dataset *rset=NULL;
+         SUMA_S_Warn("A test for Radial Stats");
+         SUMA_THD_Radial_Stats( Opt->iset,
+                           NULL, NULL,
+                           &rset, 1, 1.0, 1.0 );
+         
+         tross_Make_History( FuncName , argc,argv , rset ) ;
+         EDIT_dset_items( rset, ADN_prefix, radcon, ADN_none ) ;    
+         DSET_write(rset) ; DSET_delete(rset); SUMA_free(radcon); exit(1);
+      }
+      #endif
+      
+      if (Opt->PlEq[0] != 0.0f || Opt->PlEq[1] != 0.0f || Opt->PlEq[2] != 0.0f)
+      {
+         SUMA_LHv("Cutting %+fx %+fy %+fz %+f < 0\n",
+            Opt->PlEq[0], Opt->PlEq[1], Opt->PlEq[2], Opt->PlEq[3]);
+         SUMA_VoxelPlaneCut(Opt->iset, Opt->PlEq, NULL, 1);
+      }
+       
+      if (!(SOhh = SUMA_ExtractHead(Opt->iset, Opt->permask, ps->cs))) {
+         SUMA_S_Err("Failed to extract head");
+         exit(1);
+      }
+      
+      /* write surface */
+      if (!SUMA_Save_Surface_Object (SO_name_hhull, SOhh, 
+                                     Opt->SurfFileType, Opt->SurfFileFormat, 
+                                     NULL)) {
+         SUMA_S_Err("Failed to write surface of whole head");
+         exit (1);
+      }
+      /* Create a volume mask quick */
+      if (!(headset = SUMA_Dset_FindVoxelsInSurface(
+                     SOhh, Opt->iset, NULL, NULL, hhullprefix, 
+                     0, 0))) {
+         SUMA_S_Err("Failed to create output");                 
+      }
+      
+      if (Opt->flt1 > 0.0) { /* Should modify functions below
+         to operate without PC rotations, and simply use the Z coordinate
+         with the top location controlled by a percentile value (0% == very top,
+         5% == from the top 5%) */
+         SUMA_LHv("Masking on voxel depth of %f\n",Opt->flt1);
+         /* Mask remaining voxels based on depth */
+         SUMA_VoxelDepth_Z(headset,NULL, Opt->flt1, NULL, 1, 1.0); 
+      }
+                                
+      tross_Make_History( FuncName , argc,argv , headset ) ;
+      DSET_write(headset) ;
+      DSET_delete(headset); headset=NULL;
+      SUMA_Free_Surface_Object(SOhh); SOhh=NULL;
+      SUMA_free(SO_name_hhull); SO_name_hhull=NULL;
+      SUMA_free(hhullprefix); hhullprefix=NULL;
+      exit(0);
+   }
+   
    /* Load the AFNI volume and prep it*/
    if (Opt->DoSpatNorm) { /* chunk taken from 3dSpatNorm.c */
       if (Opt->debug) 
@@ -1220,6 +1483,8 @@ int main (int argc,char *argv[])
         fprintf(stderr,"**ERROR: can't open dataset %s\n",Opt->in_name) ;
         exit(1);
       }
+      DSET_MASK(Opt->iset, Opt->dmask);
+
       Opt->iset_hand = SUMA_THD_handedness( Opt->iset );
       if (LocalHead) 
          fprintf(SUMA_STDERR,
@@ -1231,13 +1496,24 @@ int main (int argc,char *argv[])
          THD_volDXYZscale(Opt->iset->daxes, Opt->xyz_scale, 0);
          Opt->specie = MONKEY;   /* now pretend it is a monkey! */
       }
+      
+      /* If range is too small, complain */
+      if (!THD_subbrick_minmax(Opt->iset, 0,  1, &min, &max)) {
+         SUMA_S_Err("Failed to get min max of input");
+         exit(1);
+      }
+      if (max < 50) {
+         SUMA_S_Warnv("Input dataset has a very low value range.\n"
+                    "If stripping fails, try scaling it by 1000\n"
+                    "with:\n  3dcalc -a %s -expr 'a*1000' -prefix PPP\n"
+                    "and try stripping again with new volume.\n", Opt->in_name);
+      }
       /*--- get median brick --*/
       imin = THD_median_brick( Opt->iset ) ;
       if( imin == NULL ){
         fprintf(stderr,"**ERROR: can't load dataset %s\n",Opt->in_name) ;
         exit(1);
       }
-      
       mri_speciebusiness(Opt->specie);
       if (Opt->SpatNormDxyz) {
          if (Opt->debug) SUMA_S_Note("Overriding default resampling");
@@ -1594,7 +1870,8 @@ int main (int argc,char *argv[])
                }
                if (Opt->debug > 2) {
                   THD_write_3dim_dataset( NULL,NULL , fatoutset , True ) ;
-                  fprintf(stderr,"  ++ Wrote output: %s\n",DSET_BRIKNAME(fatoutset)) ;   
+                  fprintf(stderr,
+                          "  ++ Wrote output: %s\n",DSET_BRIKNAME(fatoutset)) ;  
                }
             }
 
@@ -1658,8 +1935,12 @@ int main (int argc,char *argv[])
             SUMA_free(emask_sort); emask_sort = NULL;
          }
 
-         if (Opt->debug) fprintf (SUMA_STDERR,"%s: Fat Edge threshold set to %f (from %f percentile) , (%f percentile = %f)\n", 
-                           FuncName, PercRangeVal[0], PercRange[0],  PercRange[1], PercRangeVal[1]);
+         if (Opt->debug) 
+            fprintf (SUMA_STDERR,
+               "%s: Fat Edge threshold set to %f (from %f percentile) ," 
+               "(%f percentile = %f)\n", 
+               FuncName, PercRangeVal[0], PercRange[0],  
+                         PercRange[1], PercRangeVal[1]);
          /* Now that we have an edge vector, select appropriate values */
          for (ii=0; ii<DSET_NVOX(Opt->in_vol); ++ii) {
             if (Opt->fatemask[ii] < PercRangeVal[0]) Opt->fatemask[ii] = 0.0;
@@ -1689,7 +1970,7 @@ int main (int argc,char *argv[])
       SUMA_S_Err("Failed to load/prep volume");
       exit(1);
    } else {
-      if (LocalHead) fprintf (SUMA_STDERR,"%s: Got me a volume of %f mm3\n", FuncName, vol);
+      SUMA_LHv("Got me a volume of %f mm3\n", vol);
    }
    
    /* create the ico, might need coords for bias correction below*/
@@ -1699,7 +1980,8 @@ int main (int argc,char *argv[])
       exit(1);
    }         
    /* Need Brain_Contour holder at the very least*/
-   if (!Opt->Brain_Contour) Opt->Brain_Contour = (float *)SUMA_calloc(SO->N_Node * 3, sizeof(float));
+   if (!Opt->Brain_Contour) 
+      Opt->Brain_Contour = (float *)SUMA_calloc(SO->N_Node * 3, sizeof(float));
 
 
    /* allocate and initialize shrink bias vector */
@@ -1757,7 +2039,9 @@ int main (int argc,char *argv[])
          /* less on top, and sides, more in front */
          for (i=0; i<SO->N_Node; ++i) {
             /* vector from center to node */
-            p1[0] = SO->NodeList[3*i  ]; p1[1] = SO->NodeList[3*i+1]; p1[2] = SO->NodeList[3*i+2];
+            p1[0] = SO->NodeList[3*i  ]; 
+            p1[1] = SO->NodeList[3*i+1]; 
+            p1[2] = SO->NodeList[3*i+2];
             SUMA_UNIT_VEC(Opt->cog, p1, U, Un);  
             SUMA_DOTP_VEC(U,Y, doty , 3,float,float);
             SUMA_DOTP_VEC(U,Z, dotz , 3,float,float);
@@ -1776,7 +2060,9 @@ int main (int argc,char *argv[])
          /* less on top, and sides, more in front */
          for (i=0; i<SO->N_Node; ++i) {
             /* vector from center to node */
-            p1[0] = SO->NodeList[3*i  ]; p1[1] = SO->NodeList[3*i+1]; p1[2] = SO->NodeList[3*i+2];
+            p1[0] = SO->NodeList[3*i  ]; 
+            p1[1] = SO->NodeList[3*i+1]; 
+            p1[2] = SO->NodeList[3*i+2];
             SUMA_UNIT_VEC(Opt->cog, p1, U, Un);  
             SUMA_DOTP_VEC(U,Y, doty , 3,float,float);
             SUMA_DOTP_VEC(U,Z, dotz , 3,float,float);
@@ -1885,46 +2171,31 @@ int main (int argc,char *argv[])
 
       /* see if SUMA talk is turned on */
       if (ps->cs->talk_suma) {
-         ps->cs->istream = SUMA_BRAINWRAP_LINE;
-         ps->cs->afni_istream = SUMA_AFNI_STREAM_INDEX2;
-         ps->cs->kth = 1; /* make sure all surfaces get sent */
-         if (!SUMA_SendToSuma (NULL, ps->cs, NULL, SUMA_NO_DSET_TYPE, 0)) {
-            SUMA_SL_Err("Failed to initialize SUMA_SendToSuma");
-            ps->cs->Send = NOPE;
-            ps->cs->afni_Send = NOPE;
-            ps->cs->talk_suma = NOPE;
-         } else if (!SUMA_SendToAfni (ps->cs, NULL,  0)) {
-            SUMA_SL_Err("Failed to initialize SUMA_SendToAfni");
-            ps->cs->afni_Send = NOPE;
-            ps->cs->Send = NOPE;
-         } else {
-            /* send in_vol to afni */
-            if (Opt->DoSpatNorm && ps->cs->afni_Send) {
-               SUMA_SEND_2AFNI SS2A;
-               SUMA_SL_Note("Sending spatnormed volume to AFNI");
-               SS2A.dset = Opt->in_vol; SS2A.at_sb=-1;
-               if (!SUMA_SendToAfni(ps->cs, &SS2A, 1)) {
-                  SUMA_SL_Err("Failed to send volume to AFNI");
-                  ps->cs->afni_Send = NOPE;
-               }
+         /* send in_vol to afni */
+         if (Opt->DoSpatNorm && ps->cs->afni_Send) {
+            SUMA_SEND_2AFNI SS2A;
+            SUMA_SL_Note("Sending spatnormed volume to AFNI");
+            SS2A.dset = Opt->in_vol; SS2A.at_sb=-1;
+            if (!SUMA_SendToAfni(ps->cs, &SS2A, 1)) {
+               SUMA_SL_Err("Failed to send volume to AFNI");
+               ps->cs->afni_Send = NOPE;
             }
-
-            if (!nint && SOhull) {
-               if (Opt->send_hull) {
-                  SUMA_LH("Sending Hull");
-                  if (Opt->DemoPause == SUMA_3dSS_DEMO_PAUSE) { 
-                     SUMA_PAUSE_PROMPT("Sending HULL next"); 
-                  }
-                  SUMA_SendSumaNewSurface(SOhull, ps->cs);
-               }
-            }
-            SUMA_LH("Sending Ico");
-            if (Opt->DemoPause  == SUMA_3dSS_DEMO_PAUSE) { 
-               SUMA_PAUSE_PROMPT("Sending Ico next"); 
-            }
-            SUMA_SendSumaNewSurface(SO, ps->cs);
-
          }
+
+         if (!nint && SOhull) {
+            if (Opt->send_hull) {
+               SUMA_LH("Sending Hull");
+               if (Opt->DemoPause == SUMA_3dSS_DEMO_PAUSE) { 
+                  SUMA_PAUSE_PROMPT("Sending HULL next"); 
+               }
+               SUMA_SendSumaNewSurface(SOhull, ps->cs);
+            }
+         }
+         SUMA_LH("Sending Ico");
+         if (Opt->DemoPause  == SUMA_3dSS_DEMO_PAUSE) { 
+            SUMA_PAUSE_PROMPT("Sending Ico next"); 
+         }
+         SUMA_SendSumaNewSurface(SO, ps->cs);
          ps->cs->kth = kth_buf;
       }
 
@@ -2113,10 +2384,13 @@ int main (int argc,char *argv[])
             float dtroub = 1.0;
             int N_troub = 1, past_N_troub = 0;
             while (il < 5 && dtroub > 0.1 && N_troub) {
-               N_troub = SUMA_PushToEdge(SO, Opt, 4, ps->cs, 0); SUMA_RECOMPUTE_NORMALS(SO);
+               N_troub = SUMA_PushToEdge(SO, Opt, 4, ps->cs, 0); 
+               SUMA_RECOMPUTE_NORMALS(SO);
                if (ps->cs->Send) {
-                  if (!SUMA_SendToSuma (SO, ps->cs, (void *)SO->NodeList, SUMA_NODE_XYZ, 1)) {
-                     SUMA_SL_Warn("Failed in SUMA_SendToSuma\nCommunication halted.");
+                  if (!SUMA_SendToSuma (SO, ps->cs, (void *)SO->NodeList, 
+                                        SUMA_NODE_XYZ, 1)) {
+                     SUMA_SL_Warn("Failed in SUMA_SendToSuma\n"
+                                  "Communication halted.");
                   }
                }
                if (!past_N_troub) { 

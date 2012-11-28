@@ -1169,7 +1169,7 @@ int SUMA_D_Key(SUMA_SurfaceViewer *sv, char *key, char *callmode)
                /* Any matching contralateral dset and a matching surface ?*/
                inc_dset = SUMA_Contralateral_dset(in_dset, SO, &SOC);
                if (inc_dset) {
-                  SUMA_S_Notev("Found contralateral dset %s (%s)\n", 
+                  SUMA_LHv("Found contralateral dset %s (%s)\n", 
                                SDSET_LABEL(inc_dset), SDSET_FILENAME(inc_dset));
                   if (!(SUMA_AddXformParent(xf, 
                               SDSET_ID(inc_dset), SOC->LocalDomainParentID))) {
@@ -1179,7 +1179,6 @@ int SUMA_D_Key(SUMA_SurfaceViewer *sv, char *key, char *callmode)
                }  else {
                   SUMA_S_Note("No contralateral dset ");
                }
-               
                /* Initialize dot product options. You'll have to redo this
                   unfortunately below... */
                if (!(SUMA_is_TimeSeries_dset(in_dset, &TR))) {
@@ -2284,7 +2283,8 @@ void SUMA_free_Save_List_El(void *selu) {
    return;
 }
 
-int SUMA_Add_to_SaveList(DList **SLp, char *type, char *identifier, char *prefix) 
+int SUMA_Add_to_SaveList(DList **SLp, char *type, 
+                         char *identifier, char *prefix) 
 {
    static char FuncName[]={"SUMA_Add_to_SaveList"};
    DList *SL=NULL;
@@ -2329,21 +2329,41 @@ int SUMA_Add_to_SaveList(DList **SLp, char *type, char *identifier, char *prefix
    }
    
    if (LocalHead) {
-      SUMA_LH("SaveList now:")
-      el = dlist_head(SL);
-      while (el) {
-         if ((sel = (SUMA_SAVE_LIST_EL *)el->data)) {
-            fprintf(stderr,"     %s, %s (%s)\n", 
-                           sel->identifier, sel->prefix, sel->type);
-         } else {
-            fprintf(stderr,"     NULL sel\n");
-         }
-         el = dlist_next(el);
-      }
+      SUMA_Show_SaveList(SL, "SaveList now:\n");
    }
      
    *SLp = SL;
    SUMA_RETURN(1);
+}
+
+void SUMA_Show_SaveList(DList *SL, char *head) 
+{
+   static char FuncName[]={"SUMA_Show_SaveList"};
+   FILE *out=NULL;
+   DListElmt *el= NULL;
+   SUMA_SAVE_LIST_EL *sel=NULL;
+   int cnt = 0;
+   
+   SUMA_ENTRY;
+      
+   if (!out) out = stderr;
+   if (head) { fprintf(out, "%s", head); }
+   if (!SL) { fprintf(out,"NULL SaveList\n"); SUMA_RETURNe; }
+      
+   el = dlist_head(SL);
+   cnt = 0;
+   while (el) {
+      if ((sel = (SUMA_SAVE_LIST_EL *)el->data)) {
+         fprintf(out,"   %d:     id>%s<, prefix>%s<, type>%s<\n", 
+                        cnt, sel->identifier, sel->prefix, sel->type);
+      } else {
+         fprintf(out,"   %d:     NULL sel\n", cnt);
+      }
+      el = dlist_next(el);
+      fprintf(out,"\n");
+   }
+
+   SUMA_RETURNe;
 }
 
 int SUMA_SaveSaveListElement(SUMA_SAVE_LIST_EL *sel) 
@@ -4453,25 +4473,24 @@ void SUMA_input(Widget w, XtPointer clientData, XtPointer callData)
                   SUMAg_CF->HoldClickCallbacks = 1;
                }
                
-               #if 0
-               /* are we in ROI drawing mode ? */
-               if (  Bev.state & ShiftMask && 
-                     SUMAg_CF->ROI_mode && sv->Focus_SO_ID >= 0) {
-                  /* ROI drawing mode */
-                  ROI_mode = YUP;     
-               }else {
-                  ROI_mode = NOPE;
-               }
-               #endif
                /* are we in ROI drawing mode ? */
                if (  SUMAg_CF->ROI_mode 
                      && sv->Focus_SO_ID >= 0 && !(Bev.state & ShiftMask)) {
                   /* ROI drawing mode */
                   ROI_mode = YUP;     
-               }else {
+               } else {
                   ROI_mode = NOPE;
+                  
                }
-               
+
+               if (!(Kev.state & ShiftMask) && (Kev.state & ControlMask)) {
+                  SUMA_LH("Yoking intensity to node selection");
+                  SUMAg_CF->YokeIntToNode = 1;
+               } else {
+                  SUMA_LH("Holding back callbacks");
+                  SUMAg_CF->YokeIntToNode = 0;
+               }
+
                if (!DoubleClick) {
                   /* you do not want to waist time doing double calculations if 
                      the user clicks twice by mistake */
@@ -4955,7 +4974,14 @@ void SUMA_input(Widget w, XtPointer clientData, XtPointer callData)
                      SUMA_RETURNe;
                   }
                }  
-                  
+               
+               if (!(Kev.state & ShiftMask) && (Kev.state & ControlMask) ) {
+                  SUMA_LH("Yoking intensity to node selection");
+                  SUMAg_CF->YokeIntToNode = 1;
+               } else {
+                  SUMA_LH("Holding back callbacks");
+                  SUMAg_CF->YokeIntToNode = 0;
+               }   
                   
                ii = SUMA_RegisteredSOs(sv, SUMAg_DOv, NULL);
                if (ii == 0) { /* no surfaces, break */
@@ -5126,7 +5152,7 @@ int SUMA_MarkLineSurfaceIntersect (SUMA_SurfaceViewer *sv, SUMA_DO *dov,
          SUMA_etime (&tt_tmp, 0);
 
          MTIi = SUMA_MT_intersect_triangle(P0f, P1f, SO->NodeList, SO->N_Node, 
-                                           SO->FaceSetList, SO->N_FaceSet, NULL);
+                                        SO->FaceSetList, SO->N_FaceSet, NULL, 0);
 
          delta_t_tmp = SUMA_etime (&tt_tmp, 1);
          if (LocalHead) 
@@ -5179,7 +5205,7 @@ int SUMA_MarkLineSurfaceIntersect (SUMA_SurfaceViewer *sv, SUMA_DO *dov,
       ip = NP * MTI->ifacemin;
 
       /* if the surface controller is open, update it */
-      if (SO->SurfCont->TopLevelShell)   SUMA_Init_SurfCont_SurfParam(SO);
+      if (SUMA_SURFCONT_REALIZED(SO))   SUMA_Init_SurfCont_SurfParam(SO);
 
       /* print nodes about the closets faceset*/
       fprintf(SUMA_STDOUT, "\nvvvvvvvvvvvvvvvvvvvvvvvvvvvv\n");
@@ -5320,9 +5346,8 @@ int SUMA_MarkLineSurfaceIntersect (SUMA_SurfaceViewer *sv, SUMA_DO *dov,
          fprintf(SUMA_STDERR, "Error %s: SUMA_Engine call failed.\n", FuncName);
          SUMA_RETURN (-1);
       }
-      
-
-   } 
+   }
+    
    /* clear MTI */
    if (MTI) {
       MTI = SUMA_Free_MT_intersect_triangle(MTI);
@@ -5390,7 +5415,7 @@ int SUMA_MarkLineCutplaneIntersect (SUMA_SurfaceViewer *sv, SUMA_DO *dov,
          SUMA_LH("About to call intersection function");
          
          MTIi = SUMA_MT_intersect_triangle(P0f, P1f, SO->NodeList, SO->N_Node, 
-                                           SO->FaceSetList, SO->N_FaceSet, NULL);
+                                        SO->FaceSetList, SO->N_FaceSet, NULL, 0);
 
          delta_t_tmp = SUMA_etime (&tt_tmp, 1);
          if (LocalHead) 
@@ -6311,7 +6336,7 @@ SUMA_Boolean SUMA_BrushStrokeToNodeStroke (SUMA_SurfaceViewer *sv)
             MTI = SUMA_MT_intersect_triangle(   bsd->NP, bsd->FP, 
                                                 SO->NodeList, SO->N_Node, 
                                                 SO->FaceSetList, SO->N_FaceSet, 
-                                                MTI);
+                                                MTI,0);
 
             if (!MTI) {
                fprintf(SUMA_STDERR,"Error %s: SUMA_MT_intersect_triangle failed.\n", FuncName);
@@ -6443,7 +6468,7 @@ SUMA_Boolean SUMA_BrushStrokeToNodeStroke (SUMA_SurfaceViewer *sv)
                                                       SO->NodeList, SO->N_Node, 
                                                       SO->FaceSetList, 
                                                       SO->N_FaceSet, 
-                                                      MTI);
+                                                      MTI, 0);
                      fprintf (SUMA_STDERR, 
                         "%s: Intersection would be with triangle %d, node %d\n", 
                               FuncName, MTI->ifacemin, MTI->inodemin);                                 
@@ -6469,7 +6494,7 @@ SUMA_Boolean SUMA_BrushStrokeToNodeStroke (SUMA_SurfaceViewer *sv)
             MTI = SUMA_MT_intersect_triangle(   bsdn->NP, bsdn->FP, 
                                     SO->NodeList, SO->N_Node, 
                                     SO->FaceSetList, SO->N_FaceSet, 
-                                    MTI);
+                                    MTI, 0);
 
             if (!MTI) {
                SUMA_SL_Err ("I tried harder to figure out your trace.\nI failed, do try again.");

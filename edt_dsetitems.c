@@ -519,6 +519,9 @@ fprintf(stderr,"EDIT_dset_items: iarg=%d flag_arg=%d\n",iarg,flag_arg) ;
         if( DSET_IS_1D(dset) || (DSET_NY(dset)==1 && DSET_NZ(dset)==1) ) {
           if( !STRING_HAS_SUFFIX(fname,".1D") &&
               !STRING_HAS_SUFFIX(fname,".1D.dset")) strcat(fname,".1D");
+          fname = dset->dblk->diskptr->prefix ; /* also adjust prefix */
+          if( !STRING_HAS_SUFFIX(fname,".1D") &&
+              !STRING_HAS_SUFFIX(fname,".1D.dset")) strcat(fname,".1D");
         } else {
           strcat(fname,".3D");
         }
@@ -529,12 +532,17 @@ fprintf(stderr,"EDIT_dset_items: iarg=%d flag_arg=%d\n",iarg,flag_arg) ;
         int  ll = strlen(fname) ;
         STRING_DEVIEW_DEEXT_BRICK(fname);
         if( !STRING_HAS_SUFFIX(fname,".niml") ) strcat(fname,".niml");
+        fname = dset->dblk->diskptr->prefix ; /* also adjust prefix */
+        if( !STRING_HAS_SUFFIX(fname,".niml") ) strcat(fname,".niml");
       }
 
       if( DSET_IS_NI_SURF_DSET(dset) ){ /* 28 Jun 2006 [rickr] */
         char *fname = dset->dblk->diskptr->brick_name ;
         int  ll = strlen(fname) ;
         STRING_DEVIEW_DEEXT_BRICK(fname);
+        fname = dset->dblk->diskptr->brick_name ;
+        if( !STRING_HAS_SUFFIX(fname,".niml.dset") ) strcat(fname,".niml.dset");
+        fname = dset->dblk->diskptr->prefix ; /* also adjust prefix */
         if( !STRING_HAS_SUFFIX(fname,".niml.dset") ) strcat(fname,".niml.dset");
       }
 
@@ -545,13 +553,16 @@ fprintf(stderr,"EDIT_dset_items: iarg=%d flag_arg=%d\n",iarg,flag_arg) ;
         if( ! STRING_HAS_SUFFIX(fname,".gii") &&
             ! STRING_HAS_SUFFIX(fname,".gii.dset") )
            strcat(fname,".gii");
+        fname = dset->dblk->diskptr->prefix ; /* also adjust prefix */
+        if( ! STRING_HAS_SUFFIX(fname,".gii") &&
+            ! STRING_HAS_SUFFIX(fname,".gii.dset") )
+           strcat(fname,".gii");
       }
 
       /** output of NIfTI-1.1 dataset: 06 May 2005 **/
       /* if the prefix ends in .nii or .nii.gz, change filename in brick_name */
       if( nprefix != NULL && ( STRING_HAS_SUFFIX(nprefix,".nii") ||
                                STRING_HAS_SUFFIX(nprefix,".nii.gz") ) ){
-
         char *fname = dset->dblk->diskptr->brick_name ;
         int  ll = strlen(fname) ;
         STRING_DEVIEW_DEEXT_BRICK(fname);
@@ -585,6 +596,10 @@ fprintf(stderr,"EDIT_dset_items: iarg=%d flag_arg=%d\n",iarg,flag_arg) ;
              strcat(fname,".nii.gz") ;
            }
         }
+        if (dset->dblk->diskptr->header_name) { /* ZSS: April 26 2012 */
+            /* header_name should be just like brick_name */
+            strcpy(dset->dblk->diskptr->header_name, fname);
+        }
       }
 
       /** NIfTI-1.1 with .hdr suffix (2 file format) [08 May 2008] **/
@@ -595,7 +610,13 @@ fprintf(stderr,"EDIT_dset_items: iarg=%d flag_arg=%d\n",iarg,flag_arg) ;
         int  ll = strlen(fname) ;
         STRING_DEVIEW_DEEXT_BRICK(fname);
         if( !strcmp(fname+ll-14,".hdr") ) fname[ll-14] = '\0';
+        if (dset->dblk->diskptr->header_name) {/* and adjust header name 
+                                                  ZSS April 26 2012 */
+            strcpy(dset->dblk->diskptr->header_name, fname);
+            strcat(dset->dblk->diskptr->header_name,".hdr") ;
+        }
         if( !STRING_HAS_SUFFIX(fname,".img") ) strcat(fname,".img") ;
+         
         /* and override the BRICK mode */
         dset->dblk->diskptr->storage_mode = STORAGE_BY_NIFTI;
       }

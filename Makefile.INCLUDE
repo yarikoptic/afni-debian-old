@@ -91,8 +91,8 @@ PROGRAMS = afni to3d from3d abut 3dclust nsize 3dinfo 3dproject 3dmerge count   
            3dClustSim 3dRetinoPhase 3dMaskToASCII 3dttest++ 3dDTtoDWI           \
            niccc rbox qdelaunay 3dkmeans 3dXYZcat 3dPolyfit 3dNwarpApply        \
            1dCorrelate 3dCountSpikes 3dNwarpCalc dicom_hinfo apsearch 1dBport   \
-           3dNormalityTest                                                      \
-           $(EXTRAS)
+           3dNormalityTest 3dmask_tool FIRdesign help_format 2perm 3dClustCount \
+           column_cat $(EXTRAS)
 
 PROGRAMS_NOPLUG = afni to3d from3d abut 3dclust nsize 3dinfo 3dproject 3dmerge      \
                   sfim tfim ftosh 3dttest 3ddup imrotate imreg imstat 3dnoise count \
@@ -124,7 +124,7 @@ PROGRAMS_NOPLUG = afni to3d from3d abut 3dclust nsize 3dinfo 3dproject 3dmerge  
                   3dmaskSVD 3dRank 3dLocalPV 3dTcorr1D 3dClustSim 3dRetinoPhase     \
                   3dMaskToASCII 3dttest++ 3dDTtoDWI niccc 3dXYZcat 3dPolyfit        \
                   3dNwarpApply 1dCorrelate 3dCountSpikes 3dNwarpCalc dicom_hinfo    \
-                  apsearch 3dNormalityTest                                          \
+                  apsearch 3dNormalityTest 3dmask_tool 2perm 3dClustCount           \
                   $(EXTRAS)
 
 # For CYGWIN (look for "exe" to find various places below)
@@ -158,7 +158,8 @@ PROGRAMS_EXE = afni.exe to3d from3d abut 3dclust nsize 3dinfo 3dproject 3dmerge 
                3dFWHMx 3dBlurToFWHM 1dSEM 3dDFT 3dSynthesize 1dMarry 3dEmpty      \
                1dFlagMotion 3dTsort 1dTsort 3dTfitter afni_history 1dUpsample     \
                3dTcorrMap 3dABoverlap 3dRank 3dFFT 3dTcorr1D 3dClustSim           \
-               3dRetinoPhase 3dMaskToASCII 3dttest++ 3dDTtoDWI niccc 3dXYZcat
+               3dRetinoPhase 3dMaskToASCII 3dttest++ 3dDTtoDWI niccc 3dXYZcat \
+               column_cat
 
 SCRIPTS = @4Daverage @CommandGlobb @GetAfniOrient @DTI_studio_reposition          \
           @GetAfniPrefix @NoExt @UpdateAfni @RenamePanga @2dwarper                \
@@ -178,8 +179,11 @@ SCRIPTS = @4Daverage @CommandGlobb @GetAfniOrient @DTI_studio_reposition        
           3dMEMA @DiceMetric @R_funclist @TimeDiff @FullPath @RetinoProc          \
           @ANATICOR @MakeLabelTable @ElectroGrid ExamineXmat 1dRplot              \
           @2dwarper.Allin @Shift_Volume  @help.AFNI @1dDiffMag @FSlabel2dset      \
-          @Install_InstaCorr_Demo @Quiet_Talkers @radial_correlate               \
-          @DeblankFileNames @clean_help_dir @global_parse @AfniEnv @Atlasize
+          @Install_InstaCorr_Demo @Quiet_Talkers @radial_correlate                \
+          @DeblankFileNames @clean_help_dir @global_parse @AfniEnv @Atlasize      \
+          @Install_TSrestMovieDemo @Install_AfniRetinoDemo                        \
+          @Install_PTaylor_TractDemo @Install_RSFMRI_Motion_Group_Demo            \
+          @Install_MEICA_Demo @T1scale 3dMVM  
 
 PY_DIR = python_scripts
 PY_SCRIPTS = afni_base.py @DoPerRoi.py
@@ -205,7 +209,8 @@ vastness:all plugins install install_plugins install_lib
 
 ### Make many things
 
-all:$(LIBDL) libmri.a libmrix.a libcoxplot.a libvolpack.a R_io.so programs
+all:$(LIBDL) libmri.a libmrix.a libcoxplot.a libvolpack.a libtracktools.a \
+             R_io.so programs ptaylor_all
 
 ### Make afni binaries
 
@@ -397,6 +402,12 @@ imreg:imreg.o pcor.o
 	$(RM) $@
 	$(CC) -o imreg imreg.o pcor.o $(LFLAGS) $(LLIBS)
 
+FIRdesign.o:FIRdesign.c remez.c remez.h
+
+FIRdesign:FIRdesign.o
+	$(RM) $@
+	$(CC) -o FIRdesign FIRdesign.o $(LFLAGS) $(LLIBS)
+
 imfit:imfit.o
 	$(RM) $@
 	$(CC) -o imfit imfit.o $(LFLAGS) $(LLIBS)
@@ -531,6 +542,8 @@ dsetdup:dsetdup.o
 1dAstrip:1dAstrip.o
 	$(RM) $@
 	$(CC) -o 1dAstrip 1dAstrip.o
+
+1dBport.o:1dBport.c mri_bport.c
 
 1dBport:1dBport.o
 	$(RM) $@
@@ -896,6 +909,14 @@ qm:qm.o
 	$(RM) $@
 	$(CCFAST) -o 3dSetupGroupInCorr 3dSetupGroupInCorr.o $(LFLAGS) $(LLIBS)
 
+3dTransformGroupInCorr:3dTransformGroupInCorr.o
+	$(RM) $@
+	$(CCFAST) -o 3dTransformGroupInCorr 3dTransformGroupInCorr.o $(LFLAGS) $(LLIBS)
+
+3dExtractGroupInCorr:3dExtractGroupInCorr.o
+	$(RM) $@
+	$(CCFAST) -o 3dExtractGroupInCorr 3dExtractGroupInCorr.o $(LFLAGS) $(LLIBS)
+
 rotcom:rotcom.o
 	$(RM) $@
 	$(CC) -o rotcom rotcom.o $(LFLAGS) $(LLIBS)
@@ -1174,6 +1195,14 @@ AlphaSim:AlphaSim.o
 	$(RM) $@
 	$(CCOMP) -o 3dAllineate 3dAllineate.o $(LFLAGS) $(LLIBS)
 
+3dQwarp:3dQwarp.o mri_genalign.c mri_genalign_util.c mri_nwarp.c thd_incorrelate.c
+	$(RM) $@
+	$(CCOMP) -o 3dQwarp 3dQwarp.o $(LFLAGS) $(LLIBS)
+
+3dQwarp.o:3dQwarp.c mri_genalign.c mri_genalign_util.c thd_incorrelate.c mri_nwarp.c
+	$(RM) $@
+	$(CCOMP) -c 3dQwarp.c $(INFLAGS)
+
 3dNwarpApply:3dNwarpApply.o
 	$(RM) $@
 	$(CCOMP) -o 3dNwarpApply 3dNwarpApply.o $(LFLAGS) $(LLIBS)
@@ -1343,7 +1372,7 @@ to3d:to3d.h $(T3OBJS) libcoxplot.a
 
 1dplot:libcoxplot.a 1dplot.o display.o
 	$(RM) $@
-	$(CC) -o 1dplot 1dplot.o display.o $(LFLAGS) -lcoxplot $(LLIBS)
+	$(CC) -o 1dplot 1dplot.o display.o $(LFLAGS) -lcoxplot -lmrix $(LLIBS)
 
 1dgrayplot:libcoxplot.a 1dgrayplot.o display.o
 	$(RM) $@
@@ -1406,6 +1435,13 @@ afni_vcheck:afni_vcheck.o
 1dcat:1dcat.o
 	$(RM) $@
 	$(CC) -o 1dcat 1dcat.o $(LFLAGS) $(LLIBS)
+
+2perm:2perm.o
+	$(CC) -o 2perm 2perm.o $(INFLAGS) $(LFLAGS) $(LLIBS)
+
+3dClustCount:3dClustCount.o
+	$(RM) $@
+	$(CC) -o 3dClustCount 3dClustCount.o $(LFLAGS) $(LLIBS)
 
 1dMarry:1dMarry.o
 	$(RM) $@
@@ -1602,7 +1638,7 @@ backup:
 afni_src.tgz:
 	$(MKDIR) afni_src
 	$(CP) -p *.c *.f *.inc *.h *.hhh Makefile.* *.xbm $(MINDOCS) $(MISC)     ./afni_src
-	$(CP) -pr coxplot volpack moveup moveAFNI* eispack avovk ptaylor               ./afni_src
+	$(CP) -pr coxplot volpack moveup moveAFNI* eispack avovk ptaylor pkundu        ./afni_src
 	$(CP) -pr $(SCRIPTS) $(PY_DIR) $(R_DIR)                                  ./afni_src
 	$(CP) -pr gifsicledir qhulldir f2cdir mpeg_encodedir                     ./afni_src
 	$(CP) -pr 3DEdge netcdf-3.5.0 jpeg-6b niml Makefile_* nifti dlcompat     ./afni_src
@@ -1635,7 +1671,7 @@ afni_doc.tgz:
 
 ### Put things in their places
 
-install: $(INSTALLDIR) $(INSTALL_PREREQ)
+install: $(INSTALLDIR) $(INSTALL_PREREQ) ptaylor_install pkundu_install 
 	$(MV) $(PROGRAMS) $(INSTALLDIR)
 	$(CP) $(SCRIPTS)  $(INSTALLDIR)
 	$(CP) $(PY_DIR)/*.py  $(R_DIR)/*.R $(INSTALLDIR)
@@ -2295,10 +2331,6 @@ r_misc.o: rickr/r_misc.c rickr/r_misc.h
 	$(RM) $@
 	$(CC) -o 3dmaxima 3dmaxima.o maxima.o $(LFLAGS) $(LLIBS)
 
-3dmatmult: 3dmatmult.o libmri.a
-	$(RM) $@
-	$(CC) -o 3dmatmult 3dmatmult.o $(LFLAGS) $(LLIBS)
-
 3dresample: 3dresample.o libmri.a
 	$(RM) $@
 	$(CC) -o 3dresample 3dresample.o $(LFLAGS) $(LLIBS)
@@ -2337,6 +2369,19 @@ gtest:
 	$(MAKE) gtest 'RM=$(RM)' 'CC=$(CC)' 'IFLAGS=$(ISFLAGS)'         \
 	                'LFLAGS=$(LFLAGS)' ;                            \
 	$(MV) gtest .. ; )
+
+3dmatmult: 3dmatmult.o libmri.a
+	$(RM) $@
+	$(CC) -o 3dmatmult 3dmatmult.o $(LFLAGS) $(LLIBS)
+
+3dmask_tool: 3dmask_tool.o libmri.a
+	$(RM) $@
+	$(CC) -o 3dmask_tool 3dmask_tool.o $(LFLAGS) $(LLIBS)
+
+column_cat: rickr/column_cat.c
+	$(RM) $@
+	$(CC) -o column_cat rickr/column_cat.c
+
 
 #######
 # rendering library
@@ -2836,21 +2881,34 @@ libsegtools.a: avovk/cluster_floatNOMASK.c avovk/thd_segtools_fNM.c
 ptaylor_all: 
 	( cd ptaylor ;	\
 	./@MakeLocalMake	;\
-	$(MAKE) all  ;	\
+	$(MAKE) afni_all  ;	\
 	cd ../	;		)
 
-libtracktools.a: ptaylor/libtracktools.a
+ptaylor_install:
 	( cd ptaylor ;	\
 	./@MakeLocalMake	;\
-	$(MAKE) libtracktools.a  ;	\
+	$(MAKE) afni_install  ;	\
+	cd ../	;		)
+
+libtracktools.a:
+	( cd ptaylor ;	\
+	./@MakeLocalMake	;\
+	$(MAKE) clean libtracktools.a  ;	\
 	$(CP) libtracktools.a ../;	\
 	cd ../	;		)
 
+#############
+#PKUNDU directory
+
+pkundu_install:
+	( cd pkundu ;	\
+	./@install_pkundu $(INSTALLDIR)	;\
+	cd ../	;		)
 
 #############
 #SUMA
 
-libSUMA.a: libmri.a libmrix.a libcoxplot.a libf2c.a
+libSUMA.a: libmri.a libmrix.a libcoxplot.a libf2c.a libtracktools.a
 	( cd SUMA ;	\
 	rm -f libSUMA.a	;\
 	$(MAKE) -f $(SUMA_MAKEFILE_NAME) clean MarchingCubes.o libSUMA.a 'INSTALLDIR=$(INSTALLDIR)' \
@@ -2874,6 +2932,15 @@ libgts.a:
 	$(CP) SUMA/libgts.a ${INSTALLDIR}; \
 	$(CP) SUMA/libgts.a ./;	)
 
+libSUMAseg.a:
+	( cd SUMA ;	\
+	rm -f libSUMAseg.a	;\
+	$(MAKE) -f $(SUMA_MAKEFILE_NAME) libSUMAseg.a ;	\
+	cd ../	;	\
+	if [ ! -d $(INSTALLDIR) ]; then $(MKDIR) -p $(INSTALLDIR); echo WARNING: directory $(INSTALLDIR) has been created. ; fi	;\
+	$(CP) SUMA/libSUMAseg.a ${INSTALLDIR}; \
+	$(CP) SUMA/libSUMAseg.a ./;	)
+
 libGLws.a:
 	( cd SUMA ;	\
 	rm -f libGLws.a	;\
@@ -2890,7 +2957,7 @@ libGLws.a:
 	$(CP) SUMA/libGLws.a ./;	)
 ###
 #link executables but check for libraries first and create them if needed	
-suma_exec:libGLws.a libSUMA.a libmri.a xutil.o LiteClue.o parser.o parser_int.o libmrix.a libcoxplot.a libf2c.a
+suma_exec:libGLws.a libSUMA.a libtracktools.a libmri.a xutil.o LiteClue.o parser.o parser_int.o libmrix.a libcoxplot.a libf2c.a
 	( cd SUMA ;	\
 	$(MAKE) -f $(SUMA_MAKEFILE_NAME) testGL suma ScaleToMap CompareSurfaces \
 	MakeColorMap ROI2dataset 3dVol2Surf \
@@ -2901,7 +2968,7 @@ suma_exec:libGLws.a libSUMA.a libmri.a xutil.o LiteClue.o parser.o parser_int.o 
    3dSkullStrip 3dCRUISEtoAFNI 3dBRAIN_VOYAGERtoAFNI 3dSurfMask\
    SurfToSurf Surf2VolCoord ROIgrow SurfDsetInfo SurfInfo AnalyzeTrace \
    DriveSuma SurfDist SpharmReco SpharmDeco prompt_user SurfRetinoMap \
-   ParseName 3dGenPriors 3dSeg SurfExtrema 3dinfill \
+   ParseName 3dGenPriors 3dSeg SurfExtrema 3dinfill 3dHist \
    'INSTALLDIR=$(INSTALLDIR)' \
 	'SUMA_INCLUDE_PATH=$(SUMA_INCLUDE_PATH)' \
 	'SUMA_LINK_PATH=$(SUMA_LINK_PATH)' \
@@ -2932,7 +2999,7 @@ suma_gts_progs: libgts.a
 
 ###
 #run make all in SUMA directory, USE FOR DEVELOPMENT ONLY	
-suma_all:libmri.a xutil.o LiteClue.o parser.o parser_int.o libmrix.a libcoxplot.a libf2c.a
+suma_all:libmri.a libtracktools.a xutil.o LiteClue.o parser.o parser_int.o libmrix.a libcoxplot.a libf2c.a
 	( cd SUMA ;	\
 	$(MAKE) -f $(SUMA_MAKEFILE_NAME) all 'INSTALLDIR=$(INSTALLDIR)' 'INSTALLDIR_SUMA=$(INSTALLDIR)' \
 	'SUMA_INCLUDE_PATH=$(SUMA_INCLUDE_PATH)' \
@@ -2948,7 +3015,7 @@ suma_all:libmri.a xutil.o LiteClue.o parser.o parser_int.o libmrix.a libcoxplot.
 
 ###
 #run make anew in SUMA directory, USE FOR DEVELOPMENT ONLY	
-suma_anew:libmri.a xutil.o LiteClue.o parser.o parser_int.o libmrix.a libcoxplot.a libf2c.a
+suma_anew:libmri.a xutil.o LiteClue.o parser.o parser_int.o libmrix.a libcoxplot.a libf2c.a libtracktools.a
 	( cd SUMA ;	\
 	$(MAKE) -f $(SUMA_MAKEFILE_NAME) anew 'INSTALLDIR=$(INSTALLDIR)' 'INSTALLDIR_SUMA=$(INSTALLDIR)' \
 	'SUMA_INCLUDE_PATH=$(SUMA_INCLUDE_PATH)' \
@@ -3062,6 +3129,8 @@ suma_clean:
 	if [ -f SUMA/SurfExtrema ]; then $(RM) SUMA/SurfExtrema; fi;
 	if [ -f 3dinfill ]; then $(RM) 3dinfill; fi;
 	if [ -f SUMA/3dinfill ]; then $(RM) SUMA/3dinfill; fi;
+	if [ -f 3dHist ]; then $(RM) 3dHist; fi;
+	if [ -f SUMA/3dHist ]; then $(RM) SUMA/3dHist; fi;
 
 ###
 #Use precompiled libraries present in SUMA/$(SUMA_BIN_ARCHIVE) and just link SUMA
@@ -3069,7 +3138,7 @@ suma_link:
 	( cd SUMA ;	\
 	tar -xf $(SUMA_BIN_ARCHIVE)	;\
 	touch *.a	;\
-	$(CP) libmri.a libmrix.a libcoxplot.a libf2c.a ../	;\
+	$(CP) libmri.a libtractools.a libmrix.a libcoxplot.a libf2c.a ../	;\
 	$(RM) suma MakeColorMap ROI2dataset 3dVol2Surf 3dSurf2Vol \
    SurfMeasures  SurfFWHM \
    ScaleToMap MapIcosahedron \
@@ -3079,7 +3148,7 @@ suma_link:
    3dCRUISEtoAFNI 3dBRAIN_VOYAGERtoAFNI 3dSurfMask\
    SurfToSurf Surf2VolCoord ROIgrow SurfDsetInfo SurfInfo AnalyzeTrace \
    DriveSuma SurfDist SpharmReco SpharmDeco prompt_user SurfRetinoMap \
-   ParseName 3dGenPriors 3dSeg SurfExtrema 3dinfill; \
+   ParseName 3dGenPriors 3dSeg SurfExtrema 3dinfill 3dHist; \
 	$(MAKE) -f $(SUMA_MAKEFILE_NAME) testGL suma MakeColorMap ROI2dataset \
    3dVol2Surf 3dSurf2Vol ScaleToMap SurfMeasures SurfFWHM \
 	MapIcosahedron CreateIcosahedron CompareSurfaces ConvertSurface ConvertDset \
@@ -3088,7 +3157,7 @@ suma_link:
    3dCRUISEtoAFNI 3dBRAIN_VOYAGERtoAFNI 3dSurfMask \
 	SurfToSurf Surf2VolCoord ROIgrow SurfDsetInfo SurfInfo AnalyzeTrace \
    DriveSuma SurfDist SpharmReco SpharmDeco prompt_user SurfRetinoMap \
-   ParseName 3dGenPriors 3dSeg SurfExtrema 3dinfill\
+   ParseName 3dGenPriors 3dSeg SurfExtrema 3dinfill 3dHist \
 	'INSTALLDIR=$(INSTALLDIR)' \
 	'SUMA_INCLUDE_PATH=$(SUMA_INCLUDE_PATH)' \
 	'SUMA_LINK_PATH=$(SUMA_LINK_PATH)' \
@@ -3119,6 +3188,7 @@ suma_install:
    SUMA/SurfInfo SUMA/AnalyzeTrace SUMA/DriveSuma SUMA/SurfDist \
    SUMA/SpharmReco SUMA/SpharmDeco SUMA/prompt_user SUMA/SurfRetinoMap \
    SUMA/ParseName SUMA/3dGenPriors SUMA/3dSeg SUMA/SurfExtrema SUMA/3dinfill \
+   SUMA/3dHist \
    ${INSTALLDIR} ; \
 	if [ -f SUMA/SurfMesh ]; then $(CP) SUMA/SurfMesh ${INSTALLDIR} ; fi; \
 	$(CP) @SUMA_* ${INSTALLDIR} ;)

@@ -16,6 +16,8 @@
 # history:
 # ...         : a few updates
 # 07 Mar 2012 : existing package and install dir no longer required for -d
+# 13 Sep 2012 : download and run the current version on the website
+#             - added option -no_recur
 # ----------------------------------------------------------------------
 
 
@@ -27,6 +29,7 @@ set abin = ""
 set package = ""
 set tmp_dir = ".tmp.install"    # should start with '.'
 set make_backup = 1             # backup previous binaires
+set prog = `basename $0`
 
 if ( $#argv == 0 ) then
     set help = 1
@@ -34,12 +37,22 @@ else
     set help = 0
 endif
 
-set testing = 0
-set use_curl = 0
+set testing     = 0
+set use_curl    = 0
+set do_apsearch = 1     # run apserach -update_all_afni_help
+set do_recur    = 1     # download a new version of @uab, first
 
 set ac = 1
 while ( $ac <= $#argv )
-    if ( "$argv[$ac]" == "-bindir" ) then
+    if ( "$argv[$ac]" == "-apsearch" ) then
+        @ ac ++
+        if ( $ac > $#argv ) then
+            echo "** missing parameter for option '-apsearch'"
+            exit 1
+        endif
+        set resp = `echo $argv[$ac] | cut -b1`
+        if ( $resp == 'N' || $resp == 'n' ) set do_apsearch = 0
+    else if ( "$argv[$ac]" == "-bindir" ) then
         @ ac ++
         if ( $ac > $#argv ) then
             echo "** missing parameter for option '-bindir'"
@@ -57,6 +70,8 @@ while ( $ac <= $#argv )
             exit 1
         endif
         set package = $argv[$ac]
+    else if ( "$argv[$ac]" == "-no_recur" ) then
+        set do_recur = 0
     else if ( "$argv[$ac]" == "-help" ) then
         set help = 1
     else if ( "$argv[$ac]" == "-d" || "$argv[$ac]" == "-defaults" ) then
@@ -70,7 +85,6 @@ end
 
 # if requested, show help and exit
 if ( $help ) then
-    set prog = `basename $0`
     echo "------------------------------------------------------------"
     echo "$prog   - upgrade AFNI binaries"
     echo ""
@@ -87,6 +101,7 @@ if ( $help ) then
     echo ""
     echo "    -help                 : show this help"
     echo ""
+    echo "    -apsearch yes/no      : specify getting apsearch updates"
     echo "    -bindir ABIN          : set AFNI binary directory to ABIN"
     echo "    -curl                 : default to curl instead of wget"
     echo "    -defaults             : install current package into abin"
@@ -104,8 +119,12 @@ if ( $help ) then
     echo "        If -bindir or -package cannot be determined, it must be"
     echo "        supplied by the user."
     echo ""
+    echo "        26 Sep 2012 : -update_apsearch is applied by default"
+    echo "                      (if installed afni is in PATH)"
+    echo ""
+    echo "    -no_recur             : do not download and run new @uab script"
     echo "    -package PACKAGE      : install distribution package PACKAGE"
-    echo "    -test                  : just attempt the download and quit"
+    echo "    -test                 : just attempt the download and quit"
     echo ""
     echo "Note that the user must have write permissions in the ABIN"
     echo "directory."
@@ -114,11 +133,12 @@ if ( $help ) then
 endif
 
 # note any current AFNI location
-set cur_afni = `which afni`
+which afni >& /dev/null
 if ( $status ) then
    echo "-- no current AFNI package..."
    set cur_afni = ""
 else
+   set cur_afni = `which afni`
    set cur_afni = $cur_afni:h
    echo "-- have AFNI binaries under $cur_afni"
 endif
@@ -230,7 +250,7 @@ set date = `date +%Y_%m_%d`
 set backup_dir = auto_backup.$package
 
 # ----------------------------------------------------------------------
-# go to the binary directory and begin work (most work from temp dir)
+# go to the binary directory and check that we can write
 cd $abin
 
 # check permissions before doing anything
@@ -240,6 +260,11 @@ if ( ! -w . ) then
     exit 1
 endif
 
+# ======================================================================
+# begin work (most work from temp dir)
+# ======================================================================
+
+# ----------------------------------------------------------------------
 # remove any old package
 if ( -f $package.tgz || -d $package ) then
     echo nuking old package...
@@ -258,6 +283,7 @@ endif
 
 # ----------------------------------------------------------------------
 # create and enter temporary working directory; test whether update is needed
+echo "++ working in new temp dir, $tmp_dir"
 mkdir $tmp_dir
 if ( $status ) then
     echo "** failed to create new or remove old temp dir, $tmp_dir"
@@ -265,6 +291,84 @@ if ( $status ) then
 endif
 cd $tmp_dir
 
+# ----------------------------------------------------------------------
+# first, make sure we run the latest @update.afni.binaries:
+#     get a new version of this script to make sure we are current...
+#     (sneaky suggestion by Bob)
+# download to a temp name, though
+if ( $do_recur ) then
+   set temp_prog = tmp.$prog         # temp name to run with
+   set retry = 0                     # use multiple attempts to get this
+
+   set bin_root = http://afni.nimh.nih.gov/pub/dist/bin
+   set get_package = $bin_root/$package/$prog
+   echo "++ getting install prog $package/$prog ..."
+   $get_prog $get_package
+
+   # ----- might not exist: try twice and skip if fail       26 Sep 2012
+
+   if ( $status ) then
+      set retry = 1
+   else
+      grep 'not found on this server' $prog > /dev/null
+      if ( ! $status ) then
+         set retry = 1
+         \rm -f $prog
+      endif
+   endif
+
+   if ( $retry ) then
+      set retry = 0
+      set ppp = linux_openmp_64
+      echo "** failed, trying $ppp/$prog ..."
+      $get_prog $bin_root/$ppp/$prog
+      if ( $status ) then
+         set retry = 1
+      else
+         grep 'not found on this server' $prog > /dev/null
+         if ( ! $status ) then
+            set retry = 1
+            \rm -f $prog
+         endif
+      endif
+
+      if ( $retry ) then
+         echo "** failed again, skipping check for new installer"
+         goto SKIP_RECUR
+      endif
+   endif
+
+   # ----- okay, we have a new installer to check on
+
+   # see if there are any changes to apply
+   cmp -s $prog ../$prog
+   if ( $status ) then
+      # use new version!
+      echo "++ using updated $prog, instead..."
+      echo ""
+
+      # move it up to a temp name and run it (without further recursion)
+      if ( -f ../$temp_prog ) \rm -f ../$temp_prog
+      \mv $prog ../$temp_prog
+      cd ..     # so we don't sit in deleted directory
+
+      echo "++ running: tcsh $temp_prog -no_recur $argv"
+      tcsh $temp_prog -no_recur $argv
+      set ss = $status
+      if ( ! $ss ) then
+         echo "\n...finished, removing temp version, $temp_prog"
+         \rm -f $temp_prog
+      endif
+      exit $ss  # exit with status of called program
+   else
+      echo "-- $prog is current, continuing with this version..."
+   endif
+else
+   echo "-- skipping update of $prog"
+endif
+SKIP_RECUR:
+
+# ----------------------------------------------------------------------
 # just download single afni binary and compare
 set get_package = http://afni.nimh.nih.gov/pub/dist/bin/$package/afni
 echo "++ downloading test file $package/afni ..."
@@ -344,6 +448,7 @@ endif
 
 # abin may have sub-directories         17 Oct 2011 [rickr]
 
+# actually install the new binaries
 if ( $use_rsync ) then
    echo "++ synching new binaries..."
    rsync -a $package/ ../
@@ -360,7 +465,14 @@ else
    endif
 endif
 
-# and nuke any leftovers
+# and possibly run apsearch
+if ( $do_apsearch && $cur_afni == $abin ) then
+   set cmd = "apsearch -update_all_afni_help"
+   echo "++ running $cmd ..."
+   $cmd
+endif
+
+# finally nuke any leftovers
 cd ..
 \rm -fr $tmp_dir
 

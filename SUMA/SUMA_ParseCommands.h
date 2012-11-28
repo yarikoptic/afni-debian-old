@@ -91,6 +91,7 @@ typedef struct {
    byte accept_t;
    byte accept_s;
    byte accept_i;
+   byte onestate; /* if 1, All -i surfaces will have the same state */
    byte accept_ipar;
    byte accept_o;
    byte accept_spec;
@@ -118,11 +119,13 @@ typedef struct {
    int N_surf;
    char *spec_file; /* do not free, argv[.] copy */
    char *in_name;    /* do not free, argv[.] copy */
-   char *in_namev[SUMA_GENERIC_PROG_MAX_IN_NAME];/*a whole bunch of input files*/
+   char *in_namev[SUMA_GENERIC_PROG_MAX_IN_NAME];/*whole bunch of input files*/
    int n_in_namev;
    char *surftype; /* do not free, argv[.] copy */
    char *out_prefix;   /* this one's dynamically allocated so 
                           you'll have to free it yourself */
+   SUMA_DSET_FORMAT oform;
+   
    char *out_vol_prefix; /* this one's dynamically allocated so 
                            you'll have to free it yourself */
    char out_vol_view[SUMA_VIEW_LENGTH];
@@ -137,6 +140,7 @@ typedef struct {
    int in_vol_exists;
    int MaskMode;
    char *cmask;
+   char *dmask;
    THD_3dim_dataset *in_vol;
    float VolCM[3];   /* input volume's center of mass */
    double *mcdatav; /* the dataset that is passed to the 
@@ -263,6 +267,10 @@ typedef struct {
    SUMA_GENERIC_ARGV_PARSE *ps; /* just a holder for convenience, never free it*/
    
    char *s; /* just a string, gets freed in the end */
+   
+   float permask;
+   float flt1, flt2, flt3;
+   float PlEq[4];
 } SUMA_GENERIC_PROG_OPTIONS_STRUCT; /* also edit defaults in 
                                  SUMA_Alloc_Generic_Prog_Options_Struct and in 
                                  SUMA_Free_Generic_Prog_Options_Struct */

@@ -36,6 +36,7 @@ void Syntax(void)
 "   -is_atlas: 1 if dset is an atlas.\n"
 "   -is_nifti: 1 if dset is NIFTI format, 0 otherwise\n"
 "   -space: dataset's space\n"
+"   -gen_space: datasets generic space\n"
 "   -av_space: AFNI format's view extension for the space\n"
 "   -is_oblique: 1 if dset is oblique\n"
 "   -obliquity: Angle from plumb direction.\n"
@@ -60,6 +61,7 @@ void Syntax(void)
 "   -adj: Voxel size along j direction (abs(dj))\n"
 "   -adk: Voxel size along k direction (abs(dk))\n"
 "   -ad3: same as -adi -adj -adk\n"
+"   -voxvol: Voxel volume in cubic millimeters\n"
 "   -oi: Volume origin along the i direction\n"
 "   -oj: Volume origin along the j direction\n"
 "   -ok: Volume origin along the k direction\n"
@@ -184,7 +186,7 @@ THD_3dim_dataset *load_3dinfo_dataset(char *name)
 }   
 
 typedef enum {
-   CLASSIC=0, DSET_SPACE, AV_DSET_SPACE, IS_NIFTI, DSET_EXISTS,
+   CLASSIC=0, DSET_SPACE, AV_DSET_SPACE, DSET_GEN_SPACE, IS_NIFTI, DSET_EXISTS,
    IS_ATLAS, IS_OBLIQUE, OBLIQUITY, PREFIX , PREFIX_NOEXT, 
    NI, NJ, NK, NT, NTI, NTIMES, MAX_NODE, 
    NV, NVI, NIJK, 
@@ -200,11 +202,12 @@ typedef enum {
    HISTORY, ORIENT,
    SAME_GRID, SAME_DIM, SAME_DELTA, SAME_ORIENT, SAME_CENTER, 
    SAME_OBL, SVAL_DIFF, VAL_DIFF, SAME_ALL_GRID, ID, SMODE,
+   VOXVOL,
    N_FIELDS } INFO_FIELDS; /* Keep synchronized with Field_Names  
                               Leave N_FIELDS at the end */
 
 char Field_Names[][32]={
-   {"-classic-"}, {"space"}, {"AV_spc"}, {"nifti?"}, {"exist?"},
+   {"-classic-"}, {"space"}, {"AV_spc"}, {"gen_spc"}, {"nifti?"}, {"exist?"},
    {"atlas?"}, {"oblq?"}, {"oblq"}, {"prefix"}, {"pref_nx"}, 
    {"Ni"}, {"Nj"}, {"Nk"}, {"Nt"}, {"Nti"}, {"Ntimes"}, {"MxNode"},
    {"Nv"}, {"Nvi"}, {"Nijk"}, 
@@ -221,6 +224,7 @@ char Field_Names[][32]={
    {"=grid?"}, {"=dim?"}, {"=delt?"}, {"=ornt?"}, {"=cent?"},
    {"=obl?"}, {"sDval"}, {"Dval"}, {"=dim_delta_orient_center_obl"}, 
    {"id"}, {"smode"}, 
+   {"voxvol"},
    {"\0"} }; /* Keep synchronized with INFO_FIELDS */
 
 char *PrintForm(INFO_FIELDS sing , int namelen, byte ForHead)
@@ -260,11 +264,12 @@ int main( int argc , char *argv[] )
    char *sbdelim = {"|"};
    char *NAflag = {"NA"};
    char *atrdelim = {"\t"}, *form=NULL;
-   INFO_FIELDS sing[512]; 
+   INFO_FIELDS sing[512];
    int iis=0, N_sing = 0, isb=0, withhead = 0, itmp=0;
    int ip=0, needpair = 0, namelen=0, monog_pairs = 0;
    THD_3dim_dataset *tttdset=NULL, *dsetp=NULL;
-   
+   char *tempstr = NULL;
+
    if( argc < 2 || strncmp(argv[1],"-help",4) == 0 ) Syntax() ;
 
    mainENTRY("3dinfo main") ; machdep() ; 
@@ -316,6 +321,8 @@ int main( int argc , char *argv[] )
          sing[N_sing++] = DSET_SPACE; iarg++; continue;
       } else if( strcasecmp(argv[iarg],"-av_space") == 0) { 
          sing[N_sing++] = AV_DSET_SPACE; iarg++; continue;
+      } else if( strcasecmp(argv[iarg],"-gen_space") == 0) { 
+         sing[N_sing++] = DSET_GEN_SPACE; iarg++; continue;
       } else if( strcasecmp(argv[iarg],"-is_nifti") == 0) { 
          sing[N_sing++] = IS_NIFTI; iarg++; continue;
       } else if( strcasecmp(argv[iarg],"-is_atlas") == 0) { 
@@ -364,6 +371,8 @@ int main( int argc , char *argv[] )
          sing[N_sing++] = ADJ; 
          sing[N_sing++] = ADK; iarg++; 
          continue;
+      } else if( strcasecmp(argv[iarg],"-voxvol") == 0) {
+         sing[N_sing++] = VOXVOL; iarg++; continue;
       } else if( strcasecmp(argv[iarg],"-oi") == 0) {
          sing[N_sing++] = OI; iarg++; continue;
       } else if( strcasecmp(argv[iarg],"-oj") == 0) {
@@ -618,19 +627,32 @@ int main( int argc , char *argv[] )
             fprintf(stdout, "%d", dset ? 1:0);
             break;
          case DSET_SPACE:
-            fprintf(stdout, "%s", dset->atlas_space);
+            tempstr = THD_get_space(dset);
+            if(tempstr==NULL)
+                  fprintf(stdout, "-----");
+            else
+                  fprintf(stdout, "%s", tempstr);
+            break;
+         case DSET_GEN_SPACE:
+            tempstr = THD_get_generic_space(dset);
+            if(tempstr==NULL)
+                  fprintf(stdout, "-----");
+            else
+                  fprintf(stdout, "%s", tempstr);
             break;
          case AV_DSET_SPACE:
-                 if (!strncmp(dset->atlas_space,"ORIG",4)) 
+            /* don't allow anything but the three AFNI views */
+            tempstr = THD_get_view_space(dset);
+            if(tempstr==NULL)
                   fprintf(stdout, "+orig");
-            else if (!strncmp(dset->atlas_space,"ACPC",4)) 
+            else if (!strncasecmp(tempstr,"ORIG",4)) 
+                  fprintf(stdout, "+orig");
+            else if (!strncasecmp(tempstr,"ACPC",4)) 
                   fprintf(stdout, "+acpc");
-            else if (!strncmp(dset->atlas_space,"TLRC",4)) 
+            else if (!strncasecmp(tempstr,"TLRC",4)) 
                   fprintf(stdout, "+tlrc");
-            else if (!strncmp(dset->atlas_space,"MNI",3)) 
-                  fprintf(stdout, "+tlrc");
-            else
-                  fprintf(stdout, "-----");
+            else  /* shouldn't get here */
+                  fprintf(stdout, "+orig");
             break;
          case IS_NIFTI:
             if (  dset->dblk->diskptr && 
@@ -738,6 +760,10 @@ int main( int argc , char *argv[] )
          case ADK:
             fprintf(stdout,"%f", fabs(DSET_DZ(dset)));
             break;
+         case VOXVOL:
+            fprintf(stdout,"%f", fabs(DSET_DX(dset))*
+                                 fabs(DSET_DY(dset))*fabs(DSET_DZ(dset)));
+            break;
          case LTABLE:
             {
                char *str;
@@ -751,7 +777,6 @@ int main( int argc , char *argv[] )
             break;
          case LTABLE_AS_ATLAS_POINT_LIST:
             {
-               char *str;
                ATLAS_POINT_LIST *apl=NULL;
                if ((apl = 
                      label_table_to_atlas_point_list(DSET_Label_Dtable(dset)))) {

@@ -73,7 +73,13 @@ static char i_helpstring[] =
   "* TimeSeries:\n"
   "    Dataset  = time series dataset to auto-correlate\n"
   "                [this dataset does NOT have to be the Underlay]\n"
-  "    Ignore   = number of initial time points to ignore\n"
+  "    Start,End= indexes of start and stop times\n"
+  "                Examples (assume 100 sub-bricks total):\n"
+  "                   0,50  = correlate with first 51 time points\n"
+  "                   10    = correlate with time points 10..99\n"
+  "                   10+30 = correlate with 30 time points, 10..39\n"
+  "                [if End is missing or 0, then it is the last sub-brick]\n"
+  "                [N.B.: 'Start,End' replaces 'Ignore', as of Nov 2012]\n"
   "    Blur     = FWHM in mm of Gaussian blurring to perform\n"
   "                [if a Mask is used, blurring is only inside the mask]\n"
   "\n"
@@ -101,6 +107,12 @@ static char i_helpstring[] =
   "               computing the correlations\n"
   "                [These are also bandpassed to avoid re-introducing any]\n"
   "                [of the frequency components rejected by Bandpass.    ]\n"
+  "             * If Start > 0, and if the 1D file is the same length (or more)\n"
+  "               as the input dataset, then the first Start points of this 1D\n"
+  "               file will also be ignored.\n"
+  "             * If Start > 0, but this file is shorter than the input dataset,\n"
+  "               then no initial points in this 1D file will be ignored.\n"
+  "             * If the Global Ort file is too short, it will be ignored in toto.\n"
   "\n"
   "* Misc Opts:\n"
   "  IF environment variable AFNI_INSTACORR_SEEDBLUR is YES\n"
@@ -174,9 +186,10 @@ PLUGIN_interface * ICOR_init( char *lab )
 {
    PLUGIN_interface *plint ;     /* will be the output of this routine */
    static char *yn[2] = { "No" , "Yes" } ;
-   static char *meth_string[7] = { "Pearson" , "Spearman" ,
-                                   "Quadrant", "Ken Tau_b", "TicTacToe" ,
-                                   "BCpearson" , "VCpearson"  } ;
+   static char *meth_string[10] = { "Pearson" , "Spearman" ,
+                                    "Quadrant", "Ken Tau_b", "TicTacToe" ,
+                                    "BCpearson" , "VCpearson", "Euclidian",
+                                    "CityBlock" , "Quantile:9" } ;
    char sk[32] , sc[32] ;
    int gblur = AFNI_yesenv("AFNI_INSTACORR_SEEDBLUR") ;
 
@@ -199,7 +212,7 @@ PLUGIN_interface * ICOR_init( char *lab )
    PLUTO_add_option ( plint , "TimeSeries" , "TimeSeries" , TRUE ) ;
    PLUTO_add_dataset( plint , "Dataset" ,
                       ANAT_ALL_MASK , FUNC_ALL_MASK , DIMEN_4D_MASK | BRICK_ALLREAL_MASK ) ;
-   PLUTO_add_number ( plint , "Ignore" , 0,50,0,0,FALSE ) ;
+   PLUTO_add_string ( plint , "Start,End" , 0,NULL,10 ) ;
    PLUTO_add_number ( plint , "Blur"   , 0,10,0,0,TRUE  ) ;
 
    PLUTO_add_option ( plint , "Mask" , "Mask" , TRUE ) ;
@@ -227,7 +240,9 @@ PLUGIN_interface * ICOR_init( char *lab )
    PLUTO_add_number( plint , "Polort" , -1,2,0,2 , FALSE ) ;
    { char *un = tross_username() ;
      PLUTO_add_string( plint , "Method" ,
-                       (un != NULL && strstr(un,"cox") != NULL) ? 7 : 4 ,
+                       (un != NULL &&
+                        (strstr(un,"cox")  != NULL ||
+                         strstr(un,"ziad") != NULL)  ) ? 10 : 4 ,
                        meth_string , 0 ) ;
    }
 
@@ -252,7 +267,7 @@ static char * ICOR_main( PLUGIN_interface *plint )
    float fbot=-1.0f , ftop=ICOR_BIG ;
    MRI_IMAGE *gortim=NULL ;
    THD_3dim_dataset *dset=NULL , *mset=NULL , *eset=NULL ;
-   int ignore=0 , mindex=0 , automask=0 , qq ; float blur=0.0f , sblur=0.0f ;
+   int start=0,end=0 , mindex=0 , automask=0 , qq ; float blur=0.0f , sblur=0.0f ;
    ICOR_setup *iset ; char *cpt ;
    Three_D_View *im3d = plint->im3d ;
    double etim ;
@@ -275,12 +290,26 @@ static char * ICOR_main( PLUGIN_interface *plint )
      /** TimeSeries **/
 
      if( strcmp(tag,"TimeSeries") == 0 ){
-       MCW_idcode *idc ;
+       MCW_idcode *idc ; char *stend ;
        idc  = PLUTO_get_idcode(plint) ;
        dset = PLUTO_find_dset(idc) ;
        if( dset == NULL ) ERROR_message("Can't find TimeSeries dataset") ;
-       ignore = PLUTO_get_number(plint) ;
+       stend  = PLUTO_get_string(plint) ;
        blur   = PLUTO_get_number(plint) ;
+
+       start = end = 0 ;
+       if( stend != NULL && *stend != '\0' ){
+         char *cpt ;
+         start = (int)strtod(stend,&cpt) ;
+         if( start < 0 ) start = 0 ;
+         while( isspace(*cpt) ) cpt++ ;
+         if( *cpt != '\0' ){
+           char qc = *cpt ;
+           if( !isdigit(*cpt) ) cpt++ ;
+           end = (int)strtod(cpt,NULL) ;
+           if( qc == '+' && end > 0 ) end = start + end-1 ;
+         }
+       }
        continue ;
      }
 
@@ -336,11 +365,16 @@ static char * ICOR_main( PLUGIN_interface *plint )
        switch( cm[0] ){
          default:  cmeth = NBISTAT_PEARSON_CORR  ; break ;
          case 'S': cmeth = NBISTAT_SPEARMAN_CORR ; break ;
-         case 'Q': cmeth = NBISTAT_QUADRANT_CORR ; break ;
          case 'K': cmeth = NBISTAT_KENDALL_TAUB  ; break ;
          case 'B': cmeth = NBISTAT_BC_PEARSON_M  ; break ; /* 07 Mar 2011 */
          case 'V': cmeth = NBISTAT_BC_PEARSON_V  ; break ; /* 07 Mar 2011 */
          case 'T': cmeth = NBISTAT_TICTACTOE_CORR; break ; /* 30 Mar 2011 */
+         case 'E': cmeth = NBISTAT_EUCLIDIAN_DIST; break ; /* 04 May 2012, ZSS*/
+         case 'C': cmeth = NBISTAT_CITYBLOCK_DIST; break ; /* 04 May 2012, ZSS*/
+         case 'Q':
+           if( cm[3] == 'n' ) cmeth = NBISTAT_QUANTILE_CORR ;
+           else               cmeth = NBISTAT_QUADRANT_CORR ;
+         break ;
        }
        continue ;
      }
@@ -354,8 +388,26 @@ static char * ICOR_main( PLUGIN_interface *plint )
 
    if( dset == NULL )
      return "** No TimeSeries dataset? **" ;
-   if( DSET_NVALS(dset)-ignore < 9 )
-     return "** TimeSeries dataset is too short for InstaCorr **" ;
+   if( start >= DSET_NVALS(dset)-2 )
+     return "** 'Start' value is too large **" ;
+
+   if( end <= 0 || end <= start || end >= DSET_NVALS(dset) ) end = DSET_NVALS(dset)-1 ;
+
+   if( end-start+1 < 9 ) {
+     WARNING_message("**************************\n"
+                     "   Too few samples in time series!\n"
+                     "   I hope you know what you are doing.\n");
+     if (polort >= 0) {
+         /* object even if we can get away with less. Otherwise
+            the < 9 condition has to be amended in
+            thd_bandpass.c's THD_bandpass_vectors() */
+         return "** TimeSeries dataset is way too short for InstaCorr **" ;
+     } else { /* allow it to proceed if series is not extremely short */
+      if (  end-start+1 < 3) {/* too much too little! */
+         return "** TimeSeries dataset is WAY too short for InstaCorr **" ;
+      }
+     }
+   }
    if( eset != NULL &&
        ( DSET_NVALS(dset) != DSET_NVALS(eset) || DSET_NVOX(dset) != DSET_NVOX(eset) ) )
      return "** TimeSeries Dataset and Extraset don't match **" ;
@@ -363,7 +415,7 @@ static char * ICOR_main( PLUGIN_interface *plint )
      return "** Mask dataset doesn't match up with TimeSeries dataset **" ;
    if( !automask && mset != NULL && mindex >= DSET_NVALS(mset) )
      return "** Mask dataset index is out of range **" ;
-   if( gortim != NULL && gortim->nx < DSET_NVALS(dset)-ignore )
+   if( gortim != NULL && gortim->nx < end-start+1 )
      return "** Global Orts file is too short for TimeSeries dataset **" ;
 
    if( fbot >= ftop ){ fbot = 0.0f ; ftop = ICOR_BIG ; }
@@ -373,24 +425,28 @@ static char * ICOR_main( PLUGIN_interface *plint )
      WARNING_message("Combining Polort=-1 and Bandpass may give peculiar results!") ;
 
    /** check if only thing changed is sblur -- don't need to re-prepare in that case **/
-
    if( im3d->iset           != NULL     &&
        im3d->iset->mv       != NULL     &&
        im3d->iset->dset     == dset     &&
        im3d->iset->eset     == eset     &&
        im3d->iset->mset     == mset     &&
        im3d->iset->gortim   == gortim   &&
-       im3d->iset->ignore   == ignore   &&
+       im3d->iset->start    == start    &&
+       im3d->iset->end      == end      &&
        im3d->iset->automask == automask &&
        im3d->iset->mindex   == mindex   &&
        im3d->iset->fbot     == fbot     &&
        im3d->iset->ftop     == ftop     &&
        im3d->iset->blur     == blur     &&
        im3d->iset->despike  == despike  &&
-       im3d->iset->polort   == polort      ){
+       im3d->iset->polort   == polort   &&
+       THD_instacorr_cmeth_needs_norm(im3d->iset->cmeth)
+                            ==
+       THD_instacorr_cmeth_needs_norm(cmeth)   ){
 
      INFO_message("InstaCorr setup: minor changes accepted") ;
-     im3d->iset->sblur = sblur ; im3d->iset->cmeth = cmeth ; return NULL ;
+     im3d->iset->sblur = sblur ; im3d->iset->cmeth = cmeth ;
+     im3d->iset->change = 1; return NULL ;
    }
 
    /** (re)create InstaCorr setup **/
@@ -402,7 +458,8 @@ static char * ICOR_main( PLUGIN_interface *plint )
    iset->eset     = eset ;
    iset->mset     = (automask) ? NULL : mset ;
    iset->gortim   = gortim ;
-   iset->ignore   = ignore ;
+   iset->start    = start ;
+   iset->end      = end ;
    iset->automask = automask ;
    iset->mindex   = mindex ;
    iset->fbot     = fbot ;
@@ -413,6 +470,7 @@ static char * ICOR_main( PLUGIN_interface *plint )
    iset->polort   = polort ;  /* 26 Feb 2010 */
    iset->cmeth    = cmeth ;   /* 01 Mar 2010 */
    iset->prefix   = (char *)malloc(sizeof(char)*16) ;
+   iset->change   = 2; /* 07 May 2012 ZSS */
    cpt = AFNI_controller_label(im3d); sprintf(iset->prefix,"%c_ICOR",cpt[1]);
 
    etim = PLUTO_elapsed_time() ;
@@ -479,7 +537,7 @@ ENTRY("AFNI_icor_setref_anatijk") ;
 
 int AFNI_icor_setref_xyz( Three_D_View *im3d , float xx,float yy,float zz )
 {
-   MRI_IMAGE *iim; float *iar; THD_fvec3 iv,jv; THD_ivec3 kv; int ijk;
+   MRI_IMAGE *iim; float *iar, rng; THD_fvec3 iv,jv; THD_ivec3 kv; int ijk;
    THD_3dim_dataset *icoset ; THD_slist_find slf ; int nds=0 ;
    double etim ;
 
@@ -605,11 +663,25 @@ ENTRY("AFNI_icor_setref_xyz") ;
        THD_set_string_atr( icoset->dblk, "INSTACORR_EXTRASET", DSET_HEADNAME(im3d->iset->eset) );
    }
 
-   EDIT_BRICK_LABEL  (icoset,0,"Correlation") ;
+   switch (im3d->iset->cmeth) {
+      case NBISTAT_EUCLIDIAN_DIST:
+         EDIT_BRICK_LABEL  (icoset,0,"Inv.Euc.Dist") ;
+         rng = 10.0;
+         break;
+      case NBISTAT_CITYBLOCK_DIST:
+         EDIT_BRICK_LABEL  (icoset,0,"Inv.City.Dist") ;
+         rng = 10.0;
+         break;
+      default:
+         EDIT_BRICK_LABEL  (icoset,0,"Correlation") ;
+         rng = 0.7;
+         break;
+   }
    EDIT_BRICK_TO_FICO(icoset,0,im3d->iset->mv->nvals,1,im3d->iset->ndet) ;
 
    DSET_BRICK_FDRCURVE_ALLKILL(icoset) ;
    DSET_BRICK_MDFCURVE_ALLKILL(icoset) ;
+   flush_3Dview_sort(im3d,"T");  /* ZSS April 27 2012: Reset sorted threshold */
 
    if( ncall <= 1 )
      ININFO_message(" InstaCorr elapsed time = %.2f sec: dataset ops" ,
@@ -626,9 +698,9 @@ ENTRY("AFNI_icor_setref_xyz") ;
 
    if( im3d->iset->tseed != NULL ){
      MRI_IMAGE *tsim ; float *tsar ;
-     tsim = mri_new( im3d->iset->mv->nvals + im3d->iset->ignore,1,MRI_float ) ;
+     tsim = mri_new( im3d->iset->mv->nvals + im3d->iset->start,1,MRI_float ) ;
      tsar = MRI_FLOAT_PTR(tsim) ;
-     memcpy( tsar + im3d->iset->ignore , im3d->iset->tseed ,
+     memcpy( tsar + im3d->iset->start , im3d->iset->tseed ,
              sizeof(float)*im3d->iset->mv->nvals ) ;
      tsim->name = (char *)malloc(sizeof(char)*16) ;
      strcpy(tsim->name,im3d->iset->prefix) ; strcat(tsim->name,"_seed") ;
@@ -636,15 +708,16 @@ ENTRY("AFNI_icor_setref_xyz") ;
    }
 
    /* redisplay overlay */
-
-   if( im3d->fim_now != icoset ){  /* switch to this dataset */
+   if( im3d->fim_now != icoset ||
+       im3d->iset->change ){  /* switch to this dataset */
      MCW_choose_cbs cbs ; char cmd[32] , *cpt=AFNI_controller_label(im3d) ;
      cbs.ival = nds ;
      AFNI_finalize_dataset_CB( im3d->vwid->view->choose_func_pb ,
                                (XtPointer)im3d ,  &cbs           ) ;
      AFNI_set_fim_index(im3d,0) ;
      AFNI_set_thr_index(im3d,0) ;
-     sprintf(cmd,"SET_FUNC_RANGE %c.0.7",cpt[1]) ;
+
+     sprintf(cmd,"SET_FUNC_RANGE %c.%.2f",cpt[1], rng) ;
      AFNI_driver(cmd) ;
    }
    AFNI_reset_func_range(im3d) ;
@@ -658,10 +731,11 @@ ENTRY("AFNI_icor_setref_xyz") ;
    }
    AFNI_set_thr_pval(im3d) ; AFNI_process_drawnotice(im3d) ;
 
+   im3d->iset->change = 0;    /* resset change flag */
+
    if( ncall <= 1 )
      ININFO_message(" InstaCorr elapsed time = %.2f sec: redisplay" ,
                     PLUTO_elapsed_time()-etim ) ;
-
    ncall++ ; RETURN(1) ;
 }
 
@@ -907,6 +981,29 @@ ENTRY("GICOR_setup_func") ;
 /* INFO_message("DEBUG: GICOR_setup_func has ivec=int[%d]",nn) ; */
    }
 
+   /* 23 May 2012: extra string attributes to set? */
+
+   { ATR_string *aatr ; int nn ;
+     char aaname[THD_MAX_NAME], *aastr, *nnatr, nnam[128], *cpt ;
+
+     for( nn=0 ; ; nn++ ){
+       sprintf(nnam,"string_attribute_%06d",nn) ;
+       nnatr = NI_get_attribute( nel , nnam ) ;
+       if( nnatr == NULL || *nnatr == '\0' ) break ;
+       cpt = strstr(nnatr," ==> ") ;
+       if( cpt == NULL || cpt == nnatr || cpt-nnatr > 256 ) continue ;
+       strncpy(aaname,nnatr,cpt-nnatr) ; aaname[cpt-nnatr] = '\0' ;
+       cpt += 5 ; if( *cpt == '\0' ) continue ;
+       aatr = (ATR_string *)XtMalloc(sizeof(ATR_string)) ;
+       aatr->type = ATR_STRING_TYPE ;
+       aatr->name = XtNewString(aaname) ;
+       aatr->nch  = strlen(cpt+1) ;
+       aatr->ch   = (char *)XtMalloc( sizeof(char) * aatr->nch ) ;
+       memcpy( aatr->ch , cpt , sizeof(char) * aatr->nch ) ;
+       THD_insert_atr( dset->dblk , (ATR_any *)aatr ) ;
+     } 
+   }
+
    giset->ready = 1 ;          /* that is, ready to ROCK AND ROLL */
    GRPINCORR_LABEL_ON(im3d) ;
    SENSITIZE_INSTACORR(im3d,True) ;
@@ -1031,7 +1128,7 @@ INFO_message("AFNI received %d vectors, length=%d",nel->vec_num,nvec) ;
 #define THTOP(t) ((thrsign==0 || thrsign==1) ? (t)    :  (THBIG))
 
    vmul = giset->vmul ;
-   thr  = im3d->vinfo->func_threshold * im3d->vinfo->func_thresh_top ;
+   thr  = get_3Dview_func_thresh(im3d,1) ;
 #ifdef GIC_ALLOW_CLUST
    if( vmul > 0 && thr > 0.0f ){
      MRI_IMAGE *dsim , *tsim , *clim ;
@@ -1052,6 +1149,7 @@ INFO_message("AFNI received %d vectors, length=%d",nel->vec_num,nvec) ;
 #endif
    DSET_KILL_STATS(giset->dset) ; THD_load_statistics(giset->dset) ;
    AFNI_reset_func_range(im3d) ;
+   flush_3Dview_sort(im3d,"T");  /* ZSS April 27 2012: Reset sorted threshold */
 
    /* redisplay overlay */
 

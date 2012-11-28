@@ -51,9 +51,9 @@
 **			of a file containing a DICOM stream.
 **   Usage:
 **			dcm_dump_file [-b] [-g] [-v] [-z] file [file ...]
-** Last Update:		$Author: rwcox $, $Date: 2012/03/07 20:56:41 $
+** Last Update:		$Author: rickr $, $Date: 2012/10/24 15:32:32 $
 ** Source File:		$RCSfile: mri_dicom_hdr.c,v $
-** Revision:		$Revision: 1.40 $
+** Revision:		$Revision: 1.42 $
 ** Status:		$State: Exp $
 */
 
@@ -158,6 +158,10 @@ int g_readpreamble = FALSE;                /* 18 May 2006 [rickr] */
 
 static int just_do_printf = 0 ;  /* 02 May 2008 */
 void mri_dicom_header_use_printf( int i ){ just_do_printf = i; }
+
+/* in order to run diffs, be able to skip sizes and offsets */
+static int show_size_n_offset = 1 ;  /* 17 Oct 2012 [rickr] */
+void mri_dicom_header_show_size_offset( int i ){ show_size_n_offset = i; }
 
 static char *pbuf = NULL ;  /* output string buffer */
 static int  npbuf = 0 ;     /* number of bytes allocated in pbuf */
@@ -403,9 +407,9 @@ STATUS("closing") ;
 **			The stack is maintained as a simple stack array.  If
 **			it overflows, we dump the stack to stdout and reset it.
 **
-** Last Update:		$Author: rwcox $, $Date: 2012/03/07 20:56:41 $
+** Last Update:		$Author: rickr $, $Date: 2012/10/24 15:32:32 $
 ** Source File:		$RCSfile: mri_dicom_hdr.c,v $
-** Revision:		$Revision: 1.40 $
+** Revision:		$Revision: 1.42 $
 ** Status:		$State: Exp $
 */
 
@@ -833,9 +837,9 @@ COND_WriteConditions(FILE * lfp)
 ** Author, Date:	Steve Moore, 30-Jun-96
 ** Intent:		Provide common abstractions needed for operations
 **			in a multi-threaded environment.
-** Last Update:		$Author: rwcox $, $Date: 2012/03/07 20:56:41 $
+** Last Update:		$Author: rickr $, $Date: 2012/10/24 15:32:32 $
 ** Source File:		$RCSfile: mri_dicom_hdr.c,v $
-** Revision:		$Revision: 1.40 $
+** Revision:		$Revision: 1.42 $
 ** Status:		$State: Exp $
 */
 
@@ -927,9 +931,9 @@ COND_WriteConditions(FILE * lfp)
 **	and convert the object to and from its "stream" representation.
 **	In addition, the package can parse a file which contains a stream
 **	and create its internal object.
-** Last Update:		$Author: rwcox $, $Date: 2012/03/07 20:56:41 $
+** Last Update:		$Author: rickr $, $Date: 2012/10/24 15:32:32 $
 ** Source File:		$RCSfile: mri_dicom_hdr.c,v $
-** Revision:		$Revision: 1.40 $
+** Revision:		$Revision: 1.42 $
 ** Status:		$State: Exp $
 */
 
@@ -2443,15 +2447,19 @@ STATUS("looping over groupItem") ;
 	    (void) LST_Position(&groupItem->elementList, (void *)elementItem);
 	while (elementItem != NULL) {
 #ifdef MACOS
-	    (void) RWC_printf("%04x %04x %8ld [%-8lu] ",
+	    (void) RWC_printf("%04x %04x ",
 			  DCM_TAG_GROUP(elementItem->element.tag),
-			  DCM_TAG_ELEMENT(elementItem->element.tag),
+			  DCM_TAG_ELEMENT(elementItem->element.tag) );
+            if (show_size_n_offset)
+               (void) RWC_printf("%8ld [%-8lu] ",
 			  elementItem->element.length ,
                           (unsigned long) elementItem->element.data_offset );
 #else
-	    (void) RWC_printf("%04x %04x %8d [%-8lu] ",
+	    (void) RWC_printf("%04x %04x ",
 			  DCM_TAG_GROUP(elementItem->element.tag),
-			  DCM_TAG_ELEMENT(elementItem->element.tag),
+			  DCM_TAG_ELEMENT(elementItem->element.tag) );
+            if (show_size_n_offset)
+               (void) RWC_printf("%8d [%-8lu] ",
 			  elementItem->element.length ,
                           (unsigned long) elementItem->element.data_offset );
 #endif
@@ -8383,9 +8391,9 @@ DCM_AddFragment(DCM_OBJECT** callerObject, void* fragment, U32 fragmentLength)
 ** Intent:		Define the ASCIZ messages that go with each DCM
 **			error number and provide a function for looking up
 **			the error message.
-** Last Update:		$Author: rwcox $, $Date: 2012/03/07 20:56:41 $
+** Last Update:		$Author: rickr $, $Date: 2012/10/24 15:32:32 $
 ** Source File:		$RCSfile: mri_dicom_hdr.c,v $
-** Revision:		$Revision: 1.40 $
+** Revision:		$Revision: 1.42 $
 ** Status:		$State: Exp $
 */
 
@@ -8543,9 +8551,9 @@ void DCM_DumpVector()
 **			static objects are maintained which define how
 **			elements in the DICOM V3.0 standard are to be
 **			interpreted.
-** Last Update:		$Author: rwcox $, $Date: 2012/03/07 20:56:41 $
+** Last Update:		$Author: rickr $, $Date: 2012/10/24 15:32:32 $
 ** Source File:		$RCSfile: mri_dicom_hdr.c,v $
-** Revision:		$Revision: 1.40 $
+** Revision:		$Revision: 1.42 $
 ** Status:		$State: Exp $
 */
 
@@ -10659,9 +10667,9 @@ DCM_ElementDictionary(DCM_TAG tag, void *ctx,
 **			as support for the DCM facility and for applications.
 **			These routines help parse strings and other data
 **			values that are encoded in DICOM objects.
-** Last Update:		$Author: rwcox $, $Date: 2012/03/07 20:56:41 $
+** Last Update:		$Author: rickr $, $Date: 2012/10/24 15:32:32 $
 ** Source File:		$RCSfile: mri_dicom_hdr.c,v $
-** Revision:		$Revision: 1.40 $
+** Revision:		$Revision: 1.42 $
 ** Status:		$State: Exp $
 */
 
@@ -10868,9 +10876,9 @@ DCM_IsString(DCM_VALUEREPRESENTATION representation)
 ** Author, Date:	Thomas R. Leith, 15-Apr-93
 ** Intent:		This package implements atomic functions on
 **			linked lists.
-** Last Update:		$Author: rwcox $, $Date: 2012/03/07 20:56:41 $
+** Last Update:		$Author: rickr $, $Date: 2012/10/24 15:32:32 $
 ** Source File:		$RCSfile: mri_dicom_hdr.c,v $
-** Revision:		$Revision: 1.40 $
+** Revision:		$Revision: 1.42 $
 ** Status:		$State: Exp $
 */
 
@@ -11404,9 +11412,9 @@ LST_Index(LST_HEAD ** l, int index)
 ** Intent:		Miscellaneous functions that may be useful in
 **			a number of different areas.
 **
-** Last Update:		$Author: rwcox $, $Date: 2012/03/07 20:56:41 $
+** Last Update:		$Author: rickr $, $Date: 2012/10/24 15:32:32 $
 ** Source File:		$RCSfile: mri_dicom_hdr.c,v $
-** Revision:		$Revision: 1.40 $
+** Revision:		$Revision: 1.42 $
 ** Status:		$State: Exp $
 */
 

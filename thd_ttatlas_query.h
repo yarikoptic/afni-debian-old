@@ -282,7 +282,7 @@ typedef struct {
 #define WAMI_WEB_BROWSER      2
 #define WAMI_WEB_STRUCT       3
 
-#define MAX_URL 1024
+#define MAX_URL 2048
 
 const char *Atlas_Val_Key_to_Val_Name(ATLAS *atlas, int tdval);
 int Init_Whereami_Max_Find(void);
@@ -470,6 +470,7 @@ void wami_query_web(ATLAS *atlas, ATLAS_COORD ac, ATLAS_QUERY *wami);
 
 char * whereami_XML_get(char *data, char *name);
 int whereami_browser(char *url);
+char *cleanup_url(char *url);
 void set_wami_web_found(int found);
 int get_wami_web_found(void);
 void set_wami_web_reqtype(int reqtype);
@@ -479,7 +480,10 @@ char * get_wami_webpage(void);
 void open_wami_webpage(void);
 int AFNI_wami_output_mode(void);
 void set_AFNI_wami_output_mode(int webflag);
-
+size_t CURL_read_URL_http ( char *url, char **data);
+void set_wami_minprob(float val);
+float get_wami_minprob(void);
+float Get_PMap_Factor(void);
 
 /* Transforms for going from one space to another */
 #if 0

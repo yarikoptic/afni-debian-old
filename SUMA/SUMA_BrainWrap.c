@@ -3,6 +3,10 @@
 #include "extrema.h"
 
 static int InteractiveQuit;
+static int NodeDbg;
+
+void SUMA_setBrainWrap_NodeDbg(int n) { NodeDbg = n; }
+int  SUMA_getBrainWrap_NodeDbg(void) { return(NodeDbg); }
 
 int SUMA_DidUserQuit(void)
 {
@@ -338,6 +342,222 @@ float SUMA_LoadPrepInVol (SUMA_GENERIC_PROG_OPTIONS_STRUCT *Opt,
 
 
 /*!
+   \param xyz (float *) node xyz triplet in RAI coords
+   \param dir (float *) direction of propagation, unit length
+                        +ve direction point out
+   \param in_vol (THD_3dim.. *) the dataset 
+   \param fvecp (float **) pointer to vector of all voxel values in in_vol
+                           if *fvecp = NULL, it is created from in_vol,
+                           Either free *fevcp on return or recycle it.
+   \param travstep (float) travel step in mm, usually = smallest voxel dimension
+   \param under_dist (float) maximum travel in mm below node
+   \param over_dist (float) maximum travel in mm above node 
+   \param stop_avg_thr (float) When computing means, stop adding when you reach 
+                               a value < stop_avg_thr
+   \param NodeDbg (int) index of debug node
+   
+   Variables filled upon returning. 
+   
+   \param MinMax (float) 2x1: MinMax[0] minimum under node
+                              MinMax_dist[1] maximum under node
+   \param MinMax_dist (float) 2x1: MinMax_dist[0] distance of minimum under node
+                                   MinMax_dist[1] distance of maximum under node
+   \param MinMax_over (float) 2x1: MinMax_over[0] minimum over node
+                                   MinMax_over[1] maximum over node
+               (set this one to NULL if you do not want to search over the node.
+                In that case all the _over (or above like Means[2]) values will
+                be undetermined.)
+   \param MinMax_over_dist (float) 2x1: MinMax_over_dist[0] distance of 
+                                        minimum over node
+                                        MinMax_over_dist[1] distance of 
+                                        maximum over node
+   \param Means (float *) 3x1 :  Means[0] value at node, 
+                 Means[1] mean value below node (only up to vals > stop_avg_thr),
+                 Means[2] mean value above node  (only up to vals > stop_avg_thr)
+   
+   \params undershish (float *) Vector containing values under node
+   \params overshsis (float *) Vector containing values over node
+   \param fvecind_under (int *) indices into volume of voxels encountered
+                                underneath the node
+   \param fvecind_over (int *) indices into volume of voxels encountered
+                               over the node
+      MAKE SURE YOU ALLOCATE enough for the last four vectors.
+      Their lengths should be: 
+               (int)(ceil((double)under_dist/travstp))+2, to be safe
+*/
+int SUMA_Find_IminImax_2 (float *xyz, float *dir, 
+                        THD_3dim_dataset *in_vol, float **fvecp,
+                        float travstp, 
+                        float under_dist, float over_dist, 
+                        float stop_avg_thr, 
+                        int verb, 
+                        float *MinMax, float *MinMax_dist , 
+                        float *MinMax_over, float *MinMax_over_dist,
+                        float *Means, 
+                        float *undershish, float *overshish, 
+                        int *fvecind_under, int *fvecind_over
+                        )
+{
+   static char FuncName[]={"SUMA_Find_IminImax_2"};
+   float travdir[3], lmin, lmax, lmin_dist, lmax_dist, *fvec;
+   THD_fvec3 ncoord, ndicom;
+   THD_ivec3 nind3;
+   int nind, istep, istepmax, nxx, nxy, nMeans[3], stopint, out;
+   
+   SUMA_ENTRY;
+   
+   if (!fvecp) SUMA_RETURN(NOPE);
+   else {
+      if (*fvecp == NULL) {
+         if (!(*fvecp = THD_extract_to_float(0, in_vol))) {
+            SUMA_S_Err("Failed to extract brick");
+            SUMA_RETURN(NOPE);
+         }
+      }
+   }
+   fvec = *fvecp;
+   
+   if (undershish) undershish[0] = -1;
+   if (overshish) overshish[0] = -1;
+   Means[0] = Means[1] = Means[2] = 0.0;
+   nMeans[0] = nMeans[1] = nMeans[2] = 0;
+   lmin = 1000000.0;
+   lmin_dist = 0.0;
+   lmax_dist = 0.0;
+   lmax = 0; 
+   nxx = DSET_NX(in_vol);
+   nxy = DSET_NX(in_vol) * DSET_NY(in_vol);
+   istep = 0; 
+   istepmax = (int)(ceil((double)under_dist/travstp)); 
+   stopint = 0;
+   out = 0;
+   while (istep <= istepmax && !out) {
+      /* calculate offset */
+      travdir[0] = -istep * travstp * dir[0]; 
+      travdir[1] = -istep * travstp * dir[1]; 
+      travdir[2] = -istep * travstp * dir[2]; 
+      
+      /* get 1d coord of point */
+      ndicom.xyz[0] = xyz[0] + travdir[0] ; 
+      ndicom.xyz[1] = xyz[1]+ travdir[1]; 
+      ndicom.xyz[2] = xyz[2]+ travdir[2]; 
+      ncoord = THD_dicomm_to_3dmm(in_vol, ndicom);
+      nind3 = THD_3dmm_to_3dind_warn(in_vol, ncoord, &out);
+      nind = nind3.ijk[0] + nind3.ijk[1] * nxx + nind3.ijk[2] * nxy;
+      
+      
+      if (verb) {
+         fprintf( SUMA_STDERR, 
+                  "%s: at node %d undershish[%d] \n"
+                  " nind3 = [%d %d %d] voxVal = %.3f\n", 
+                  FuncName, SUMA_getBrainWrap_NodeDbg(), istep,
+                  nind3.ijk[0], nind3.ijk[1], nind3.ijk[2],
+                  fvec[nind]);
+      }
+      if (undershish) 
+         undershish[istep] = fvec[nind];   /* store values under node */
+      
+      /* track the brain mean, 
+      only if the value is above brain non-brain threshold
+      stop inegrating as soon as you hit nonbrain */
+      if (fvec[nind] > stop_avg_thr && !stopint) { 
+         Means[1] += fvec[nind]; ++ nMeans[1]; }
+      else stopint = 1;
+      if (fvecind_under) fvecind_under[istep] = nind;
+        
+      /* find local min */ 
+      /* lmin = SUMA_MIN_PAIR(lmin, fvec[nind]); */
+      if (lmin > fvec[nind]) { 
+         lmin = fvec[nind]; SUMA_NORM_VEC(travdir, 3, lmin_dist); }
+      
+      if (istep <= istepmax) {
+         if (lmax < fvec[nind]) { 
+            lmax = fvec[nind]; SUMA_NORM_VEC(travdir, 3, lmax_dist); }  
+      }
+      
+      if (!out) ++istep;
+   }
+   
+   if (1) { 
+      undershish[istep] = -1; 
+      if (fvecind_under) fvecind_under[istep] = -1; 
+   }/* crown the shish */
+   
+   Means[1] /= (float)nMeans[1];
+   MinMax[0] = lmin;
+   MinMax_dist[0] = lmin_dist;  
+   MinMax[1] = lmax; 
+   MinMax_dist[1] = lmax_dist;
+   
+   /* search for a minimum overhead */
+   if (MinMax_over) {
+      lmin = 10000000.0;
+      lmin_dist = 0.0;
+      lmax_dist = 0.0;
+      lmax = 0.0;
+      istep = 0; istepmax = (int)(ceil((double)over_dist/travstp));
+      stopint = 0;
+      out = 0;
+      while (istep <= istepmax && !out) {
+         /* calculate offset */
+         travdir[0] =  istep * travstp * dir[0]; 
+         travdir[1] = istep * travstp * dir[1]; 
+         travdir[2] = istep * travstp * dir[2]; 
+
+         /* get 1d coord of point */
+         ndicom.xyz[0] = xyz[0] + travdir[0] ; 
+         ndicom.xyz[1] = xyz[1]+ travdir[1]; 
+         ndicom.xyz[2] = xyz[2]+ travdir[2]; 
+         ncoord = THD_dicomm_to_3dmm(in_vol, ndicom);
+         nind3 = THD_3dmm_to_3dind_warn(in_vol, ncoord, &out);
+         nind = nind3.ijk[0] + nind3.ijk[1] * nxx + nind3.ijk[2] * nxy;
+         #if 0
+         if (ni == NodeDbg) {
+            fprintf(SUMA_STDERR, 
+                     "%s: Node %d\n"
+                     " nind3 = [%d %d %d] voxVal = %.3f\n", 
+                     FuncName, NodeDbg, 
+                     nind3.ijk[0], nind3.ijk[1], nind3.ijk[2],
+                     fvec[nind]);
+         }
+         #endif
+         if (!istep) { /* get the value at the node */
+            Means[0] = fvec[nind];
+         }
+         
+        /* store values over node */
+         if (overshish) overshish[istep] = fvec[nind]; 
+         
+         if (fvec[nind] > stop_avg_thr && !stopint) { 
+            Means[2] += fvec[nind]; ++ nMeans[2]; } 
+         else stopint = 1;
+         if (fvecind_over) fvecind_over[istep] = nind;
+         
+         /* find local min and max*/ 
+         if (lmin > fvec[nind]) { 
+            lmin = fvec[nind]; SUMA_NORM_VEC(travdir, 3, lmin_dist); }
+         if (lmax < fvec[nind]) { 
+            lmax = fvec[nind]; SUMA_NORM_VEC(travdir, 3, lmax_dist); }  
+         
+         if (!out) ++istep;
+      }
+      
+      if (1) { 
+         overshish[istep] = -1; 
+         if (fvecind_over) fvecind_over[istep] = -1; 
+      }/* crown the shish */
+
+      Means[2] /= (float)nMeans[2];
+      MinMax_over[0] = lmin; 
+      MinMax_over_dist[0] = lmin_dist;  
+      MinMax_over[1] = lmax;
+      MinMax_over_dist[1] = lmax_dist;
+   }
+   
+   SUMA_RETURN(YUP);
+}
+
+/*!
    \param MinMax (float) 2x1: MinMax[0] minimum under node
                               MinMax_dist[1] maximum under node
    \param MinMax_dist (float) 2x1: MinMax_dist[0] distance of minimum under node
@@ -352,6 +572,8 @@ float SUMA_LoadPrepInVol (SUMA_GENERIC_PROG_OPTIONS_STRUCT *Opt,
    \param Means (float *) 3x1 :  Means[0] value at node, 
                                  Means[1] mean value below node (only for vals > Opt->t),
                                  Means[2] mean value above node  (only for vals > Opt->t)
+      
+     This function is left for 3dSkullStrip, see newer saner SUMA_Find_IminImax_2
 */
 int SUMA_Find_IminImax (float *xyz, float *dir, 
                         SUMA_GENERIC_PROG_OPTIONS_STRUCT *Opt, 
@@ -522,16 +744,18 @@ int SUMA_Find_IminImax (float *xyz, float *dir,
                                    MinMax_dist[1] distance of maximum under node
    \param MinMax_over (float) 2x1: MinMax_over[0] minimum over node
                                    MinMax_over[1] maximum over node
-                                   (set this one to NULL if you do not want to search over the node.
-                                   In that case all the _over (or above like Means[2]) values will
-                                   be undetermined.
-   \param MinMax_over_dist (float) 2x1: MinMax_over_dist[0] distance of minimum over node
-                                        MinMax_over_dist[1] distance of maximum over node
+                (set this one to NULL if you do not want to search over the node.
+                 In that case all the _over (or above like Means[2]) values will
+                 be undetermined.)
+   \param MinMax_over_dist (float) 2x1: 
+                        MinMax_over_dist[0] distance of minimum over node
+                        MinMax_over_dist[1] distance of maximum over node
    \param Means (float *) 3x1 :  Means[0] value at node, 
-                                 Means[1] mean value below node (only for vals > Opt->t),
-                                 Means[2] mean value above node  (only for vals > Opt->t)
+                     Means[1] mean value below node (only for vals > Opt->t),
+                     Means[2] mean value above node  (only for vals > Opt->t)
 */
-int SUMA_Find_IminImax_Avg (SUMA_SurfaceObject *SO, SUMA_GENERIC_PROG_OPTIONS_STRUCT *Opt, 
+int SUMA_Find_IminImax_Avg (SUMA_SurfaceObject *SO, 
+                        SUMA_GENERIC_PROG_OPTIONS_STRUCT *Opt, 
                         int ni, 
                         float *MinMax, float *MinMax_dist , 
                         float *MinMax_over, float *MinMax_over_dist,
@@ -545,7 +769,8 @@ int SUMA_Find_IminImax_Avg (SUMA_SurfaceObject *SO, SUMA_GENERIC_PROG_OPTIONS_ST
    THD_fvec3 ncoord, ndicom;
    THD_ivec3 nind3;
    int nind, istep, istepmax, istep2max, nxx, nxy, nMeans[3], stopint;
-   int N_vtnmax = 500, N_vtn, vtn[N_vtnmax]; /* vector of triangles incident triangles to node ni */
+   int N_vtnmax = 500, N_vtn, 
+       vtn[N_vtnmax]; /* vector of triangles incident triangles to node ni */
    
    SUMA_ENTRY;
    
@@ -560,26 +785,34 @@ int SUMA_Find_IminImax_Avg (SUMA_SurfaceObject *SO, SUMA_GENERIC_PROG_OPTIONS_ST
    lmax = Opt->t;
    nxx = DSET_NX(Opt->in_vol);
    nxy = DSET_NX(Opt->in_vol) * DSET_NY(Opt->in_vol);
-   istep = 0; istepmax = (int)(ceil((double)d1/Opt->travstp)); istep2max = (int)(ceil((double)d2/Opt->travstp));
+   istep = 0; 
+   istepmax = (int)(ceil((double)d1/Opt->travstp)); 
+   istep2max = (int)(ceil((double)d2/Opt->travstp));
    stopint = 0;
    while (istep <= istepmax) {
       /* calculate offset */
-      travdir[0] = - istep * Opt->travstp * SO->NodeNormList[3*ni]; travdir[1] = -istep * Opt->travstp * SO->NodeNormList[3*ni+1]; travdir[2] = -istep * Opt->travstp * SO->NodeNormList[3*ni+2]; 
+      travdir[0] = - istep * Opt->travstp * SO->NodeNormList[3*ni  ]; 
+      travdir[1] = - istep * Opt->travstp * SO->NodeNormList[3*ni+1]; 
+      travdir[2] = - istep * Opt->travstp * SO->NodeNormList[3*ni+2]; 
       
       /* find the set of triangles incident to node ni */
       N_vtn = N_vtnmax; /* pass limit to SUMA_Get_NodeIncident */
       if (!SUMA_Get_NodeIncident(ni, SO, vtn, &N_vtn)) {
-          SUMA_SL_Err("Failed to find incident triangles.\nDecidement, ca va tres mal.\n");
+          SUMA_SL_Err("Failed to find incident triangles.\n"
+                      "Decidement, ca va tres mal.\n");
           SUMA_RETURN(NOPE);
       }
       if (vtn[N_vtnmax-1] != -1) {
-         SUMA_SL_Err("Way too many incident triangles. Memory corruption likely.");
+         SUMA_SL_Err("Way too many incident triangles. "
+                     "Memory corruption likely.");
          SUMA_RETURN(NOPE);
       }
       /* for each triangle, find the voxels that it intersects */
       
       /* get 1d coord of point */
-      ndicom.xyz[0] = SO->NodeList[3*ni] + travdir[0] ; ndicom.xyz[1] = SO->NodeList[3*ni+1]+ travdir[1]; ndicom.xyz[2] = SO->NodeList[3*ni+2]+ travdir[2]; 
+      ndicom.xyz[0] = SO->NodeList[3*ni] + travdir[0] ; 
+      ndicom.xyz[1] = SO->NodeList[3*ni+1]+ travdir[1]; 
+      ndicom.xyz[2] = SO->NodeList[3*ni+2]+ travdir[2]; 
       ncoord = THD_dicomm_to_3dmm(Opt->in_vol, ndicom);
       nind3 = THD_3dmm_to_3dind(Opt->in_vol, ncoord);
       nind = nind3.ijk[0] + nind3.ijk[1] * nxx + nind3.ijk[2] * nxy;
@@ -587,30 +820,41 @@ int SUMA_Find_IminImax_Avg (SUMA_SurfaceObject *SO, SUMA_GENERIC_PROG_OPTIONS_ST
       if (ni == Opt->NodeDbg) {
          fprintf(SUMA_STDERR, "%s: Node %d\n"
                               " nind3 = [%d %d %d] voxVal = %.3f\n", 
-                              FuncName, Opt->NodeDbg, nind3.ijk[0], nind3.ijk[1], nind3.ijk[2],
-                              Opt->fvec[nind]);
+               FuncName, Opt->NodeDbg, nind3.ijk[0], nind3.ijk[1], nind3.ijk[2],
+               Opt->fvec[nind]);
       }
       #endif
-      if (undershish && istep < ShishMax) undershish[istep] = Opt->fvec[nind];   /* store values under node */
       
-      /* track the brain mean, only if the value is above brain non-brain threshold
+      if (undershish && istep < ShishMax) undershish[istep] = Opt->fvec[nind];
+      
+      /* track the brain mean, only if the value is above 
+      brain non-brain threshold
       stop inegrating as soon as you hit nonbrain */
-      if (Opt->fvec[nind] > Opt->t && !stopint) { Means[1] += Opt->fvec[nind]; ++ nMeans[1]; }
+      if (Opt->fvec[nind] > Opt->t && !stopint) { 
+         Means[1] += Opt->fvec[nind]; ++ nMeans[1]; 
+      }
       else stopint = 1;
       if (fvecind_under && istep < ShishMax) fvecind_under[istep] = nind;
         
       /* find local min */ 
       /* lmin = SUMA_MIN_PAIR(lmin, Opt->fvec[nind]); */
-      if (lmin > Opt->fvec[nind]) { lmin = Opt->fvec[nind]; SUMA_NORM_VEC(travdir, 3, lmin_dist); }
+      if (lmin > Opt->fvec[nind]) { 
+         lmin = Opt->fvec[nind]; SUMA_NORM_VEC(travdir, 3, lmin_dist); 
+      }
       
       if (istep <= istep2max) {
-         if (lmax < Opt->fvec[nind]) { lmax = Opt->fvec[nind]; SUMA_NORM_VEC(travdir, 3, lmax_dist); }  
+         if (lmax < Opt->fvec[nind]) { 
+            lmax = Opt->fvec[nind]; SUMA_NORM_VEC(travdir, 3, lmax_dist); 
+         }  
       }
       
       ++istep;
    }
    
-   if (istep < ShishMax) { undershish[istep] = -1; if (fvecind_under) fvecind_under[istep] = -1; }/* crown the shish */
+   if (istep < ShishMax) { /* crown the shish */
+      if (undershish) undershish[istep] = -1; 
+      if (fvecind_under) fvecind_under[istep] = -1; 
+   }
    
    Means[1] /= (float)nMeans[1];
    MinMax[0] = SUMA_MAX_PAIR(t2, lmin);
@@ -628,10 +872,14 @@ int SUMA_Find_IminImax_Avg (SUMA_SurfaceObject *SO, SUMA_GENERIC_PROG_OPTIONS_ST
       stopint = 0;
       while (istep <= istepmax) {
          /* calculate offset */
-         travdir[0] =  istep * Opt->travstp * SO->NodeNormList[3*ni]; travdir[1] = istep * Opt->travstp * SO->NodeNormList[3*ni+1]; travdir[2] = istep * Opt->travstp * SO->NodeNormList[3*ni+2]; 
+         travdir[0] =  istep * Opt->travstp * SO->NodeNormList[3*ni  ]; 
+         travdir[1] =  istep * Opt->travstp * SO->NodeNormList[3*ni+1];
+         travdir[2] = istep * Opt->travstp * SO->NodeNormList[3*ni+2]; 
 
          /* get 1d coord of point */
-         ndicom.xyz[0] = SO->NodeList[3*ni] + travdir[0] ; ndicom.xyz[1] = SO->NodeList[3*ni+1]+ travdir[1]; ndicom.xyz[2] = SO->NodeList[3*ni+2]+ travdir[2]; 
+         ndicom.xyz[0] = SO->NodeList[3*ni  ] + travdir[0]; 
+         ndicom.xyz[1] = SO->NodeList[3*ni+1] + travdir[1]; 
+         ndicom.xyz[2] = SO->NodeList[3*ni+2] + travdir[2]; 
          ncoord = THD_dicomm_to_3dmm(Opt->in_vol, ndicom);
          nind3 = THD_3dmm_to_3dind(Opt->in_vol, ncoord);
          nind = nind3.ijk[0] + nind3.ijk[1] * nxx + nind3.ijk[2] * nxy;
@@ -639,28 +887,37 @@ int SUMA_Find_IminImax_Avg (SUMA_SurfaceObject *SO, SUMA_GENERIC_PROG_OPTIONS_ST
          if (ni == Opt->NodeDbg) {
             fprintf(SUMA_STDERR, "%s: Node %d\n"
                                  " nind3 = [%d %d %d] voxVal = %.3f\n", 
-                                 FuncName, Opt->NodeDbg, nind3.ijk[0], nind3.ijk[1], nind3.ijk[2],
-                                 Opt->fvec[nind]);
+               FuncName, Opt->NodeDbg, nind3.ijk[0], nind3.ijk[1], nind3.ijk[2],
+               Opt->fvec[nind]);
          }
          #endif
          if (!istep) { /* get the value at the node */
             Means[0] = Opt->fvec[nind];
          }
          
-         if (overshish && istep < ShishMax) overshish[istep] = Opt->fvec[nind];   /* store values under node */
+         if (overshish && istep < ShishMax) 
+            overshish[istep] = Opt->fvec[nind];   /* store values under node */
          
-         if (Opt->fvec[nind] > Opt->t && !stopint) { Means[2] += Opt->fvec[nind]; ++ nMeans[2]; } 
-         else stopint = 1;
+         if (Opt->fvec[nind] > Opt->t && !stopint) { 
+            Means[2] += Opt->fvec[nind]; ++ nMeans[2]; 
+         } else stopint = 1;
          if (fvecind_over) fvecind_over[istep] = nind;
          
          /* find local min and max*/ 
-         if (lmin > Opt->fvec[nind]) { lmin = Opt->fvec[nind]; SUMA_NORM_VEC(travdir, 3, lmin_dist); }
-         if (lmax < Opt->fvec[nind]) { lmax = Opt->fvec[nind]; SUMA_NORM_VEC(travdir, 3, lmax_dist); }  
+         if (lmin > Opt->fvec[nind]) { 
+            lmin = Opt->fvec[nind]; SUMA_NORM_VEC(travdir, 3, lmin_dist); 
+         }
+         if (lmax < Opt->fvec[nind]) { 
+            lmax = Opt->fvec[nind]; SUMA_NORM_VEC(travdir, 3, lmax_dist); 
+         }  
          
          ++istep;
       }
       
-      if (istep < ShishMax) { overshish[istep] = -1; if (fvecind_over) fvecind_over[istep] = -1; }/* crown the shish */
+      if (istep < ShishMax) { /* crown the shish */
+         if (overshish) overshish[istep] = -1; 
+         if (fvecind_over) fvecind_over[istep] = -1; 
+      }
 
       Means[2] /= (float)nMeans[2];
       MinMax_over[0] = lmin; 
@@ -668,6 +925,253 @@ int SUMA_Find_IminImax_Avg (SUMA_SurfaceObject *SO, SUMA_GENERIC_PROG_OPTIONS_ST
       MinMax_over[1] = lmax;
       MinMax_over_dist[1] = lmax_dist;
    }
+   
+   SUMA_RETURN(YUP);
+}
+
+int SUMA_THD_Radial_Stats( THD_3dim_dataset  *dset,
+                           byte *cmask, float *ucm,
+                           THD_3dim_dataset **osetp,
+                           byte zeropad, float under, float over )
+{
+   static char FuncName[]={"SUMA_THD_Radial_Stats"};
+   THD_3dim_dataset *oset=NULL;
+   int ii, jj, kk, vv, trv[2], sb;
+   THD_fvec3 ccc, ncoord;
+   float cm[3], *mo=NULL, *mu=NULL, *fin=NULL, *mr=NULL,
+         xyz_ijk[3], means[3], factor, mvoxd;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   
+   if (!osetp || !dset) SUMA_RETURN(NOPE);
+   if (!ucm) {
+      ccc = THD_cmass(dset, 0, cmask);
+      cm[0] = ccc.xyz[0];
+      cm[1] = ccc.xyz[1];
+      cm[2] = ccc.xyz[2];
+   } else {
+      cm[0] = ucm[0];
+      cm[1] = ucm[1];
+      cm[2] = ucm[2];
+   }
+   /* change cm to mm coords */
+   ccc.xyz[0]=cm[0]; ccc.xyz[1]=cm[1]; ccc.xyz[2]=cm[2]; 
+   ncoord = THD_dicomm_to_3dmm(dset, ccc);
+   ccc = THD_3dmm_to_3dfind(dset, ncoord);
+   cm[0] = ccc.xyz[0];
+   cm[1] = ccc.xyz[1];
+   cm[2] = ccc.xyz[2];
+   
+   /* get voxel values */
+   fin = THD_extract_to_float(0, dset);
+   mu = (float*)SUMA_calloc(DSET_NVOX(dset), sizeof(float));
+   mo = (float*)SUMA_calloc(DSET_NVOX(dset), sizeof(float));
+   mr = (float*)SUMA_calloc(DSET_NVOX(dset), sizeof(float));
+   /* min voxel dim */
+   mvoxd = SUMA_MIN_PAIR(SUMA_ABS(DSET_DX(dset)), SUMA_ABS(DSET_DY(dset)));
+   mvoxd = SUMA_MIN_PAIR(mvoxd, SUMA_ABS(DSET_DZ(dset)));
+   
+   trv[0] = under / mvoxd; trv[1] = over / mvoxd; 
+   vv=0;
+   for (kk=0; kk<DSET_NZ(dset); ++kk) {
+   SUMA_LHv("kk=%d/%d, cmijk=[%f %f %f]\n", 
+            kk, DSET_NZ(dset), cm[0], cm[1], cm[2]);
+   for (jj=0; jj<DSET_NY(dset); ++jj) {
+   for (ii=0; ii<DSET_NX(dset); ++ii) {
+      if (ii==(int)cm[0] && jj==(int)cm[1] && kk==(int)cm[2]) {
+         SUMA_setBrainWrap_NodeDbg(vv);
+      }
+      if (!cmask || cmask[vv]) {
+         xyz_ijk[0]= ii; xyz_ijk[1]= jj; xyz_ijk[2]= kk;
+         if (!SUMA_Vox_Radial_Stats(fin,
+                  DSET_NX(dset), DSET_NY(dset), DSET_NZ(dset),
+                  xyz_ijk, cm, trv,
+                  means, 
+                  NULL, NULL, NULL, NULL, -1, zeropad)) {
+            SUMA_S_Errv("Failed at voxel %d %d %d\n",
+                        ii, jj, kk);
+            SUMA_RETURN(NOPE);
+         }
+         
+         mu[vv] = means[1];
+         mo[vv] = means[2];
+         mr[vv] = (mu[vv]-mo[vv])/(mu[vv]+mo[vv]);
+      } else {
+         mu[vv] = 0.0;
+         mo[vv] = 0.0;
+         mr[vv] = 0.0;
+      }   
+      if (vv == NodeDbg) {
+        SUMA_S_Notev("At cm have means=[%f %f %f]\n", 
+                     means[0], means[1], means[2]);
+      }
+      ++vv;
+   }}}
+   
+   /* stick the results in the output */
+   if (!*osetp) {
+      NEW_SHORTY(dset, 4, FuncName, oset);
+      *osetp = oset;
+   } else {
+      oset = *osetp;
+   }
+   
+   sb = 0;
+   factor = EDIT_coerce_autoscale_new(DSET_NVOX(oset), MRI_float, mu, 
+                          DSET_BRICK_TYPE(oset,sb), DSET_BRICK_ARRAY(oset,sb));
+   if (factor > 0.0f) {
+      factor = 1.0 / factor;
+   } else factor = 0.0;
+   EDIT_BRICK_FACTOR (oset, sb, factor);
+   EDIT_BRICK_LABEL (oset, sb, "UnderMean");
+   
+   sb = 1;
+   factor = EDIT_coerce_autoscale_new(DSET_NVOX(oset), MRI_float, mo, 
+                          DSET_BRICK_TYPE(oset,sb), DSET_BRICK_ARRAY(oset,sb));
+   if (factor > 0.0f) {
+      factor = 1.0 / factor;
+   } else factor = 0.0;
+   EDIT_BRICK_FACTOR (oset, sb, factor);
+   EDIT_BRICK_LABEL (oset, sb, "OverMean");
+   
+   sb = 2;
+   factor = EDIT_coerce_autoscale_new(DSET_NVOX(oset), MRI_float, mr, 
+                          DSET_BRICK_TYPE(oset,sb), DSET_BRICK_ARRAY(oset,sb));
+   if (factor > 0.0f) {
+      factor = 1.0 / factor;
+   } else factor = 0.0;
+   EDIT_BRICK_FACTOR (oset, sb, factor);
+   EDIT_BRICK_LABEL (oset, sb, "(U-O)/(U+O)");
+   
+   if (fin) free(fin);
+   //if (mu) SUMA_free(mu); 
+   //if (mo) SUMA_free(mo);
+   //if (mr) SUMA_free(mr); 
+   SUMA_RETURN(YUP);
+}
+
+int SUMA_Vox_Radial_Stats (float *fvec, int nxx, int nyy, int nzz, 
+                        float *xyz_ijk, float *cen_ijk, int *voxtrav,
+                        float *Means, 
+                        float *undershish, float *overshish, 
+                        int *fvecind_under, int *fvecind_over, 
+                        int ShishMax, byte zeropad)
+{
+   static char FuncName[]={"SUMA_Vox_Radial_Stats"};
+   float travdir[3];
+   float U[3], Un, X[3], vval; 
+   THD_ivec3 nind3;
+   int nind, istep, nxy, nMeans[3], nindin, offu=1, offo=1;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   
+   if ((undershish || overshish || fvecind_under || fvecind_over) &&
+         ShishMax < SUMA_MAX_PAIR(voxtrav[0],voxtrav[1])) {
+      SUMA_S_Errv("Not enough slots in shish vectors:\n"
+                  " have %d, need %d\n",
+                  ShishMax, SUMA_MAX_PAIR(voxtrav[0],voxtrav[1]));
+      SUMA_RETURN(0);
+   }
+   
+   Means[0] = Means[1] = Means[2] = 0.0;
+   nMeans[0] = nMeans[1] = nMeans[2] = 0;
+   nxy = nxx*nyy;
+   istep = 0; 
+   SUMA_UNIT_VEC(xyz_ijk, cen_ijk, U, Un);
+   nindin = (int)xyz_ijk[0]+((int)xyz_ijk[1])*nxx+((int)xyz_ijk[2])*nxy;
+   Means[0]=fvec[nindin];
+   while (istep < voxtrav[0]) {
+      /* calculate offset */
+      travdir[0] = (istep+offu) * U[0]; 
+      travdir[1] = (istep+offu) * U[1]; 
+      travdir[2] = (istep+offu) * U[2]; 
+            
+      /* get index coord of point */
+      X[0] = (int)(xyz_ijk[0]+travdir[0]); 
+      X[1] = (int)(xyz_ijk[1]+travdir[1]); 
+      X[2] = (int)(xyz_ijk[2]+travdir[2]);
+      
+      vval = 0.0; nind = -1;
+      if (X[0] < 0 || X[0] > nxx-1 ||
+          X[1] < 0 || X[1] > nyy-1 ||
+          X[2] < 0 || X[2] > nzz-1 ) {
+         if (!zeropad) break;
+      } else {
+         nind = (int)X[0] + ((int)X[1]) * nxx + ((int)X[2]) * nxy;
+         vval = fvec[nind];
+      }
+      if (nindin == NodeDbg) {
+         SUMA_S_Notev("Down from Voxel %d [%d %d %d], step %d\n"
+                              " Xind = [%d %d %d] voxVal = %.3f\n", 
+               NodeDbg, 
+               (int)xyz_ijk[0], (int)xyz_ijk[1], (int)xyz_ijk[2],
+               istep,
+               (int)X[0], (int)X[1], (int)X[2],
+               vval);
+      }
+      
+      if (undershish) undershish[istep] = vval;
+      
+      /* track the brain mean */
+      Means[1] += vval; ++ nMeans[1]; 
+      if (fvecind_under) fvecind_under[istep] = nind;
+      
+      ++istep;
+   }
+   
+   if (istep < ShishMax) { /* crown the shish */
+      if (undershish) undershish[istep] = -1; 
+      if (fvecind_under) fvecind_under[istep] = -1; 
+   }
+   
+   Means[1] /= (float)nMeans[1];
+   
+   /* scan overhead */
+   istep = 0; 
+   while (istep < voxtrav[1]) {
+      /* calculate offset */
+      travdir[0] =  -(istep+offu) * U[0];
+      travdir[1] =  -(istep+offu) * U[1];
+      travdir[2] =  -(istep+offu) * U[2];
+
+      /* get index coord of point */
+      X[0] = (int)(xyz_ijk[0]+travdir[0]); 
+      X[1] = (int)(xyz_ijk[1]+travdir[1]); 
+      X[2] = (int)(xyz_ijk[2]+travdir[2]);
+      vval = 0.0; nind = -1;
+      if (X[0] < 0 || X[0] > nxx-1 ||
+          X[1] < 0 || X[1] > nyy-1 ||
+          X[2] < 0 || X[2] > nzz-1 ) {
+         if (!zeropad) break;
+      } else {
+         nind = (int)X[0] + ((int)X[1]) * nxx + ((int)X[2]) * nxy;
+         vval = fvec[nind];
+      }
+      if (nindin == NodeDbg) {
+         SUMA_S_Notev("Up from Voxel %d [%d %d %d], step %d\n"
+                              " Xind = [%d %d %d] voxVal = %.3f\n", 
+               NodeDbg, 
+               (int)xyz_ijk[0], (int)xyz_ijk[1], (int)xyz_ijk[2],
+               istep,
+               (int)X[0], (int)X[1], (int)X[2],
+               vval);
+      }
+      if (overshish) overshish[istep] = vval;   
+
+      Means[2] += vval; ++ nMeans[2]; 
+      if (fvecind_over) fvecind_over[istep] = nind;
+
+      ++istep;
+   }
+
+   if (istep < ShishMax) { /* crown the shish */
+      if (overshish) overshish[istep] = -1; 
+      if (fvecind_over) fvecind_over[istep] = -1; 
+   }
+
+   Means[2] /= (float)nMeans[2];
    
    SUMA_RETURN(YUP);
 }
@@ -1031,7 +1535,7 @@ int SUMA_StretchToFitLeCerveau (
                SUMA_NORM_VEC(sn, 3, nsn); /* norm of sn */
                SUMA_SUB_VEC(  s, sn, 
                               st, 3, float, float, float);  
-                           /* st is the tangential component of s along normal */
+                           /* st is the tangential component of s  */
                SUMA_SCALE_VEC(st, u1, su1, 3, float, float); /* u1 = st * su1 */
 
                r = ( l * l ) / (2.0 * nsn);
@@ -1583,7 +2087,10 @@ int SUMA_StretchToFitLeCerveau (
 }
 
 #define MSK_DBG 0
+#define VOX_DBG 0
 #define Meth1   /* SLOW METHOD, undefine it to have an even slower method! */
+
+
 /*!
    \brief First pass at finding voxels inside a surface. Slow baby, slow.
    The first approach traces a ray parallel to the X axis from each voxel 
@@ -1678,7 +2185,7 @@ short *SUMA_FindVoxelsInSurface_SLOW (SUMA_SurfaceObject *SO,
                #ifdef Meth1
                   /* works, but slow as a turtle */
                   mti = SUMA_MT_intersect_triangle(p0, p1, tmpXYZ, SO->N_Node, 
-                                          SO->FaceSetList, SO->N_FaceSet, mti);
+                                          SO->FaceSetList, SO->N_FaceSet, mti,0);
                   if (!(mti->N_poshits % 2)) { 
                      /* number of positive direction hits is a multiple of 2 */
                      isin[n] = 1; --N_in; /* 1 marks outside surface but in box*/
@@ -1771,6 +2278,8 @@ short *SUMA_FindVoxelsInSurface_SLOW (SUMA_SurfaceObject *SO,
    If you find bugs here, fix them there too. 
    
    \sa SUMA_SurfaceIntersectionVolume
+   
+   Significant bug fixes Oct 2012
 */
 short *SUMA_SurfGridIntersect (SUMA_SurfaceObject *SO, float *NodeIJKlistU, 
                                SUMA_VOLPAR *VolPar, int *N_inp, 
@@ -1780,12 +2289,13 @@ short *SUMA_SurfGridIntersect (SUMA_SurfaceObject *SO, float *NodeIJKlistU,
    short *isin=NULL;
    byte *ijkmask=NULL, *inmask = NULL, *ijkout = NULL;
    float *p1, *p2, *p3, min_v[3], max_v[3], p[3], dist;
-   float MaxDims[3], MinDims[3], SOCenter[3], dxyz[3];
+   float MaxDims[3], MinDims[3], SOCenter[3], dxyz[3], dot;
    int nn, nijk, nx, ny, nz, nxy, nxyz, nf, n1, n2, n3, nn3, 
        *voxelsijk=NULL, N_alloc, en;
    int N_inbox, nt, nt3, ijkseed = -1, N_in, N_realloc, isincand;
    byte *fillmaskvec=NULL;
    float *NodeIJKlist=NULL;
+   int voxdbg = 101444, dbgnode[]={106, 500, 247}, InAirSpace=0;
    SUMA_Boolean LocalHead = NOPE;
    
    SUMA_ENTRY;
@@ -1810,10 +2320,21 @@ short *SUMA_SurfGridIntersect (SUMA_SurfaceObject *SO, float *NodeIJKlistU,
       }
    } else {
       NodeIJKlist = NodeIJKlistU;
+   #if VOX_DBG
+      for (nijk=0; nijk<3; ++nijk) {
+         nn = dbgnode[nijk];
+         SUMA_S_Notev("User Node %d:\n"
+                   "   XYZ: %f %f %f\n",
+                   nn, 
+                        NodeIJKlist[3*nn  ], 
+                        NodeIJKlist[3*nn+1], 
+                        NodeIJKlist[3*nn+2]);
+      }             
+   #endif
       for (nn=0; nn<SO->N_Node ; ++nn) { /* check */
          if (NodeIJKlist[3*nn  ] < 0 || NodeIJKlist[3*nn  ]>= nx ||
-             NodeIJKlist[3*nn+1] < 0 || NodeIJKlist[3*nn+1]>= nx || 
-             NodeIJKlist[3*nn+2] < 0 || NodeIJKlist[3*nn+2]>= nx ) {
+             NodeIJKlist[3*nn+1] < 0 || NodeIJKlist[3*nn+1]>= ny || 
+             NodeIJKlist[3*nn+2] < 0 || NodeIJKlist[3*nn+2]>= nz ) {
             SUMA_S_Errv("Looks like NodeIJKlist is not in index units.\n"
                         "At node %d, have %f %f %f\n"
                         , nn, 
@@ -1831,6 +2352,17 @@ short *SUMA_SurfGridIntersect (SUMA_SurfaceObject *SO, float *NodeIJKlistU,
       SUMA_RETURN(NULL);
    }
    
+   #if VOX_DBG
+      for (nijk=0; nijk<3; ++nijk) {
+         nn = dbgnode[nn];
+         SUMA_S_Notev("Node %d:\n"
+                   "   XYZ: %f %f %f\n",
+                   nn, 
+                        NodeIJKlist[3*nn  ], 
+                        NodeIJKlist[3*nn+1], 
+                        NodeIJKlist[3*nn+2]);
+      }             
+   #endif
    /* mark the node voxels */
    for (nn=0; nn<SO->N_Node; ++nn) {
       /* find the ijk of each node: */
@@ -1849,7 +2381,12 @@ short *SUMA_SurfGridIntersect (SUMA_SurfaceObject *SO, float *NodeIJKlistU,
    N_realloc = 0;
    voxelsijk = (int *)SUMA_malloc(sizeof(int)*N_alloc*3);
    if (!voxelsijk) { SUMA_SL_Crit("Failed to Allocate!"); SUMA_RETURN(NULL);  }   
-   dxyz[0] = VolPar->dx; dxyz[1] = VolPar->dy; dxyz[2] = VolPar->dz;
+   /* ZSS Pre Oct 2012:
+      The dxyz were not being modified to reflect the changing of coordinates
+      from XYZ mm to ijk !
+      dxyz[0] = VolPar->dx; dxyz[1] = VolPar->dy; dxyz[2] = VolPar->dz;
+   */ 
+   dxyz[0] = 1.0; dxyz[1] = 1.0; dxyz[2] = 1.0;
    for (nf=0; nf<SO->N_FaceSet; ++nf) {
       n1 = SO->FaceSetList[SO->FaceSetDim*nf]; 
       n2 = SO->FaceSetList[SO->FaceSetDim*nf+1]; 
@@ -1859,7 +2396,7 @@ short *SUMA_SurfGridIntersect (SUMA_SurfaceObject *SO, float *NodeIJKlistU,
       p2 = &(NodeIJKlist[3*n2]); 
       p3 = &(NodeIJKlist[3*n3]); 
       SUMA_TRIANGLE_BOUNDING_BOX(p1, p2, p3, min_v, max_v);
-      #if 0
+      #if VOX_DBG
          if (LocalHead && nf == 5 ) {
             FILE *fout = NULL;
             int i;
@@ -1915,8 +2452,8 @@ short *SUMA_SurfGridIntersect (SUMA_SurfaceObject *SO, float *NodeIJKlistU,
             isincand = 0;
             nijk = SUMA_3D_2_1D_index(voxelsijk[nt3], voxelsijk[nt3+1], 
                                        voxelsijk[nt3+2], nx , nxy);  
-            #if 0
-               if (nijk == 6567) {
+            #if VOX_DBG
+               if (nijk == voxdbg) {
                   fprintf(SUMA_STDERR,
                           "%s: %d examined, cand %d initial isin[%d] = %d\n", 
                           FuncName, nijk,  isincand, nijk, isin[nijk]);
@@ -1932,31 +2469,41 @@ short *SUMA_SurfGridIntersect (SUMA_SurfaceObject *SO, float *NodeIJKlistU,
                p[0] = (float)voxelsijk[nt3]; 
                p[1] = (float)voxelsijk[nt3+1]; 
                p[2] = (float)voxelsijk[nt3+2]; 
+               
+               /* See also SUMA_DIST_FROM_PLANE2 */
                SUMA_DIST_FROM_PLANE(p1, p2, p3, p, dist);
                
-               if (dist) {
-                  if (SUMA_IS_NEG(VolPar->Hand * dist)) 
-                     isincand = SUMA_IN_TRIBOX_INSIDE;  
-                        /* ZSS Added handedness factor. who would have thought? 
-                               Be damned 3D coord systems! */
-                  else isincand = SUMA_IN_TRIBOX_OUTSIDE; 
-               }
-               #if 0               
-                  if (nijk == 6567) {
+
+               if (dist) { 
+                  if ( SUMA_IS_NEG(VolPar->Hand * dist) ) {
+                     /* don't label it, just box the outside,
+                      SUMA_isVoxelIntersect_Triangle should catch the good ones*/
+                  } else {
+                     isincand = SUMA_IN_TRIBOX_OUTSIDE; 
+                  }
+               } 
+               
+               #if VOX_DBG               
+                  if (nijk == voxdbg) {
                      fprintf( SUMA_STDERR,
-                              "    after dist check cand = %d\n", isincand);
+                              "    after dist (%f to tri #%d nodes %d %d %d) \n"
+                              "    hand (%d) inairspace=%d, dot=%f \n"
+                              "    check cand = %d\n", 
+                                 dist, nf, n1, n2, n3, 
+                                 VolPar->Hand, InAirSpace, dot, 
+                                 isincand);
                      SUMA_Set_VoxIntersDbg(1);
                   }
                #endif              
                if (1) { /* does this triangle actually intersect this voxel ?*/
                   if (SUMA_isVoxelIntersect_Triangle (p, dxyz, p1, p2, p3)) {
-                     if (isincand == SUMA_IN_TRIBOX_INSIDE) 
+                     if (dist < 0) 
                           isincand = SUMA_INTERSECTS_TRIANGLE_INSIDE;
                      else isincand = SUMA_INTERSECTS_TRIANGLE_OUTSIDE;
                   } 
                }
-               #if 0               
-                  if (nijk == 6567) {
+               #if VOX_DBG               
+                  if (nijk == voxdbg) {
                      SUMA_Set_VoxIntersDbg(0);
                      fprintf(SUMA_STDERR,
                              "    after intersection cand = %d\n", isincand);
@@ -1967,8 +2514,8 @@ short *SUMA_SurfGridIntersect (SUMA_SurfaceObject *SO, float *NodeIJKlistU,
                   if (!isin[nijk]) { ++(*N_inp);   } /* a new baby */
                   isin[nijk] = isincand;
                }
-               #if 0               
-                  if (nijk == 6567) {
+               #if VOX_DBG               
+                  if (nijk == voxdbg) {
                      fprintf(SUMA_STDERR,
                              "    final isin[%d] = %d\n", nijk, isin[nijk]);
                   } 
@@ -2047,7 +2594,7 @@ short *SUMA_SurfGridIntersect (SUMA_SurfaceObject *SO, float *NodeIJKlistU,
                                        p1[0], p1[1], p1[2], ijkseed); 
                }
                mti = SUMA_MT_intersect_triangle(p1, SOCenter, NodeIJKlist, 
-                              SO->N_Node, SO->FaceSetList, SO->N_FaceSet, mti);
+                              SO->N_Node, SO->FaceSetList, SO->N_FaceSet, mti,0);
                if (!(mti->N_poshits % 2)) { 
                   /* number of positive direction hits is a multiple of 2 */
                   /* seed is outside */
@@ -2230,8 +2777,8 @@ short *SUMA_FindVoxelsInSurface (
       if (fdb) {
          fprintf(fdb, "Begin NodeList and copy\n");
          for (i=0; i<SO->N_Node; ++i) {
-            fprintf(fdb, "%f %f %f\n%f %f %f\n\n",
-                     SO->NodeList[3*i  ], SO->NodeList[3*i+1],
+            fprintf(fdb, "Node %d pre: %f %f %f\n%f %f %f\n\n",
+                     i, SO->NodeList[3*i  ], SO->NodeList[3*i+1],
                      SO->NodeList[3*i+2], 
                      tmpXYZ[3*i  ], tmpXYZ[3*i+1], tmpXYZ[3*i+2]);
          }
@@ -2250,8 +2797,8 @@ short *SUMA_FindVoxelsInSurface (
       if (fdb) {
          fprintf(fdb, "Begin SUMA_vec_dicomm_to_3dfind\n");
          for (i=0; i<SO->N_Node; ++i) {
-            fprintf(fdb, "%f %f %f\n%f %f %f\n\n",
-                     SO->NodeList[3*i  ], SO->NodeList[3*i+1],
+            fprintf(fdb, "Node %d post: %f %f %f\n%f %f %f\n\n",
+                     i, SO->NodeList[3*i  ], SO->NodeList[3*i+1],
                      SO->NodeList[3*i+2], 
                      tmpXYZ[3*i  ], tmpXYZ[3*i+1], tmpXYZ[3*i+2]);
          }
@@ -2883,7 +3430,8 @@ float *SUMA_Suggest_Touchup_PushOuterSkull(SUMA_SurfaceObject *SO,
                fprintf(SUMA_STDERR, "%s: Touchup value for node %d is %fmm\n", FuncName, in, touchup[in]);
             }
          } else {
-            qsort(shft_list, SO->FN->N_Neighb[in], sizeof(float), (int(*) (const void *, const void *)) SUMA_compare_float);
+            qsort(shft_list, SO->FN->N_Neighb[in], sizeof(float), 
+                  (int(*) (const void *, const void *)) SUMA_compare_float);
             /* get the median */
             touchup[in] = shft_list[(int)(SO->FN->N_Neighb[in]/2)];
          
@@ -4111,12 +4659,14 @@ EDIT_options *SUMA_BlankAfniEditOptions(void)
 /*!
    \brief Create an edge dataset
    \param inset (THD_3dim_dataset *) input dataset
-   \param emask (float *) a preallocated vector as big as DSET_NX(inset)*DSET_NY(inset)*DSET_NZ(inset). 
+   \param emask (float *) a preallocated vector as big as 
+                  DSET_NX(inset)*DSET_NY(inset)*DSET_NZ(inset). 
                            This vector will contain the edge values
-   \param poutsetp (THD_3dim_dataset **)If not null, it will point to a dataset that contains
-                                        the edges.
+   \param poutsetp (THD_3dim_dataset **)If not null, it will point to a 
+                  dataset that contains the edges.
 */
-SUMA_Boolean SUMA_3dedge3(THD_3dim_dataset *inset, float *emask, THD_3dim_dataset **poutsetp)
+SUMA_Boolean SUMA_3dedge3(THD_3dim_dataset *inset, 
+                         float *emask, THD_3dim_dataset **poutsetp)
 {
    static char FuncName[]={"SUMA_3dedge3"};
    THD_3dim_dataset *outset;
@@ -4124,14 +4674,23 @@ SUMA_Boolean SUMA_3dedge3(THD_3dim_dataset *inset, float *emask, THD_3dim_datase
    int border[3]={0,0,0};
    int indims[3]={0,0,0};
    float filterCoefs[3] = {1.0, 1.0, 1.0}, **sum = NULL;
-   int ii, nx, ny, nz, nval, kk;
+   int ii, nx, ny, nz, nval, kk, nwarn=0;
    int nxyz = DSET_NX(inset)*DSET_NY(inset)*DSET_NZ(inset);
    int fscale=0 , gscale=0 , nscale=0 ;
-   
+   SUMA_Boolean LocalHead = NOPE;
    recursiveFilterType filterType = ALPHA_DERICHE;  /* BAD BOY ZIAD */
    
    SUMA_ENTRY;
-
+   if (!inset) {
+      SUMA_S_Err("NULL dset");
+      SUMA_RETURN(0);
+   }  
+   if (!DSET_ARRAY(inset,0)) {
+      SUMA_S_Err("NULL array");
+      SUMA_RETURN(0);
+   }
+   
+   SUMA_LH("Load/Call Extract Gradient");
    /*-- Edge detect  --*/
    indims[0] = DSET_NX(inset);
    indims[1] = DSET_NY(inset);
@@ -4139,7 +4698,7 @@ SUMA_Boolean SUMA_3dedge3(THD_3dim_dataset *inset, float *emask, THD_3dim_datase
    border[0] = 50;
    border[1] = 50;
    border[2] = 50;
-
+   
    switch( DSET_BRICK_TYPE(inset,0) ){
      default:
         fprintf(stderr,"ERROR: illegal input sub-brick datum\n") ;
@@ -4148,7 +4707,7 @@ SUMA_Boolean SUMA_3dedge3(THD_3dim_dataset *inset, float *emask, THD_3dim_datase
      case MRI_float:{
        float *pp = (float *) DSET_ARRAY(inset,0) ;
        float fac = DSET_BRICK_FACTOR(inset,0)  ;
-
+       SUMA_LH("Float");
        if( fac ) {
          for( ii=0 ; ii < nxyz ; ii++ ) { pp[ii] *= fac; }
        }
@@ -4165,14 +4724,17 @@ SUMA_Boolean SUMA_3dedge3(THD_3dim_dataset *inset, float *emask, THD_3dim_datase
      }
      break ;
 
-      case MRI_short:{
+     case MRI_short:{
          short *pp = (short *) DSET_ARRAY(inset,0) ;
          float fac = DSET_BRICK_FACTOR(inset,0)  ;
-
-         if( fac ) {
-            for( ii=0 ; ii < nxyz ; ii++ ) { pp[ii] *= fac; }
+         SUMA_LHv("Short %p\n", pp);
+         if( fac && verb) {
+            INFO_message(
+               "Ignoring brick factor of %f for Gradient Extraction", 
+                           fac);
          }
-         if ( Extract_Gradient_Maxima_3D( (void *)pp, USHORT,
+         SUMA_LH("Short Extracting");
+         if ( Extract_Gradient_Maxima_3D( (void *)pp, SSHORT,
 				         emask, FLOAT,
 				         indims,
 				         border,
@@ -4181,15 +4743,18 @@ SUMA_Boolean SUMA_3dedge3(THD_3dim_dataset *inset, float *emask, THD_3dim_datase
           fprintf( SUMA_STDERR, "ERROR: gradient extraction failed.\n" );
           SUMA_RETURN(0);
          }
+         SUMA_LH("Short Extracted");
       }
       break ;
 
       case MRI_byte:{
          byte *pp = (byte *) DSET_ARRAY(inset,0) ;
          float fac = DSET_BRICK_FACTOR(inset,0)  ;
-
-         if( fac ) {
-            for( ii=0 ; ii < nxyz ; ii++ ) { pp[ii] *= fac; }
+         SUMA_LH("Byte");
+         if( fac && verb) {
+            INFO_message(
+               "Ignoring brick factor of %f for Gradient Extraction", 
+                           fac);
          }
          if ( Extract_Gradient_Maxima_3D( (void *)pp, UCHAR,
 				         emask, FLOAT,
@@ -4203,15 +4768,17 @@ SUMA_Boolean SUMA_3dedge3(THD_3dim_dataset *inset, float *emask, THD_3dim_datase
       }
       break ;
    }      
-
+  
    if (poutsetp) {
+      SUMA_LH("Forming output");
       /* user wants an output dset */
       nx   = DSET_NX(inset) ;
       ny   = DSET_NY(inset) ;
       nz   = DSET_NZ(inset) ; nxyz= nx*ny*nz;
-      nval = DSET_NVALS(inset) ; /* emask has enough room for one sub-brik only */ 
+      nval = DSET_NVALS(inset) ; /* emask has enough room for one 
+                                   sub-brik only */ 
 
-      sum = (float **) malloc( sizeof(float *)*nval ) ;    /* array of sub-bricks */
+      sum = (float **) malloc( sizeof(float *)*nval ) ;/* array of sub-bricks */
       for( kk=0 ; kk < nval ; kk++ ){
         sum[kk] = (float *) malloc(sizeof(float)*nxyz) ;  /* kk-th sub-brick */ 
       }

@@ -306,7 +306,10 @@ read.1dRplot.opts.batch <- function (args=NULL, verb = 0) {
    params <- list (
       '-i' = apl(n = c(1, Inf), d = NA,  h = paste(
    "-i 1D_INPUT: file to plot. This field can have multiple\n",
-   "                 formats. See Data Strings section below.\n"
+   "                 formats. See Data Strings section below.\n",
+   "             1dRplot will automatically detect certain\n",
+   "             1D files ouput by some programs such as 3dhistog\n",
+   "             or 3ddot and adjust parameters accordingly.\n"
                      ) ),
                      
       '-input' = apl(n = c(1, Inf), d = NA,  h = paste(
@@ -337,8 +340,16 @@ read.1dRplot.opts.batch <- function (args=NULL, verb = 0) {
    "-save.Rdat : Save data list for reproducing plot in R.\n",
    "             You need to specify -prefix or -save\n",
    "             along with this option to set the prefix.\n",
-   "    For example, say you have dice.Rdat saved from a previous command\n",
-   "    load('dice.Rdat'); P$nodisp <- TRUE; plot.1D.eng(P)\n"
+   "             See also -load.Rdat\n"
+                     ) ),
+      
+      '-load.Rdat' = apl(n = 1, d = NA,  h = paste(
+   "-load.Rdat RDAT: load data list from save.Rdat for reproducing plot.\n",
+   "                 Note that you cannot override the settings in RDAT,\n",
+   "                 unless you run in the interactive R mode. For example,\n",
+   "                 say you have dice.Rdat saved from a previous command\n",
+   "                 and you want to change P$nodisp to TRUE:\n",
+   "              load('dice.Rdat'); P$nodisp <- TRUE; plot.1D.eng(P)\n"
                      ) ),
       
       '-save.size' = apl(n = 2, d = c(2000,2000),  h = paste(
@@ -351,7 +362,8 @@ read.1dRplot.opts.batch <- function (args=NULL, verb = 0) {
                      ) ),
 
       '-title' = apl(n = c(1, Inf), d = NULL,  h = paste(
-   "-title TITLE: Graph title\n"
+   "-title TITLE: Graph title. File name is used by default.\n",
+   "              Use NONE to be sure no title is used.\n"
                      ) ),
             
       '-grp.label' = apl(n = c(1,Inf), d = NULL, h = paste(
@@ -380,6 +392,16 @@ read.1dRplot.opts.batch <- function (args=NULL, verb = 0) {
    "-col.name NAME1 [NAME2 ...]: Name of each column in -input. \n",
    "       Special flags:\n",
    "            VOLREG: --> 'Roll Pitch Yaw I-S R-L A-P'\n"
+                     ) ),
+
+      '-row.name' = apl(n = c(1,Inf), d = NULL, h = paste(
+   "-row.name NAME1 [NAME2 ...]: Name of each row in -input. \n",
+   "       For the moment, this is only used with -matplot\n"
+                     ) ),
+
+      '-rowcol.name' = apl(n = c(1,Inf), d = NULL, h = paste(
+   "-rowcol.name NAME1 [NAME2 ...]: Names of rows, same as name of columns.\n",
+   "       For the moment, this is only used with -matplot.\n"
                      ) ),
 
       '-col.name.show' = apl(n = 0, d = FALSE, h = paste(
@@ -448,8 +470,24 @@ read.1dRplot.opts.batch <- function (args=NULL, verb = 0) {
    "-oneplot:  Put all columns on one graph\n"
                         ) ),   
                         
+      '-multiplot' = apl (n = 0, d = FALSE, h = paste (
+   "-multiplot:  Put columns in separate graphs\n"
+                        ) ),   
+                        
+      '-matplot' = apl (n = 0, d = FALSE, h = paste (
+   "-matplot:  Display as matrix\n"
+                        ) ),   
+                        
       '-one' = apl (n = 0, d = FALSE, h = paste (
    "-one:  Put all columns on one graph\n"
+                        ) ),  
+                                                           
+      '-multi' = apl (n = 0, d = FALSE, h = paste (
+   "-multi:  Put columns in separate graphs\n"
+                        ) ),  
+
+      '-mat' = apl (n = 0, d = FALSE, h = paste (
+   "-mat:  Display as matrix\n"
                         ) ),  
                                                            
       '-col.grp' = apl(n = c(1, Inf), h = paste (
@@ -555,12 +593,17 @@ read.1dRplot.opts.batch <- function (args=NULL, verb = 0) {
              prefix = lop$prefix  <- ops[[i]],
              save = {lop$prefix <- ops[[i]]; lop$nodisp=TRUE;} ,
              save.Rdat = {lop$save.Rdat=TRUE;} ,
+             load.Rdat = { reload_mode(ops[[i]]); } ,
              save.size = lop$save.size <- ops[[i]],
              nozeros = lop$col.nozeros <- TRUE,
              col.nozeros = lop$col.nozeros <- TRUE,
              zeros = lop$col.nozeros <- FALSE,
-             oneplot = lop$oneplot <- TRUE,
-             one = lop$oneplot <- TRUE,
+             oneplot = lop$plotmode <- 1,
+             one = lop$plotmode <- 1,
+             multiplot = lop$plotmode <- 2,
+             multi = lop$plotmode <- 2,
+             matplot = lop$plotmode <- 3,
+             mat = lop$plotmode <- 3,
              col.grp = 
                lop$col.grp <- parse.1dRplot.colinput(ops[[i]]),
              col.ystack = lop$col.ystack <- TRUE,
@@ -583,6 +626,8 @@ read.1dRplot.opts.batch <- function (args=NULL, verb = 0) {
                                     parse.1dRplot.colinput(ops[[i]]),
              col.name = lop$col.name <- ops[[i]],
              col.name.show = lop$col.name.show <- TRUE,
+             row.name = lop$row.name <- ops[[i]],
+             rowcol.name = {lop$row.name <- ops[[i]]; lop$col.name <- ops[[i]];},
              col.text.lym = lop$col.text.lym <- parse.1dRplot.colinput(ops[[i]]),
              col.text.rym = lop$col.text.rym <- parse.1dRplot.colinput(ops[[i]]),
              leg.show = lop$leg.show <- TRUE,
@@ -615,7 +660,14 @@ process.1dRplot.opts <- function (lop, verb = 0) {
 }
 
 
-
+reload_mode <- function (rdat) {
+   load(rdat); 
+   thisplot = plot.1D.eng(P);
+   if (BATCH_MODE) { #do not quit until device is closed
+      while (length(which(dev.list()==thisplot))) Sys.sleep(0.25);
+   }
+   exit.AFNI();
+}  
 
 
 #################################################################################
@@ -667,7 +719,7 @@ process.1dRplot.opts <- function (lop, verb = 0) {
             img.width = lop$save.size[1],
             img.height = lop$save.size[2],
             nodisp = lop$nodisp,
-            oneplot = lop$oneplot,
+            plotmode = lop$plotmode,
             col.mean.line = lop$col.mean.line,
             xax.lim=lop$xax.lim, xax.tic.text = lop$xax.tic.text,
             yax.lim=lop$yax.lim, yax.tic.text = lop$yax.tic.text,
@@ -678,6 +730,7 @@ process.1dRplot.opts <- function (lop, verb = 0) {
             col.line.type = lop$col.line.type,
             col.plot.type = lop$col.plot.type,
             col.name = lop$col.name,
+            row.name = lop$row.name,
             col.name.show = lop$col.name.show,
             col.text.lym = lop$col.text.lym,
             col.text.rym = lop$col.text.rym,

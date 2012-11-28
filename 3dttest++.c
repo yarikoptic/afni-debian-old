@@ -204,6 +204,16 @@ void display_help_menu(void)
       "     covariates cannot be used (sorry, Charlie).\n"
       "  ++ For some limited compatibility with 3dttest, you can use '-set2' in\n"
       "     place of '-setA', and '-set1' in place of '-setB'.\n"
+      "  ++ [19 Jun 2012, from Beijing Normal University, during AFNI Bootcamp]\n"
+      "     For the SHORT FORM only, you can use the wildcards '*' and/or '?' in\n"
+      "     the BETA_DSET filenames, along with sub-brick selectors, to make it\n"
+      "     easier to create the command line.\n"
+      "     To protect the wildcards from the shell, the entire filename should be\n"
+      "     inside quote marks.  For example:\n"
+      "       3dttest++ -setA '*.beta+tlrc.HEAD[Vrel#0_Coef]' \\\n"
+      "                 -setB '*.beta+tlrc.HEAD[Arel#0_Coef]' -prefix VAtest -paired\n"
+      "     will do a paired 2-sample test between the symbolically selected sub-bricks\n"
+      "     from a collection of single-subject datasets (in this case, 2 different tasks).\n"
       "\n"
       "***** LONG FORM *****\n"
       "\n"
@@ -534,7 +544,7 @@ void display_help_menu(void)
       "          ++ For surface-based datasets, use something like:\n"
       "              -prefix p.niml.dset or -prefix p.gii.dset \n"
       "             Otherwise you may end up files containing numbers but\n"
-      "             not a full set of header information.\n" 
+      "             not a full set of header information.\n"
       "\n"
       " -debug    = Prints out information about the analysis, which can\n"
       "               be VERY lengthy -- not for general usage.\n"
@@ -740,9 +750,10 @@ int is_possible_filename( char * fname )
 
     mode = storage_mode_from_filename(fname);
 
-    if (THD_is_ondisk(fname) && 
-         (mode > STORAGE_UNDEFINED || mode <LAST_STORAGE_MODE )) return(1);
-    
+    if ( THD_is_prefix_ondisk(fname, 1) &&
+         (mode > STORAGE_UNDEFINED || mode <=LAST_STORAGE_MODE ) &&
+         !THD_is_directory(fname) ) return(1);
+
     return(0);
 }
 
@@ -760,8 +771,7 @@ int main( int argc , char *argv[] )
    int BminusA=-1 , ntwosam=0 ;  /* 05 Nov 2010 */
    char *snam_PPP=NULL, *snam_MMM=NULL ;
    static int iwarn=0;
-   
-   
+
    /*--- help the piteous luser? ---*/
 
    if( argc < 2 || strcmp(argv[1],"-help") == 0 ) display_help_menu() ;
@@ -776,6 +786,8 @@ int main( int argc , char *argv[] )
 #endif
 
    /*--- read the options from the command line ---*/
+
+   PUTENV("AFNI_GLOB_SELECTORS","YES") ;  /* 19 Jun 2012 */
 
    nopt = 1 ;
    while( nopt < argc ){
@@ -918,7 +930,7 @@ int main( int argc , char *argv[] )
      /*----- the various flavours of '-set' -----*/
 
      if( strncmp(argv[nopt],"-set",4) == 0 ){
-       char cc=argv[nopt][4] , *onam=argv[nopt] , *cpt ;
+       char cc=argv[nopt][4] , *onam=argv[nopt] , *cpt, *labcheck;
        int nds=0 , ids , nv=0 ; char **nams=NULL , **labs=NULL , *snam=NULL ;
        THD_3dim_dataset *qset , **dset=NULL ;
 
@@ -933,34 +945,43 @@ int main( int argc , char *argv[] )
          ERROR_exit("Need argument after '%s'",argv[nopt-1]) ;
 
        /* if next arg is a dataset, then all of the next args are datasets */
+       /* OR, if next arg has a wildcard, then the same condition applies */
 
        qset = THD_open_dataset( argv[nopt] ) ;
-       if( ISVALID_DSET(qset) ){
-         nds  = 1 ;
+       if( ISVALID_DSET(qset) || HAS_WILDCARD(argv[nopt]) ){  /* 19 Jun 2012: globbing */
+         int nexp,iex,didex ; char **fexp ;
+
+         if( ISVALID_DSET(qset) ){ DSET_delete(qset) ; qset = NULL ; }
+         nds  = nv = 0 ;
          nams = (char **)malloc(sizeof(char *)) ;
          labs = (char **)malloc(sizeof(char *)) ;
          dset = (THD_3dim_dataset **)malloc(sizeof(THD_3dim_dataset *)) ;
-         nams[0] = strdup(argv[nopt]) ; dset[0] = qset ;
-         labs[0] = strdup(THD_trailname(argv[nopt],0)) ; LTRUNC(labs[0]) ;
-         cpt = strchr(labs[0]+1,'+') ; if( cpt != NULL ) *cpt = '\0' ;
-         cpt = strchr(labs[0]+1,'.') ; if( cpt != NULL ) *cpt = '\0' ;
-         nv = DSET_NVALS(qset) ;
-         for( nopt++ ; nopt < argc && argv[nopt][0] != '-' ; nopt++ ){
-           qset = THD_open_dataset( argv[nopt] ) ;
-           if( !ISVALID_DSET(qset) )
-             ERROR_exit("Option %s: cannot open dataset '%s'",onam,argv[nopt]) ;
-           nds++ ; nv += DSET_NVALS(qset) ;
-           nams = (char **)realloc(nams,sizeof(char *)*nds) ;
-           labs = (char **)realloc(labs,sizeof(char *)*nds) ;
-           dset = (THD_3dim_dataset **)realloc(dset,sizeof(THD_3dim_dataset *)*nds) ;
-           nams[nds-1] = strdup(argv[nopt]) ; dset[nds-1] = qset ;
-           labs[nds-1] = strdup(THD_trailname(argv[nopt],0)) ; LTRUNC(labs[nds-1]) ;
-           cpt = strchr(labs[nds-1]+1,'+') ; if( cpt != NULL ) *cpt = '\0' ;
-           cpt = strchr(labs[nds-1]+1,'.') ; if( cpt != NULL ) *cpt = '\0' ;
+         for( ; nopt < argc && argv[nopt][0] != '-' ; nopt++ ){  /* process until arg */
+           if( HAS_WILDCARD(argv[nopt]) ){                       /* starts with '-'  */
+             MCW_file_expand( 1 , argv+nopt , &nexp , &fexp ) ; didex = 1 ;
+             if( nexp == 0 )
+               ERROR_exit("Option %s: cannot expand wildcard dataset from '%s'",onam,argv[nopt]) ;
+           } else {
+             nexp = 1 ; fexp = argv+nopt ; didex = 0 ;
+           }
+           for( iex=0 ; iex < nexp ; iex++ ){       /* loop over number of expansions */
+             qset = THD_open_dataset( fexp[iex] ) ;
+             if( !ISVALID_DSET(qset) )
+               ERROR_exit("Option %s: cannot open dataset '%s'",onam,fexp[iex]) ;
+             nds++ ; nv += DSET_NVALS(qset) ;
+             nams = (char **)realloc(nams,sizeof(char *)*nds) ;
+             labs = (char **)realloc(labs,sizeof(char *)*nds) ;
+             dset = (THD_3dim_dataset **)realloc(dset,sizeof(THD_3dim_dataset *)*nds) ;
+             nams[nds-1] = strdup(fexp[iex]) ; dset[nds-1] = qset ;
+             labs[nds-1] = strdup(THD_trailname(fexp[iex],0)) ;
+             cpt = strchr(labs[nds-1]+1,'+')    ; if( cpt != NULL ) *cpt = '\0' ;
+             cpt = strstr(labs[nds-1]+1,".nii") ; if( cpt != NULL ) *cpt = '\0' ;
+             LTRUNC(labs[nds-1]) ;
+           }
+           if( didex ) MCW_free_expand(nexp,fexp) ;
          }
 
          if( nv > nds ) allow_cov = 0 ;  /* multiple sub-bricks from 1 input */
-
          if( nv < 2 )
            ERROR_exit("Option %s (short form): need at least 2 datasets or sub-bricks",onam) ;
 
@@ -968,10 +989,11 @@ int main( int argc , char *argv[] )
 
          snam = strdup(argv[nopt]) ; LTRUNC(snam) ;
          for( nopt++ ; nopt < argc && argv[nopt][0] != '-' ; nopt+=2 ){
-           if( nopt+1 >= argc || argv[nopt+1][0] == '-' ) {
-             ERROR_message("Option %s: ends prematurely after option %s.\n"
-       "   Make sure you are properly formatting your -set[A/B] parameters.\n"
-       "   Search for 'SHORT FORM' and 'LONG FORM' in the output of %s -help\n"
+           if( nopt+1 >= argc || argv[nopt+1][0] == '-' ){
+             ERROR_message(
+              "Option %s: ends prematurely after option %s.\n"
+              "   Make sure you are properly formatting your -set[A/B] parameters.\n"
+              "   Search for 'SHORT FORM' and 'LONG FORM' in the output of %s -help\n"
                ,onam, argv[nopt], argv[0]) ;
              exit(1);
            }
@@ -986,18 +1008,18 @@ int main( int argc , char *argv[] )
            labs = (char **)realloc(labs,sizeof(char *)*nds) ;
            dset = (THD_3dim_dataset **)realloc(dset,sizeof(THD_3dim_dataset *)*nds) ;
            nams[nds-1] = strdup(argv[nopt+1]) ; dset[nds-1] = qset ;
+           labcheck = argv[nopt];
            labs[nds-1] = strdup(argv[nopt]  ) ; LTRUNC(labs[nds-1]) ;
            /* check syntax */
-           if (!iwarn && 
-               (is_possible_filename( nams[nds-1] ) ||
-                is_possible_filename( labs[nds-1] ) )) {
+           if (!iwarn &&
+               (is_possible_filename( labcheck ) )) {
               WARNING_message(
-               "Label %s or name %s appear to be a file on disk\n"
-            "  Perhaps your command line syntax for %s is incorrect.\n"
-            "  Lookfor 'SHORT FORM' and 'LONG FORM' in the output of %s -help\n"
-            "  Similar warnings will be muted.\n"
-               ,labs[nds-1], nams[nds-1], onam, argv[0]) ; 
-              ++iwarn;   
+               "Label %s (%s) appears to be a file on disk.\n"
+               "  Perhaps your command line syntax for %s is incorrect.\n"
+               "  Look for 'SHORT FORM' and 'LONG FORM' in output of %s -help\n"
+               "  Similar warnings will be muted.\n"
+               ,labcheck, labs[nds-1], onam, argv[0]) ;
+              ++iwarn;
            }
          }
 
@@ -1009,7 +1031,7 @@ int main( int argc , char *argv[] )
 
        for( nbad=0,ids=1 ; ids < nds ; ids++ ){
          if( DSET_NVOX(dset[ids]) != DSET_NVOX(dset[0]) ){
-           ERROR_message("Option %s: dataset '%s' does match first one in size",
+           ERROR_message("Option %s: dataset '%s' does not match first one in size",
                          onam,nams[ids]) ; nbad++ ;
          }
        }
@@ -1113,7 +1135,7 @@ int main( int argc , char *argv[] )
    twosam = (nval_BBB > 1) ; /* 2 sample test? */
 
    if( nval_AAA <= 0 )
-     ERROR_exit("No '-setA' option?  Please please read the instructions!") ;
+     ERROR_exit("No '-setA' option?  Please please read the -help instructions!") ;
 
    if( nval_AAA != nval_BBB && ttest_opcode == 2 )
      ERROR_exit("Can't do '-paired' with unequal set sizes: #A=%d #B=%d",
@@ -1221,7 +1243,8 @@ int main( int argc , char *argv[] )
    if( twosam ){
      snam_PPP = (BminusA) ? snam_BBB : snam_AAA ;
      snam_MMM = (BminusA) ? snam_AAA : snam_BBB ;
-     INFO_message("2-sample test: results are %s - %s",snam_PPP,snam_MMM) ;
+     INFO_message("%s test: results are %s - %s",
+                  ttest_opcode == 2 ? "paired":"2-sample", snam_PPP,snam_MMM) ;
    }
 
    /*----- convert each input set of datasets to a vectim -----*/
@@ -1705,8 +1728,9 @@ int main( int argc , char *argv[] )
    else
      WARNING_message("Failed to add FDR curves to dataset?!") ;
 
-   if( twosam )
-     ININFO_message("2-sample test: results are %s - %s",snam_PPP,snam_MMM) ;
+   if( twosam ) 
+     ININFO_message("%s test: results are %s - %s",
+                    ttest_opcode == 2 ? "paired":"2-sample", snam_PPP,snam_MMM) ;
 
    DSET_write(outset) ; WROTE_DSET(outset) ;
 

@@ -130,12 +130,25 @@ g_history = """
          - removed requirement of stim timing files
     0.29 Nov 22, 2011 : allow for passing variables directly, not via -svar
          - added accompanying -show_svar_dict option
+    0.30 May 22, 2012 : basics of resting state
+         - added regress_bandpass and regress_motion_deriv fields
+    0.31 May 25, 2012 : show modified options and subject defaults
+    0.32 Oct  2, 2012 : added stim_type column to stim table
+         - also, split analysis var into anal_domain and anal_type
+    0.33 Oct 16, 2012 : use new anal_type for init of defaults
+         - have 'rest' defaults to differ from 'task' (no 'surface' yet)
+         - GUI: added analysis type and domain, and block list
 """
 
-g_version = '0.29 (November 22, 2011)'
+g_version = '0.33 (October 16, 2012)'
 
 # ----------------------------------------------------------------------
 # global definition of default processing blocks
+g_def_anal_domains = ['volume', 'surface']
+g_def_anal_types   = ['task', 'rest']
+                    # add 'ricor'?
+g_def_blocks_all  = ['despike', 'tshift', 'align', 'tlrc', 'volreg', 'surf',
+                     'blur', 'mask', 'scale', 'regress']
 g_def_blocks      = ['tshift', 'volreg', 'blur', 'mask', 'scale', 'regress']
 g_def_blocks_anat = ['tshift', 'align', 'tlrc', 'volreg', 'blur', 'mask',
                      'scale', 'regress']
@@ -146,6 +159,9 @@ g_def_align_cost  = 'lpc'
 g_tlrc_base_list  = ['TT_N27+tlrc', 'TT_avg152T1+tlrc', 'TT_icbm452+tlrc',
                      'MNI_avg152T1+tlrc']
 g_def_tlrc_base   = 'TT_N27+tlrc'
+g_def_stim_basis_list = ['GAM', 'BLOCK(5,1)', 'BLOCK(5)', 'TENT(0,15,6)',
+                         'SPMG2', 'NONE' ]
+g_def_stim_types_list = ['times', 'AM1', 'AM2', 'IM', 'file']
 
 
 # ----------------------------------------------------------------------
@@ -168,7 +184,9 @@ g_res_defs.output_proc   = ''           # output from running proc script
 # ----------------------------------------------------------------------
 # a global definition of subject defaults for single subject analysis
 g_subj_defs = SUBJ.VarsObject("Single Subject Dialog defaults")
-g_subj_defs.blocks        = []
+g_subj_defs.anal_domain   = 'volume'    # see g_def_anal_domains
+g_subj_defs.anal_type     = 'task'      # see g_def_anal_types
+g_subj_defs.blocks        = g_def_blocks_anat
 g_subj_defs.sid           = ''          # subject ID    (no spaces - required)
 g_subj_defs.gid           = ''          # group ID      (no spaces)
 g_subj_defs.anat          = ''          # anat dset name (probably .HEAD)
@@ -180,6 +198,8 @@ g_subj_defs.stim_wildcard = 'no'        # use wildcard form for EPIs
 g_subj_defs.stim_label    = []          # label for each stim file
 g_subj_defs.stim_basis    = []          # basis functions: empty=GAM,
                                         #   valid lengths: 0, 1, len(stim)
+g_subj_defs.stim_type     = []          # times/AM1/AM2/IM/file
+
 # expected
 g_subj_defs.tcat_nfirst   = 0           # first TRs to remove from each run
 g_subj_defs.volreg_base   = g_def_vreg_base  # in g_vreg_base_list, or ''
@@ -209,7 +229,12 @@ g_subj_defs.regress_opts_3dD = ''       # extra options for 3dDeconvolve
 g_subj_defs.align_opts_aea   = ''       # extra aea opts, e.g. -AddEdge
 g_subj_defs.tlrc_opts_at     = ''       # extra at opts
 
+g_subj_defs.regress_bandpass = []       # for -regress_bandpass
+g_subj_defs.regress_mot_deriv= 'no'     # include motion derivative?
+
 g_svar_dict = {
+   'anal_type'          : 'set analysis type (task/rest)',
+   'anal_domain'        : 'set data domain (volume/rest)',
    'blocks'             : 'set list of processing blocks to apply',
    'sid'                : 'set subject ID',
    'gid'                : 'set group ID',
@@ -221,6 +246,7 @@ g_svar_dict = {
    'stim_wildcard'      : 'yes/no: use wildcard for stim files',
    'stim_label'         : 'set stim file labels',
    'stim_basis'         : 'set basis functions for stim classes',
+   'stim_type'          : 'set stim types for stim classes',
 
    'tcat_nfirst'        : 'set number of TRs to remove, per run',
    'volreg_base'        : 'set volreg base string (first/third/last)',
@@ -246,11 +272,50 @@ g_svar_dict = {
    'regress_opts_3dD'   : 'specify extra options for 3dDeconvolve',
    'align_opts_aea'     : 'specify extra options for align_epi_anat.py',
    'tlrc_opts_at'       : 'specify extra options for @auto_tlrc',
+
+   'regress_bandpass'   : 'specify bandpass limits to remain after regress',
+   'regress_mot_deriv'  : 'yes/no: regress motion derivatives',
 }
 
-# string versions of subject variables, to be used by GUI
+# list of subject vars not considered options
+g_svars_not_opt = [ 
+   'name',
+   'sid', 'gid',
+   'anat', 'epi',
+   'stim', 'stim_label', 'stim_basis', 'stim_type',
+   'gltsym', 'gltsym_label'
+]
+
+# ----------------------------------------------------------------------
+# subj defaults for resting state analysis
+g_rest_defs = SUBJ.VarsObject("resting state defaults")
+g_rest_defs.anal_type     = 'rest'              # see g_def_anal_types
+g_rest_defs.blocks        = ['despike', 'tshift', 'align', 'tlrc', 'volreg',
+                             'blur', 'mask', 'regress']
+g_rest_defs.regress_bandpass  = [0.01, 0.1]     # -regress_bandpass
+g_rest_defs.regress_mot_deriv = 'yes'           # -regress motion derivatives
+g_rest_defs.motion_limit  = 0.2                 # from 0.3
+g_rest_defs.run_clustsim  = 'no'
+
+# ----------------------------------------------------------------------
+# subj defaults for task analysis (as opposed to rest)
+# NOTE: elements should match g_rest_defs
+g_task_defs = SUBJ.VarsObject("task analysis defaults")
+g_task_defs.anal_type     = 'task'              # see g_def_anal_types
+g_task_defs.blocks        = g_def_blocks_anat
+g_task_defs.regress_bandpass  = []              # -regress_bandpass
+g_task_defs.regress_mot_deriv = 'no'            # -regress motion derivatives
+g_task_defs.motion_limit  = 0.3                 # from 0.3
+g_task_defs.run_clustsim  = 'yes'
+
+# rcr - add g_surf_defs (to distinguish volume/surface analysis)
+
+
+# string versions of variable defaults, to be used by GUI
 g_cdef_strs = g_ctrl_defs.copy(as_strings=1)
 g_sdef_strs = g_subj_defs.copy(as_strings=1)
+g_rdef_strs = g_rest_defs.copy(as_strings=1)
+g_tdef_strs = g_task_defs.copy(as_strings=1)
 
 # note: short vars (e.g. with epi)
 #   use_dirs      - should we set any directory at all
@@ -280,6 +345,9 @@ class AP_Subject(object):
    def __init__(self, svars=None, cvars=None):
 
 
+      self.errors = []                  # list of error strings
+      self.warnings = []                # list of warning strings
+
       # LV: variables local to this interface, not passed
       self.LV = SUBJ.VarsObject("local AP_Subject vars")
       self.LV.indent = 8                # default indent for AP options
@@ -295,6 +363,8 @@ class AP_Subject(object):
       self.svars.merge(svars, typedef=g_subj_defs) # include those passed
 
       self.rvars = g_res_defs.copy()    # init result vars
+
+      self.check_analysis_type()        # anal_type/domain
 
       self.set_blocks()                 # choose processing blocks
 
@@ -313,8 +383,7 @@ class AP_Subject(object):
             - if there are errors, ap_command might not be filled
       """
 
-      self.errors = []                  # list of error strings
-      self.warnings = []                # list of warning strings
+      if len(self.errors) > 0: return   # if any errors already, quit
 
       # first assign directories
       self.ap_command  = self.script_init()
@@ -488,35 +557,56 @@ class AP_Subject(object):
       cmd  = self.script_ap_stim()
       cmd += self.script_ap_stim_labels()
       cmd += self.script_ap_stim_basis()
+      cmd += self.script_ap_stim_types()
       cmd += self.script_ap_regress_other()
       cmd += self.script_ap_regress_opts_3dD()
+      cmd += self.script_ap_post_regress()
 
-      # ------------------------------------------------------------
-      # at end, add post 3dD options
+      return cmd
+
+   def script_ap_post_regress(self):
+      """at end, add post 3dD options
+
+           reml_exec, compute_fitts, make_ideal_sum, est_blur_*, run_clustsim
+      """
+
+      cmd = ''
+
+      if self.svars.val('reml_exec') == 'yes':          # default is 'no'
+         cmd += '%s-regress_reml_exec \\\n' % self.LV.istr
+      if self.svars.val('compute_fitts') == 'yes':      # default is 'no'
+         cmd += '%s-regress_compute_fitts \\\n' % self.LV.istr
       if self.svars.stim:
          cmd += '%s-regress_make_ideal_sum sum_ideal.1D \\\n' % self.LV.istr
-      cmd += '%s-regress_est_blur_epits \\\n' \
-             '%s-regress_est_blur_errts \\\n' % (self.LV.istr, self.LV.istr)
+
+      # skip epits if rest
+      if self.svars.val('anal_type') == 'task':
+         cmd += '%s-regress_est_blur_epits \\\n' % self.LV.istr
+      cmd += '%s-regress_est_blur_errts \\\n' % self.LV.istr
+
+      if self.svars.val('run_clustsim') == 'no':        # default is 'yes'
+         cmd += '%s-regress_run_clustsim no \\\n' % self.LV.istr
 
       return cmd
 
    def script_ap_regress_other(self):
       """apply items with their own -regress_* options:
 
-           motion_limit, outlier_limit, compute_fitts, reml_exec, run_clustsim
+           motion_limit, outlier_limit, regress_bandpass, regress_mot_deriv,
       """
 
+      istr = self.LV.istr
       rstr = ''
       rstr += self.script_ap_apply_svar_1('motion_limit', vtype=float, 
                         defval=0.0, oname='-regress_censor_motion')
       rstr += self.script_ap_apply_svar_1('outlier_limit', vtype=float, 
                         defval=0.0, oname='-regress_censor_outliers')
-      if self.svars.val('reml_exec') == 'yes':          # default is 'no'
-         rstr += '%s-regress_reml_exec \\\n' % self.LV.istr
-      if self.svars.val('run_clustsim') == 'no':        # default is 'yes'
-         rstr += '%s-regress_run_clustsim no \\\n' % self.LV.istr
-      if self.svars.val('compute_fitts') == 'yes':      # default is 'no'
-         rstr += '%s-regress_compute_fitts \\\n' % self.LV.istr
+      if self.svars.val_len('regress_bandpass') == 2:
+         val = self.svars.regress_bandpass
+         rstr += '%s-regress_bandpass %s %s \\\n' % (istr, val[0], val[1])
+      if self.svars.val('regress_mot_deriv') == 'yes':      # default is 'no'
+         rstr += '%s-regress_apply_mot_types demean deriv \\\n' % istr
+
       return rstr
 
    def script_ap_regress_opts_3dD(self):
@@ -624,6 +714,7 @@ class AP_Subject(object):
    def script_ap_stim_basis(self):
       slen = len(self.svars.stim_basis)
       if slen == 0: return ''
+      if len(self.svars.stim) == 0: return '' # if stim are cleared, skip
 
       if UTIL.vals_are_constant(self.svars.stim_basis):
          return "%s-regress_basis '%s' \\\n"  \
@@ -637,9 +728,28 @@ class AP_Subject(object):
                 (self.LV.istr, self.LV.indent+4, '',
                 ' '.join(["'%s'"%b for b in self.svars.stim_basis]))
 
+   def script_ap_stim_types(self):
+      slen = len(self.svars.stim_type)
+      if slen == 0: return ''
+      if len(self.svars.stim) == 0: return '' # if stim are cleared, skip
+
+      if UTIL.vals_are_constant(self.svars.stim_type):
+         if self.svars.stim_type[0] == 'times': return ''
+         return "%s-regress_stim_types %s \\\n"  \
+                   % (self.LV.istr, self.svars.stim_type[0])
+
+      if slen != len(self.svars.stim):
+         self.errors.append('** error: num stim files != num stim types\n')
+         return ''
+         
+      return "%s-regress_stim_types \\\n%*s%s \\\n" %         \
+                (self.LV.istr, self.LV.indent+4, '',
+                ' '.join(["%s"%b for b in self.svars.stim_type]))
+
    def script_ap_stim_labels(self):
       slen = len(self.svars.stim_label)
       if slen == 0: return ''
+      if len(self.svars.stim) == 0: return '' # if stim are cleared, skip
 
       if slen != len(self.svars.stim):
          self.errors.append('** error: num stim files != num stim labels\n')
@@ -654,12 +764,8 @@ class AP_Subject(object):
          - if wildcard is requested, check that the actual wildcard glob
               matches the list of stim names (else warning)
       """
-      if not self.svars.stim:
-         self.warnings.append('** warnings: no stim timing files given\n')
-         return ''
-      if len(self.svars.stim) == 0:
-         self.errors.append('** error: no stim timing files given\n')
-         return ''
+
+      if len(self.svars.stim) == 0: return ''
 
       # if wildcard, input files must exist, and expansion must match list
       if self.svars.stim_wildcard == 'yes':
@@ -851,13 +957,15 @@ class AP_Subject(object):
          if not aset.view == '+orig':
             self.errors.append('** get_tlrc: requires orig version dset\n')
             return ''
-         # now check that tlrc view exists
+
+         # check that tlrc view dset exists
          tset = aset.new(new_view='+tlrc')
-         if not aset.exist():
-            self.errors.append('** get_tlrc: tlrc version not found\n')
+         if not tset.exist():
+            err = '** get_tlrc: tlrc version %s not found\n' % tset.ppv()
+            self.errors.append(err)
             return ''
-         # check WARP_DATA attribute
-         # len 30 -> @auto_tlrc, 360 -> manual
+
+         # check WARP_DATA attribute (len 30 -> @auto_tlrc, 360 -> manual)
          wd = BASE.read_attribute(tset.ppv(), 'WARP_DATA')
          if not wd:
             err  = '** failed to read WARP_DATA attr from %s\n' % tset.ppv()
@@ -982,8 +1090,43 @@ class AP_Subject(object):
       if dir and dir != '.': return 1
       return 0
 
+   def check_analysis_type(self):
+      """do any basis analysis type/domain checks"""
+
+      if self.svars.anal_type == 'task':
+         if not self.svars.stim and self.svars.val_len('regress_bandpass') != 2:
+            ww = '** warning: no stim timing files given (resting state?)'
+            self.warnings.append('%s\n' % ww)
+
+      if self.svars.anal_domain == 'surface':
+         ee = "** uber_subject.py not yet ready for surface analysis\n"
+         self.errors.append(ee)
+
+      return ''
+
    def set_blocks(self):
-      if len(self.svars.blocks) > 0: return     # use what is given
+      """trust what is set upon entry, but if no anat, clear those blocks"""
+
+      # if we have blocks, check for anat consistency
+
+      if len(self.svars.blocks) > 0:
+         blocks = self.svars.blocks
+         if self.svars.anat:
+            if self.svars.get_tlrc == 'yes':
+               if 'tlrc' in blocks: blocks.remove('tlrc')
+         else:
+            if 'align' in blocks: blocks.remove('align')
+            if 'tlrc'  in blocks: blocks.remove('tlrc')
+
+         # check that we recognize the blocks
+         for bname in blocks:
+            if bname not in g_def_blocks_all:
+               estr = "** unknown processing 'block': %s" % bname
+               self.errors.append(estr)
+
+         return     # use basically what is given
+
+      # no blocks, init based on anat (might never get here anymore)
 
       if self.svars.anat:
          blocks = default_block_order(anat=1)
@@ -1286,30 +1429,30 @@ def update_cvars_from_special(name, cvars, check_sort=0):
    """nothing special to do here yet"""
    return 0
 
-def set_vstr_from_def(obj, name, vlist, vars, verb=1, spec=0, csort=1):
-   """try to set name = value based on vlist
+def set_vstr_from_def(oname, vname, vlist, vobj, verb=1, spec=0, csort=1):
+   """try to set vname = value based on vlist
         (just set as string)
-      if name is not known by the defaults, return failure
+      if vname is not known by the defaults, return failure
 
       if spec: update_vars_from_special(csort)
 
       return 1 on change, 0 on unchanged, -1 on error
    """
 
-   if obj == 'svars':
+   if oname == 'svars':
       defs = g_subj_defs
       sfunc = update_svars_from_special
-   elif obj == 'cvars':
+   elif oname == 'cvars':
       defs = g_ctrl_defs
       sfunc = update_cvars_from_special
    else:
-      print '** set_vstr_from_def: invalid obj name: %s' % obj
+      print '** set_vstr_from_def: invalid obj name: %s' % oname
       return -1
 
-   return SUBJ.set_var_str_from_def(obj, name, vlist, vars, defs=defs,
+   return SUBJ.set_var_str_from_def(oname, vname, vlist, vobj, defs=defs,
                                     verb=verb, csort=csort, spec=sfunc)
 
-def update_svars_from_special(name, svars, check_sort=0):
+def update_svars_from_special(vname, svars, check_sort=0):
    """in special cases, a special svar might need updates, and might suggest
       making other updates
 
@@ -1324,11 +1467,11 @@ def update_svars_from_special(name, svars, check_sort=0):
    """
 
    # quick check for field to work with
-   if not name in ['epi', 'stim'] : return 0
+   if not vname in ['epi', 'stim'] : return 0
 
    changes = 0
 
-   if name == 'epi':
+   if vname == 'epi':
       fnames = svars.epi
       nf = len(fnames)
       if nf < 2: return 0       # nothing to do
@@ -1347,10 +1490,10 @@ def update_svars_from_special(name, svars, check_sort=0):
             # attach index and name in 2-D array, sort, extract names
             vlist = [[indlist[ind], fnames[ind]] for ind in range(nf)]
             vlist.sort()
-            svars.set_var(name, [val[1] for val in vlist])
+            svars.set_var(vname, [val[1] for val in vlist])
             changes += 1
 
-   elif name == 'stim':
+   elif vname == 'stim':
       fnames = svars.stim
       nf = len(fnames)
       if nf < 2: return 0               # nothing to do
@@ -1375,7 +1518,7 @@ def update_svars_from_special(name, svars, check_sort=0):
             # attach index and name in 2-D array, sort, extract names
             vlist = [[indlist[ind], fnames[ind]] for ind in range(nf)]
             vlist.sort()
-            svars.set_var(name, [val[1] for val in vlist])
+            svars.set_var(vname, [val[1] for val in vlist])
             changes += 1
 
       # apply labels unless some already exist
@@ -1391,6 +1534,22 @@ def update_svars_from_special(name, svars, check_sort=0):
 
    return changes
 
+helpstr_code_table_column = """
+                adding a new table column
+
+- possibly add a new self.gvars.Line_apply_XXX entry
+   - maybe with chooser button, to apply a choice from a list
+   - with callback processing in CB_line_text()
+   - update column headers and strech_cols in make_XXX_table
+   - copy variable vals to table in XXX_list_to_table
+      - probably alter setItem list and sortItems choice
+   - CB_gbox_PushB(): might have general init, also list choice application
+      - for choice application, might want to update vars from table first
+        (in case user has change table vals, not reflected in vars)
+   - add to update_XXX_from_table
+   - update help
+"""
+
 
 # ===========================================================================
 # help strings accessed both from command-line and GUI
@@ -1400,8 +1559,8 @@ helpstr_todo = """
 ---------------------------------------------------------------------------
                         todo list:  
 
-- surface analysis
-- resting state analysis
+- add rest group box: RONI options?  ricor inputs and options
+- add surface group box: surf anat, spec files
 - change print statements to LOG statements
    - optionally store to pass up to GUI (maybe start applying APSubj.status)
    - GUI could process (display as html?) and clear log
@@ -1412,12 +1571,7 @@ helpstr_todo = """
 - does tcsh exist?
 - make UberInterface class in uber_subject.py?
 - more verb output
-- group box : choose blocks?
-   - display 2 methods, method 1 is grayed when 2 is not empty
-   1. list of toggle boxes showing all standard blocks (what about copy_anat?)
-   2. text edit field to simply type list of blocks
 
-- allow stim_file regressors and labels
 - note usubj version in parameter file (warn user of version differences)
 - add range error checking for many variables?
   (types are done when converting from str)
@@ -1440,6 +1594,17 @@ tools (maybe put in uber_proc.py, instead):
    - help to create and play with stimulus timing design (sug. by A Barbey)
 ---------------------------------------------------------------------------
 """
+ 
+helpstr_howto_program = """
+   For details on programming, see output from:
+
+      uber_align_test.py -help_howto_program
+
+   Note the secion under "Writing the GUI":
+
+      The current 'todo' list when adding a new variable interface to the GUI:
+"""
+
 
 helpstr_usubj_gui = """
 uber_subject.py GUI             - a graphical interface to afni_proc.py

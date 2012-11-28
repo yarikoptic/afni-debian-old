@@ -8,6 +8,7 @@ nifti_image * populate_nifti_image(THD_3dim_dataset *dset, niftiwr_opts_t option
 void nifti_set_afni_extension(THD_3dim_dataset *dset,nifti_image *nim) ;
 
 static int get_slice_timing_pattern( float * times, int len, float * delta );
+static int needs_convertion_to_float(THD_3dim_dataset *dset, int warn);
 static int space_to_NIFTI_code(THD_3dim_dataset *dset);
 extern int THD_space_code(char *space);
 
@@ -19,8 +20,9 @@ extern int THD_space_code(char *space);
    Return value is 1 if went OK, 0 if not.
 -------------------------------------------------------------------*/
 
-int THD_write_nifti( THD_3dim_dataset *dset, niftiwr_opts_t options )
+int THD_write_nifti( THD_3dim_dataset *din, niftiwr_opts_t options )
 {
+  THD_3dim_dataset * dset=NULL;
   nifti_image *nim ;
   nifti_brick_list nbl ;
   int ii ;
@@ -39,6 +41,18 @@ ENTRY("THD_write_nifti") ;
                   (fname != NULL) ? fname : "(null)" ) ;
     RETURN(0) ;
   }
+
+  /* if we need a float dataset, make one (insted of failing)
+   * (wasteful, but simple and effective)  6 Sep 2012 [rickr] */
+  if( needs_convertion_to_float(din, 1) ) {
+     dset = EDIT_full_copy(din, NULL);
+     EDIT_floatize_dataset(dset);
+
+     if( ! ISVALID_DSET(dset) ) {
+       ERROR_message("failed to copy dset for NIfTI write\n");
+       RETURN(0);
+     }
+  } else dset = din;
 
   if( !ISVALID_DSET(dset) ){
     ERROR_message("Illegal input dataset for NIfTI output: %s\n", fname) ;
@@ -98,14 +112,50 @@ ENTRY("THD_write_nifti") ;
   nifti_set_afni_extension( dset , nim ) ;  /* 09 May 2005 - RWCox */
 
   nifti_image_write_bricks (nim, &nbl ) ;
+
+  /* if we made a float copy, nuke it */
+  if( dset != din ) THD_delete_3dim_dataset(dset, True) ;
+
   RETURN(1) ;
+}
+
+/* if the dataset has inconsistent types or scale factors, then it needs
+ * to be converted fo floats in order to write        6 Sep 2012 [rickr] */
+static int needs_convertion_to_float(THD_3dim_dataset *dset, int warn)
+{
+  int type0, fac0, ii;
+
+  ENTRY("needs_convertion_to_float");
+
+  if( ! ISVALID_DSET(dset) )   RETURN(0);
+
+  if( dset->dblk->nvals <= 1 ) RETURN(0);       /* nothing can vary */
+
+  type0 = DSET_BRICK_TYPE(dset,0) ;
+  fac0  = DSET_BRICK_FACTOR(dset,0) ;
+
+  for( ii=1 ; ii < DSET_NVALS(dset) ; ii++ ){
+     if( DSET_BRICK_TYPE(dset,ii) != type0) {
+        if( warn )
+          WARNING_message("varying brick types, writing NIfTI as float");
+        RETURN(1);
+     }
+
+     if( DSET_BRICK_FACTOR(dset,ii) != fac0) {
+        if( warn )
+          WARNING_message("varying brick factors, writing NIfTI as float");
+        RETURN(1);
+     }
+  }
+
+  RETURN(0);
 }
 
 /*******************************************************************/
 
 nifti_image * populate_nifti_image(THD_3dim_dataset *dset, niftiwr_opts_t options)
 {
-  int nparam, type0 , ii , jj, val;
+  int nparam, type0 , ii , jj;
   int nif_x_axnum=0, nif_y_axnum=0, nif_z_axnum=0;
   int slast, sfirst ;
   int pattern, tlen ;
@@ -737,16 +787,28 @@ ENTRY("get_slice_timing_pattern");
 /* set NIFTI sform code  based on atlas space */
 static int space_to_NIFTI_code(THD_3dim_dataset *dset)
 {
-    int i;
-    
-    if ((i=is_Dset_Space_Named(dset,"TLRC"))!=0) {
-      if (i<0) return(NIFTI_XFORM_SCANNER_ANAT);
-      else return(NIFTI_XFORM_TALAIRACH);
-    } else if (is_Dset_Space_Named(dset,"MNI") > 0) {
+    char *genspc = NULL;
+    /* several changes for generic spaces and defaults 05/02/2012 -mod drg */
+    /* use generic space or space of dataset to choose xform code */
+    genspc = THD_get_generic_space(dset);
+    if(genspc == NULL)
+       return(NIFTI_XFORM_SCANNER_ANAT);
+
+    if (strcmp(genspc,"TLRC") == 0) {
+      return(NIFTI_XFORM_TALAIRACH);
+    }
+    if (strcmp(genspc,"MNI") == 0) {
       return(NIFTI_XFORM_MNI_152);
-    } else if (is_Dset_Space_Named(dset,"MNI_ANAT") > 0) {
+    }
+    /* call MNI_ANAT as aligned to something else*/
+    if (strcmp(genspc,"MNI_ANAT") == 0) {
       return(NIFTI_XFORM_ALIGNED_ANAT);
-    } else {  
+    }
+    if((strcmp(genspc,"ORIG") == 0) ||
+       (strcmp(genspc,"ACPC") == 0)){
       return(NIFTI_XFORM_SCANNER_ANAT);
     }
+    /* make catch-all for other spaces as an aligned space
+       alternative is use SCANNER_ANAT again or UNKNOWN */
+    return(NIFTI_XFORM_ALIGNED_ANAT);
 }

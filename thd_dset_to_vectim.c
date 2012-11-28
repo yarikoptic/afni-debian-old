@@ -33,6 +33,7 @@ ENTRY("THD_dset_to_vectim") ;
      if( nmask <= 0 ) RETURN(NULL) ;
    } else {
      nmask = nvox ;                         /* keep them all */
+#pragma omp critical (MALLOC)
      mmm   = (byte *)malloc(sizeof(byte)*nmask) ;
      if( mmm == NULL ){
        ERROR_message("THD_dset_to_vectim: out of memory") ;
@@ -41,17 +42,20 @@ ENTRY("THD_dset_to_vectim") ;
      memset( mmm , 1 , sizeof(byte)*nmask ) ;
    }
 
+#pragma omp critical (MALLOC)
    mrv = (MRI_vectim *)malloc(sizeof(MRI_vectim)) ;
 
    mrv->nvec   = nmask ;
    mrv->nvals  = nvals ;
    mrv->ignore = ignore ;
+#pragma omp critical (MALLOC)
    mrv->ivec   = (int *)malloc(sizeof(int)*nmask) ;
    if( mrv->ivec == NULL ){
      ERROR_message("THD_dset_to_vectim: out of memory") ;
      free(mrv) ; if( mmm != mask ) free(mmm) ;
      RETURN(NULL) ;
    }
+#pragma omp critical (MALLOC)
    mrv->fvec  = (float *)malloc(sizeof(float)*nmask*nvals) ;
    if( mrv->fvec == NULL ){
      ERROR_message("THD_dset_to_vectim: out of memory") ;
@@ -67,12 +71,101 @@ ENTRY("THD_dset_to_vectim") ;
 
    if( ignore > 0 ){  /* extract 1 at a time, save what we want */
 
+#pragma omp critical (MALLOC)
      float *var = (float *)malloc(sizeof(float)*(nvals+ignore)) ;
      for( kk=iv=0 ; iv < nvox ; iv++ ){
        if( mmm[iv] == 0 ) continue ;
        (void)THD_extract_array( iv , dset , 0 , var ) ;
-#pragma omp critical (MEMCPY)
-       memcpy( VECTIM_PTR(mrv,kk) , var+ignore , sizeof(float)*nvals ) ;
+       AAmemcpy( VECTIM_PTR(mrv,kk) , var+ignore , sizeof(float)*nvals ) ;
+       kk++ ;
+     }
+     free(var) ;
+
+   } else {  /* do all at once: this way is a lot faster */
+
+     THD_extract_many_arrays( nmask , mrv->ivec , dset , mrv->fvec ) ;
+
+   }
+
+   mrv->nx = DSET_NX(dset) ; mrv->dx = fabs(DSET_DX(dset)) ;
+   mrv->ny = DSET_NY(dset) ; mrv->dy = fabs(DSET_DY(dset)) ;
+   mrv->nz = DSET_NZ(dset) ; mrv->dz = fabs(DSET_DZ(dset)) ;
+
+   DSET_UNMSEC(dset) ; mrv->dt = DSET_TR(dset) ;
+   if( mrv->dt <= 0.0f ) mrv->dt = 1.0f ;
+
+   if( mmm != mask ) free(mmm) ;
+   VECTIM_scan(mrv) ; /* 09 Nov 2010 */
+   RETURN(mrv) ;
+}
+
+/*---------------------------------------------------------------------------*/
+
+MRI_vectim * THD_dset_to_vectim_stend( THD_3dim_dataset *dset, byte *mask , int start, int end )
+{
+   byte *mmm=mask ;
+   MRI_vectim *mrv=NULL ;
+   int kk,iv , nvals , nvox , nmask ;
+
+ENTRY("THD_dset_to_vectim_stend") ;
+
+                     if( !ISVALID_DSET(dset) ) RETURN(NULL) ;
+   DSET_load(dset) ; if( !DSET_LOADED(dset)  ) RETURN(NULL) ;
+
+   if( start < 0     ) start = 0 ;
+   if( end   < start ) end   = DSET_NVALS(dset)-1 ;
+   nvals = end - start + 1 ; if( nvals <= 0 ) RETURN(NULL) ;
+   nvox  = DSET_NVOX(dset) ;
+
+   if( mmm != NULL ){
+     nmask = THD_countmask( nvox , mmm ) ;  /* number to keep */
+     if( nmask <= 0 ) RETURN(NULL) ;
+   } else {
+     nmask = nvox ;                         /* keep them all */
+#pragma omp critical (MALLOC)
+     mmm   = (byte *)malloc(sizeof(byte)*nmask) ;
+     if( mmm == NULL ){
+       ERROR_message("THD_dset_to_vectim: out of memory") ;
+       RETURN(NULL) ;
+     }
+     memset( mmm , 1 , sizeof(byte)*nmask ) ;
+   }
+
+#pragma omp critical (MALLOC)
+   mrv = (MRI_vectim *)malloc(sizeof(MRI_vectim)) ;
+
+   mrv->nvec   = nmask ;
+   mrv->nvals  = nvals ;
+   mrv->ignore = start ;
+#pragma omp critical (MALLOC)
+   mrv->ivec   = (int *)malloc(sizeof(int)*nmask) ;
+   if( mrv->ivec == NULL ){
+     ERROR_message("THD_dset_to_vectim: out of memory") ;
+     free(mrv) ; if( mmm != mask ) free(mmm) ;
+     RETURN(NULL) ;
+   }
+#pragma omp critical (MALLOC)
+   mrv->fvec  = (float *)malloc(sizeof(float)*nmask*nvals) ;
+   if( mrv->fvec == NULL ){
+     ERROR_message("THD_dset_to_vectim: out of memory") ;
+     free(mrv->ivec) ; free(mrv) ; if( mmm != mask ) free(mmm) ;
+     RETURN(NULL) ;
+   }
+
+   /* store desired voxel time series */
+
+   for( kk=iv=0 ; iv < nvox ; iv++ ){
+     if( mmm[iv] ) mrv->ivec[kk++] = iv ;  /* build index list */
+   }
+
+   if( nvals < DSET_NVALS(dset) ){ /* extract 1 at a time, save what we want */
+
+#pragma omp critical (MALLOC)
+     float *var = (float *)malloc(sizeof(float)*(DSET_NVALS(dset))) ;
+     for( kk=iv=0 ; iv < nvox ; iv++ ){
+       if( mmm[iv] == 0 ) continue ;
+       (void)THD_extract_array( iv , dset , 0 , var ) ;
+       AAmemcpy( VECTIM_PTR(mrv,kk) , var+start , sizeof(float)*nvals ) ;
        kk++ ;
      }
      free(var) ;
@@ -123,15 +216,15 @@ ENTRY("THD_dset_to_vectim_byslice") ;
 
    /* make a mask that includes cutting out un-desirable slices */
 
-#pragma omp critical
    { int ibot , itop , ii ;
+#pragma omp critical (MALLOC)
      mmm = (byte *)malloc(sizeof(byte)*nvox) ;
-     if( mask == NULL ) memset( mmm ,    1 , sizeof(byte)*nvox ) ;
-     else               memcpy( mmm , mask , sizeof(byte)*nvox ) ;
+     if( mask == NULL ) AAmemset( mmm ,    1 , sizeof(byte)*nvox ) ;
+     else               AAmemcpy( mmm , mask , sizeof(byte)*nvox ) ;
      if( kzbot > 0 )
-       memset( mmm               , 0 , sizeof(byte)*kzbot       *nxy ) ;
+       AAmemset( mmm               , 0 , sizeof(byte)*kzbot       *nxy ) ;
      if( kztop < nz-1 )
-       memset( mmm+(kztop+1)*nxy , 0 , sizeof(byte)*(nz-1-kztop)*nxy ) ;
+       AAmemset( mmm+(kztop+1)*nxy , 0 , sizeof(byte)*(nz-1-kztop)*nxy ) ;
    }
 
    /* and make the vectim using the standard function */
@@ -177,6 +270,7 @@ ENTRY("THD_2dset_to_vectim") ;
          if( nmaskv[id] <= 0 ) RETURN(NULL) ;
       } else {
          nmaskv[id] = nvoxv[id] ;                         /* keep them all */
+#pragma omp critical (MALLOC)
          mmmv[id]   = (byte *)malloc(sizeof(byte)*nmaskv[id]) ;
          if( mmmv[id] == NULL ){
             ERROR_message("THD_2dset_to_vectim: out of memory") ;
@@ -186,12 +280,15 @@ ENTRY("THD_2dset_to_vectim") ;
       }
    }
 
+#pragma omp critical (MALLOC)
    mrv = (MRI_vectim *)malloc(sizeof(MRI_vectim)) ;
 
    mrv->nvec   = nmaskv[0]+nmaskv[1] ;
    mrv->nvals  = nvals ;
    mrv->ignore = ignore ;
+#pragma omp critical (MALLOC)
    mrv->ivec   = (int *)malloc(sizeof(int)*(nmaskv[0]+nmaskv[1])) ;
+#pragma omp critical (MALLOC)
    ivvectmp    = (int *)malloc(sizeof(int)*(nmaskv[1])) ;
    if( mrv->ivec == NULL || ivvectmp == NULL){
      ERROR_message("THD_2dset_to_vectim: out of memory") ;
@@ -202,6 +299,7 @@ ENTRY("THD_2dset_to_vectim") ;
      if( mmmv[1] != mask2 ) free(mmmv[1]) ;
      RETURN(NULL) ;
    }
+#pragma omp critical (MALLOC)
    mrv->fvec  = (float *)malloc(sizeof(float)*(nmaskv[0]+nmaskv[1])*nvals) ;
    if( mrv->fvec == NULL ){
      ERROR_message("THD_2dset_to_vectim: out of memory") ;
@@ -229,21 +327,20 @@ ENTRY("THD_2dset_to_vectim") ;
 
    if( ignore > 0 ){  /* extract 1 at a time, save what we want */
 
+#pragma omp critical (MALLOC)
      float *var = (float *)malloc(sizeof(float)*(nvals+ignore)) ;
      mmmt = mmmv[0];
      for( kk=iv=0 ; iv < nvoxv[0] ; iv++ ){
        if( mmmt[iv] == 0 ) continue ;
        (void)THD_extract_array( iv , dsetv[0] , 0 , var ) ;
-#pragma omp critical (MEMCPY)
-       memcpy( VECTIM_PTR(mrv,kk) , var+ignore , sizeof(float)*nvals ) ;
+       AAmemcpy( VECTIM_PTR(mrv,kk) , var+ignore , sizeof(float)*nvals ) ;
        kk++ ;
      }
      mmmt = mmmv[1];
      for(    iv=0 ; iv < nvoxv[1] ; iv++ ){
        if( mmmt[iv] == 0 ) continue ;
        (void)THD_extract_array( iv , dsetv[1] , 0 , var ) ;
-#pragma omp critical (MEMCPY)
-       memcpy( VECTIM_PTR(mrv,kk) , var+ignore , sizeof(float)*nvals ) ;
+       AAmemcpy( VECTIM_PTR(mrv,kk) , var+ignore , sizeof(float)*nvals ) ;
        kk++ ;
      }
 
@@ -295,9 +392,8 @@ MRI_vectim * THD_vectim_copy( MRI_vectim *mrv )  /* 08 Apr 2010 */
 
    MAKE_VECTIM( qrv , mrv->nvec , mrv->nvals ) ;
    qrv->ignore = mrv->ignore ;
-#pragma omp critical (MEMCPY)
-   { memcpy( qrv->ivec , mrv->ivec , sizeof(int)*mrv->nvec ) ;
-     memcpy( qrv->fvec , mrv->fvec , sizeof(float)*mrv->nvec*mrv->nvals ) ; }
+   AAmemcpy( qrv->ivec , mrv->ivec , sizeof(int)*mrv->nvec ) ;
+   AAmemcpy( qrv->fvec , mrv->fvec , sizeof(float)*mrv->nvec*mrv->nvals ) ;
    qrv->nx = mrv->nx ; qrv->dx = mrv->dx ;
    qrv->ny = mrv->ny ; qrv->dy = mrv->dy ;
    qrv->nz = mrv->nz ; qrv->dz = mrv->dz ; qrv->dt = mrv->dt ;
@@ -331,8 +427,7 @@ MRI_vectim * THD_vectim_copy_nonzero( MRI_vectim *mrv ) /* 21 Sep 2010 */
      if( jj < nvals ){
        qrv->ivec[ngood] = mrv->ivec[ii] ;
        qar = VECTIM_PTR(qrv,ngood) ;
-#pragma omp critical (MEMCPY)
-       memcpy(qar,mar,sizeof(float)*nvals) ;
+       AAmemcpy(qar,mar,sizeof(float)*nvals) ;
        ngood++ ;
      }
    }
@@ -341,6 +436,21 @@ MRI_vectim * THD_vectim_copy_nonzero( MRI_vectim *mrv ) /* 21 Sep 2010 */
    qrv->ny = mrv->ny ; qrv->dy = mrv->dy ;
    qrv->nz = mrv->nz ; qrv->dz = mrv->dz ; qrv->dt = mrv->dt ;
    return qrv ;
+}
+
+/*---------------------------------------------------------------------*/
+/* Apply a function to each time series, presumably to edit
+   it in-place.  For 3dGroupInCorr -- 10 May 2012 -- RWCox.
+*//*-------------------------------------------------------------------*/
+
+void THD_vectim_applyfunc( MRI_vectim *mrv , void *vp )
+{
+   int iv , ii ;
+   void (*fp)(int,float *) = (void (*)(int,float *))(vp) ;
+
+   if( mrv == NULL || vp == NULL ) return ;
+
+   for( iv=0 ; iv < mrv->nvec ; iv++ ) fp( mrv->nvals, VECTIM_PTR(mrv,iv) ) ;
 }
 
 /*---------------------------------------------------------------------*/
@@ -408,16 +518,16 @@ void THD_vectim_spearman( MRI_vectim *mrv , float *vec , float *dp )
    if( mrv == NULL || vec == NULL || dp == NULL ) return ;
 
    nvec = mrv->nvec ; nvals = mrv->nvals ;
+#pragma omp critical (MALLOC)
    av   = (float *)malloc(sizeof(float)*nvals) ;
+#pragma omp critical (MALLOC)
    bv   = (float *)malloc(sizeof(float)*nvals) ;
 
-#pragma omp critical (MEMCPY)
-   memcpy( av , vec , sizeof(float)*nvals ) ;
+   AAmemcpy( av , vec , sizeof(float)*nvals ) ;
    sav = spearman_rank_prepare( nvals , av ) ; if( sav <= 0.0f ) sav = 1.e+9f ;
 
    for( iv=0 ; iv < nvec ; iv++ ){
-#pragma omp critical (MEMCPY)
-     memcpy( bv , VECTIM_PTR(mrv,iv) , sizeof(float)*nvals ) ;
+     AAmemcpy( bv , VECTIM_PTR(mrv,iv) , sizeof(float)*nvals ) ;
      dp[iv] = spearman_rank_corr( nvals , bv , sav , av ) ;
    }
 
@@ -435,16 +545,16 @@ void THD_vectim_quadrant( MRI_vectim *mrv , float *vec , float *dp )
    if( mrv == NULL || vec == NULL || dp == NULL ) return ;
 
    nvec = mrv->nvec ; nvals = mrv->nvals ;
+#pragma omp critical (MALLOC)
    av   = (float *)malloc(sizeof(float)*nvals) ;
+#pragma omp critical (MALLOC)
    bv   = (float *)malloc(sizeof(float)*nvals) ;
 
-#pragma omp critical (MEMCPY)
-   memcpy( av , vec , sizeof(float)*nvals ) ;
+   AAmemcpy( av , vec , sizeof(float)*nvals ) ;
    sav = quadrant_corr_prepare( nvals , av ) ; if( sav <= 0.0f ) sav = 1.e+9f ;
 
    for( iv=0 ; iv < nvec ; iv++ ){
-#pragma omp critical (MEMCPY)
-     memcpy( bv , VECTIM_PTR(mrv,iv) , sizeof(float)*nvals ) ;
+     AAmemcpy( bv , VECTIM_PTR(mrv,iv) , sizeof(float)*nvals ) ;
      dp[iv] = quadrant_corr( nvals , bv , sav , av ) ;
    }
 
@@ -462,7 +572,9 @@ void THD_vectim_tictactoe( MRI_vectim *mrv , float *vec , float *dp )
    if( mrv == NULL || vec == NULL || dp == NULL ) return ;
 
    nvec = mrv->nvec ; nvals = mrv->nvals ;
+#pragma omp critical (MALLOC)
    av   = (float *)malloc(sizeof(float)*nvals) ;
+#pragma omp critical (MALLOC)
    bv   = (float *)malloc(sizeof(float)*nvals) ;
 
    { float tbot , ttop ;
@@ -471,13 +583,11 @@ void THD_vectim_tictactoe( MRI_vectim *mrv , float *vec , float *dp )
      tictactoe_set_thresh( tbot , ttop ) ;
    }
 
-#pragma omp critical (MEMCPY)
-   memcpy( av , vec , sizeof(float)*nvals ) ;
+   AAmemcpy( av , vec , sizeof(float)*nvals ) ;
    sav = tictactoe_corr_prepare( nvals , av ) ; if( sav <= 0.0f ) sav = 1.e+9f ;
 
    for( iv=0 ; iv < nvec ; iv++ ){
-#pragma omp critical (MEMCPY)
-     memcpy( bv , VECTIM_PTR(mrv,iv) , sizeof(float)*nvals ) ;
+     AAmemcpy( bv , VECTIM_PTR(mrv,iv) , sizeof(float)*nvals ) ;
      dp[iv] = tictactoe_corr( nvals , bv , sav , av ) ;
    }
 
@@ -497,13 +607,16 @@ ENTRY("THD_vectim_ktaub") ;
    if( mrv == NULL || vec == NULL || dp == NULL ) EXRETURN ;
 
    nvec = mrv->nvec ; nvals = mrv->nvals ;
+#pragma omp critical (MALLOC)
    av   = (float *)malloc(sizeof(float)*nvals) ;
+#pragma omp critical (MALLOC)
    aav  = (float *)malloc(sizeof(float)*nvals) ;
+#pragma omp critical (MALLOC)
    bv   = (float *)malloc(sizeof(float)*nvals) ;
+#pragma omp critical (MALLOC)
    qv   = (int   *)malloc(sizeof(int  )*nvals) ;
 
-#pragma omp critical (MEMCPY)
-   memcpy( av , vec , sizeof(float)*nvals ) ;
+   AAmemcpy( av , vec , sizeof(float)*nvals ) ;
    for( jv=0 ; jv < nvals ; jv++ ) qv[jv] = jv ;
 STATUS("qsort") ;
    qsort_floatint( nvals , av , qv ) ;
@@ -512,13 +625,101 @@ STATUS("loop") ;
    for( iv=0 ; iv < nvec ; iv++ ){
      dv = VECTIM_PTR(mrv,iv) ;
      for( jv=0 ; jv < nvals ; jv++ ) bv[jv] = dv[qv[jv]] ;
-#pragma omp critical (MEMCPY)
-     memcpy( aav , av , sizeof(float)*nvals) ;
+     AAmemcpy( aav , av , sizeof(float)*nvals) ;
      dp[iv] = kendallNlogN( aav , bv , nvals ) ;
    }
 
    free(qv) ; free(bv) ; free(aav) ; free(av) ; EXRETURN ;
 }
+
+/*---------------------------------------------------------------------*/
+/* 12 May 2012: Quantile correlation. */
+
+void THD_vectim_quantile( MRI_vectim *mrv , float *vec , float *dp )
+{
+   float *av , *bv , sav ;
+   int nvec, nvals, iv ;
+
+   if( mrv == NULL || vec == NULL || dp == NULL ) return ;
+
+   nvec = mrv->nvec ; nvals = mrv->nvals ;
+#pragma omp critical (MALLOC)
+   av   = (float *)malloc(sizeof(float)*nvals) ;
+#pragma omp critical (MALLOC)
+   bv   = (float *)malloc(sizeof(float)*nvals) ;
+
+   AAmemcpy( av , vec , sizeof(float)*nvals ) ;
+   sav = quantile_prepare( nvals , av ) ; if( sav <= 0.0f ) sav = 1.e+9f ;
+
+   for( iv=0 ; iv < nvec ; iv++ ){
+     AAmemcpy( bv , VECTIM_PTR(mrv,iv) , sizeof(float)*nvals ) ;
+     dp[iv] = quantile_corr( nvals , bv , sav , av ) ;
+   }
+
+   free(bv) ; free(av) ; return ;
+}
+
+/*---------------------------------------------------------------------*/
+/* 04 May 2012: Distances. */
+/* Special parameters:
+   abs: 0 --> Euclidian distance
+        1 --> City Block distance
+   xform: String flags for transforming distance.
+            If string contains "n_scale", scale distance by number
+            of values (dimensions) at each voxel
+            If string contains "inv", return the inverse of the distance
+*/
+void THD_vectim_distance( MRI_vectim *mrv , float *vec , 
+                          float *dp, int abs, char *xform)
+{
+   
+   if( mrv == NULL || vec == NULL || dp == NULL ) return ;
+
+ AFNI_OMP_START ;
+#pragma omp parallel if( mrv->nvec > 1 && mrv->nvec * mrv->nvals > 999999 )
+   {  int nvec=mrv->nvec, nvals=mrv->nvals, nv1=nvals-1, iv, ii ; 
+      float sum, *fv, a1, a2;
+#pragma omp for
+      for( iv=0 ; iv < nvec ; iv++ ){
+         fv = VECTIM_PTR(mrv,iv) ;
+         for( sum=0.0f,ii=0 ; ii < nv1 ; ii+=2 ) {
+            a1 = fv[ii]-vec[ii]; a2 = fv[ii+1]-vec[ii+1];
+            if (!abs) sum += (a1*a1+a2*a2);
+            else sum += (ABS(a1)+ABS(a2));
+         }
+         if( ii == nv1 ) {
+            a1 = fv[ii]-vec[ii];
+            if (!abs) sum += a1*a1;
+            else sum += ABS(a1);
+         }
+         if (!abs) dp[iv] = sqrt(sum) ;
+         else dp[iv] = sum;
+      }
+   } /* end OpenMP */
+   AFNI_OMP_END ;
+
+   if (xform) {
+      float a1 = 1.0; int iv, nvec=mrv->nvec;
+      if (strstr(xform,"n_scale")) { a1 = (float)mrv->nvals; }
+      if (strstr(xform,"inv")) {
+         for( iv=0 ; iv < nvec ; iv++ ) {
+            if (dp[iv] != 0.0) {
+               dp[iv] = a1/dp[iv]; 
+            } 
+         }
+      } else if (a1 != 1.0) {
+         for( iv=0 ; iv < nvec ; iv++ ) {
+            if (dp[iv] != 0.0) {
+               dp[iv] = dp[iv]/a1;
+            } 
+         }
+      } 
+   }
+ 
+  return ;
+}
+
+
 
 #define USE_VSTEP
 #ifdef  USE_VSTEP
@@ -561,7 +762,9 @@ ENTRY("THD_vectim_pearsonBC") ;
    nx = mrv->nx ; ny = mrv->ny ; nz = mrv->nz ; nxy = nx*ny ;
    ii = sijk % nx ; ik = sijk / nxy ; ij = (sijk-ik*nxy) / nx ;
 
+#pragma omp critical (MALLOC)
    sar = (float **)malloc(sizeof(float *)*nmask) ;
+#pragma omp critical (MALLOC)
    yar = (float **)malloc(sizeof(float *)*nmask) ;
 
    for( nsar=mm=0 ; mm < nmask ; mm++ ){
@@ -721,8 +924,7 @@ ENTRY("THD_vectim_to_dset") ;
      var = (float *)malloc(sizeof(float)*(nvals+ign)) ;
      for( kk=0 ; kk < nvec ; kk++ ){
        (void)THD_extract_array( mrv->ivec[kk] , dset , 0 , var ) ;
-#pragma omp critical (MEMCPY)
-       memcpy( var+ign , VECTIM_PTR(mrv,kk) , sizeof(float)*nvals ) ;
+       AAmemcpy( var+ign , VECTIM_PTR(mrv,kk) , sizeof(float)*nvals ) ;
        THD_insert_series( mrv->ivec[kk] , dset ,
                           nvals , MRI_float , var , 0 ) ;
      }
@@ -757,16 +959,14 @@ MRI_vectim * THD_tcat_vectims( int nvim , MRI_vectim **vim )
    vout->nx = vim[0]->nx ; vout->dx = vim[0]->dx ;
    vout->ny = vim[0]->ny ; vout->dy = vim[0]->dy ;
    vout->nz = vim[0]->nz ; vout->dz = vim[0]->dz ; vout->dt = vim[0]->dt ;
-#pragma omp critical (MEMCPY)
-   { memcpy( vout->ivec , vim[0]->ivec , sizeof(int)*vim[0]->nvec ) ; }
+   AAmemcpy( vout->ivec , vim[0]->ivec , sizeof(int)*vim[0]->nvec ) ;
 
    for( nvv=iv=0 ; iv < nvim ; iv++,nvv+=nvals ){
      nvals = vim[iv]->nvals ;
      for( vv=0 ; vv < nvec ; vv++ ){
        vout_ptr = VECTIM_PTR(vout,vv) + nvv ;
        vin_ptr  = VECTIM_PTR(vim[iv],vv) ;
-#pragma omp critical (MEMCPY)
-       { memcpy( vout_ptr , vin_ptr , sizeof(float)*nvals ) ; }
+       AAmemcpy( vout_ptr , vin_ptr , sizeof(float)*nvals ) ;
      }
    }
 
@@ -787,6 +987,7 @@ MRI_vectim * THD_dset_list_to_vectim( int nds, THD_3dim_dataset **ds, byte *mask
    for( kk=0 ; kk < nds ; kk++ )
      if( !ISVALID_DSET(ds[kk]) ) return NULL ;
 
+#pragma omp critical (MALLOC)
    vim = (MRI_vectim **)malloc(sizeof(MRI_vectim *)*nds) ;
    for( kk=0 ; kk < nds ; kk++ ){
      vim[kk] = THD_dset_to_vectim( ds[kk] , mask , 0 ) ;

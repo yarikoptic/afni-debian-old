@@ -17,12 +17,49 @@ typedef struct {
    char **pname;
 } SUMA_CLASS_STAT;
   
+typedef struct {
+   float *b; /* bin center */
+   int *c;  /* count in bin */
+   float *cn;  /* count in bin / n */
+   int K;   /* number of bins */
+   float W; /* bin width */
+   int n; /* number of samples */
+   float min; /* min sample value */
+   float max; /* max sample value */
+   char *label; /* a string descriptor */
+   int N_ignored; /* Number of samples out of n that
+                     were outside the range and were ignored
+                     during histogram build. Normally, values
+                     outside range would be assigned to end bins*/
+   int *isrt; /* bin index for sorting cn from min to max */
+} SUMA_HIST;
+
+typedef enum { SUMA_FEAT_NOT_SET=-1, 
+               SUMA_FEAT_GAMMA=0, SUMA_FEAT_NP, 
+               SUMA_FEAT_N_DIST_TYPE } SUMA_FEAT_DIST_TYPE;
+ 
+typedef struct {
+   char *label;
+   SUMA_FEAT_DIST_TYPE tp;
+   double scpar[5];
+   double par[5];
+   SUMA_HIST *hh;
+} SUMA_FEAT_DIST;
+
+typedef struct {
+  SUMA_FEAT_DIST **FD;
+  int N_FD;
+  int N_alloc;
+} SUMA_FEAT_DISTS;
 
 typedef struct {
    void (*helpfunc)(int);
    char *aset_name;
    char *mset_name;
-   char *sig_name;
+   char *sig_name;            
+   NI_str_array *sig_names;
+   char *samp_name;
+   NI_str_array *samp_names;
    char *gold_name;
    char *gold_bias_name;
    char *this_pset_name;
@@ -41,6 +78,7 @@ typedef struct {
    THD_3dim_dataset *aset;
    THD_3dim_dataset *mset;
    THD_3dim_dataset *sig;
+   THD_3dim_dataset *samp;
    THD_3dim_dataset *pset;
    THD_3dim_dataset *cset;
    THD_3dim_dataset *fset;
@@ -61,11 +99,14 @@ typedef struct {
    char *Bsetname;
    THD_3dim_dataset *pstCgALL;
    char *pstCgALLname;
-   NI_element *ndist;
+   SUMA_FEAT_DISTS *FDV;
    int debug;
+   int verbose;
    int idbg, jdbg, kdbg;
    float binwidth;
-   NI_str_array *feats, *clss;
+   NI_str_array *feats, *clss, *featsfam;
+   float **feat_exp;
+   int featexpmeth;
    int Other;
    int *keys;
    
@@ -99,6 +140,7 @@ typedef struct {
    byte DO_c;
    byte DO_x;
    byte DO_r;
+   byte Writepcg_G_au;
    
    int fitmeth;
    int N_enhance_cset_init;
@@ -121,6 +163,10 @@ typedef struct {
    int *Split;
    
    BLUR_METH blur_meth;
+   
+   char *ShowThisDist;
+   int fast; /* if 1, use faster - I hope - version of p_C_GIV_A */
+   float range[2];
 } SEG_OPTS;
 
 void GenPriors_usage(int) ;
@@ -130,6 +176,7 @@ byte *MaskSetup(SEG_OPTS *Opt, THD_3dim_dataset *aset,
                 THD_3dim_dataset **msetp, byte **cmaskp, int dimcmask, 
                 float mask_bot, float mask_top, int *mcount); 
 THD_3dim_dataset *Seg_load_dset( char *set_name );
+THD_3dim_dataset *Seg_load_dset_eng( char *set_name, char *view );
 SEG_OPTS *SegOpt_Struct(void );
 void *Seg_NI_read_file(char *fname);
 SEG_OPTS *free_SegOpts(SEG_OPTS *);

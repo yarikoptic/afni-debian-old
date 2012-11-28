@@ -10,9 +10,17 @@
 # Commannd line to run this script: 3dIVA.R Output (Output is a file
 # in which the running progress including error message will be stored)
 
+#Clean up
+rm(list = ls())
+
+first.in.path <- function(file) {
+   ff <- paste(strsplit(Sys.getenv('PATH'),':')[[1]],'/', file, sep='')
+   ff<-ff[lapply(ff,file.exists)==TRUE];
+   #cat('Using ', ff[1],'\n');
+   return(gsub('//','/',ff[1], fixed=TRUE)) 
+}
+source(first.in.path('AFNIio.R'))
 system("rm -f .RData")
-source(file.path(Sys.getenv("AFNI_R_DIR"), "AFNIio.R"))
-#source("~/abin/AFNIio.R")
 library(fastICA)
 
 # C is much faster than R!
@@ -59,9 +67,10 @@ dimx <- Data$dim[1]
 dimy <- Data$dim[2]
 dimz <- Data$dim[3]
 tp   <- Data$dim[4]
-NOTE <- Data$header$HISTORY_NOTE
-ORIG <- Data$origin
-DELTA <- Data$delta
+head <- Data$header
+#NOTE <- Data$header$HISTORY_NOTE
+#ORIG <- Data$origin
+#DELTA <- Data$delta
 
 NData <- array(data=NA, dim=c(dimx, dimy, dimz, tp))
 NData <- Data$brk
@@ -86,7 +95,9 @@ dim(MData) <- c(dimx, dimy, dimz, NoComp)
 
 MyLabel <- rep("component", NoComp)
 
-write.AFNI(OutFile, MData, MyLabel, note=NOTE, origin=ORIG, delta=DELTA, idcode="whatever")
+#write.AFNI(OutFile, MData, MyLabel, note=NOTE, origin=ORIG, delta=DELTA, idcode="whatever")
+write.AFNI(OutFile, MData, MyLabel, defhead=head, idcode="whatever")
+
 statpar <- "3drefit"
 
 if (View == "tlrc") statpar <- paste(statpar, " -view tlrc -newid ", OutFile) else

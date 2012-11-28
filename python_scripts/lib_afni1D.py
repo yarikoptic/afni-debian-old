@@ -142,6 +142,19 @@ class Afni1D:
          return 0
       return 1
 
+   # --- begin: mathematical manipulations ---
+
+   def transpose(self):
+      """transpose the matrix and swap nrows and ncols"""
+      if self.verb > 3: print '-- Afni1D transpose...'
+      if not self.ready:
+         print "** matrix '%s' is not ready for transposing" % self.name
+         return
+      self.mat  = [[row[i] for row in self.mat] for i in range(self.nt)]
+      newnt     = self.nvec
+      self.nvec = self.nt
+      self.nt   = newnt
+
    def demean(self):
       """demean each vector per run (mean of each run will be zero)
 
@@ -171,11 +184,13 @@ class Afni1D:
 
       return 0
 
-   def derivative(self):
+   def derivative(self, direct=0):
       """change each value to its derivative (cur val - previous)
          new time[0] will always be 0
 
          process the data per run, so derivatives do not cross boundaries
+
+         direct: 0 means backward difference, 1 means forward
 
          return 0 on success"""
 
@@ -194,13 +209,20 @@ class Afni1D:
           print "-- derivative: over %d runs of lengths %s" \
                 % (self.nruns, self.run_len)
 
-      # apply derivative to each vector as one run, then clear run breaks
+      # apply derivative to each run of each vector
       for ind in range(self.nvec):
-         UTIL.derivative(self.mat[ind], in_place=1)
-         offset = 0
-         for t in self.run_len:
-            self.mat[ind][offset] = 0
-            offset += t
+         UTIL.derivative(self.mat[ind], in_place=1, direct=direct)
+         # if forward diff, clear final indexes, else clear initial
+         if direct:
+            offset = -1
+            for t in self.run_len:
+               offset += t
+               self.mat[ind][offset] = 0
+         else:
+            offset = 0
+            for t in self.run_len:
+               self.mat[ind][offset] = 0
+               offset += t
 
       return 0
 
@@ -241,7 +263,7 @@ class Afni1D:
 
       return 0
 
-   def collapse_cols(self, method):
+   def collapse_cols(self, method, weight=None):
       """collapsed the matrix to a single array of length nt (nvec will = 1)
 
          collapsing will apply 'method' across the nvec per time point
@@ -251,6 +273,7 @@ class Afni1D:
              method = 'max'             : max across nvec
              method = 'maxabs'          : max abs across nvec
              method = 'euclidean_norm'  : sqrt(sum squares)
+             method = 'weighted_enorm'  : sqrt(sum weighted squares)
 
          Note: the result will still be a trivial 2-D array, where element 0
                is the collapsed time series.  This allows other functionality
@@ -281,6 +304,17 @@ class Afni1D:
       elif method == 'euclidean_norm':
          mat = [UTIL.euclidean_norm([self.mat[v][t] for v in range(self.nvec)])\
                                                     for t in range(self.nt)]
+      elif method == 'weighted_enorm':
+         if weight == None:
+            print '** missing weight vector for weighted_enorm'
+            return 1
+         if len(weight) != self.nvec:
+            print '** weighted_enorm weight vector length (%d) != nvec (%d)' \
+                  % (len(weight), self.nvec)
+            return 1
+         mat = [UTIL.weighted_enorm(
+                  [self.mat[v][t] for v in range(self.nvec)], weight) \
+                  for t in range(self.nt)]
       else:
          print "** collapse_cols: unknown method:", method
          return 1
@@ -292,6 +326,59 @@ class Afni1D:
       del(self.mat)
       self.mat = [mat]
       return 0
+
+   def mat_times_vec(self, vec):
+      """modify matrix as self.mat * vec"""
+      lv = len(vec)
+      if lv == 0 or self.nt == 0 or self.nvec == 0:
+         if self.verb > 1: print '** have mat_times_vec with empty inputs'
+         return
+
+      for col, mvec in enumerate(self.mat):
+         val = vec[col]
+         for ind in range(self.nt):
+            mvec[ind] *= val
+
+   def unitize(self):
+      """make every vector unit length"""
+
+      for ind, vec in enumerate(self.mat):
+         vlen = UTIL.L2_norm(vec)
+         self.mat[ind] = UTIL.lin_vec_sum(1.0/vlen, vec, 0, None)
+
+   def project_out_vec(self, vec=None):
+      """project a vector out of the matrix vectors, if None, use mean
+
+         for each vector y, subtract <vT,y>/<vT.v> * v
+
+         return 0 on success, else 1
+      """
+      if vec == None: vec = self.get_mean_vec()
+      if len(vec) != self.nt:
+         print '** project_out_vec: bad length %d != %d' % (len(vec), self.nt)
+         return 1
+
+      vlen = UTIL.L2_norm(vec)
+      if vlen == 0: # then nothing to do
+         if self.verb > 0: print '-- project_out_vec: empty vector to remove'
+         return 0
+      vunit = UTIL.lin_vec_sum(1.0/vlen, vec, 0, None)
+
+      self.mat = [UTIL.proj_out_vec(mv, vunit, unit_v2=1) for mv in self.mat]
+
+   # --- end: mathematical manipulations ---
+
+   # --- these functions return some aspect of the matrix ---
+
+   def get_mean_vec(self):
+      """return a single vector as the mean of all matrix vectors"""
+      v = [0] * self.nt
+      if self.nt == 0: return []
+      for ind in range(self.nt):
+         v[ind] = UTIL.loc_sum([self.mat[i][ind] for i in range(self.nvec)])
+      return UTIL.lin_vec_sum(1.0/self.nt, v, 0, None)
+
+   # --- end: functions returning some aspect of the matrix ---
 
    def copy(self):
       """return a complete (deep)copy of the current object"""
@@ -534,7 +621,8 @@ class Afni1D:
       total = self.mat[0].count(0)              # start with censor count
       if invert: total = self.nt - total
 
-      print 'total number of censored TRs = %d' % total
+      if self.verb: print 'total number of censored TRs = %d' % total
+      else:         print total
 
       return 0
 
@@ -753,17 +841,6 @@ class Afni1D:
       self.cormat_ready = 0
 
       return 0
-
-   def transpose(self):
-      """transpose the matrix and swap nrows and ncols"""
-      if self.verb > 3: print '-- Afni1D transpose...'
-      if not self.ready:
-         print "** matrix '%s' is not ready for transposing" % self.name
-         return
-      self.mat  = [[row[i] for row in self.mat] for i in range(self.nt)]
-      newnt     = self.nvec
-      self.nvec = self.nt
-      self.nt   = newnt
 
    def simplecopy(self):
       return Afni1D(from_mat=1, matrix=self.mat, verb=self.verb)
@@ -1418,6 +1495,19 @@ class Afni1D:
       if mesg: return "%s %s" % (mesg, rstr)
       else: return rstr
 
+   def show_min_mean_max_stdev(self, col=-1, verb=1):
+      """show min, mean, max, stdev for each column (unless col specified)"""
+
+      if verb: print "file %s (len %d)" % (self.fname, self.nt)
+      for cind, col in enumerate(self.mat):
+         if verb:
+            ps = "    col %d: " % cind
+            form = "min = %7.4f, mean = %7.4f, max = %7.4f, stdev = %7.4f"
+         else:
+            ps = ''
+            form = "%7.4f %7.4f %7.4f %7.4f"
+         print ps + form % UTIL.min_mean_max_stdev(col)
+
    def get_indices_str(self, ind_types):
       """return an index list (sub-brick selector form) for the
          following groups:
@@ -1819,12 +1909,53 @@ class AfniData(object):
 
       return 0
 
-   def married_type_string(self, mtype):
-      if   mtype == 0: return 'None'
-      elif mtype == 1: return 'Amp Mod'
-      elif mtype == 2: return 'Dur Mod'
-      elif mtype == 3: return 'Amp/Dur Mod'
-      else:            return 'Unknown'
+   def show_married_info(self):
+      print '-- modulation type: %s' % self.married_info_string()
+
+   def married_info_string(self):
+      if   self.mtype == MTYPE_NONE: return 'not a married format'
+
+      namp = self.num_amplitudes()
+      adur = self.ave_dur_modulation()
+
+      if self.mtype == MTYPE_AMP:
+         return 'amplitude modulation (%d modulators)' % namp
+
+      if self.mtype == MTYPE_DUR:
+         return 'duration modulation (average duration %g)' % adur
+
+      if self.mtype == MTYPE_AMP|MTYPE_DUR:
+         return 'amp and dur modulation (%d amp mods, ave dur %g)'%(namp, adur)
+
+      return '** invalid modulation type %d' % self.mtype
+
+   def num_amplitudes(self):
+      if not self.mtype & MTYPE_AMP: return 0
+      if not self.mdata: return 0
+      for row in self.mdata:
+         if len(row) == 0: continue
+         return len(row[0][1])  # have amplitudes, return the length
+      return 0 # no valid rows found
+
+   def ave_dur_modulation(self):
+      if not self.mtype & MTYPE_DUR: return 0
+      if not self.mdata: return 0
+      sum, count = 0.0, 0
+      for row in self.mdata:
+         if len(row) == 0: continue
+         count += len(row)
+         sum += UTIL.loc_sum([entry[2] for entry in row])
+      if count == 0: return 0
+      return sum*1.0/count # be wary of integers
+
+   def married_type_string(self, mtype=None):
+      if mtype == None: mtype = self.mtype
+
+      if   mtype == MTYPE_NONE:            return 'None'
+      elif mtype == MTYPE_AMP:             return 'Amp Mod'
+      elif mtype == MTYPE_DUR:             return 'Dur Mod'
+      elif mtype == MTYPE_AMP | MTYPE_DUR: return 'Amp/Dur Mod'
+      else:                                return 'Unknown'
 
    def randomize_trs(self, seed=0):
       """reorder the matrix rows randomly"""

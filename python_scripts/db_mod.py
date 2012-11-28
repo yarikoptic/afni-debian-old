@@ -1,8 +1,8 @@
 #!/usr/bin/env python
+import sys
 
 # whine about execution as a main program
 if __name__ == '__main__':
-   import sys
    print '** %s: not a main program' % sys.argv[0].split('/')[-1]
    sys.exit(1)
 
@@ -156,7 +156,7 @@ def make_outlier_commands(proc):
           '    # censor outlier TRs per run, ignoring the first %d TRs\n'     \
           '    # - censor when more than %g of automask voxels are outliers\n'\
           '    # - step() defines which TRs to remove via censoring\n'        \
-          '    1deval -a outcount_r$run.1D '                                  \
+          '    1deval -a outcount.r$run.1D '                                  \
           '-expr "1-step(a-%g)%s" > rm.out.cen.r$run.1D\n'                    \
           % (nskip, censor, censor, dstr)
         cs1 = '\n'                                                          \
@@ -188,7 +188,7 @@ def make_outlier_commands(proc):
     else:                             lstr = ''
 
     prev_prefix = proc.prev_prefix_form_run(view=1)
-    ofile = 'outcount_r$run.1D'
+    ofile = 'outcount.r$run.1D'
     warn  = '** TR #0 outliers: possible pre-steady state TRs in run $run'
     proc.out_wfile = 'out.pre_ss_warn.txt'
 
@@ -213,7 +213,7 @@ def make_outlier_commands(proc):
 
     cmd += 'end\n\n'                                                      \
            '# catenate outlier counts into a single time series\n'        \
-           'cat outcount_r??.1D > outcount.rall.1D\n'                     \
+           'cat outcount.r*.1D > outcount_rall.1D\n'                      \
            '%s\n' % cs1
  
     return 0, cmd
@@ -339,7 +339,6 @@ def db_cmd_align(proc, block):
     # store alignment matrix file for possible later use
     proc.a2e_mat = "%s%s_mat.aff12.1D" % (proc.anat.prefix, suffix)
 
-
     # if e2a:   update anat and tlrc to '_ss' version (intermediate, stripped)
     #           (only if skull: '-anat_has_skull no' not found in extra_opts)
     #           (not if using adwarp)
@@ -351,8 +350,10 @@ def db_cmd_align(proc, block):
             suffix = '_strip'
             proc.anat.prefix = "%s%s" % (proc.anat.prefix, suffix)
             if proc.tlrcanat:
-                proc.tlrcanat.prefix = "%s%s" % (proc.tlrcanat.prefix, suffix)
+                if not proc.tlrcanat.exist():
+                   proc.tlrcanat.prefix = "%s%s" % (proc.tlrcanat.prefix, suffix)
             proc.tlrc_ss = 0
+            proc.anat_has_skull = 0     # make note that skull is gone
             istr = 'intermediate, stripped,'
         else: # just set istr
             istr = 'current'
@@ -360,8 +361,10 @@ def db_cmd_align(proc, block):
     else: # a2e
         proc.anat.prefix = "%s%s" % (proc.anat.prefix, suffix)
         if proc.tlrcanat:
-            proc.tlrcanat.prefix = "%s%s" % (proc.tlrcanat.prefix, suffix)
+            if not proc.tlrcanat.exist():
+               proc.tlrcanat.prefix = "%s%s" % (proc.tlrcanat.prefix, suffix)
         proc.tlrc_ss = 0        # skull-strip no longer required
+        proc.anat_has_skull = 0 # make note that skull is gone
 
         # also, set strings for header
         istr = 'aligned and stripped,'
@@ -376,9 +379,6 @@ def db_cmd_align(proc, block):
 
     # note the alignment in EPIs warp bitmap (2=a2e)
     proc.warp_epi |= WARP_EPI_ALIGN_A2E
-
-    # in any case, our current anat is not stripped
-    proc.anat_has_skull = 0
 
     return hdr + cmd
 
@@ -1067,6 +1067,7 @@ def db_cmd_volreg(proc, block):
     if block.opts.find_opt('-volreg_no_extent_mask'): do_extents = 0
 
     cur_prefix = proc.prefix_form_run(block)
+    proc.volreg_prefix = cur_prefix
     cstr   = '' # appended to comment string
     if dowarp or doe2a:
         # verify that we have someplace to warp to
@@ -1198,10 +1199,10 @@ def db_cmd_volreg(proc, block):
         cmd = cmd + '\n    # if there was an error, exit so user can see'     \
                     '\n    if ( $status ) exit\n\n'
 
+    proc.mot_default = 'dfile_rall.1D'
     cmd = cmd + "end\n\n"                                                     \
                 "# make a single file of registration params\n"               \
-                "cat dfile.r??.1D > dfile.rall.1D\n\n"
-    proc.mot_default = 'dfile.rall.1D'
+                "cat dfile.r*.1D > %s\n\n" % proc.mot_default
 
     # if not censoring motion, make a generic motion file
     if not proc.user_opts.find_opt('-regress_censor_motion'):
@@ -1285,10 +1286,10 @@ def db_cmd_volreg(proc, block):
     if proc.view == '+tlrc': aset = proc.tlrcanat
     else:                    aset = proc.anat
     if aset != None:
-       proc.anat_final = aset
+       proc.anat_final = aset.new(new_pref='anat_final.%s'%proc.subj_label)
        cmd += "# create an anat_final dataset, aligned with stats\n"    \
-              "3dcopy %s anat_final.%s\n\n"                             \
-              % (proc.anat_final.pv(), proc.subj_label)
+              "3dcopy %s %s\n\n"                                        \
+              % (aset.pv(), proc.anat_final.prefix)
 
     if do_extents: emask = proc.mask_extents.prefix
     else:          emask = ''
@@ -1374,6 +1375,9 @@ def db_mod_surf(block, proc, user_opts):
        if not proc.surf_spec_var or not proc.surf_hemilist:
           print '** error: failed to make spec var from %s' % snames[0]
           return None
+
+       # note basename of first spec file for later use
+       proc.surf_spec_base = snames[0]
 
     opt = user_opts.find_opt('-surf_anat_aligned')
     if opt: proc.surf_anat_aligned = opt.parlist[0]
@@ -1501,8 +1505,34 @@ def db_cmd_surf(proc, block):
 
     cmd += cmd_vol2surf(proc, block)
 
+    # add a command script for running suma
+    if proc.suma_cmd_file: cmd += write_suma_script(proc, block)
+
     proc.bindex += 1            # increment block index
     proc.pblabel = block.label  # set 'previous' block label
+
+    return cmd
+
+def write_suma_script(proc, block):
+    """make a convenience script for running suma, since we know inputs"""
+    if not proc.suma_cmd_file: return
+    if not proc.surf_sv: return
+    if len(proc.surf_spec_base) < 1: return
+
+    # set variables for spec and sv directories
+
+    if proc.surf_spd_var: specd = '$%s/' % proc.surf_spd_var
+    else:                 specd = ''
+
+    if proc.surf_svd_var: svd = '$%s/' % proc.surf_svd_var
+    else:                 svd = ''
+
+    cmd = '# make local script for running suma, and make it executable\n' \
+          'echo suma -spec %s%s \\\n'                   \
+          '          -sv %s%s > %s\n'                   \
+          'chmod 755 %s\n\n'                            \
+          % (specd, proc.surf_spec_base[0], svd,
+             proc.surf_sv.pv(), proc.suma_cmd_file, proc.suma_cmd_file)
 
     return cmd
 
@@ -1565,8 +1595,9 @@ def cmd_surf_align(proc):
           '                        -surf_anat $%s/%s \\\n'                    \
           '                        -wd%s \\\n'                                \
           '                        -atlas_followers -overwrite_resp S\\\n'    \
-          '                        -prefix ${subj}_SurfVol_Alnd_Exp \n\n'     \
-        % (proc.anat_final.pv(), proc.surf_svd_var, proc.surf_sv.pv(), sstr)
+          '                        -prefix %s \n\n'                           \
+        % (proc.anat_final.pv(), proc.surf_svd_var, proc.surf_sv.pv(), sstr,
+           newsv.prefix)
 
     # and apply the new surf_sv, along with directories
     update_surf_sv(proc, newsv)
@@ -1802,13 +1833,10 @@ def db_mod_mask(block, proc, user_opts):
     if len(block.opts.olist) == 0: # then init
         block.opts.add_opt('-mask_type', 1, ['union'], setpar=1)
         block.opts.add_opt('-mask_dilate', 1, [1], setpar=1)
+        block.opts.add_opt('-mask_rm_segsy', 1, ['yes'], setpar=1)
         block.opts.add_opt('-mask_test_overlap', 1, ['yes'], setpar=1)
 
     # check for user updates
-    uopt = user_opts.find_opt('-mask_type')
-    bopt = block.opts.find_opt('-mask_type')
-    if uopt and bopt:
-        bopt.parlist[0] = uopt.parlist[0]   # no worries, using acplist
 
     uopt = user_opts.find_opt('-mask_dilate')
     bopt = block.opts.find_opt('-mask_dilate')
@@ -1820,21 +1848,15 @@ def db_mod_mask(block, proc, user_opts):
             block.valid = 0
             return 1
 
-    uopt = user_opts.find_opt('-mask_apply')
-    bopt = block.opts.find_opt('-mask_apply')
-    if uopt:
-        if bopt: bopt.parlist = uopt.parlist
-        else: block.opts.add_opt('-mask_apply', 1, uopt.parlist, setpar=1)
-
-    # maybe we do not want cormat warnings
-    uopt = user_opts.find_opt('-mask_test_overlap')
-    if uopt:
-        bopt = block.opts.find_opt('-mask_test_overlap')
-        if bopt: bopt.parlist = uopt.parlist
-        else: block.opts.add_opt('-mask_test_overlap', 1,
-                                 uopt.parlist, setpar=1)
+    apply_uopt_to_block('-mask_apply',        user_opts, block)
+    apply_uopt_to_block('-mask_rm_segsy',     user_opts, block)
+    apply_uopt_to_block('-mask_segment_anat', user_opts, block)
+    apply_uopt_to_block('-mask_test_overlap', user_opts, block)
+    apply_uopt_to_block('-mask_type',         user_opts, block)
 
     proc.mask_epi = BASE.afni_name('full_mask%s$subj' % proc.sep_char)
+    # we have an EPI mask, add it to the roi_dict for optional regress_ROI
+    proc.roi_dict['brain'] = proc.mask_epi
     proc.mask = proc.mask_epi   # default to referring to EPI mask
 
     block.valid = 1
@@ -1863,12 +1885,13 @@ def mask_created(mask):
 #    - apply from -tlrc_base
 # add -mask_apply TYPE, TYPE in {epi, anat, group, extents}
 #     (this would override -regress_apply_mask)
+# if have anat_final, segment it and resample to match EPI
 def db_cmd_mask(proc, block):
     cmd = ''
     opt = block.opts.find_opt('-mask_type')
     type = opt.parlist[0]
-    if type == 'union': min = 0            # result must be greater than min
-    else:               min = 0.999
+    if type == 'union': minv = 0           # result must be greater than minv
+    else:               minv = 0.999
 
     # if we have an EPI mask, set the view here
     if proc.mask_epi.view == '': proc.mask_epi.view = proc.view
@@ -1893,7 +1916,8 @@ def db_cmd_mask(proc, block):
                     "3dMean -datum short -prefix rm.mean rm.mask*.HEAD\n"    \
                     "3dcalc -a rm.mean%s -expr 'ispositive(a-%s)' "          \
                     "-prefix %s\n\n" %                                       \
-                    (str(min), type, proc.view, str(min), proc.mask_epi.prefix)
+                    (str(minv), type, proc.view, str(minv),
+                     proc.mask_epi.prefix)
     else:  # just copy the one
         cmd = cmd + "# only 1 run, so copy this to full_mask\n"              \
                     "3dcopy rm.mask_r01%s %s\n\n"                            \
@@ -1912,7 +1936,7 @@ def db_cmd_mask(proc, block):
         if mc == None: return
         cmd = cmd + mc
 
-    # lastly, see if the user wants to choose which mask to apply
+    # see if the user wants to choose which mask to apply
     opt = block.opts.find_opt('-mask_apply')
     if opt:
         mtype = opt.parlist[0]
@@ -1926,10 +1950,65 @@ def db_cmd_mask(proc, block):
             print "** ERROR: cannot apply %s mask" % mtype
             return
 
+    cmd += mask_segment_anat(proc, block)
+
     # do not increment block index or set 'previous' block label,
     # as there are no datasets created here
 
     return cmd
+
+def mask_segment_anat(proc, block):
+    """- return a string for segmenting anat
+       - copy result current dir and resample
+       - apply any classes to roi_dict (for possible regression)
+
+       requires:
+          - anat_final
+          - ! (-mask_segment_anat == no)
+          - either requested (-mask_segment_anat) or already skull-stripped
+    """
+
+    # ----------------------------------------------------------------------
+    # make any segmentation masks
+
+    opt = block.opts.find_opt('-mask_segment_anat')
+    if not OL.opt_is_yes(opt): return ''        # default is now no
+
+    if not proc.anat_final:
+        if proc.verb > 1:
+           print '-- no Segsy (either no anat_final or -mask_segment_anat no)'
+        return ''
+    # and proc.anat_has_skull:
+
+    # maybe we will take more classes in some option...
+    sclasses = ['CSF', 'GM', 'WM']
+    cmd  = "# ---- segment anatomy into classes %s ----\n" % '/'.join(sclasses)
+
+    cmd += "3dSeg -anat %s -mask AUTO -classes '%s'\n\n" \
+               % (proc.anat_final.pv(), ' ; '.join(sclasses))
+    cmd += '# copy resulting Classes dataset to current directory\n'
+    cmd += '3dcopy Segsy/Classes%s .\n\n' % proc.view
+
+    result = BASE.afni_name('Classes_resam%s' % proc.view)
+    cmd += '# resample to match EPI data grid\n'            \
+            '3dresample -master %s -input Classes%s \\\n'   \
+            '           -prefix %s\n\n'                     \
+               % (proc.prev_prefix_form(1, view=1), proc.view, result.prefix)
+
+    cmd += '# and copy label table\n' \
+            '3drefit -copytables Classes%s %s\n\n' % (proc.view, result.pv())
+
+    proc.mask_classes = result
+    
+    for sc in sclasses:
+       proc.roi_dict[sc] = BASE.afni_name('Classes_resam%s' % proc.view)
+
+    if OL.opt_is_yes(block.opts.find_opt('-mask_rm_segsy')):
+       proc.rm_list.append('Segsy')
+       proc.rm_dirs = 1
+
+    return cmd
+
 
 # if possible: make a group anatomical mask (resampled to EPI)
 #    - only if tlrc block and -volreg_tlrc_warp
@@ -1980,9 +2059,10 @@ def group_mask_command(proc, block):
                 "           -input %s\n\n"                \
                 % (proc.mask_epi.pv(), tanat.prefix, proc.tlrc_base.ppv())
 
-    # and finally, convert to the binary mask of choice
-    cmd = cmd + "# convert resampled group brain to binary mask\n"  \
-                "3dcalc -a %s -expr 'ispositive(a)' -prefix %s\n\n" \
+    # convert to a binary mask via 3dmask_tool, to fill in a bit
+    cmd = cmd + "# convert to binary group mask; fill gaps and holes\n"     \
+                "3dmask_tool -dilate_input 5 -5 -fill_holes -input %s \\\n" \
+                "            -prefix %s\n\n"                                \
                 % (tanat.pv(), proc.mask_group.prefix)
 
     proc.mask_group.created = 1  # so this mask 'exists' now
@@ -2016,8 +2096,8 @@ def anat_mask_command(proc, block):
     elif proc.warp_epi & (WARP_EPI_ALIGN_A2E | WARP_EPI_ALIGN_E2A):
         anat = proc.anat
         ss = 'aligned'
-     # no longer invert e2a matrix to get ss anat, since the current
-     # anat will already be stripped
+    # no longer invert e2a matrix to get ss anat, since the current
+    # anat will already be stripped
     else: # should not happen
         print '** anat_mask_command: invalid warp_epi = %d' % proc.warp_epi
         return None
@@ -2035,13 +2115,14 @@ def anat_mask_command(proc, block):
     #else:
 
     # resample masked anat to epi grid, output is temp anat
-    cmd = cmd + "3dresample -master %s -prefix %s \\\n"             \
-                "           -input %s\n\n"                          \
-                % (proc.mask_epi.pv(), tanat.prefix, anat.pv())
+    cmd = cmd + "3dresample -master %s -input %s \\\n"                  \
+                "           -prefix %s\n\n"                             \
+                % (proc.mask_epi.pv(), anat.pv(), tanat.prefix)
 
-    # and finally, convert to the binary mask of choice
-    cmd = cmd + "# convert resampled anat brain to binary mask\n"   \
-                "3dcalc -a %s -expr 'ispositive(a)' -prefix %s\n\n" \
+    # and convert to binary mask via 3dmask_tool, to fill in a bit
+    cmd = cmd + "# convert to binary anat mask; fill gaps and holes\n"      \
+                "3dmask_tool -dilate_input 5 -5 -fill_holes -input %s \\\n" \
+                "            -prefix %s\n\n"                                \
                 % (tanat.pv(), proc.mask_anat.prefix)
 
     opt = block.opts.find_opt('-mask_test_overlap')
@@ -2244,10 +2325,8 @@ def db_mod_regress(block, proc, user_opts):
         bopt.parlist = uopt.parlist
         proc.stims_orig = uopt.parlist   # store for initial copy
 
-    uopt = user_opts.find_opt('-regress_stim_labels')
-    bopt = block.opts.find_opt('-regress_stim_labels')
-    if uopt and bopt:  # check length later, when we know num stim types
-        bopt.parlist = uopt.parlist
+    apply_uopt_to_block('-regress_stim_labels', user_opts, block)
+    apply_uopt_to_block('-regress_stim_types', user_opts, block)
 
     uopt = user_opts.find_opt('-regress_RONI')
     bopt = block.opts.find_opt('-regress_RONI')
@@ -2260,6 +2339,8 @@ def db_mod_regress(block, proc, user_opts):
             print "** -regress_RONI requires integral parameters, have: %s" % \
                   uopt.parlist
             errs += 1
+
+    apply_uopt_to_block('-regress_ROI', user_opts, block)  # 04 Sept 2012
 
     # times is one file per class
     uopt = user_opts.find_opt('-regress_stim_times')
@@ -2423,7 +2504,7 @@ def db_mod_regress(block, proc, user_opts):
     uopt = user_opts.find_opt('-regress_errts_prefix')
     bopt = block.opts.find_opt('-regress_errts_prefix')
     if uopt and bopt:
-        bopt.parlist = [uopt.parlist[0] + '.$subj']    # add $subj to prefix
+        bopt.parlist = [uopt.parlist[0] + '.${subj}']    # add $subj to prefix
 
     # check for fitts prefix
     uopt = user_opts.find_opt('-regress_fitts_prefix')
@@ -2466,7 +2547,10 @@ def db_mod_regress(block, proc, user_opts):
     # maybe the user really does want to apply the mask to regression
     # note: no_mask is now the default    24 Mar 2009
     uopt = user_opts.find_opt('-regress_apply_mask')
-    if uopt: proc.regmask = 1
+    if uopt:
+        print "** regress_apply_mask has been deprecated"
+        print "   (consider '-mask_apply epi')"
+        proc.regmask = 1
 
     # check for global or local stim_times
     uopt = user_opts.find_opt('-regress_global_times')
@@ -2590,12 +2674,7 @@ def db_mod_regress(block, proc, user_opts):
         else:    block.opts.add_opt(oname, 1, uopt.parlist, setpar=1)
 
     # maybe do bandpass filtering in the regression
-    oname = '-regress_bandpass'
-    uopt = user_opts.find_opt(oname)
-    bopt = block.opts.find_opt(oname)
-    if uopt:
-        if bopt: bopt.parlist = uopt.parlist
-        else:    block.opts.add_opt(oname, 1, uopt.parlist, setpar=1)
+    apply_uopt_to_block('-regress_bandpass', user_opts, block)
 
     # prepare to return
     if errs > 0:
@@ -2681,6 +2760,22 @@ def db_cmd_regress(proc, block):
                   % (len(basis), len(proc.stims))
             return
 
+    # create a stim_type list to match the stims
+    opt = block.opts.find_opt('-regress_stim_types')
+    # init list
+    if not opt: stim_types = ['times']
+    else: stim_types = opt.parlist
+    if len(proc.stims) != len(stim_types):
+        # if just one basis function, duplicate for each stim, else error
+        if len(stim_types) == 1:
+            stim_types = [stim_types[0] for i in range(len(proc.stims))]
+        else:
+            print '** error: have %d stim types but %d stim classes' \
+                  % (len(stim_types), len(proc.stims))
+            return
+    if not UTIL.vals_are_constant(stim_types, 'times'):
+        print '++ applying %d stim types: %s' % (len(stim_types),stim_types)
+
     # ----------------------------------------
     # deal with motion (demean, deriv, per-run, censor)
     if block.opts.find_opt('-regress_no_motion'): proc.mot_labs = []
@@ -2693,6 +2788,13 @@ def db_cmd_regress(proc, block):
     # bandpass?
     if block.opts.find_opt('-regress_bandpass'):
         err, newcmd = db_cmd_regress_bandpass(proc, block)
+        if err: return
+        if newcmd: cmd = cmd + newcmd
+
+    # ----------------------------------------
+    # gmean?  change to generic -regress_RONI
+    if block.opts.find_opt('-regress_ROI'):
+        err, newcmd = db_cmd_regress_ROI(proc, block)
         if err: return
         if newcmd: cmd = cmd + newcmd
 
@@ -2723,13 +2825,18 @@ def db_cmd_regress(proc, block):
     opt = block.opts.find_opt('-regress_stim_times')
     if not opt.parlist or len(opt.parlist) == 0:
         # then any original stims are as 1D, whether converting or not
-        if not valid_file_types(proc, proc.stims_orig, 1): return
+        if not valid_file_types(proc, proc.stims_orig, 1,
+                                stypes=stim_types): return
     else:
         # local/global question just answered above
-        if not valid_file_types(proc,proc.stims_orig,verify_times_type): return
+        if not valid_file_types(proc,proc.stims_orig,verify_times_type,
+                                stypes=stim_types): return
 
     # and check any extras against 1D only
     if not valid_file_types(proc, proc.extra_stims_orig, 1): return
+
+    # and check any extras against 1D only
+    if not married_types_match(proc, proc.stims_orig, stim_types, basis): return
 
     nmotion = len(proc.mot_labs) * len(proc.mot_regs)
     if proc.ricor_apply == 'yes': nricor = proc.ricor_nreg
@@ -2751,8 +2858,7 @@ def db_cmd_regress(proc, block):
     #    (O3dd = list of 3dd option lines, which may need an extra indent)
 
     O3dd = ['%s3dDeconvolve -input %s' % (istr, proc.prev_dset_form_wild()),
-            mask,
-            censor_str]
+            mask, censor_str]
     O3dd.extend(reg_orts)
     O3dd.extend([ '    -polort %d%s' % (polort, datum),
                   normall, times_type,
@@ -2804,7 +2910,8 @@ def db_cmd_regress(proc, block):
     else:
         Liresp = []
         for index in range(len(labels)):
-            if not UTIL.basis_has_known_response(basis[index]):
+            if not UTIL.basis_has_known_response(basis[index]) and \
+               not stim_types[index] == 'file':
                 Liresp.append("    -iresp %d %s_%s.$subj" % \
                               (index+1, opt.parlist[0], labels[index]))
 
@@ -2816,10 +2923,18 @@ def db_cmd_regress(proc, block):
         # rcr - allow -stim_times_AM/IM here?  make user choose one?
         #       (so mabye -stim_times can be set from proc.stim_times_opt)
         if sfiles:  # then -stim_file and no basis function
-            O3dd.append("    -stim_file %d %s" % (ind+1,proc.stims[ind]))
+            O3dd.append("    -stim_file %d %s" % (ind+1, proc.stims[ind]))
+        elif stim_types[ind] == 'file':
+            O3dd.append("    -stim_file %d %s" % (ind+1, proc.stims[ind]))
+            if basis[ind] != 'NONE':
+               ss = os.path.basename(proc.stims[ind])
+               print "** ignoring basis #%d, %s, for -stim_type 'file' = %s" \
+                     % (ind+1, basis[ind], ss)
         else:
-            O3dd.append("    -stim_times %d %s '%s'"  % \
-                        (ind+1, proc.stims[ind], basis[ind]))
+            if stim_types[ind] == 'times': st_suf = ''
+            else:                          st_suf = '_%s' % stim_types[ind]
+            O3dd.append("    -stim_times%s %d %s '%s'"  % \
+                        (st_suf, ind+1, proc.stims[ind], basis[ind]))
             # accumulate timing files with TENTs for later error checks
             if basis[ind].find('TENT') >= 0: tent_times.append(proc.stims[ind])
         # and add the label
@@ -2891,7 +3006,7 @@ def db_cmd_regress(proc, block):
     # if there is no errts prefix, but the user wants to measure blur, add one
     # (or if there are no normal regressors)
     if nregs == 0 or (not opt.parlist and (bluropt or tsnropt)):
-        opt.parlist = ['errts.$subj%s' % suff]
+        opt.parlist = ['errts.${subj}%s' % suff]
 
     errts_pre = ''
     if not opt or not opt.parlist: errts = ''
@@ -2962,6 +3077,13 @@ def db_cmd_regress(proc, block):
     # done creating 3dDeconvolve command c3d, add to cmd string
     cmd += c3d
 
+    # maybe user just wants a 3dDeconvolve command script
+    if 0:
+       cfile = 'command.3dd.txt'
+       header = '#!/bin/tcsh\n\nset subj = %s\n\n' % proc.subj_id
+       UTIL.write_text_to_file(cfile, header+c3d, wrap=1, exe=1)
+       print '++ writing separate 3dDeconvolve script %s ...' % cfile
+
     # if 3dDeconvolve fails, terminate the script
     # (rcr - maybe just skip this in case of surfaces)
     if not proc.surf_anat:
@@ -3002,6 +3124,10 @@ def db_cmd_regress(proc, block):
         if not rcmd: return
         cmd = cmd + rcmd + '\n\n'
 
+    # if REML, -x1D_stop and errts_pre, append _REML to errts_pre
+    if block.opts.find_opt('-regress_reml_exec') and \
+        stop_opt and errts_pre: errts_pre = errts_pre + '_REML'
+
     # create all_runs dataset
     all_runs = 'all_runs%s$subj%s' % (proc.sep_char, suff)
     cmd = cmd + "# create an all_runs dataset to match the fitts, errts, etc.\n"
@@ -3019,22 +3145,24 @@ def db_cmd_regress(proc, block):
        else: print '-- no errts, will not compute final TSNR'
 
     # possibly create computed fitts dataset
-    if compute_fitts and \
-      (stop_opt or block.opts.find_opt('-regress_reml_exec')):
+    if compute_fitts:
         fstr = feh_str
-        # create if no -x1D_stop
-        if stop_opt == '':
+        if stop_opt == '': # create if no -x1D_stop
             fstr += "%s# create fitts dataset from all_runs and errts\n" % istr
             fstr += "%s3dcalc -a %s%s -b %s%s -expr a-b \\\n"            \
                     "%s       -prefix %s%s\n"                            \
                     % (istr, all_runs, vstr, errts_pre, vstr,
                        istr, fitts_pre, suff)
+        elif not block.opts.find_opt('-regress_reml_exec'):
+            print '** cannot compute fitts, have 3dD_stop but no reml_exec'
+            return
+
         # if reml_exec, make one for the REML fitts, too
         if block.opts.find_opt('-regress_reml_exec'):
             if stop_opt: fstr += '\n'
             fstr += "%s# create fitts from REML errts\n" % istr
-            fstr += "%s3dcalc -a %s%s -b %s\_REML%s -expr a-b \\\n" \
-                    "%s       -prefix %s\_REML%s\n"                 \
+            fstr += "%s3dcalc -a %s%s -b %s%s -expr a-b \\\n" \
+                    "%s       -prefix %s\_REML%s\n"                \
                     % (istr, all_runs, vstr, errts_pre, vstr,
                        istr, fitts_pre, suff)
         cmd = cmd + fstr + feh_end + '\n'
@@ -3046,14 +3174,14 @@ def db_cmd_regress(proc, block):
             print '** internal error: label and basis arrays not equal lengths'
             print '   (%d labels, %d basis functions)'%(len(labels),len(basis))
             return
-        # while basis functions are known, extract ideals
-        # (so no ideal after unknown, and therefore first must be known)
-        if UTIL.basis_has_known_response(basis[0]):
+        # while basis functions have one regressor, make ideals
+        # (so no ideal after failure)
+        if UTIL.basis_has_one_reg(basis[0]):
             cmd = cmd + "# create ideal files for fixed response stim types\n"
             first = (polort+1) * proc.runs
             for ind in range(len(labels)):
-                # once unknown, quit
-                if not UTIL.basis_has_known_response(basis[ind]): break
+                # once unknown or multiple regs, quit
+                if not UTIL.basis_has_one_reg(basis[ind]): break
                 cmd = cmd + "1dcat %s'[%d]' > ideal_%s.1D\n" % \
                             (proc.xmat, first+ind, labels[ind])
             cmd = cmd + '\n'
@@ -3211,7 +3339,7 @@ def db_cmd_blur_est(proc, block):
     sopt = block.opts.find_opt('-regress_3dD_stop')
 
     if not aopt and not eopt:
-        if proc.verb > 2: print '-- no blur estimation'
+        if proc.verb > 0: print '-- no 3dClustSim (since no blur estimation)'
         return cmd
 
     # set the mask (if we don't have one, bail)
@@ -3239,7 +3367,7 @@ def db_cmd_blur_est(proc, block):
 
     opt = block.opts.find_opt('-regress_errts_prefix')
     if opt and opt.parlist: errts_pre = opt.parlist[0]
-    else:   errts_pre = 'errts.$subj'
+    else:   errts_pre = 'errts.${subj}'
 
     if eopt and not sopt: # want errts, but 3dD was not executed
         bstr = blur_est_loop_str(proc, '%s%s' % (errts_pre, proc.view), 
@@ -3248,7 +3376,7 @@ def db_cmd_blur_est(proc, block):
         cmd = cmd + bstr
     if eopt and ropt: # want errts and reml was executed
         # cannot use ${}, so escape the '_'
-        bstr = blur_est_loop_str(proc, '%s\_REML%s' % (errts_pre, proc.view), 
+        bstr = blur_est_loop_str(proc, '%s_REML%s' % (errts_pre, proc.view), 
                     mask_dset, 'err_reml', blur_file)
         if not bstr: return
         cmd = cmd + bstr
@@ -3270,6 +3398,7 @@ def db_cmd_blur_est(proc, block):
 
 def make_clustsim_commands(proc, block, blur_file, mask_dset,
                            stats_dset, reml_dset):
+    if proc.verb > 0: print '-- will add 3dClustSim table to stats dset'
     if proc.verb > 1:
         print '-- make_clustsim_commands: blur = %s\n'  \
               '   mask = %s, stats = %s, reml = %s'\
@@ -3331,12 +3460,13 @@ def blur_est_loop_str(proc, dname, mname, label, outfile):
         outfile  : final output filename
     """
     dset  = BASE.afni_name(dname)
-    input = dset.shortinput()
+    inset = dset.shortinput()
+    inset = dname
     mset  = BASE.afni_name(mname)
     mask  = mset.shortinput()
     tmpfile = 'blur.%s.1D' % label
 
-    if not input:
+    if not inset:
         print "** failed to get blur_est input name from '%s'" % dname
         return ''
     if not mask:
@@ -3353,7 +3483,7 @@ def blur_est_loop_str(proc, dname, mname, label, outfile):
         '    @ b1 += $reps  # last index for current run\n'     \
         '    3dFWHMx -detrend -mask %s \\\n'                    \
         '        %s"[$b0..$b1]" >> %s\n'                        \
-        % (mask, input, tmpfile)
+        % (mask, inset, tmpfile)
 
     cmd = cmd +                                                 \
         '    @ b0 += $reps  # first index for next run\n'       \
@@ -3404,6 +3534,64 @@ def db_cmd_regress_sfiles2times(proc, block):
     if proc.verb > 0: print '++ new stim list: %s' % proc.stims
 
     return cmd
+
+def db_cmd_regress_ROI(proc, block):
+    """remove any regressors of no interest
+
+        ** use orts for now, but change to simple regressors
+        ** just do global signal for now
+
+       return an error code (0=success) and command string
+    """
+
+    # maybe we shouldn't be here
+    oname = '-regress_ROI'
+    opt = block.opts.find_opt(oname)
+    if not opt: return 0, ''
+    rois = opt.parlist
+    if len(rois) == 0:
+       print '** have -regress_ROI but no ROIs provided'
+       return 1, ''
+
+    # report errors for any unknown ROIs (not in roi_dict)
+    keystr = ', '.join(proc.roi_dict.keys())
+    nerrs = 0
+    for roi in rois:
+        if not proc.roi_dict.has_key(roi):
+            if   roi == 'brain': estr='EPI automask requires mask block'
+            elif roi == 'GM'   : estr='gray matter requires -mask_segment_anat'
+            elif roi == 'WM'   : estr='white matter requires -mask_segment_anat'
+            elif roi == 'CSF'  : estr='requires -mask_segment_anat'
+            else               : estr = 'not a known ROI'
+            print "** ROI '%s' : %s" % (roi, estr)
+            nerrs += 1
+    if nerrs:
+        if keystr == '': keystr = 'NONE'
+        print '-- currently known ROIs include: %s' % keystr
+        return 1, ''
+
+    if len(rois) > 1:
+          cmd = '# create %d ROI regressors: %s\n' % (len(rois), keystr)
+    else: cmd = '# create ROI regressor: %s\n' % keystr
+
+    cmd += 'foreach run ( $runs )\n'
+    for roi in rois:
+        mset = proc.roi_dict[roi]
+        # maybe we need a label table value selector
+        if roi in ['GM', 'WM', 'CSF']: substr = '"<%s>"' % roi
+        else:                          substr = ''
+        cmd += '    3dmaskave -quiet -mask %s%s %s%s > rm.ROI.%s.r$run.1D\n' \
+               % (mset.pv(), substr, proc.volreg_prefix, proc.view, roi)
+    cmd += 'end\n'
+
+    for roi in rois:
+        rname = 'ROI.%s' % roi
+        rfile = '%s_rall.1D' % rname
+        cmd += 'cat rm.%s.r*.1D > %s\n' % (rname, rfile)
+        proc.regress_orts.append([rfile, rname])
+    cmd += '\n'
+
+    return 0, cmd
 
 def db_cmd_regress_bandpass(proc, block):
     """apply bandpass filtering in 3dDeconvolve
@@ -3659,10 +3847,11 @@ def db_cmd_regress_censor_motion(proc, block):
         cmd = cmd + '1d_tool.py -infile %s -set_nruns %d \\\n'       \
                     % (proc.mot_file, proc.runs)
 
-    cmd = cmd + '    -set_tr %g -show_censor_count %s\\\n'      \
+    # remove useless -set_tr option  17 Oct 2012
+    cmd = cmd + '    -show_censor_count %s\\\n'                 \
                 '%s'                                            \
                 '    -censor_motion %g %s\n\n'                  \
-                % (proc.tr, prev_str, cfstr, limit, mot_prefix)
+                % (prev_str, cfstr, limit, mot_prefix)
 
     proc.mot_cen_lim = limit
 
@@ -3776,7 +3965,62 @@ def db_cmd_tlrc(proc, block):
 
     return cmd
 
-def valid_file_types(proc, stims, file_type):
+def married_types_match(proc, stims, stypes, bases):
+    """if any stim files are married, the stype should be AM1 or AM2
+       some basis functions require married files
+    """
+
+    if len(stims) == 0: return 1
+    if not proc.test_stims: return 1
+    
+    if proc.verb > 2:
+        print '-- checking married type match for:'
+        print '   stims : %s' % stims
+        print '   types : %s' % stypes
+
+    ok_all = 1  # assume good, and look for failure
+    mtypes = ['AM1', 'AM2']
+
+    for ind in range(len(stims)):
+        fname = stims[ind]
+        stype = stypes[ind]
+        basis = bases[ind]
+
+        if stype == 'file': continue
+
+        adata = LD.AfniData(fname)
+        if adata == None:
+            print "** MTM: failed to load stim timing file '%s'" % fname
+            ok_all = 0
+            continue
+        if not adata.ready:
+            print "** MTM: failed to load stimulus timing file '%s'" % fname
+
+        if stype in mtypes and not adata.married:
+            print '** stim type %d is married (%s), but file (%s) is not' \
+                  % (ind+1, stype, fname)
+            ok_all = 0
+
+        # just a warning for now, since stim_types are new
+
+        if stype not in mtypes and adata.married:
+            print '** stim type %d is not married, but file (%s) is' \
+                  % (ind+1, fname)
+
+        if UTIL.basis_is_married(basis) and not stype in mtypes:
+            print '** have married basis (#%d = %s), but not married type\n' \
+                  '   (consider -regress_stim_types)' % (ind+1,basis)
+
+        if UTIL.basis_is_married(basis) and not adata.married:
+            print '** have married basis (#%d = %s), but not married file %s\n'\
+                  % (ind+1, basis, fname)
+
+    if not ok_all and proc.verb > 0:
+        print '   (use "-test_stim_files no" to ignore such errors)'
+
+    return ok_all
+
+def valid_file_types(proc, stims, file_type, stypes=[]):
     """verify that the files are valid as 1D, local or global times
 
          1 : 1D
@@ -3799,7 +4043,11 @@ def valid_file_types(proc, stims, file_type):
 
     ok_all = 1  # assume good, and look for failure
 
-    for fname in stims:
+    for findex in range(len(stims)):
+        fname = stims[findex]
+        ftype = file_type
+        if stypes and stypes[findex] == 'file': ftype = 1
+
         adata = LD.AfniData(fname, verb=proc.verb)
         if adata == None:
             print "** failed to load stim timing file '%s'" % fname
@@ -3814,20 +4062,20 @@ def valid_file_types(proc, stims, file_type):
             print '-- have married file %s' % fname
 
         ok = 0  # prudent
-        if   file_type == 1: # check 1D, just compare against total reps
+        if   ftype == 1: # check 1D, just compare against total reps
             ok = adata.looks_like_1D(run_lens=proc.reps_all, verb=0)
             if ok: adata.file_type_warnings_1D(run_lens=proc.reps_all)
-        elif file_type == 2: # check local
+        elif ftype == 2: # check local
             ok = adata.looks_like_local_times(run_lens=proc.reps_all,
                                                 tr=proc.tr, verb=0)
             if ok: adata.file_type_warnings_local(run_lens=proc.reps_all,
                                                 tr=proc.tr)
-        elif file_type == 3: # check global
+        elif ftype == 3: # check global
             ok = adata.looks_like_global_times(run_lens=proc.reps_all,
                                                 tr=proc.tr, verb=0)
             if ok: adata.file_type_warnings_global(run_lens=proc.reps_all,
                                                 tr=proc.tr)
-        elif file_type == 10: # check both local and global
+        elif ftype == 10: # check both local and global
             # first test as global (a file that looks like global or local
             # should be treated as global)
             ok = adata.looks_like_global_times(run_lens=proc.reps_all,
@@ -3841,7 +4089,7 @@ def valid_file_types(proc, stims, file_type):
                 if ok: adata.file_type_warnings_local(run_lens=proc.reps_all,
                                                     tr=proc.tr)
         else: # error
-            print '** valid_file_types: bad type %d' % file_type
+            print '** valid_file_types: bad type %d' % ftype
             return 0
 
         # if empty, warn user (3dD will fail)
@@ -3858,14 +4106,14 @@ def valid_file_types(proc, stims, file_type):
         ok_all = 0
 
         # if ft=10, report local errors only
-        if file_type == 10: file_type = 2
+        if ftype == 10: ftype = 2
 
-        if file_type == 1:
+        if ftype == 1:
             adata.looks_like_1D(run_lens=proc.reps_all, verb=3)
-        elif file_type == 2:
+        elif ftype == 2:
             adata.looks_like_local_times(run_lens=proc.reps_all, tr=proc.tr,
                                          verb=3)
-        elif file_type == 3: # check global
+        elif ftype == 3: # check global
             adata.looks_like_global_times(run_lens=proc.reps_all, tr=proc.tr,
                                          verb=3)
         print '------------------------------------------------------------'
@@ -4219,7 +4467,11 @@ g_help_string = """
 
            Also consider adding -regress_bandpass.
 
-        5c. RETROICOR example c: censoring and bandpass filtering.
+        5c. RETROICOR example c (modern): censoring and bandpass filtering.
+
+           This is an example of how we would current suggest analyzing
+           resting state data.  If no RICOR regressors exist, see example 9
+           (or just remove any ricor options).
 
            Censoring due to motion has long been considered appropriate in
            BOLD FMRI analysis, but is less common for those doing bandpass
@@ -4231,18 +4483,25 @@ g_help_string = """
            regress frequencies within the regression model, where censored is
            simple.
 
-           To example #5, add -regress_censor_motion and -regress_bandpass.
+           Also, align EPI to anat and warp to standard space.
 
                 afni_proc.py -subj_id sb23.e5a.ricor            \\
                         -dsets sb23/epi_r??+orig.HEAD           \\
-                        -do_block despike ricor                 \\
+                        -blocks despike ricor align tlrc volreg \\
+                                blur mask regress               \\
                         -tcat_remove_first_trs 3                \\
                         -ricor_regs_nfirst 3                    \\
                         -ricor_regs sb23/RICOR/r*.slibase.1D    \\
+                        -volreg_align_e2a                       \\
+                        -volreg_tlrc_warp                       \\
+                        -blur_size 6                            \\
                         -regress_motion_per_run                 \\
-                        -regress_censor_motion 0.3              \\
-                        -regress_bandpass 0.01 0.1
-
+                        -regress_censor_motion 0.2              \\
+                        -regress_bandpass 0.01 0.1              \\
+                        -regress_apply_mot_types demean deriv   \\
+                        -regress_run_clustsim no                \\
+                        -regress_est_blur_errts
+                        
         6. A modern example.  GOOD TO CONSIDER.
 
            Align the EPI to the anatomy.  Also, process in standard space.
@@ -4275,7 +4534,7 @@ g_help_string = """
                         -regress_stim_labels tneg tpos tneu eneg epos      \\
                                              eneu fneg fpos fneu           \\
                         -regress_basis 'BLOCK(30,1)'                       \\
-                        -regress_censor_motion 1.0                         \\
+                        -regress_censor_motion 0.3                         \\
                         -regress_opts_3dD                                  \\
                             -gltsym 'SYM: +eneg -fneg'                     \\
                             -glt_label 1 eneg_vs_fneg                      \\
@@ -4293,27 +4552,38 @@ g_help_string = """
               created internally by 3dBlurInMask (akin to 3dAutomask).
 
            b. Let the basis functions vary.  For some reason, we expect the
-              BOLD responses to the positive classes to vary across the brain.
+              BOLD responses to the telephone classes to vary across the brain.
               So we have decided to use TENT functions there.  Since the TR is
               3.0s and we might expect up to a 45 second BOLD response curve,
-              use 'TENT(0,45,16)' for those 3 out of 9 basis functions.
+              use 'TENT(0,45,16)' for those first 3 out of 9 basis functions.
 
               This means using -regress_basis_multi instead of -regress_basis,
               and specifying all 9 basis functions appropriately.
 
-           c. Not only censor motion, but censor TRs when more than 10% of the
+           c. Use amplitude modulation.
+
+              We expect responses to email stimuli to vary proportionally with
+              the number of punctuation characters used in the message (in
+              certain brain regions).  So we will use those values as auxiliary
+              parameters 3dDeconvolve by marrying the parameters to the stim
+              times (using 1dMarry).
+
+              Use -regress_stim_types to specify that the epos/eneg/eneu stim
+              classes should be passed to 3dDeconvolve using -stim_times_AM2.
+
+           d. Not only censor motion, but censor TRs when more than 10% of the
               automasked brain are outliers.  So add -regress_censor_outliers.
 
-           d. Include both de-meaned and derivatives of motion parameters in
+           e. Include both de-meaned and derivatives of motion parameters in
               the regression.  So add '-regress_apply_mot_types demean deriv'.
 
-           e. Output baseline parameters so we can see the effect of motion.
+           f. Output baseline parameters so we can see the effect of motion.
               So add -bout under option -regress_opts_3dD.
 
-           d. Save on RAM by computing the fitts only after 3dDeconvolve.
+           g. Save on RAM by computing the fitts only after 3dDeconvolve.
               So add -regress_compute_fitts.
 
-           e. Speed things up.  Have 3dDeconvolve use 4 CPUs and skip the
+           h. Speed things up.  Have 3dDeconvolve use 4 CPUs and skip the
               single subject 3dClustSim execution.  So add '-jobs 4' to the
               -regress_opts_3dD option and add '-regress_run_clustsim no'.
 
@@ -4327,6 +4597,9 @@ g_help_string = """
                         -volreg_tlrc_warp                                  \\
                         -blur_in_automask                                  \\
                         -regress_stim_times sb23/stim_files/blk_times.*.1D \\
+                        -regress_stim_types times times times              \\
+                                            AM2   AM2   AM2                \\
+                                            times times times              \\
                         -regress_stim_labels tneg tpos tneu                \\
                                              eneg epos eneu                \\
                                              fneg fpos fneu                \\
@@ -4335,7 +4608,7 @@ g_help_string = """
                            'BLOCK(30,1)' 'TENT(0,45,16)' 'BLOCK(30,1)'     \\
                            'BLOCK(30,1)' 'TENT(0,45,16)' 'BLOCK(30,1)'     \\
                         -regress_apply_mot_types demean deriv              \\
-                        -regress_censor_motion 1.0                         \\
+                        -regress_censor_motion 0.3                         \\
                         -regress_censor_outliers 0.1                       \\
                         -regress_compute_fitts                             \\
                         -regress_opts_3dD                                  \\
@@ -4397,6 +4670,93 @@ g_help_string = """
                     -regress_opts_3dD                                    \\
                         -jobs 2                                          \\
                         -gltsym 'SYM: vis -aud' -glt_label 1 V-A
+
+        9. Resting state analysis (modern): censoring and bandpass filtering.
+
+           This is our suggested way to do pre-processing for resting state
+           analysis, under the assumption that no cardio/physio recordings
+           were made (see example 5 for cardio files).
+
+           Censoring due to motion has long been considered appropriate in
+           BOLD FMRI analysis, but is less common for those doing bandpass
+           filtering in RC FMRI because the FFT requires one to either break
+           the time axis (evil) or to replace the censored data with something
+           probably inapproprate.
+
+           Instead, it is slow (no FFT, but maybe SFT :) but effective to
+           regress frequencies within the regression model, where censored is
+           simple.
+
+           inputs: anat, EPI
+           output: errts dataset (to be used for correlation)
+
+           special processing:
+              - despike, as another way to reduce motion effect
+                 (see block despike)
+              - censor motion TRs at the same time as bandpassing data
+                 (see -regress_censor_motion, -regress_bandpass)
+              - regress motion parameters AND derivatives
+                 (see -regress_apply_mot_types)
+
+           Note: for resting state data, a more strict threshold may be a good
+                 idea, since motion artifacts should play a bigger role than in
+                 a task-based analysis.  
+
+                 So the typical suggestion of motion censoring at 0.3 for task
+                 based analysis has been changed to 0.2 for this resting state
+                 example, and censoring of outliers has also been added.
+
+                 Outliers are typically due to motion, and may capture motion
+                 in some cases where the motion parameters do not, because
+                 motion is not generally a whole-brain-between-TRs event.
+
+           Note: if regressing out regions of interest, either create the ROI
+                 time series before the blur step, or remove blur from the list
+                 of blocks (and apply any desired blur after the regression).
+
+                afni_proc.py -subj_id subj123                                \\
+                  -dsets epi_run1+orig.HEAD                                  \\
+                  -copy_anat anat+orig                                       \\
+                  -blocks despike tshift align tlrc volreg blur mask regress \\
+                  -tcat_remove_first_trs 3                                   \\
+                  -volreg_align_e2a                                          \\
+                  -volreg_tlrc_warp                                          \\
+                  -regress_censor_motion 0.2                                 \\
+                  -regress_censor_outliers 0.1                               \\
+                  -regress_bandpass 0.01 0.1                                 \\
+                  -regress_apply_mot_types demean deriv                      \\
+                  -regress_run_clustsim no                                   \\
+                  -regress_est_blur_errts
+
+       10. Resting state analysis, with tissue-based regressors.
+
+           Like example #9, but also regress global mean, white mater and
+           CSF averages.  The GM regressor comes from the full_mask dataset,
+           while WM and CSF signals come from Classes, created by 3dSeg via
+           the -mask_segment_anat option.
+
+           So the GM regressor (called 'brain' for its mask) only requires the
+           mask processing block, while WM, CSF (and optionally GM) require
+           the additional -mask_segment_anat option.
+
+           To specify tissue-based regressors, use -regress_ROI with known
+           mask classes (currently brain, GM, WM,CSF).
+                
+                afni_proc.py -subj_id subj123                               \\
+                        -dsets epi_run1+orig.HEAD                           \\
+                        -copy_anat anat+orig                                \\
+                        -blocks despike align tlrc volreg blur mask regress \\
+                        -tcat_remove_first_trs 3                            \\
+                        -volreg_align_e2a                                   \\
+                        -volreg_tlrc_warp                                   \\
+                        -mask_segment_anat yes                              \\
+                        -regress_censor_motion 0.2                          \\
+                        -regress_censor_outliers 0.1                        \\
+                        -regress_bandpass 0.01 0.1                          \\
+                        -regress_apply_mot_types demean deriv               \\
+                        -regress_ROI brain WM CSF                           \\
+                        -regress_run_clustsim no                            \\
+                        -regress_est_blur_errts
 
 
     --------------------------------------------------
@@ -4530,6 +4890,19 @@ g_help_string = """
        These volumes are then intersected over all TRs of all runs.  The final
        mask is the set of voxels that have valid data at every TR of every run.
        Yay.
+
+    5. Classes and Classes_resam: GM, WM, CSF class masks from 3dSeg
+
+       By default, unless the user requests otherwise (-mask_segment_anat no),
+       and if anat_final is skull-stripped, then 3dSeg will be used to segment
+       the anatomy into gray matter, white matter and CSF classes.
+
+       A dataset named Classes is the result of running 3dSeg, which is then
+       resampled to match the EPI and named Classes_resam.
+
+       If the user wanted to, this dataset could be used for regression of
+       said tissue classes (or eroded versions).
+
 
     --- masking, continued...
 
@@ -5005,6 +5378,13 @@ g_help_string = """
         -ver                    : show the version number
 
         ------------ general execution and setup options ------------
+
+        -anat_has_skull yes/no  : specify whether the anatomy has a skull
+
+                e.g. -anat_has_skull no
+
+            Use this option to block any skull-stripping operations, likely either
+            in the align or tlrc processing blocks.
 
         -ask_me                 : ask the user about the basic options to apply
 
@@ -6178,6 +6558,41 @@ g_help_string = """
             Please see '3dAutomask -help' for more information.
             See also -mask_type.
 
+        -mask_segment_anat Y/N  : choose whether to segment anatomy
+
+                e.g. -mask_segment_anat yes
+                default: no (if anat_final is skull-stripped)
+
+            This option controls whether 3dSeg is run to segment the anatomical
+            dataset.  Such a segmentation would then be resampled to match the
+            grid of the EPI data.
+
+            When this is run, 3dSeg creates the Classes dataset, which is a
+            composition mask of the GM/WM/CSF (gray matter, white matter and
+            cerebral spinal fluid) regions.  Then 3dresample is used to create
+            Classes_resam, the same mask but at the resolution of the EPI.
+
+            Such a dataset might have multiple uses, such as tissue-based
+            regression.  Note that for such a use, the ROI time series should
+            come from the volreg data, before any blur.
+
+            Please see '3dSeg -help' for more information
+            See also -mask_rm_segsy.
+
+        -mask_rm_segsy Y/N  : choose whether to delete the Segsy directory
+
+                e.g. -mask_rm_segsy no
+                default: yes
+
+            In the case of running 3dSeg to segment the anatomy, a resulting
+            Segsy directory is created.  Since the main result is a Classes
+            dataset, and to save disk space, the Segsy directory is removed
+            by default.
+
+            Use this option to preserve it.
+
+            See also -mask_segment_anat.
+
         -mask_test_overlap Y/N  : choose whether to test anat/EPI mask overlap
 
                 e.g. -mask_test_overlap No
@@ -6269,7 +6684,7 @@ g_help_string = """
 
             This option gives the ability to choose a combination of:
 
-                basic:  dfile.rall.1D - the parameters straight from 3dvolreg
+                basic:  dfile_rall.1D - the parameters straight from 3dvolreg
                         (or an external motion file, see -regress_motion_file)
                 demean: 'basic' params with the mean removed, per run
                 deriv:  per-run derivative of 'basic' params (de-meaned)
@@ -6333,7 +6748,7 @@ g_help_string = """
 
             A different filter range would affect this, of course.
 
-            See also -regress_censor_motion_file.
+            See also -regress_censor_motion.
 
         -regress_basis BASIS    : specify the regression basis function
 
@@ -6347,14 +6762,17 @@ g_help_string = """
             all user-supplied regressors (please let me know if there is need
             to apply different basis functions to different regressors).
 
-         ** Note that use of dmBLOCK requires -stim_times_AM1 (or AM2).  Until
-            that is handled properly by afni_proc.py, users will need to edit
-            the processing script, changing -stim_times to the appropriate
-            _AM1 or _AM2.
-        
+         ** Note that use of dmBLOCK requires -stim_times_AM1 (or AM2).  So
+            consider option -regress_stim_types.
+
+         ** If using -regress_stim_types 'file' for a particular regressor,
+            the basis function will be ignored.  In such a case, it is safest
+            to use 'NONE' for the corresponding basis function.
+
             Please see '3dDeconvolve -help' for more information, or the link:
                 http://afni.nimh.nih.gov/afni/doc/misc/3dDeconvolveSummer2004
-            See also -regress_basis_normall, -regress_stim_times.
+            See also -regress_basis_normall, -regress_stim_times,
+                     -regress_stim_types.
 
         -regress_basis_normall NORM : specify the magnitude of basis functions
 
@@ -6368,9 +6786,21 @@ g_help_string = """
             Please see '3dDeconvolve -help' for more information.
             See also -regress_basis.
 
+        -regress_censor_extern CENSOR.1D : supply an external censor file
+
+                e.g. -regress_censor_extern censor_bad_trs.1D
+
+            This option is used to provide an initial censor file, if there
+            is some censoring that is desired beyond the automated motion and
+            outlier censoring.
+
+            Any additional censoring (motion or outliers) will be combined.
+
+             See also -regress_censor_motion, -regress_censor_outliers.
+
         -regress_censor_motion LIMIT : censor TRs with excessive motion
 
-                e.g. -regress_censor_motion 1.0
+                e.g. -regress_censor_motion 0.3
 
             This option is used to censor TRs where the subject moved too much.
             "Too much" is decided by taking the derivative of the motion
@@ -6738,13 +7168,13 @@ g_help_string = """
 
             Particularly if the user performs motion correction outside of
             afni_proc.py, they may wish to specify a motion parameter file
-            other than dfile.rall.1D (the default generated in the volreg
+            other than dfile_rall.1D (the default generated in the volreg
             block).
 
-            If the motion parameter file is in an external directory, the
-            user should copy it via the -copy_files option.
+            Note: such files no longer need to be copied via -copy_files.
 
-            See also -copy_files.
+            If the motion file is in a remote directory, include the path,
+            e.g. -regress_motion_file ../subject17/data/motion.1D .
 
         -regress_no_fitts       : do not supply -fitts to 3dDeconvolve
 
@@ -6898,6 +7328,26 @@ g_help_string = """
 
             See also -regress_3dD_stop.
 
+        -regress_ROI R1 R2 ... : specify a list of mask averages to regress out
+
+                e.g. -regress_RONI brain WM CSF
+
+            Use this option to regress out one more more tissue-based ROI
+            averages.  Currently known ROIs include:
+
+                name    description     source dataset    creation program
+                -----   --------------  --------------    ----------------
+                brain   EPI brain mask  full_mask         3dAutomask
+                CSF     CSF             Classes_resam     3dSeg
+                GM      gray matter     Classes_resam     3dSeg
+                WM      white matter    Classes_resam     3dSeg
+
+            Note: use of this option requires the 'mask' processing block
+            Note: use of CSF, GM, or WM additionally require -mask_segment_anat
+
+            See also -mask_segment_anat.
+            Please see '3dSeg -help' for motion information on the masks.
+
         -regress_RONI IND1 ...  : specify a list of regressors of no interest
 
                 e.g. -regress_RONI 1 17 22
@@ -6914,7 +7364,7 @@ g_help_string = """
             The user is encouraged to check the 3dDeconvolve command in the
             processing script, to be sure they are applied correctly.
 
-        -regress_stim_labels LAB1 ...   : specify labels for stimulus types
+        -regress_stim_labels LAB1 ...   : specify labels for stimulus classes
 
                 e.g. -regress_stim_labels houses faces donuts
                 default: stim01 stim02 stim03 ...
@@ -7033,7 +7483,7 @@ g_help_string = """
 
         -regress_stim_times_offset OFFSET : add OFFSET to -stim_times files
 
-                e.g. -stim_times_offset 1.25
+                e.g. -regress_stim_times_offset 1.25
                 default: 0
 
             If the -regress_stim_files option is used (so the script converts
@@ -7050,6 +7500,41 @@ g_help_string = """
             Please see 'make_stim_times.py -help' for more information.
             See also -regress_stim_files, -regress_use_stim_files,
                      -tshift_align_to.
+
+        -regress_stim_types TYPE1 TYPE2 ... : specify list of stim types
+
+                e.g. -regress_stim_types times times AM2 AM2 times AM1 file
+                e.g. -regress_stim_types AM2
+                default: times
+
+            If amplitude, duration or individual modulation is desired with
+            any of the stimulus timing files provided via -regress_stim_files,
+            then this option should be used to specify one (if all of the types
+            are the same) or a list of stimulus timing types.  One can also use
+            the type 'file' for the case of -stim_file, where the input is a 1D
+            regressor instead of stimulus times.
+
+            The types should be (possibly repeated) elements of the set:
+            {times, AM1, AM2, IM}, where they indicate:
+
+                times:  a standard stimulus timing file (not married)
+                        ==> use -stim_times in 3dDeconvolve command
+
+                AM1:    have one or more married parameters
+                        ==> use -stim_times_AM1 in 3dDeconvolve command
+
+                AM2:    have one or more married parameters
+                        ==> use -stim_times_AM2 in 3dDeconvolve command
+
+                IM:     NO married parameters, but get beta for each stim
+                        ==> use -stim_times_IM in 3dDeconvolve command
+
+                file:   a 1D regressor, not a stimulus timing file
+                        ==> use -stim_file in 3dDeconvolve command
+            
+            Please see '3dDeconvolve -help' for more information.
+            See also -regress_stim_times.
+            See also example 7 (esoteric options).
 
         -regress_use_stim_files : use -stim_file in regression, not -stim_times
 

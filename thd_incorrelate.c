@@ -1,5 +1,9 @@
 #include "mrilib.h"
 
+#ifdef USE_OMP
+#include <omp.h>
+#endif
+
 typedef struct {
   int meth ;
 } INCOR_generic ;
@@ -12,6 +16,14 @@ typedef struct {
 
 typedef struct {
   int meth ;
+  int npt ;
+  double sx , sxx , sy , syy , sxy , sw ;
+  double xcbot , xctop , ycbot , yctop ;
+  double xdbot , xdtop , ydbot , ydtop ;
+} INCOR_pearclp ;
+
+typedef struct {
+  int meth ;
   int nbin ;
   float *xc , *yc , *xyc , nww ;
   float xxbot , xxtop , yybot , yytop ;
@@ -20,6 +32,10 @@ typedef struct {
 
 #undef  INCOR_methcode
 #define INCOR_methcode(vp) ( ((vp) != NULL) ? ((INCOR_generic *)vp)->meth : 0 )
+
+#undef  MYatanh
+#define MYatanh(x) ( ((x)<-0.9993293) ? -4.0                \
+                    :((x)>+0.9993293) ? +4.0 : atanh(x) )
 
 /****************************************************************************/
 /*** Histogram-based measurements of dependence between two float arrays. ***/
@@ -43,7 +59,7 @@ typedef struct {
 
 /*--------------------------------------------------------------------------*/
 
-static float_pair INCOR_clipate( int nval , float *xar )
+float_pair INCOR_clipate( int nval , float *xar )
 {
    MRI_IMAGE *qim; float cbot,ctop, mmm , *qar; float_pair rr; int ii,nq;
 
@@ -106,6 +122,23 @@ ENTRY("INCOR_2Dhist_minmax") ;
 }
 
 /*--------------------------------------------------------------------------*/
+
+static byte *good=NULL ;
+static int  agood=0 ;
+
+void INCOR_setup_good( int ng )
+{
+   if( ng <= 0 ){
+     if( good != NULL ){ free(good); good = NULL; }
+     agood = 0 ;
+   } else if( ng > agood ){
+     good = realloc( good , sizeof(byte)*ng ) ; agood = ng ;
+   }
+   if( agood > 0 && good != NULL ) AAmemset(good,0,sizeof(byte)*agood) ;
+   return ;
+}
+
+/*--------------------------------------------------------------------------*/
 /*! Load 2D histogram of x[0..n-1] and y[0..n-1], each point optionally
     weighted by w[0..n-1] (weights are all 1 if w==NULL).
     Used in the histogram-based measures of dependence between x[] and y[i].
@@ -116,7 +149,7 @@ ENTRY("INCOR_2Dhist_minmax") ;
       - xc   = marginal histogram of x[], for xc[0..nbin]   (nbp points in)
       - yc   = marginal histogram of y[], for yc[0..nbin]   (each direction)
       - xyc  = joint histogram of (x[],y[]), for XYC(0..nbin,0..nbin)
-      - The histograms are normalized (by 1/nww) to have sum==1
+      - The histograms can be later normalized (by 1/nww) to have sum==1
       - Histogram can be retrieved by retrieve_2Dhist() and can be
         erased by clear_2Dhist()
       - Default number of equal-spaced bins in each direction is n^(1/3)
@@ -126,15 +159,19 @@ ENTRY("INCOR_2Dhist_minmax") ;
         used in the histogram; mutatis mutandum for y[]
 *//*------------------------------------------------------------------------*/
 
-static void INCOR_addto_2Dhist( INCOR_2Dhist *tdh , int n ,
-                                float *x , float *y , float *w )
+void INCOR_addto_2Dhist( INCOR_2Dhist *tdh , int n , float *x , float *y , float *w )
 {
-   register int ii ;
-   byte *good ; int ngood , xyclip ;
+   int ii , ngood , xyclip ;
    float xxbot,xxtop , yybot,yytop ;
    float xcbot,xctop , ycbot,yctop ;
    int nbin,nbp,nbm ;
    float *xc , *yc , *xyc ; float nww ;
+#if 0
+   int use_omp , nthr ;
+#else
+#  define use_omp 0
+#  define nthr    1
+#endif
 
 ENTRY("INCOR_addto_2Dhist") ;
 
@@ -145,7 +182,7 @@ ENTRY("INCOR_addto_2Dhist") ;
 
    /* get the min..max range for x and y data? */
 
-   good = (byte *)calloc(sizeof(byte),n) ;
+   INCOR_setup_good(n+4) ;
    for( ngood=ii=0 ; ii < n ; ii++ ){
      if( GOODVAL(x[ii]) && GOODVAL(y[ii]) && (WW(ii) > 0.0f) ){
        good[ii] = 1 ; ngood++ ;
@@ -167,7 +204,7 @@ ENTRY("INCOR_addto_2Dhist") ;
          else if( x[ii] < xxbot ) xxbot = x[ii] ;
        }
      }
-     if( xxbot >= xxtop ){ free(good); EXRETURN; }
+     if( xxbot >= xxtop ) EXRETURN ;
 
      yybot = WAY_BIG ; yytop = -WAY_BIG ;
      for( ii=0 ; ii < n ; ii++ ){
@@ -176,7 +213,7 @@ ENTRY("INCOR_addto_2Dhist") ;
          else if( y[ii] < yybot ) yybot = y[ii] ;
        }
      }
-     if( yybot >= yytop ){ free(good); EXRETURN; }
+     if( yybot >= yytop ) EXRETURN ;
 
      tdh->xxbot = xxbot ; tdh->xxtop = xxtop ;
      tdh->yybot = yybot ; tdh->yytop = yytop ;
@@ -194,70 +231,213 @@ ENTRY("INCOR_addto_2Dhist") ;
        good[ii] = 1 ; ngood++ ;
      }
    }
-   if( ngood == 0 ){ free(good) ; EXRETURN ; }
+   if( ngood == 0 ) EXRETURN ;
 
-   /*--------------- make the 2D and 1D histograms ---------------*/
+   /*--------------- add to the 2D and 1D histograms ---------------*/
 
    xyclip = (xxbot < xcbot) && (xcbot < xctop) && (xctop < xxtop) &&
             (yybot < ycbot) && (ycbot < yctop) && (yctop < yytop) ;
 
-   if( !xyclip ){  /*------------ equal size bins ------------*/
-     float xb,xi , yb,yi , xx,yy , x1,y1 , ww ;
-     register int jj,kk ;
+#ifndef nthr
+   nthr    = omp_get_max_threads() ;
+   use_omp = (nthr > 1) ;
+#endif
 
-     xb = xxbot ; xi = nbm/(xxtop-xxbot) ;
-     yb = yybot ; yi = nbm/(yytop-yybot) ;
-     for( ii=0 ; ii < n ; ii++ ){
-       if( !good[ii] ) continue ;
-       xx = (x[ii]-xb)*xi ;
-       jj = (int)xx ; xx = xx - jj ; x1 = 1.0f-xx ;
-       yy = (y[ii]-yb)*yi ;
-       kk = (int)yy ; yy = yy - kk ; y1 = 1.0f-yy ;
-       ww = WW(ii) ; nww += ww ;
+   if( !use_omp ){  /*** serial code ***/
 
-       xc[jj] += (x1*ww); xc[jj+1] += (xx*ww);
-       yc[kk] += (y1*ww); yc[kk+1] += (yy*ww);
+     /* AFNI_do_nothing() ; fprintf(stderr,"h") ; */
 
-       XYC(jj  ,kk  ) += x1*(y1*ww) ;
-       XYC(jj+1,kk  ) += xx*(y1*ww) ;
-       XYC(jj  ,kk+1) += x1*(yy*ww) ;
-       XYC(jj+1,kk+1) += xx*(yy*ww) ;
+     if( !xyclip ){  /*------------ equal size bins ------------*/
+
+       float xb,xi , yb,yi , xx,yy , x1,y1 , ww ;
+       int jj,kk ;
+
+       xb = xxbot ; xi = nbm/(xxtop-xxbot) ;
+       yb = yybot ; yi = nbm/(yytop-yybot) ;
+       for( ii=0 ; ii < n ; ii++ ){
+         if( !good[ii] ) continue ;
+         xx = (x[ii]-xb)*xi ;
+         jj = (int)xx ; xx = xx - jj ; x1 = 1.0f-xx ;
+         yy = (y[ii]-yb)*yi ;
+         kk = (int)yy ; yy = yy - kk ; y1 = 1.0f-yy ;
+         ww = WW(ii) ; nww += ww ;
+
+         if( jj < 0 || kk < 0 || jj >= nbin || kk >= nbin ) continue ;
+
+         xc[jj] += (x1*ww); xc[jj+1] += (xx*ww);
+         yc[kk] += (y1*ww); yc[kk+1] += (yy*ww);
+
+         XYC(jj  ,kk  ) += x1*(y1*ww) ;
+         XYC(jj+1,kk  ) += xx*(y1*ww) ;
+         XYC(jj  ,kk+1) += x1*(yy*ww) ;
+         XYC(jj+1,kk+1) += xx*(yy*ww) ;
+       }
+
+     } else if( xyclip ){  /*------------ mostly equal bins ----------------*/
+
+       int jj,kk ;
+       float xbc=xcbot , xtc=xctop , ybc=ycbot , ytc=yctop ;
+       float xi,yi , xx,yy , x1,y1 , ww ;
+
+       AFNI_do_nothing() ; /* fprintf(stderr,"c") ; */
+
+       xi = (nbin-2.000001f)/(xtc-xbc) ;
+       yi = (nbin-2.000001f)/(ytc-ybc) ;
+       for( ii=0 ; ii < n ; ii++ ){
+         if( !good[ii] ) continue ;
+         xx = x[ii] ;
+              if( xx < xbc ){ jj = 0   ; xx = 0.0f ; }
+         else if( xx > xtc ){ jj = nbm ; xx = 1.0f ; }
+         else               { xx = 1.0f+(xx-xbc)*xi; jj = (int)xx; xx = xx - jj; }
+         yy = y[ii] ;
+              if( yy < ybc ){ kk = 0   ; yy = 0.0f ; }
+         else if( yy > ytc ){ kk = nbm ; yy = 1.0f ; }
+         else               { yy = 1.0f+(yy-ybc)*yi; kk = (int)yy; yy = yy - kk; }
+
+         if( jj < 0 || kk < 0 || jj >= nbin || kk >= nbin ) continue ;
+
+         x1 = 1.0f-xx ; y1 = 1.0f-yy ; ww = WW(ii) ; nww += ww ;
+
+         xc[jj] += (x1*ww); xc[jj+1] += (xx*ww);
+         yc[kk] += (y1*ww); yc[kk+1] += (yy*ww);
+
+         XYC(jj  ,kk  ) += x1*(y1*ww) ;
+         XYC(jj+1,kk  ) += xx*(y1*ww) ;
+         XYC(jj  ,kk+1) += x1*(yy*ww) ;
+         XYC(jj+1,kk+1) += xx*(yy*ww) ;
+       }
+
+       AFNI_do_nothing() ; /* fprintf(stderr,".") ; */
+
+     } /* end of clipped code */
+
+   } else {  /*** parallelized using OpenMP ***/
+
+     float **xccar , **yccar , **xyccar , *nwwar ; int nbpq=nbp*nbp,itt ;
+
+     xccar  = (float **)calloc(sizeof(float *),nthr) ;  /* arrays for   */
+     yccar  = (float **)calloc(sizeof(float *),nthr) ;  /* accumulation */
+     xyccar = (float **)calloc(sizeof(float *),nthr) ;  /* in separate  */
+     nwwar  = (float * )calloc(sizeof(float)  ,nthr) ;  /* threads      */
+
+     for( itt=0 ; itt < nthr ; itt++ ){
+       xccar [itt] = (float *)calloc(sizeof(float),nbp ) ;
+       yccar [itt] = (float *)calloc(sizeof(float),nbp ) ;
+       xyccar[itt] = (float *)calloc(sizeof(float),nbpq) ;
      }
 
-   } else if( xyclip ){  /*------------ mostly equal bins ----------------*/
+     AFNI_do_nothing() ; fprintf(stderr,"H") ;
 
-     register int jj,kk ;
-     float xbc=xcbot , xtc=xctop , ybc=ycbot , ytc=yctop ;
-     float xi,yi , xx,yy , x1,y1 , ww ;
+#undef  XYCC
+#define XYCC(p,q) xycc[(p)+(q)*nbp]
 
-     xi = (nbin-2.000001f)/(xtc-xbc) ;
-     yi = (nbin-2.000001f)/(ytc-ybc) ;
-     for( ii=0 ; ii < n ; ii++ ){
-       if( !good[ii] ) continue ;
-       xx = x[ii] ;
-            if( xx < xbc ){ jj = 0   ; xx = 0.0f ; }
-       else if( xx > xtc ){ jj = nbm ; xx = 1.0f ; }
-       else               { xx = 1.0f+(xx-xbc)*xi; jj = (int)xx; xx = xx - jj; }
-       yy = y[ii] ;
-            if( yy < ybc ){ kk = 0   ; yy = 0.0f ; }
-       else if( yy > ytc ){ kk = nbm ; yy = 1.0f ; }
-       else               { yy = 1.0f+(yy-ybc)*yi; kk = (int)yy; yy = yy - kk; }
+     if( !xyclip ){  /*------------ equal size bins ------------*/
 
-       x1 = 1.0f-xx ; y1 = 1.0f-yy ; ww = WW(ii) ; nww += ww ;
+     AFNI_do_nothing() ; fprintf(stderr,"y") ;
 
-       xc[jj] += (x1*ww); xc[jj+1] += (xx*ww);
-       yc[kk] += (y1*ww); yc[kk+1] += (yy*ww);
+ AFNI_OMP_START ;
+#pragma omp parallel  /*** start of parallel code ***/
+ {
+       float *xcc, *ycc , *xycc ;
+       float xb,xi , yb,yi , xx,yy , x1,y1 , ww ;
+       int ii,jj,kk , ithr ;
 
-       XYC(jj  ,kk  ) += x1*(y1*ww) ;
-       XYC(jj+1,kk  ) += xx*(y1*ww) ;
-       XYC(jj  ,kk+1) += x1*(yy*ww) ;
-       XYC(jj+1,kk+1) += xx*(yy*ww) ;
+       ithr = omp_get_thread_num() ;
+#pragma omp barrier
+       fprintf(stderr,"%d",ithr) ;
+       xcc = xccar[ithr] ; ycc = yccar[ithr] ; xycc = xyccar[ithr] ;
+       xb = xxbot ; xi = nbm/(xxtop-xxbot) ;
+       yb = yybot ; yi = nbm/(yytop-yybot) ;
+#pragma omp for
+       for( ii=0 ; ii < n ; ii++ ){
+         if( !good[ii] ) continue ;
+         xx = (x[ii]-xb)*xi ;
+         jj = (int)xx ; xx = xx-jj ; x1 = 1.0f-xx ;
+         yy = (y[ii]-yb)*yi ;
+         kk = (int)yy ; yy = yy-kk ; y1 = 1.0f-yy ;
+         ww = WW(ii) ; nwwar[ithr] += ww ;
+
+         if( jj < 0 || kk < 0 || jj >= nbin || kk >= nbin ) continue ;
+
+         xcc[jj] += (x1*ww); xcc[jj+1] += (xx*ww);
+         ycc[kk] += (y1*ww); ycc[kk+1] += (yy*ww);
+
+         XYCC(jj  ,kk  ) += x1*(y1*ww) ;
+         XYCC(jj+1,kk  ) += xx*(y1*ww) ;
+         XYCC(jj  ,kk+1) += x1*(yy*ww) ;
+         XYCC(jj+1,kk+1) += xx*(yy*ww) ;
+       }
+ }  /*** end of parallel code ***/
+ AFNI_OMP_END ;
+
+     } else if( xyclip ){  /*------------ mostly equal bins ----------------*/
+
+     AFNI_do_nothing() ; fprintf(stderr,"x") ;
+
+ AFNI_OMP_START ;
+#pragma omp parallel  /*** start of parallel code ***/
+ {
+       float *xcc, *ycc , *xycc ;
+       int ii,jj,kk , ithr ;
+       float xbc=xcbot , xtc=xctop , ybc=ycbot , ytc=yctop ;
+       float xi,yi , xx,yy , x1,y1 , ww ;
+
+       ithr = omp_get_thread_num() ;
+       fprintf(stderr,"%d",ithr) ;
+#pragma omp barrier
+       fprintf(stderr,":") ;
+       xcc = xccar[ithr] ; ycc = yccar[ithr] ; xycc = xyccar[ithr] ;
+       xi = (nbin-2.000001f)/(xtc-xbc) ;
+       yi = (nbin-2.000001f)/(ytc-ybc) ;
+#pragma omp for
+       for( ii=0 ; ii < n ; ii++ ){
+         if( !good[ii] ) continue ;
+         xx = x[ii] ;
+              if( xx < xbc ){ jj = 0   ; xx = 0.0f ; }
+         else if( xx > xtc ){ jj = nbm ; xx = 1.0f ; }
+         else               { xx = 1.0f+(xx-xbc)*xi; jj = (int)xx; xx = xx-jj; }
+         yy = y[ii] ;
+              if( yy < ybc ){ kk = 0   ; yy = 0.0f ; }
+         else if( yy > ytc ){ kk = nbm ; yy = 1.0f ; }
+         else               { yy = 1.0f+(yy-ybc)*yi; kk = (int)yy; yy = yy-kk; }
+
+         if( jj < 0 || kk < 0 || jj >= nbin || kk >= nbin ) continue ;
+
+         x1 = 1.0f-xx ; y1 = 1.0f-yy ; ww = WW(ii) ; nwwar[ithr] += ww ;
+
+         xcc[jj] += (x1*ww); xcc[jj+1] += (xx*ww);
+         ycc[kk] += (y1*ww); ycc[kk+1] += (yy*ww);
+
+         XYCC(jj  ,kk  ) += x1*(y1*ww) ;
+         XYCC(jj+1,kk  ) += xx*(y1*ww) ;
+         XYCC(jj  ,kk+1) += x1*(yy*ww) ;
+         XYCC(jj+1,kk+1) += xx*(yy*ww) ;
+       }
+#pragma omp barrier
+       fprintf(stderr,"%d",ithr) ;
+ }  /*** end of parallel code ***/
+ AFNI_OMP_END ;
+
+     }  /*-- end of mostly equal bins --*/
+
+     /* now merge the parallel thread results */
+
+     for( itt=0 ; itt < nthr ; itt++ ){
+       if( nwwar[itt] > 0.0f ){
+         nww += nwwar[itt] ;
+         for( ii=0 ; ii < nbp ; ii++ ){ xc[ii] += xccar[itt][ii]; yc[ii] += yccar[itt][ii]; }
+         for( ii=0 ; ii < nbpq ; ii++ ){ xyc[ii] += xyccar[itt][ii] ; }
+       }
+       free(xccar[itt]) ; free(yccar[itt]) ; free(xyccar[itt]) ;
      }
+     free(xccar) ; free(yccar) ; free(xyccar) ; free(nwwar) ;
 
-   }
+   } /* end of using OpenMP */
+
+   /* AFNI_do_nothing() ; fprintf(stderr,".") ; */
 
    tdh->nww = nww ;
-   free(good) ; EXRETURN ;
+   EXRETURN ;
 }
 
 /*----------------------------------------------------------------------------*/
@@ -269,7 +449,7 @@ void INCOR_normalize_2Dhist( INCOR_2Dhist *tdh )
    if( tdh == NULL ) return ;
    nww = tdh->nww; xc = tdh->xc; yc = tdh->yc; xyc = tdh->xyc; nbp = tdh->nbin+1;
    if( nww > 0.0f && nww != 1.0f && xyc != NULL && xc != NULL && yc != NULL ){
-     register float ni ; register int nbq , ii ;
+     float ni ; int nbq , ii ;
      ni = 1.0f / nww ;
      for( ii=0 ; ii < nbp ; ii++ ){ xc[ii]  *= ni; yc[ii] *= ni; }
      nbq = nbp*nbp ;
@@ -284,8 +464,8 @@ void INCOR_normalize_2Dhist( INCOR_2Dhist *tdh )
 
 float INCOR_mutual_info( INCOR_2Dhist *tdh )
 {
-   register int ii,jj ;
-   register float val ;
+   int ii,jj ;
+   float val ;
    float nww , *xc, *yc, *xyc ; int nbp ;
 
    if( tdh == NULL ) return 0.0f ;
@@ -315,8 +495,8 @@ float INCOR_mutual_info( INCOR_2Dhist *tdh )
 
 float INCOR_norm_mutinf( INCOR_2Dhist *tdh )
 {
-   register int ii,jj ;
-   register float numer , denom ;
+   int ii,jj ;
+   float numer , denom ;
    float nww , *xc, *yc, *xyc ; int nbp ;
 
    if( tdh == NULL ) return 0.0f ;
@@ -347,8 +527,8 @@ float INCOR_norm_mutinf( INCOR_2Dhist *tdh )
 
 float INCOR_corr_ratio( INCOR_2Dhist *tdh , int crmode )
 {
-   register int ii,jj ;
-   register float vv,mm ;
+   int ii,jj ;
+   float vv,mm ;
    float    val , cyvar , uyvar , yrat,xrat ;
    float nww , *xc, *yc, *xyc ; int nbp ;
 
@@ -413,8 +593,8 @@ float INCOR_corr_ratio( INCOR_2Dhist *tdh , int crmode )
 
 float INCOR_hellinger( INCOR_2Dhist *tdh )
 {
-   register int ii,jj ;
-   register float val , pq ;
+   int ii,jj ;
+   float val , pq ;
    float nww , *xc, *yc, *xyc ; int nbp ;
 
    if( tdh == NULL ) return 0.0f ;
@@ -456,8 +636,8 @@ float INCOR_hellinger( INCOR_2Dhist *tdh )
 
 float_quad INCOR_helmicra( INCOR_2Dhist *tdh )
 {
-   register int ii,jj ;
-   register float hel , pq , vv,uu ;
+   int ii,jj ;
+   float hel , pq , vv,uu ;
    float    val , cyvar , uyvar , yrat,xrat ;
    float_quad hmc = {0.0f,0.0f,0.0f,0.f} ;
    float nww , *xc, *yc, *xyc ; int nbp ;
@@ -534,10 +714,10 @@ float_quad INCOR_helmicra( INCOR_2Dhist *tdh )
 
 /*----------------------------------------------------------------------------*/
 
-static double hpow = 0.33333333333 ;
+static double hpow = 0.3333333333321 ;
 void INCOR_set_2Dhist_hpower( double hh )
 {
-  hpow = (hh > 0.0 && hh < 1.0) ? hh : 0.33333333333 ;
+  hpow = (hh > 0.0 && hh < 1.0) ? hh : 0.3333333333321 ;
 }
 
 static int nhbin = 0 ;
@@ -547,18 +727,18 @@ int INCOR_2Dhist_compute_nbin( int ndata )
 {
    int nbin ;
 
-   nbin = (nhbin > 2) ? nhbin : (int)pow((double)ndata,hpow) ;
-   if( nbin > 255 ) nbin = 255 ; else if( nbin < 3 ) nbin = 3 ;
+   nbin = (nhbin > 4) ? nhbin : (int)rint(pow((double)ndata,hpow)) ;
+   if( nbin > 255 ) nbin = 255 ; else if( nbin < 5 ) nbin = 5 ;
    return nbin ;
 }
 
 /*----------------------------------------------------------------------------*/
 
-static INCOR_2Dhist * INCOR_create_2Dhist( int nbin ,
-                                           float xbot , float xtop ,
-                                           float ybot , float ytop ,
-                                           float xcbot, float xctop,
-                                           float ycbot, float yctop  )
+INCOR_2Dhist * INCOR_create_2Dhist( int nbin ,
+                                    float xbot , float xtop ,
+                                    float ybot , float ytop ,
+                                    float xcbot, float xctop,
+                                    float ycbot, float yctop  )
 {
    INCOR_2Dhist *tdh ; int nbp ;
 
@@ -566,7 +746,7 @@ ENTRY("INCOR_create_2Dhist") ;
 
    if( nbin < 3 ) nbin = 3 ;
 
-   tdh = (INCOR_2Dhist *)malloc(sizeof(INCOR_2Dhist)) ;
+   tdh = (INCOR_2Dhist *)calloc(1,sizeof(INCOR_2Dhist)) ;
 
    tdh->meth  = 0 ;  /* undefined as yet */
    tdh->nbin  = nbin ;
@@ -586,7 +766,7 @@ ENTRY("INCOR_create_2Dhist") ;
 
 /*----------------------------------------------------------------------------*/
 
-static void INCOR_destroy_2Dhist( INCOR_2Dhist *tin )
+void INCOR_destroy_2Dhist( INCOR_2Dhist *tin )
 {
    if( tin == NULL ) return ;
    if( tin->xc  != NULL ) free(tin->xc) ;
@@ -598,7 +778,7 @@ static void INCOR_destroy_2Dhist( INCOR_2Dhist *tin )
 
 /*----------------------------------------------------------------------------*/
 
-static void INCOR_copyover_2Dhist( INCOR_2Dhist *tin , INCOR_2Dhist *tout )
+void INCOR_copyover_2Dhist( INCOR_2Dhist *tin , INCOR_2Dhist *tout )
 {
    int nbp ;
 
@@ -631,8 +811,9 @@ ENTRY("INCOR_copyover_2Dhist") ;
 }
 
 /*----------------------------------------------------------------------------*/
+/*----------------------------------------------------------------------------*/
 
-static void INCOR_addto_incomplete_pearson( int n, float *x, float *y,
+void INCOR_addto_incomplete_pearson( int n, float *x, float *y,
                                             float *w, INCOR_pearson *inpear )
 {
    int ii ; double sx,sxx , sy,syy,sxy , sw ;
@@ -652,32 +833,36 @@ static void INCOR_addto_incomplete_pearson( int n, float *x, float *y,
    } else {
      double xx , yy , ww ;
      for( ii=0 ; ii < n ; ii++ ){
-       xx = (double)x[ii] ; yy = (double)y[ii] ; ww = (double)w[ii] ;
-       sx += xx*ww ; sxx += xx*xx*ww ;
-       sy += yy*ww ; syy += yy*yy*ww ; sxy += xx*yy*ww ; sw += ww ;
+       ww = (double)w[ii] ;
+       if( ww > 0.0 ){
+         xx = (double)x[ii] ; yy = (double)y[ii] ;
+         sx += xx*ww ; sxx += xx*xx*ww ;
+         sy += yy*ww ; syy += yy*yy*ww ; sxy += xx*yy*ww ; sw += ww ;
+       }
      }
    }
 
    inpear->npt += n ;
    inpear->sx   = sx ; inpear->sxx = sxx ;
    inpear->sy   = sy ; inpear->syy = syy ; inpear->sxy = sxy ; inpear->sw = sw ;
+
    return ;
 }
 
 /*----------------------------------------------------------------------------*/
 
-static void INCOR_destroy_incomplete_pearson( INCOR_pearson *inpear )
+void INCOR_destroy_incomplete_pearson( INCOR_pearson *inpear )
 {
    if( inpear != NULL ) free((void *)inpear) ;
 }
 
 /*----------------------------------------------------------------------------*/
 
-static INCOR_pearson * INCOR_create_incomplete_pearson(void)
+INCOR_pearson * INCOR_create_incomplete_pearson(void)
 {
    INCOR_pearson *inpear ;
 
-   inpear = (INCOR_pearson *)malloc(sizeof(INCOR_pearson)) ;
+   inpear = (INCOR_pearson *)calloc(1,sizeof(INCOR_pearson)) ;
    inpear->sx  = 0.0 ; inpear->sxx = 0.0 ;
    inpear->sy  = 0.0 ; inpear->syy = 0.0 ;
    inpear->sxy = 0.0 ; inpear->sw  = 0.0 ; inpear->npt = 0 ;
@@ -688,9 +873,9 @@ static INCOR_pearson * INCOR_create_incomplete_pearson(void)
 
 /*----------------------------------------------------------------------------*/
 
-static float INCOR_incomplete_pearson( INCOR_pearson *inpear )
+float INCOR_incomplete_pearson( INCOR_pearson *inpear )
 {
-   double xv , yv , xy , swi ;
+   double xv , yv , xy , swi , val ;
 
    if( inpear->sw <= 0.0 ) return 0.0f ;
 
@@ -701,7 +886,105 @@ static float INCOR_incomplete_pearson( INCOR_pearson *inpear )
    xy = inpear->sxy - inpear->sx * inpear->sy * swi ;
 
    if( xv <= 0.0 || yv <= 0.0 ) return 0.0f ;
-   return (float)(xy/sqrt(xv*yv)) ;
+   val = (xy/sqrt(xv*yv)) ; val = MYatanh(val) ; return (float)val ;
+}
+
+/*----------------------------------------------------------------------------*/
+/*----------------------------------------------------------------------------*/
+
+void INCOR_addto_incomplete_pearclp( int n, float *x, float *y,
+                                            float *w, INCOR_pearclp *inpear )
+{
+   int ii ; double sx,sxx , sy,syy,sxy , sw ;
+   double xcb,xct , ycb,yct ;
+   double xdb,xdt , ydb,ydt ;
+
+   if( n <= 0 || x == NULL || y == NULL || inpear == NULL ) return ;
+
+   sx = inpear->sx ; sxx = inpear->sxx ;
+   sy = inpear->sy ; syy = inpear->syy ; sxy = inpear->sxy ; sw = inpear->sw ;
+
+   xcb = inpear->xcbot ; xct = inpear->xctop ;
+   ycb = inpear->ycbot ; yct = inpear->yctop ;
+   xdb = inpear->xdbot ; xdt = inpear->xdtop ;
+   ydb = inpear->ydbot ; ydt = inpear->ydtop ;
+
+   if( w == NULL ){
+     double xx , yy , ww ; int cl ;
+     for( ii=0 ; ii < n ; ii++ ){
+       cl = 1 ;
+       xx = (double)x[ii] ;
+       if( xx <= xcb ){ xx = xdb; cl++; } else if( xx >= xct ){ xx = xdt; cl++;}
+       yy = (double)y[ii] ;
+       if( yy <= ycb ){ yy = ydb; cl++; } else if( yy >= yct ){ yy = ydt; cl++;}
+       ww = 1.0 / cl ;
+       sx += xx ; sxx += xx*xx ; sy += yy ; syy += yy*yy ; sxy += xx*yy ; sw += ww ;
+     }
+   } else {
+     double xx , yy , ww ; int cl ;
+     for( ii=0 ; ii < n ; ii++ ){
+       ww = (double)w[ii] ;
+       if( ww > 0.0 ){
+         cl = 1 ;
+         xx = (double)x[ii] ;
+         if( xx <= xcb ){ xx = xdb; cl++; } else if( xx >= xct ){ xx = xdt; cl++;}
+         yy = (double)y[ii] ;
+         if( yy <= ycb ){ yy = ydb; cl++; } else if( yy >= yct ){ yy = ydt; cl++;}
+         ww /= cl ;
+         sx += xx*ww ; sxx += xx*xx*ww ;
+         sy += yy*ww ; syy += yy*yy*ww ; sxy += xx*yy*ww ; sw += ww ;
+       }
+     }
+   }
+
+   inpear->npt += n ;
+   inpear->sx   = sx ; inpear->sxx = sxx ;
+   inpear->sy   = sy ; inpear->syy = syy ; inpear->sxy = sxy ; inpear->sw = sw ;
+
+   return ;
+}
+
+/*----------------------------------------------------------------------------*/
+
+void INCOR_destroy_incomplete_pearclp( INCOR_pearclp *inpear )
+{
+   if( inpear != NULL ) free((void *)inpear) ;
+}
+
+/*----------------------------------------------------------------------------*/
+
+INCOR_pearclp * INCOR_create_incomplete_pearclp(void)
+{
+   INCOR_pearclp *inpear ;
+
+   inpear = (INCOR_pearclp *)calloc(1,sizeof(INCOR_pearclp)) ;
+   inpear->sx  = 0.0 ; inpear->sxx = 0.0 ;
+   inpear->sy  = 0.0 ; inpear->syy = 0.0 ;
+   inpear->sxy = 0.0 ; inpear->sw  = 0.0 ; inpear->npt = 0 ;
+
+   inpear->xcbot = inpear->xctop = inpear->ycbot = inpear->yctop = 0.0 ;
+   inpear->xdbot = inpear->xdtop = inpear->ydbot = inpear->ydtop = 0.0 ;
+
+   inpear->meth = GA_MATCH_PEARCLP_SCALAR ;
+   return inpear ;
+}
+
+/*----------------------------------------------------------------------------*/
+
+float INCOR_incomplete_pearclp( INCOR_pearclp *inpear )
+{
+   double xv , yv , xy , swi , val ;
+
+   if( inpear->sw <= 0.0 ) return 0.0f ;
+
+   swi = 1.0 / inpear->sw ;
+
+   xv = inpear->sxx - inpear->sx * inpear->sx * swi ;
+   yv = inpear->syy - inpear->sy * inpear->sy * swi ;
+   xy = inpear->sxy - inpear->sx * inpear->sy * swi ;
+
+   if( xv <= 0.0 || yv <= 0.0 ) return 0.0f ;
+   val = (xy/sqrt(xv*yv)) ; val = MYatanh(val) ; return (float)val ;
 }
 
 /*============================================================================*/
@@ -714,13 +997,16 @@ static float INCOR_incomplete_pearson( INCOR_pearson *inpear )
 int INCOR_check_meth_code( int meth )
 {
   switch( meth ){
-     case GA_MATCH_PEARSON_SCALAR:
+     case GA_MATCH_PEARSON_SCALAR:    return 1 ;
+
+     case GA_MATCH_PEARCLP_SCALAR:    return 3 ;
+
      case GA_MATCH_MUTINFO_SCALAR:
      case GA_MATCH_CORRATIO_SCALAR:
      case GA_MATCH_NORMUTIN_SCALAR:
      case GA_MATCH_HELLINGER_SCALAR:
      case GA_MATCH_CRAT_SADD_SCALAR:
-     case GA_MATCH_CRAT_USYM_SCALAR:  return 1 ;
+     case GA_MATCH_CRAT_USYM_SCALAR:  return 2 ;  /* uses 2Dhist */
   }
 
   return 0 ;
@@ -769,6 +1055,18 @@ ENTRY("INCOR_create") ;
        vinc = (void *)INCOR_create_incomplete_pearson() ;
      break ;
 
+     case GA_MATCH_PEARCLP_SCALAR:{
+       INCOR_pearclp *pc ;
+       pc = INCOR_create_incomplete_pearclp() ; vinc = (void *)pc ;
+       if( mpar != NULL && mpar->nar > 8 ){
+         pc->xdbot = mpar->ar[1] ; pc->xdtop = mpar->ar[2] ;
+         pc->ydbot = mpar->ar[3] ; pc->ydtop = mpar->ar[4] ;
+         pc->xcbot = mpar->ar[5] ; pc->xctop = mpar->ar[6] ;
+         pc->ycbot = mpar->ar[7] ; pc->yctop = mpar->ar[8] ;
+       }
+     }
+     break ;
+
      case GA_MATCH_MUTINFO_SCALAR:     /* methods that use 2D histograms */
      case GA_MATCH_CORRATIO_SCALAR:
      case GA_MATCH_NORMUTIN_SCALAR:
@@ -780,7 +1078,7 @@ ENTRY("INCOR_create") ;
        float xbot,xtop, ybot,ytop, xcbot,xctop, ycbot,yctop;
        nbin = (mpar == NULL) ? 0 : (int)mpar->ar[0] ;
        if( nbin < 0 ) nbin = INCOR_2Dhist_compute_nbin(-nbin) ;
-       if( nbin > 0 && mpar != NULL && mpar->nar > 9 ){
+       if( nbin > 0 && mpar != NULL && mpar->nar > 8 ){
          xbot  = mpar->ar[1] ; xtop  = mpar->ar[2] ;
          ybot  = mpar->ar[3] ; ytop  = mpar->ar[4] ;
          xcbot = mpar->ar[5] ; xctop = mpar->ar[6] ;
@@ -814,6 +1112,10 @@ ENTRY("INCOR_destroy") ;
 
      case GA_MATCH_PEARSON_SCALAR:
        INCOR_destroy_incomplete_pearson(vp) ;
+     break ;
+
+     case GA_MATCH_PEARCLP_SCALAR:
+       INCOR_destroy_incomplete_pearclp(vp) ;
      break ;
 
      case GA_MATCH_MUTINFO_SCALAR:
@@ -859,6 +1161,19 @@ ENTRY("INCOR_copyover") ;
        }
      break ;
 
+     case GA_MATCH_PEARCLP_SCALAR:
+       if( vin != NULL ){
+         AAmemcpy( vout , vin , sizeof(INCOR_pearclp) ) ;
+       } else {
+         INCOR_pearclp *vp = (INCOR_pearclp *)vout ;
+         vp->sx  = 0.0 ; vp->sxx = 0.0 ;
+         vp->sy  = 0.0 ; vp->syy = 0.0 ;
+         vp->sxy = 0.0 ; vp->sw  = 0.0 ; vp->npt = 0 ;
+         vp->xcbot = vp->xctop = vp->ycbot = vp->yctop = 0.0 ;
+         vp->xdbot = vp->xdtop = vp->ydbot = vp->ydtop = 0.0 ;
+       }
+     break ;
+
      case GA_MATCH_MUTINFO_SCALAR:
      case GA_MATCH_CORRATIO_SCALAR:
      case GA_MATCH_NORMUTIN_SCALAR:
@@ -894,6 +1209,10 @@ ENTRY("INCOR_addto") ;
 
      case GA_MATCH_PEARSON_SCALAR:
        INCOR_addto_incomplete_pearson( n , x , y , w , vin ) ;
+     break ;
+
+     case GA_MATCH_PEARCLP_SCALAR:
+       INCOR_addto_incomplete_pearclp( n , x , y , w , vin ) ;
      break ;
 
      case GA_MATCH_MUTINFO_SCALAR:
@@ -933,6 +1252,7 @@ ENTRY("INCOR_evaluate") ;
 
    switch( INCOR_methcode(vtmp) ){
      case GA_MATCH_PEARSON_SCALAR:   val = INCOR_incomplete_pearson(vtmp); break;
+     case GA_MATCH_PEARCLP_SCALAR:   val = INCOR_incomplete_pearclp(vtmp); break;
      case GA_MATCH_MUTINFO_SCALAR:   val = INCOR_mutual_info(vtmp) ;       break;
      case GA_MATCH_NORMUTIN_SCALAR:  val = INCOR_norm_mutinf(vtmp) ;       break;
      case GA_MATCH_HELLINGER_SCALAR: val = INCOR_hellinger(vtmp) ;         break;

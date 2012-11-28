@@ -185,7 +185,10 @@ change the orientation of the variable display within AFNI.
 Variable: AFNI_PLUGINPATH
 -------------------------
 This variable should be the directory in which AFNI should search
-for plugins, executable files, atlases, templates and atlas definition files. See the atlas environment variable section below for more details.  If there is more than one appropriate directory, they can be separated by colons, as in
+for plugins, executable files, atlases, templates and atlas definition files.
+See the atlas environment variable section below for more details.
+If there is more than one appropriate directory, they can be separated
+by colons, as in
 
    setenv AFNI_PLUGINPATH /directory/one:/directory/two
 
@@ -194,7 +197,9 @@ instead.  This will waste time, since most directories in the PATH
 will not have plugins.  On some systems, using the PATH has been
 known to cause problems when AFNI starts.  I believe this is due to
 bugs in the system library routines (e.g., dlopen) used to manage
-dynamically loaded shared objects. Take care to remove any slow or non-existent directories from the PATH because these problems will cause searches to fail or become excessively slow.
+dynamically loaded shared objects. Take care to remove any slow or
+non-existent directories from the PATH because these problems will cause
+searches to fail or become excessively slow.
 
 ------------------------
 Variable: AFNI_NOPLUGINS
@@ -2073,6 +2078,14 @@ This variable sets the size of the boxes that are plotted with the 1dplot
 a value of 0.006 is the default.  The largest allowed value is 0.02 and
 the smallest is 0.001.
 
+-------------------------------
+Variable: AFNI_1DPLOT_RENDEROLD
+-------------------------------
+On 30 Apr 2012, a new method of rendering the 1dplot graph into an X11
+window was introduced -- this method uses 'anti-aliasing' to produce
+smoother lines and characters.  If you want the old coarser-looking
+rendering method, set this variable to YES.
+
 ---------------------------------
 Variable: AFNI_SIEMENS_INTERLEAVE
 ---------------------------------
@@ -2346,6 +2359,14 @@ are short on memory, you could set this to 1.  If you are running out
 of undo levels, you could set this to a larger value; however, this
 would only be needed if you are drawing huge 3D swaths of data at a
 time (e.g., using the 3D sphere option with a large radius).
+
+----------------------------
+Variable: AFNI_DRAW_THRESH
+----------------------------
+This variable controls the clipping threshold for converting atlas
+regions into ROIs in the Draw Dataset plugin. The default value is 49
+percent unless set by this variable as a percentage greater than 0.0
+and at most 100.0 percent
 
 ---------------------
 Variable: AFNI_SPEECH (editable)
@@ -3152,6 +3173,15 @@ most of the time is spent decoding the text in the file into numbers
 and then writing them back out -- you'll probably see a speedup of
 about 1.2-1.4 instead -- not trivial, but not exhilarating.
 
+------------------------
+Variables: AFNI_WSINC5_*
+------------------------
+These variables affect the way the '3dAllineate -final wsinc5' windowed
+since interpolation option works.  See the output of the command
+  3dAllineate -HELP
+for the details.  You can control the width of the sinc window, the
+tapering function, and a couple of other useless options.
+
 ----------------------------------------------------------------------
 --- variables specific to NIML I/O
 ----------------------------------------------------------------------
@@ -3225,10 +3255,19 @@ to the file based on the given prefix, rather than to an automatic 1D file.
 This allows writing surface files to NIfTI format, for example.
 
 -----------------------------------
-Variable: AFNI_WAMI_DEBUG
+Variable: AFNI_PATH_SPACES_OK
 -----------------------------------
-This integer sets the debugging level in whereami routines.
-Currently used values range from 0 to 3.
+If this variable is set to YES, dataset names with spaces in them will go
+through "normal" reading routines, rather than using THD_open_tcat() to try
+to combine multiple datasets.
+
+----------------------
+Variable: AFNI_CREEPTO
+----------------------
+If set to YES, then the AFNI GUI 'Jump to (xyz)' behavior is altered to
+move the crosshairs to the chosen location incrementally, rather than
+in one big jump.  The reasons for using this feature are (a) to help
+get a feel for the transit, and (b) just plain fun.
 
 
 =============================================
@@ -3384,6 +3423,14 @@ will NOT be carried out.  As of 26 Mar 2009, this adjustment of
 q-values is the default in AFNI programs.  If you want the old
 behavior, set this variable to YES.
 
+----------------------------------
+Variable: AFNI_NON_INDEPENDENT_FDR
+----------------------------------
+If this variable is set to YES, then the FDR calculation is made using
+the non-independent assumption, as in the '-cdep' option for program
+3dFDR.  This setting will affect the calculation of FDR curves via
+program 3drefit, et cetera.
+
 ----------------------------
 Variable: AFNI_SKIP_SATCHECK
 ----------------------------
@@ -3451,7 +3498,8 @@ Variable: AFNI_WAMI_DEBUG
 -------------------------
 This variable controls the output of detailed messages about various tasks
 involved in loading atlases, transformations and composing query results.
-By default, this information is not shown.
+By default, this information is not shown. This integer sets the debugging
+level in whereami routines. Currently used values range from 0 to 3.
 
 ------------------------------
 Variable: AFNI_TTATLAS_DATASET
@@ -3479,12 +3527,33 @@ Variable: AFNI_WHEREAMI_MAX_SEARCH_RAD (editable)
 -------------------------------
 By default, whereami searches a radius of 7.5 mm. Set a radius up to 9.5 mm.
 
+-------------------------------
+Variable: AFNI_WHEREAMI_PROB_MIN
+-------------------------------
+Minimum probability AFNI considers in probabilistic atlases
+
 --------------------------------
 Variable: AFNI_DEFAULT_STD_SPACE
 --------------------------------
 The default template space is assumed to be TLRC. This is used for coordinate
 input to whereami, the whereami GUI and for TLRC view datasets without a
 template space explicitly set in the dataset header.
+
+--------------------------------
+Variable: AFNI_NIFTI_VIEW
+--------------------------------
+The default view extension used for output when creating AFNI format datasets
+from NIFTI datasets.This variable is only applicable for sform and qform codes
+that do not have clearly defined views (sform/qform code = 2). Set to "tlrc"
+or "orig". See also AFNI_DEFAULT_STD_SPACE and AFNI_NIFTI_PRIORITY.
+
+--------------------------------
+Variable: AFNI_NIFTI_PRIORITY
+--------------------------------
+Sets preference for NIFTI files to use sform or qform codes and matrices to
+determine space, origin and orientation. Set to 'S' or 'Q' for sform or qform
+respectively. If not set, NIFTI files are read using the non-zero form code or
+the qform code if both are set.
 
 -------------------------------------------
 Variable: AFNI_SUPP_ATLAS, AFNI_LOCAL_ATLAS

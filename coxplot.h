@@ -26,14 +26,18 @@
 
    extern void init_XDBE(Display *) ;
    extern Window getwin_from_XDBE( Display * , Drawable ) ;
+   extern int  get_XDBE_suspension(int) ; /* 01 May 2012 */
+   extern void set_XDBE_suspension(int) ;
 #else
 #  define getwin_from_XDBE(dd,ww) (ww)
+#  define get_XDBE_suspension(qq) (1)
+#  define set_XDBE_suspension(qq) /*nada*/
 #endif
 
-#undef MAX
+#undef  MAX
 #define MAX(a,b) (((a)<(b)) ? (b) : (a))
 
-#undef MIN
+#undef  MIN
 #define MIN(a,b) (((a)>(b)) ? (b) : (a))
 
 #ifndef HOTCOLOR
@@ -139,6 +143,7 @@ typedef struct {
 #define THCODE_CIRC       2  /* 10 Mar 2002: circle at (x1,y1), radius x2 */
 #define THCODE_OPAC       3  /* 22 Jul 2004: set opacity of further drawing to x1 */
 #define THCODE_BALL       4
+#define THCODE_FRECT      5  /* 24 Apr 2012: filled rectangle */
 #define THCODE_INVALID  666
 
 /* convert (r,g,b) in [0,1]**3 into a single number, and vice-versa */
@@ -190,6 +195,7 @@ extern void           set_thick_memplot( float ) ;
 extern float          get_thick_memplot(void) ;
 extern int            nline_active_memplot(void) ;
 extern void           plotrect_memplot( float,float,float,float ) ; /* 21 Mar 2001 */
+extern void           plotfrect_memplot( float,float,float,float) ; /* 24 Apr 2012 */
 extern void           plotcirc_memplot( float,float,float ) ;       /* 10 Mar 2002 */
 extern void           plotball_memplot( float,float,float ) ;
 extern int            create_memplot_surely( char *, float ) ;      /* 20 Sep 2001 */
@@ -231,6 +237,12 @@ extern X11_colordef * get_X11_colordef( Display * , Window ) ;
 
 extern void memplot_to_X11_sef( Display * , Window ,
                                 MEM_plotdata * , int,int,int ) ;
+
+extern void   memplot_to_X11_set_substitute( void (*msf)() ) ;  /* 30 Apr 2012 */
+extern void * memplot_to_X11_get_substitute( void ) ;
+
+extern void drawable_geom( Display *dpy , Drawable ddd ,      /* 30 Apr 2012 */
+                           int *width , int *height , int *depth ) ;
 
 extern void set_memplot_X11_box( int,int,int,int ) ;  /* 26 Feb 2001 */
 
@@ -290,8 +302,11 @@ extern void plot_ts_dobox ( float ) ;
 extern void plot_ts_xfix( int,int , float,float ) ;  /* 22 Jul 2003 */
 extern void plot_ts_yfix( int,int , float,float ) ;
 
+extern void plot_ts_add_vbox( int,float,float,float,float,float ); /* 24 Apr 2012 */
+
 extern void plot_ts_setcolors( int, float *, float *, float * ) ; /* 23 Nov 2007 */
-extern void plot_ts_setthik( float thk ) ;                        /* 26 Nov 2007 */
+extern void plot_ts_setTHIK( float thk ) ;                        /* 26 Nov 2007 */
+extern void plot_ts_setthik( float thk ) ;                        /* 02 May 2012 */
 #define plot_ts_setthick plot_ts_setthik /* for clumsy typists */
 #define plot_ts_sethik   plot_ts_setthik
 #define plot_ts_sethick  plot_ts_setthik

@@ -132,7 +132,6 @@ ENTRY("THD_dblkatr_from_niml") ;
    /*-- loop over parts and extract data from any '<AFNI_atr ...>' elements --*/
 
    for( ip=0 ; ip < ngr->part_num ; ip++ ){
-
      switch( ngr->part_typ[ip] ){
 
        /*-- a sub-group ==> recursion! --*/
@@ -149,7 +148,6 @@ ENTRY("THD_dblkatr_from_niml") ;
          char       *rhs = NI_get_attribute( nel , "atr_name" ) ;
          if( rhs == NULL )
                      rhs = NI_get_attribute( nel , "AFNI_name" ) ;
-
          if( strcasecmp(nel->name,"AFNI_atr") == 0 &&    /* AFNI attribute?   */
              nel->vec_num == 1                     &&    /* with some data?   */
              nel->vec_len >  0                     &&    /* that is nonempty? */
@@ -183,9 +181,29 @@ ENTRY("THD_dblkatr_from_niml") ;
                if (nel->vec) { /* to be expected */
                   char **sar = (char **)nel->vec[0] , *str ;
                   int nch , nstr=nel->vec_len , istr , lll=0 ;
-                  for( istr=0 ; istr < nstr ; istr++) lll += strlen(sar[istr]);
+                  for( istr=0 ; istr < nstr ; istr++) 
+                     if (sar[istr]) lll += strlen(sar[istr]); /* ZSS Nov 2012 */
                   str = malloc(lll+4) ; *str = '\0' ;
-                  for( istr=0 ; istr < nstr ; istr++ ) strcat(str,sar[istr]);
+
+               /* for( istr=0 ; istr < nstr ; istr++ ) strcat(str,sar[istr]); */
+
+                  /* The loop of strcat() is very slow in the case of a long
+                     history element, O(n^2), so replace with something linear.
+                     Javier complained that afni took forever to start.  One 
+                     NIfTI dset with 8 MB history took ~8 seconds in loop.
+                                                        31 Jul 2012 [rickr] */
+                  {  char * cp, * sp = str; int slen;
+                     for( istr=0; istr < nstr; istr++ ) {
+                        if (sar[istr]) {  /* ZSS Nov 2012 */
+                           cp = sar[istr];
+                           slen = strlen(cp);
+                           memcpy(sp, cp, slen*sizeof(char));
+                           sp += slen;
+                        }
+                     }
+                     *sp = '\0';
+                  }
+
                   nch = strlen(str) ;
                   THD_unzblock( nch+1 , str ) ;  /* re-insert NULs */
                   THD_set_char_atr( blk , rhs , nch+1 , str ) ;
@@ -811,7 +829,7 @@ ENTRY("mri_to_niml") ;
    }
 
    if( im->name != NULL && im->name[0] != '\0' )
-     NI_set_attribute( nel , "mri_name" , rhs ) ;
+     NI_set_attribute( nel , "mri_name" , im->name ) ;
 
    /* put in the data */
     NI_add_column( nel , im->kind , vpt ) ;

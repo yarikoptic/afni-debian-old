@@ -320,6 +320,35 @@ ENTRY("AFNI_thresh_top_CB") ;
   Used to set the pval (significance) label at the bottom of the
   threshold scale.
 -------------------------------------------------------------------------*/
+float  AFNI_thresh_from_percentile( Three_D_View *im3d, float perc) 
+{
+   float *fv, thresh=0.0;
+   int ithr;
+
+   if (!(fv = get_3Dview_sort(im3d, "T"))) return(perc);
+      
+   ithr = (int)(perc*(float)(im3d->vinfo->N_th_sort-1)+0.5);
+   if (ithr < 0) {
+      thresh = fv[0]-1.0;
+   } else if (ithr > im3d->vinfo->N_th_sort) {
+      thresh = fv[im3d->vinfo->N_th_sort-1]+1.0;
+   } else {
+      thresh = fv[ithr];
+   }
+   
+   #if 0
+   INFO_message(  "Top val %f, bottom val %f\n"
+                  "Sorting on set of %d voxels out of %d voxels in grid.\n"
+                  "Thresholding bottom %f%% thresh=%f, ithr=%d.\n"
+                  ,
+                   fv[im3d->vinfo->N_th_sort-1], fv[0],
+                   im3d->vinfo->N_th_sort, DSET_NVOX(im3d->fim_now),
+                   100*perc, thresh, ithr
+                   );
+   #endif
+   return(thresh);
+}
+
 
 void AFNI_set_thr_pval( Three_D_View *im3d )
 {
@@ -330,10 +359,9 @@ ENTRY("AFNI_set_thr_pval") ;
 
    if( ! IM3D_VALID(im3d) || ! ISVALID_3DIM_DATASET(im3d->fim_now) ) EXRETURN ;
 
-   /* get the "true" threshold (scaled up from being in [0,1]) */
 
-   thresh = im3d->vinfo->func_threshold * im3d->vinfo->func_thresh_top ;
-
+   thresh = get_3Dview_func_thresh(im3d,1);
+   
    /* get the p-value that goes with this threshold, for this functional dataset */
 
    pval = THD_stat_to_pval( thresh ,
@@ -1335,8 +1363,7 @@ ENTRY("AFNI_func_overlay") ;
    if( im_fim->kind == MRI_rgb ){                  /* 15 Apr 2002: RGB overlays */
 
      if( im_thr != NULL && im_thr != im_fim ){     /* 20 Dec 2004: threshold */
-       float thresh = im3d->vinfo->func_threshold
-                    * im3d->vinfo->func_thresh_top / scale_thr ;
+       float thresh = get_3Dview_func_thresh(im3d,1) / scale_thr ;
        float thb=THBOT(thresh) , tht=THTOP(thresh) ; /* 08 Aug 2007 */
        mri_threshold( thb,tht , im_thr , im_fim ) ;  /* in place */
      }
@@ -1398,8 +1425,7 @@ ENTRY("AFNI_func_overlay") ;
 #define NFO_ZABOVE_MASK  2
 
    if( pbar->bigmode ){
-     float thresh =  im3d->vinfo->func_threshold
-                   * im3d->vinfo->func_thresh_top / scale_thr ;
+     float thresh = get_3Dview_func_thresh(im3d,1) / scale_thr ;
      float thb=THBOT(thresh) , tht=THTOP(thresh) ; /* 08 Aug 2007 */
      int zbelow=0 , zabove=0 , flags ;
 
@@ -1410,8 +1436,10 @@ if( PRINT_TRACING && im_thr != NULL )
   tmax = (float)mri_maxabs(im_thr) ;
   sprintf(str,"maxabs(im_thr)=%g scale_thr=%g thresh=%g",tmax,scale_thr,thresh);
   STATUS(str) ;
-  sprintf(str,"func_threshold=%g func_thresh_top=%g",
-          im3d->vinfo->func_threshold,im3d->vinfo->func_thresh_top); STATUS(str);
+  sprintf(str,"func_threshold=%g func_thresh_top=%g cont_perc_thr=%d",
+          im3d->vinfo->func_threshold,im3d->vinfo->func_thresh_top, 
+          im3d->cont_perc_thr); 
+  STATUS(str);
 }
 
      if( pbar->big30 ) reject_zero = 0 ;
@@ -1466,8 +1494,7 @@ if( PRINT_TRACING && im_thr != NULL )
            fim_thr[lp] = scale_factor * pbar->pval[lp+1] ;
 
          if( simult_thr ){
-           float thresh = im3d->vinfo->func_threshold
-                        * im3d->vinfo->func_thresh_top / scale_thr ;
+           float thresh = get_3Dview_func_thresh(im3d,1) / scale_thr ;
            float thb=THBOT(thresh) , tht=THTOP(thresh) ; /* 08 Aug 2007 */
            short *ar_thr = MRI_SHORT_PTR(im_thr) ;
            for( ii=0 ; ii < npix ; ii++ ){
@@ -1500,8 +1527,7 @@ if( PRINT_TRACING && im_thr != NULL )
                                                   : 0.0                          ;
 
          if( simult_thr ){
-           float thresh = im3d->vinfo->func_threshold
-                         * im3d->vinfo->func_thresh_top / scale_thr ;
+           float thresh = get_3Dview_func_thresh(im3d,1) / scale_thr ;
            float thb=THBOT(thresh) , tht=THTOP(thresh) ; /* 08 Aug 2007 */
            byte *ar_thr = MRI_BYTE_PTR(im_thr) ;
 
@@ -1534,7 +1560,7 @@ if( PRINT_TRACING && im_thr != NULL )
            fim_thr[lp] = scale_factor * pbar->pval[lp+1] ;
 
          if( simult_thr ){
-           float thresh = im3d->vinfo->func_threshold * im3d->vinfo->func_thresh_top ;
+           float thresh = get_3Dview_func_thresh(im3d,1) ;
            float thb=THBOT(thresh) , tht=THTOP(thresh) ; /* 08 Aug 2007 */
            float *ar_thr = MRI_FLOAT_PTR(im_thr) ;
 
@@ -1567,8 +1593,7 @@ if( PRINT_TRACING && im_thr != NULL )
      switch( im_thr->kind ){
 
        case MRI_short:{
-         float thresh = im3d->vinfo->func_threshold
-                      * im3d->vinfo->func_thresh_top / scale_thr ;
+         float thresh = get_3Dview_func_thresh(im3d,1) / scale_thr ;
          float thb=THBOT(thresh) , tht=THTOP(thresh) ; /* 08 Aug 2007 */
          short *ar_thr = MRI_SHORT_PTR(im_thr) ;
 
@@ -1578,8 +1603,7 @@ if( PRINT_TRACING && im_thr != NULL )
        break ;
 
        case MRI_byte:{
-         float thresh = im3d->vinfo->func_threshold
-                      * im3d->vinfo->func_thresh_top / scale_thr ;
+         float thresh = get_3Dview_func_thresh(im3d,1) / scale_thr ;
          float thb=THBOT(thresh) , tht=THTOP(thresh) ; /* 08 Aug 2007 */
          byte *ar_thr = MRI_BYTE_PTR(im_thr) ;
 
@@ -1589,7 +1613,7 @@ if( PRINT_TRACING && im_thr != NULL )
        break ;
 
        case MRI_float:{
-         float thresh = im3d->vinfo->func_threshold * im3d->vinfo->func_thresh_top ;
+         float thresh = get_3Dview_func_thresh(im3d,1) ;
          float thb=THBOT(thresh) , tht=THTOP(thresh) ; /* 08 Aug 2007 */
          float *ar_thr = MRI_FLOAT_PTR(im_thr) ;
 
@@ -1736,7 +1760,7 @@ MRI_IMAGE * AFNI_ttatlas_overlay( Three_D_View *im3d ,
    byte *b0=NULL , *brik,  *ovc  ;
    short *s0=NULL, *ovar, *val, *fovar ;
    float *f0=NULL;
-   MRI_IMAGE *ovim=NULL , *b0im, *fovim=NULL;
+   MRI_IMAGE *ovim=NULL, *b0im=NULL, *fovim=NULL, *b1im=NULL;
    int gwin , fwin , nreg , ii,jj , nov ;
    int at_sbi, fim_type, at_vox, at_nsb;
 
@@ -1745,6 +1769,8 @@ ENTRY("AFNI_ttatlas_overlay") ;
    /* setup and sanity checks */
 
    /* make sure we are actually drawing something */
+  if(AFNI_yesenv("AFNI_JILL_TRAVESTY"))
+      printf("Starting AFNI_ttatlas_overlay\n");
 
    STATUS("checking if Atlas Colors is on") ;
    ttp = TTRR_get_params() ; if( ttp == NULL )            RETURN(NULL) ;
@@ -1762,8 +1788,14 @@ ENTRY("AFNI_ttatlas_overlay") ;
           DSET_unload(atlas_ovdset);
        atlas_ovdset = r_new_resam_dset ( dseTT, im3d->anat_now,  0, 0, 0, NULL,
                                        MRI_NN, NULL, 1, 0);
+  if(AFNI_yesenv("AFNI_JILL_TRAVESTY"))
+      printf("First time loading atlas dset\n");
 /*       DSET_unload(dseTT);*/
-       if(!atlas_ovdset) RETURN(NULL);
+       if(!atlas_ovdset) {
+         if(AFNI_yesenv("AFNI_JILL_TRAVESTY"))
+            printf("Could not load atlas dset\n");
+         RETURN(NULL);
+       }
    }
 
    if( DSET_NVOX(atlas_ovdset) != DSET_NVOX(im3d->anat_now) ){
@@ -1785,6 +1817,8 @@ ENTRY("AFNI_ttatlas_overlay") ;
    ovim = mri_new_conforming( b0im , MRI_short ) ;   /* new overlay */
    ovar = MRI_SHORT_PTR(ovim) ;
    memset( ovar , 0 , ovim->nvox * sizeof(short) ) ;
+   /* only needed b0im to get resampled grid */
+   mri_free(b0im);
 
    /* fwin => function 'wins' over Atlas - overlay image gets priority */
    /* gwin => gyral Atlas brick 'wins' over 'area' Atlas brick - */
@@ -1801,22 +1835,22 @@ ENTRY("AFNI_ttatlas_overlay") ;
    at_nsb = DSET_NVALS(atlas_ovdset);
    nov = 0;
    for( at_sbi=0; at_sbi < at_nsb; at_sbi++) {
-      b0im = AFNI_slice_flip( n,at_sbi,RESAM_NN_TYPE,ax_1,ax_2,ax_3,
+      b1im = AFNI_slice_flip( n,at_sbi,RESAM_NN_TYPE,ax_1,ax_2,ax_3,
                              atlas_ovdset);
-      if( b0im == NULL )
+      if( b1im == NULL )
          RETURN(NULL) ;
-      fim_type = b0im->kind ;
+      fim_type = b1im->kind ;
       switch( fim_type ){
          default:
             RETURN(NULL) ;
          case MRI_byte:
-            b0 = MRI_BYTE_PTR(b0im);
+            b0 = MRI_BYTE_PTR(b1im);
          break ;
          case MRI_short:
-            s0 = MRI_SHORT_PTR(b0im);
+            s0 = MRI_SHORT_PTR(b1im);
          break ;
          case MRI_float:
-            f0 = MRI_FLOAT_PTR(b0im);
+            f0 = MRI_FLOAT_PTR(b1im);
          break ;
       }
 
@@ -1847,19 +1881,26 @@ ENTRY("AFNI_ttatlas_overlay") ;
          }
 
       }
-      mri_free(b0im) ;
+      mri_free(b1im) ;
    }
 
    if(PRINT_TRACING)
       { char str[256]; sprintf(str,"Atlas overlaid %d pixels",nov); STATUS(str); }
 
-   if(fov == NULL)   /* if there was no overlay, return what we have */
+   if(fov == NULL) {  /* if there was no overlay, return what we have */
+      if(AFNI_yesenv("AFNI_JILL_TRAVESTY"))
+         printf("No overlay, that's okay\n");
       RETURN(ovim);
+   }
 
    STATUS("re-using old overlay for Atlas") ;
+   if(AFNI_yesenv("AFNI_JILL_TRAVESTY"))
+      printf("re-using old overlay for atlas\n");
    fovim = fov ;                                      /* old overlay */
-   fovar = MRI_SHORT_PTR(ovim) ;
-   if( fovim->nvox != b0im->nvox ){                    /* shouldn't happen!  */
+   fovar = MRI_SHORT_PTR(fovim) ;
+   if( fovim->nvox != ovim->nvox ){                    /* shouldn't happen!  */
+        if(AFNI_yesenv("AFNI_JILL_TRAVESTY"))
+            printf("freeing ovim at early return\n");
          mri_free(ovim); RETURN(NULL) ;
    }
    nov = 0;
@@ -1872,8 +1913,11 @@ ENTRY("AFNI_ttatlas_overlay") ;
       }
    }
 
-   mri_free(b0im);
+   if(AFNI_yesenv("AFNI_JILL_TRAVESTY"))
+       printf("freeing ovim at normal return\n");
    mri_free(ovim);
+   if(AFNI_yesenv("AFNI_JILL_TRAVESTY"))
+       printf("leaving AFNI_ttatlas_overlay\n");
    RETURN(fovim);
 }
 
@@ -5391,6 +5435,30 @@ ENTRY("AFNI_range_bbox_CB") ;
 
    EXRETURN ;
 }
+
+/*----------------------------------------------------------------
+   called when the user toggles the percentile button
+------------------------------------------------------------------*/
+
+void AFNI_perc_bbox_CB( Widget w, XtPointer cd, XtPointer cb)
+{
+   Three_D_View *im3d = (Three_D_View *) cd ;
+
+ENTRY("AFNI_perc_bbox_CB") ;
+
+   if( ! IM3D_VALID(im3d) ||
+       w != im3d->vwid->func->perc_bbox->wbut[PERC_AUTOBUT] ) EXRETURN ;
+
+   im3d->cont_perc_thr = MCW_val_bbox(im3d->vwid->func->perc_bbox);
+   flush_3Dview_sort(im3d, "T");
+      
+   AFNI_redisplay_func( im3d ) ;
+
+   AFNI_thresh_lock_carryout(im3d) ;  
+
+   EXRETURN ;
+}
+
 
 /*----------------------------------------------------------------
   called when the user (that rotten fellow) changes the fim range

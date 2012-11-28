@@ -171,6 +171,13 @@ ENTRY("THD_open_one_dataset") ;
       RETURN(dset) ;
    }
 
+   /*-- other cases that require new-fangled way   23 Jul 2012 [rickr] --*/
+   if( ! strncmp(pathname,"filelist:",9) ){
+      dset = THD_open_dataset(pathname) ;
+      THD_patch_brickim(dset) ;  /* 20 Oct 2006 */
+      RETURN(dset) ;
+   }
+
    fsize = THD_filesize(pathname) ;                         /* 06 Jan 2005 */
 
    /* replace fsize == -1 use with isfile variable   28 Feb 2007 [rickr] */
@@ -553,6 +560,7 @@ ENTRY("storage_mode_from_filename");
     if( STRING_HAS_SUFFIX(fname, ".niml") )     RETURN(STORAGE_BY_NIML);
 
     if( STRING_HAS_SUFFIX(fname,".niml.dset") ) RETURN(STORAGE_BY_NI_SURF_DSET);
+    if( STRING_HAS_SUFFIX(fname,".tract.dset") ) RETURN(STORAGE_BY_NI_TRACT);
 
     if( STRING_HAS_SUFFIX(fname,".gii") ||
         STRING_HAS_SUFFIX(fname,".gii.dset") )  RETURN(STORAGE_BY_GIFTI);
@@ -632,6 +640,8 @@ char *storage_mode_name(int mode) {
          return("NIML");
       case STORAGE_BY_NI_SURF_DSET:
          return("NI_SURF_DSET");
+      case STORAGE_BY_NI_TRACT:
+         return("NI_TRACT");
       case STORAGE_BY_GIFTI:
          return("GIFTI");
    }
@@ -705,6 +715,7 @@ ENTRY("has_writable_extension");
       case STORAGE_BY_NIFTI:            RETURN(1);
       case STORAGE_BY_NIML:             RETURN(1);
       case STORAGE_BY_NI_SURF_DSET:     RETURN(1);
+      case STORAGE_BY_NI_TRACT:         RETURN(1);
       case STORAGE_BY_GIFTI:            RETURN(1);
    }
 

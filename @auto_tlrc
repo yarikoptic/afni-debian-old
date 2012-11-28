@@ -37,7 +37,8 @@ PARSE:
    set npass = -twopass
    set prexform = ""
    set OneWarp = 0
-   set just_copy_base = ""
+   set copy_base = ""
+   set out_space = ""
    if ("$1" == '') goto HELP
 
    while ($cnt <= $Narg)
@@ -211,14 +212,16 @@ PARSE:
             goto END
          else
             @ cnt ++
-            set just_copy_base = "$argv[$cnt]"
+            set copy_base = "$argv[$cnt]"
             set donext = 0   
          endif   
       endif
+      
       if ($donext && "$argv[$cnt]" == "-base_list") then
-         set just_copy_base = "LIST"
+         set copy_base = "LIST"
          set donext = 0   
       endif
+      
       if ($donext && "$argv[$cnt]" == "-apar") then
          set pLoc = $cnt      
          if ($pLoc == $Narg) then
@@ -325,6 +328,18 @@ PARSE:
          set ss_opt = "$ss_opt -no_avoid_eyes";      
          set donext = 0      
       endif
+      if ($donext && "$argv[$cnt]" == "-out_space") then
+         set pLoc = $cnt      
+         if ($pLoc == $Narg) then
+            echo "Need name of space for output after -out_space"
+            echo "See whereami -show_spaces for some possibilities"
+            goto END
+         else
+            @ cnt ++
+            set out_space = "$argv[$cnt]"
+            set donext = 0  
+         endif   
+      endif
       if ($donext == 1) then
          echo "Error: Option or parameter '$argv[$cnt]' not understood"
          apsearch -popt `basename $0` -word $argv[$cnt]
@@ -375,12 +390,39 @@ PARSE:
       set anat_in = $anat_in2
       set prs_in = `@parse_afni_name "$anat_in"`
    endif 
-
+   
+   set preWopt = ''
+   if ($prexform == "AUTO_CENTER" || $prexform == "CENTER" ) then
+      #Check for center differences and act on it
+      set dist_cent = `@Center_Distance -dset ${ref_in} ${anat_in}`
+      set needcen = `ccalc -form int -eval "step($dist_cent - 40)"`
+      if ($needcen == 1 || $prexform == "CENTER") then
+         echo ""
+         echo "Performing center alignment with @Align_Centers"
+         echo ""
+         @Align_Centers -base ${ref_in} -1Dmat_only \
+                        -dset ${anat_in} 
+         set pp = `@GetAfniPrefix ${anat_in}`
+         set prexform = (`ls ${pp}_shft.1D`)
+         1dmatcalc "&read4x4Xform($prexform) &write(stdout:)" > ${pp}_44.1D
+         mv ${pp}_44.1D $prexform
+         3drename ${pp}_shft ${tmppref}_${pp}_shft
+         if ( ! -f $prexform ) then
+            echo "Failed to create AUTO_CENTER xform"
+            goto BEND
+         endif
+         set preWopt = "-gridset ${tmppref}_${pp}_shft*.HEAD -NN "
+      else
+         echo "Center distance of $dist_cent mm no auto_center needed "
+         set prexform = ''
+      endif 
+   endif
+   
    #Apply pre-transform if need be
    set nopre_anat_in = $anat_in
    if ($prexform != '') then
       3dWarp   -overwrite -matvec_out2in $prexform \
-               -prefix pre.${prs_in[2]} ${anat_in}
+               -prefix pre.${prs_in[2]} $preWopt ${anat_in}
       #This operation is the same as
       #  cat_matvec $prexform -ONELINE > d1.$prexform
       #  3dAllineate -1Dmatrix_apply d1.$prexform \
@@ -461,8 +503,11 @@ PARSE:
       set ref_nopad = "${ref_path}/`@GetAfniPrefix ${ref_in}`${ref_view}"
    endif
    # use the template space for the transformed dataset
-   set ref_space = `3dinfo ${ref_in} | grep "Template Space"` 
-   set ref_space = "$ref_space[3]"
+   if ($out_space == "" ) then
+      set ref_space = `3dinfo -space ${ref_in}` 
+   else
+      set ref_space = $out_space
+   endif
 
 IN_CHECK:
 if ("$suf" == '' && $KeepView == 1) then
@@ -562,22 +607,26 @@ AUTO_TLRC_MODE:
       echo "Dataset centers are $dist_cent mm"
       echo "apart. If registration fails, or if"
       echo "parts of the original anatomy gets"
-      echo "cropped, try recentering all the "
-      echo "input data using this command:"
-      echo "@Align_Centers -base ${ref_in} \\"
-      echo "               -dset ${anat_in} \\"
-      echo "               -child ${anat_path}/*.HEAD"
-      echo ""
-      echo "Then rerun `basename $0` using the _shft"
-      echo "version of your datasets."
+      echo "cropped, try adding option "
+      echo "   -init_xform AUTO_CENTER "
+      echo "to your @auto_tlrc command."
+      #echo "cropped, try recentering all the "
+      #echo "input data using this command:"
+      #echo "@Align_Centers -base ${ref_in} \\"
+      #echo "               -dset ${anat_in} \\"
+      #echo "               -child ${anat_path}/*.HEAD"
+      #echo ""
+      #echo "Then rerun `basename $0` using the _shft"
+      #echo "version of your datasets."
       echo ""
       echo "*********************************"
       echo ""
-      if (`ccalc -form int -eval "step($dist_cent - 80)"`) then
-         echo "Hit Enter to proceed."
-         echo ""
-         set junk = $<
-      endif
+      # do not stop processing, the user has been warned  16 May 2012 [rickr]
+      #
+      # if (`ccalc -form int -eval "step($dist_cent - 80)"`) then
+      #    echo "Hit Enter to proceed."
+      #    set junk = $<
+      # endif
    else
       echo "Center distance of $dist_cent mm"   
    endif 
@@ -623,7 +672,7 @@ AUTO_TLRC_MODE:
 
    CLIP_BELOW:
    if ($clpbelow != '') then
-      rm -rf ${ns_pref}_clpbel*.???? >& /dev/null
+      \rm -rf ${ns_pref}_clpbel*.???? >& /dev/null
       @clip_volume   -below $clpbelow \
                      -input ${ns_pref}${anat_view} -prefix ${ns_pref}_clpbel
       set ns_pref = ${ns_pref}_clpbel
@@ -638,7 +687,7 @@ AUTO_TLRC_MODE:
    #Resamplin
    if ( `@CheckForAfniDset ${rs_pref}${anat_view}` != 2 ) then
       echo "Resampling ..."
-      rm -f ${tmppref}_resamp* >& /dev/null
+      \rm -f ${tmppref}_resamp* >& /dev/null
       #Use cubic for somoothness of result 
       #  since it will be used in registration.
       #But that causes edge artifacts from interpolation. 
@@ -675,7 +724,7 @@ AUTO_TLRC_MODE:
       3drefit -view ${anat_view} ${rs_pref}${ref_view}.HEAD
       3drefit -view ${anat_view} ${tmppref}_resamp_NN${ref_view}.HEAD
       3drefit -view ${anat_view} ${tmppref}_resamp_edge_art${ref_view}.HEAD
-      if ( $KeepTmp == 0) rm -f ${tmppref}_resamp* >& /dev/null 
+      if ( $KeepTmp == 0) \rm -f ${tmppref}_resamp* >& /dev/null 
       if ( `@CheckForAfniDset ${rs_pref}${anat_view}` != 2 ) then
          echo "Error: Failed to change view of resampled volume"
          set estat = 1
@@ -686,7 +735,7 @@ AUTO_TLRC_MODE:
    REG:
    #Registration
    echo "Registration ($rmode final interpolation) ..."
-   if ( $KeepTmp == 0) rm -f ${tmppref}_reg* >& /dev/null 
+   if ( $KeepTmp == 0) \rm -f ${tmppref}_reg* >& /dev/null 
    set spopt = ''
    if ($verb == 1) then
       set spopt = "$spopt -verb"
@@ -700,7 +749,7 @@ AUTO_TLRC_MODE:
    set pass = 1
    set Converged = 0
    while ($Converged == 0 && $pass < 3)
-      rm -f ${ns_pref}_WarpDrive.log >& /dev/null
+      \rm -f ${ns_pref}_WarpDrive.log >& /dev/null
       3dWarpDrive ${maxite} ${spopt}  ${npass} \
                   -${xform_type} -cubic  \
                   -final ${rmode} -1Dmatrix_save ${ns_pref}.Xaff12.1D \
@@ -723,10 +772,11 @@ AUTO_TLRC_MODE:
       # this should do it:
          cat "${ns_pref}_WarpDrive.log" > ___cat.tmp
          set res = "`grep 'RMS\[0\]' ___cat.tmp`"
-         rm -f ___cat.tmp >& /dev/null 
+         \rm -f ___cat.tmp >& /dev/null 
 
       echo "$res"
       set rms_i = `echo "$res" | cut -d ' ' -f3`
+      echo $rms_i
       set rms_f = `echo "$res" | cut -d ' ' -f4`
       set rms_diff_pos = `ccalc -eval "step($rms_f - $rms_i)" | cut -d '.' -f1`
       set rms_ratio = `ccalc -form int -eval "($rms_i - $rms_f) / $rms_i * 100"`
@@ -1022,7 +1072,7 @@ APAR_MODE:
    set tmp_out_pref = ${tmppref}${out_pref}
    echo "Applying tlrc warp from ${ref_nopad} to ${ns_pref}${anat_view} ..."
    if ( -f warp_tmp${anat_view}.HEAD) then
-      rm -f warp_tmp${anat_view}.HEAD warp_tmp${anat_view}.BRIK*
+      \rm -f warp_tmp${anat_view}.HEAD warp_tmp${anat_view}.BRIK*
    endif
    
    echo "Padding the input data before warping"
@@ -1148,7 +1198,7 @@ APAR_MODE:
       endif
    endif
    
-   if ( $KeepTmp == 0) rm -f ${tmppref}*+????.???? >& /dev/null
+   if ( $KeepTmp == 0) \rm -f ${tmppref}*+????.???? >& /dev/null
 
    goto WRAP_UP
 #######################
@@ -1165,7 +1215,7 @@ if ($KeepTmp != 1) then
    #be execute at exit.
    if ($#delete_this) then
       foreach ff ($delete_this)
-         if ( -f "$ff") rm -f "$ff" >& /dev/null 
+         if ( -f "$ff") \rm -f "$ff" >& /dev/null 
       end
    endif
    goto CLEANUP
@@ -1179,17 +1229,18 @@ goto END
 #ONLY SUB-ROUTINES BELOW
 
 CLEANUP:
-rm -f ${tmppref}*ref*.????*     >& /dev/null
-rm -f ${tmppref}*_reg*.????*     >& /dev/null
-rm -f ${tmppref}*_resam*.????*   >& /dev/null
-rm -f ${tmppref}*_rs*.????*      >& /dev/null
-rm -f ${tmppref}*_pad*.????*     >& /dev/null
-rm -f ${tmppref}_acpc*.????*     >& /dev/null
-rm -f ${tmppref}*gridout*.????*  >& /dev/null
-rm -f ${tmppref}*ipad*.????*  >& /dev/null
-rm -f ${tmppref}_MP* >& /dev/null
-rm -f ${tmppref}*upad*.????*  >& /dev/null
-rm -f ${tmppref}*warp_grid*.????*  >& /dev/null
+\rm -f ${tmppref}*ref*.????*     >& /dev/null
+\rm -f ${tmppref}*_reg*.????*     >& /dev/null
+\rm -f ${tmppref}*_resam*.????*   >& /dev/null
+\rm -f ${tmppref}*_rs*.????*      >& /dev/null
+\rm -f ${tmppref}*_pad*.????*     >& /dev/null
+\rm -f ${tmppref}_acpc*.????*     >& /dev/null
+\rm -f ${tmppref}*gridout*.????*  >& /dev/null
+\rm -f ${tmppref}*ipad*.????*  >& /dev/null
+\rm -f ${tmppref}_MP* >& /dev/null
+\rm -f ${tmppref}*upad*.????*  >& /dev/null
+\rm -f ${tmppref}*warp_grid*.????*  >& /dev/null
+\rm -f ${tmppref}*_shft*.????*  >& /dev/null
 
 goto $Ret_Clean
 
@@ -1228,14 +1279,14 @@ else
 endif
 
 END_REF_SEARCH:
-if ($just_copy_base ==  "LIST" ) then
+if ($copy_base ==  "LIST" ) then
    echo "$ref_in"
-   goto END
-else if ($just_copy_base != "" ) then
-   3dcopy $ref_in $just_copy_base
-   goto END
+   if ($anat_in == '' && $apar_mode == 0) goto END
+else if ($copy_base != "" ) then
+   3dcopy $ref_in $copy_base
+   if ($anat_in == '' && $apar_mode == 0) goto END
 endif
-echo $just_copy_base
+#echo $copy_base
 
 
 goto SET_REF_PATH_RETURN
@@ -1247,10 +1298,14 @@ echo "         to match a template in TLRC space. "
 echo ""
 echo "   `basename $0` [options] <-base template> <-input anat>"
 echo "   Mandatory parameters:"
-echo "      -base template :  Reference anatomical volume in TLRC space (+tlrc)."
+echo "      -base template :  Reference anatomical volume"
+echo "                        Usually this volume is in some standard space like"
+echo "                        TLRC or MNI space and with afni dataset view of"
+echo "                        (+tlrc)."
 echo "                        Preferably, this reference volume should have had"
 echo "                        the skull removed but that is not mandatory."
-echo "                        AFNI's distribution contains a few templates:"
+echo "                        AFNI's distribution contains several templates."
+echo "                        For a longer list, use "\"whereami -show_templates\"
 echo "          TT_N27+tlrc --> Single subject, skull stripped volume."
 echo "                       This volume is also known as "
 echo "                       N27_SurfVol_NoSkull+tlrc elsewhere in "
@@ -1400,7 +1455,30 @@ echo "                           > XFORM0.1D  "
 echo ""
 echo "                    See cat_matvec -help for more details on extracting"
 echo "                    appropriate affine transforms from dataset headers."
+echo ""
+echo "          Note: You can also use -init_xform AUTO_CENTER to automatically"
+echo "                run @Align_Centers if the centers are off by more than "
+echo "                40 mm. "
+echo "                You can force centering with -init_xform CENTER"
+echo "                regardless of the center distance between volumes"
+echo ""  
+echo "      -out_space spacename: Set output to a particular space"
+echo "                       Usually, output space is determined by the space"
+echo "                       of the input template and does not need to set"
+echo "                       explicitly here"
 echo ""                      
+echo "Note on the subject of transforms:"
+echo "   The script will output the final transform in a 1D file with the"
+echo "   extension Xat.1D, say THAT_NAME.1D"
+echo "   Call this transform Mt and let Xt and Xo be the 4x1 column vectors"
+echo "   coordinates of the same voxel in standard (t) and original (o)"
+echo "   space, respectively. The transform is such that Xo = Mt Xt "
+echo "   You can use this transform to manually warp a volume in orig"
+echo "   space to the standard space with:"
+echo ""
+echo "      3dWarp -matvec_out2in THAT_NAME.Xat.1D -prefix PPP SOME_VOL+orig."
+echo "      3drefit -view +tlrc PPP+orig"
+echo ""
 echo "   Example:"
 echo "   `basename $0` -base TT_N27+tlrc. -input SubjectHighRes+orig."
 echo "    (the output is named SubjectHighRes+TLRC, by default."
@@ -1470,11 +1548,11 @@ echo "              NOTE:  You can now set SUF to 'none' or 'NONE' and enable"
 echo "                     afni's warp on demand features."
 echo "                     With NIFTI input volumes -suffix defaults to _at"
 echo "   -keep_view     :  Do not mark output dataset as +tlrc"
-echo "   -base_copy COPY_PREFIX: Copy base (template) dataset into COPY_PREFIX"
-echo "                           and quit. You can use ./ for COPY_PREFIX if you"
+echo "   -base_copy COPY_PREFIX: Copy base (template) dataset into COPY_PREFIX."
+echo "                           You can use ./ for COPY_PREFIX if you"
 echo "                           want the copy to have the same name as the"
 echo "                           template."
-echo "   -base_list     : List the full path of the base dataset and quit"
+echo "   -base_list     : List the full path of the base dataset"
 echo "   -verb          :  Yakiti yak yak" 
 echo ""
 echo ""
@@ -1523,11 +1601,14 @@ echo "      Check that the center of your input data set is not too"
 echo "      far off from that of the template. Centers (not origins)"
 echo "      of the templates we have are close to 0, 0, 0. If your"
 echo "      input dataset is 100s of mm off center then the alignment"
-echo "      will fail. The solution is to shift all of the input data"
-echo "      in your session by an equal amount, to get the centers closer"
-echo "      to zero. For example, say the center of your subject's volumes"
+echo "      will fail. "
+echo "      The easiest way around this is to add -init_xform AUTO_CENTER"
+echo "      to your command. If that still fails you can try to manually"
+echo "      shift all of the input data in your session by an equal amount"
+echo "      to get the centers closer to zero."
+echo "      For example, say the center of your subject's volumes"
 echo "      is around 100, 100, 100. To shift the centers close to 0, 0, 0 do:"
-echo "      3drefit -dxorign -100 -dyorign -100 -dzorign -100 Subject_Data+orig"
+echo "      3drefit -dxorigin -100 -dyorigin -100 -dzorigin -100 Data+orig"
 echo "      Then use @auto_tlrc on the shifted datasets."     
 echo "      Take care not to shift datasets from the same session by differing"
 echo "      amounts as they will no longer be in alignment." 

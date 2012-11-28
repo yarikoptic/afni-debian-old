@@ -27,9 +27,13 @@ g_history = """
          - name z.max files by the p-values
          - suggest quick.alpha.vals.py command
     0.7  10 Feb, 2012: help update for HJ: -on_surface takes yes/no parameter
+    0.8  17 Jul, 2012: removed -Niter opt from SurfSmooth (let it decide)
+    0.9  08 Aug, 2012: pass along surf vol even for on_surface
+                       (plan to remove this later)
+    0.10 21 Aug, 2012: added 'sigma' uvar, for SurfSmooth
 """
 
-g_version = '0.7 (February 10, 2012)'
+g_version = '0.10 (August 21, 2012)'
 
 # ----------------------------------------------------------------------
 # global values to apply as defaults
@@ -71,7 +75,8 @@ g_user_defs.itersize       = 10         # iteration block size (speed-up)
 
 g_user_defs.pthr_list      = [ 0.1, 0.05, 0.02, 0.01 ]
 g_user_defs.blur           = 4.0
-g_user_defs.rmm            = -1
+g_user_defs.rmm            = -1.0
+g_user_defs.sigma          = -1.0  # if > 0, apply in SurfSmooth
 
 g_user_defs.surfA          = 'smoothwm'
 g_user_defs.surfB          = 'pial'
@@ -416,13 +421,21 @@ class SurfClust(object):
          inset = 'surf.noise.$iter.niml.dset'
          niter = 10
 
+      if self.uvars.val('sigma') > 0:
+         sigopt = '-sigma %g' % self.uvars.val('sigma')
+      else: sigopt = '  '
+
+      # removed -Niter option
       clist = [ \
         '# smooth to the given target FWHM\n',
         self.LV.time_str,
         'SurfSmooth -spec $spec_file -surf_A $surfA           \\\n',
         '           -input %s         \\\n' % inset,
-        '           -met HEAT_07 -target_fwhm $blur           \\\n',
-        '           -Niter %d -output smooth.noise.$iter.gii\n\n' % niter ]
+        '           -met HEAT_07 -target_fwhm $blur %s        \\\n' % sigopt,
+        '           -blurmaster %s    \\\n' % inset,
+        '           -detrend_master                           \\\n',
+        '           -output smooth.noise.$iter.gii            \\\n',
+        '           | tee params.surf.smooth.$iter.1D\n\n' ]
 
       # add current output to optional delete list
       self.LV.rmsets.append('smooth.noise.$iter.gii')
@@ -431,6 +444,7 @@ class SurfClust(object):
 
    def script_do_3dv2s(self, indent=3):
       istr = ' '*indent
+      vv = self.LV.svset.view
 
       clist = [ '# map noise voxels to surface domain\n',
                 self.LV.time_str,
@@ -438,7 +452,7 @@ class SurfClust(object):
                 '           -surf_A $surfA                         \\\n',
                 '           -surf_B $surfB                         \\\n',
                 '           -sv $surf_vol                          \\\n',
-                '           -grid_parent vol.noise.$iter+orig      \\\n',
+                '           -grid_parent vol.noise.$iter%s      \\\n' % vv,
                 '           -map_func $map_func                    \\\n',
                 '           -f_steps $nsteps                       \\\n',
                 '           -f_index nodes                         \\\n',
@@ -491,6 +505,7 @@ class SurfClust(object):
       cmd  = SUBJ.comment_section_string('prep: make z-scores, etc.') + '\n'
 
       cmd += '# make zthr_list (convert p-values to z-scores)\n'        \
+             '# (2-tailed computation mirrors athresh() in SurfClust)\n'\
              'set zthr_list = ()\n'                                     \
              'foreach pthr ( $pthr_list )\n'                            \
              '   # convert from p to z (code for N(0,1) is 5)\n'        \
@@ -559,11 +574,18 @@ class SurfClust(object):
 
       # surf_vol and vol_mask might use top_dir
       if self.LV.is_trivial_dir('top_dir'):
-         if self.cvars.val('on_surface') != 'yes': self.LV.svol  = U.surf_vol
+         # if self.cvars.val('on_surface') != 'yes': self.LV.svol  = U.surf_vol
+         #
+         # rcr - fix this, surf_vol should not be needed if only on surface
+         #       (for getting the node count, avoid SurfMeasures or any other
+         #       program that uses -sv)
+         self.LV.svol  = U.surf_vol
+         self.LV.svset = BASE.afni_name(self.LV.svol)
          self.LV.vmask = U.vol_mask
          self.LV.spec  = U.spec_file
       else:
          self.LV.svol  = '$top_dir/%s' % self.LV.short_names[0][0]
+         self.LV.svset = BASE.afni_name(self.LV.svol)
          self.LV.spec  = '$top_dir/%s' % self.LV.short_names[0][1]
          if self.cvars.val('on_surface') != 'yes':
             self.LV.vmask = '$top_dir/%s' % self.LV.short_names[0][2]

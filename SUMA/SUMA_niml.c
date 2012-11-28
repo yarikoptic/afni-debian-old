@@ -681,8 +681,9 @@ SUMA_Boolean SUMA_process_NIML_data( void *nini , SUMA_SurfaceViewer *sv)
                  "%s:     name=%s vec_len=%d vec_filled=%d, vec_num=%d\n", 
                  FuncName,
                  nel->name, nel->vec_len, nel->vec_filled, nel->vec_num );
+         /* SUMA_ShowNel(nel); */
       }
-
+      
       /*--- stream closer ---*/
       if( strcmp(nel->name,"CloseKillStream") == 0) { /* CloseKillStream */
          if (LocalHead) 
@@ -1589,7 +1590,7 @@ SUMA_Boolean SUMA_process_NIML_data( void *nini , SUMA_SurfaceViewer *sv)
                      } else { 
                         I_C = nodeid; /* node index is set by AFNI */
                         XYZ = SUMA_XYZmap_XYZ ( nel->vec[0], SO, 
-                                                SUMAg_DOv, SUMAg_N_DOv, &I_C);
+                                                SUMAg_DOv, SUMAg_N_DOv, &I_C, 1);
                         if (!XYZ) {
                            XBell (svi->X->DPY, 50);             
                            SUMA_SL_Warn("XYZ could not be determined\n"
@@ -1604,7 +1605,7 @@ SUMA_Boolean SUMA_process_NIML_data( void *nini , SUMA_SurfaceViewer *sv)
                         SUMA_XYZmap_XYZ set the node index*/
                      I_C = -1;
                      XYZ = SUMA_XYZmap_XYZ ( nel->vec[0], SO, 
-                                             SUMAg_DOv, SUMAg_N_DOv, &I_C);
+                                             SUMAg_DOv, SUMAg_N_DOv, &I_C, 0);
 
                      if (XYZ == NULL || I_C < 0) {
                         SUMA_SL_Warn("AFNI cross hair too\n"
@@ -2132,7 +2133,7 @@ NI_element * SUMA_makeNI_CrossHair (SUMA_SurfaceViewer *sv)
 
    SO = (SUMA_SurfaceObject *)(SUMAg_DOv[sv->Focus_SO_ID].OP);
    I_C = SO->SelectedNode;
-   XYZmap = SUMA_XYZ_XYZmap (sv->Ch->c, SO, SUMAg_DOv, SUMAg_N_DOv, &I_C);
+   XYZmap = SUMA_XYZ_XYZmap (sv->Ch->c, SO, SUMAg_DOv, SUMAg_N_DOv, &I_C, 0);
    
    if (XYZmap == NULL){
       fprintf( SUMA_STDERR,
@@ -2897,7 +2898,8 @@ SUMA_Boolean SUMA_Assign_HostName ( SUMA_CommonFields *cf,
 /*! 
    \brief sends a full surface to SUMA
 */
-SUMA_Boolean SUMA_SendSumaNewSurface(SUMA_SurfaceObject *SO, SUMA_COMM_STRUCT *cs)
+SUMA_Boolean SUMA_SendSumaNewSurface(SUMA_SurfaceObject *SO, 
+                                     SUMA_COMM_STRUCT *cs)
 {
    static char FuncName[]={"SUMA_SendSumaNewSurface"};
    NI_group *ngr=NULL;
@@ -2905,20 +2907,25 @@ SUMA_Boolean SUMA_SendSumaNewSurface(SUMA_SurfaceObject *SO, SUMA_COMM_STRUCT *c
    SUMA_ENTRY;
    
    if (!SO || !cs) { SUMA_SL_Err("NULL surface or NULL cs"); SUMA_RETURN(NOPE); }
-   if (!cs->Send || !cs->talk_suma) { SUMA_SL_Err("Nothing to do"); SUMA_RETURN(NOPE); }
+   if (!cs->Send || !cs->talk_suma) { 
+      SUMA_SL_Err("Nothing to do"); 
+      SUMA_RETURN(NOPE); 
+   }
    
    
     
    if (0) {
       /* send the mesh since this is a new surface */
-      if (!SUMA_SendToSuma (SO, cs, (void *)SO->FaceSetList, SUMA_NEW_MESH_IJK, 1)) {
+      if (!SUMA_SendToSuma (SO, cs, (void *)SO->FaceSetList, 
+                            SUMA_NEW_MESH_IJK, 1)) {
          SUMA_SL_Err("Failed to initialize SUMA_SendToSuma");
          cs->Send = NOPE;
          cs->talk_suma = NOPE;
          SUMA_RETURN(NOPE);
       }
       /* now send the coordinates of the new surface */
-      if (!SUMA_SendToSuma (SO, cs, (void *)SO->NodeList, SUMA_NEW_NODE_XYZ, 1)) {
+      if (!SUMA_SendToSuma (SO, cs, 
+                     (void *)SO->NodeList, SUMA_NEW_NODE_XYZ, 1)) {
          SUMA_SL_Err("Failed to initialize SUMA_SendToSuma");
          cs->Send = NOPE;
          cs->talk_suma = NOPE;
@@ -2932,10 +2939,13 @@ SUMA_Boolean SUMA_SendSumaNewSurface(SUMA_SurfaceObject *SO, SUMA_COMM_STRUCT *c
          SUMA_RETURN(NOPE);
      }
       /* now manually clean up the function that created the new surface.
-      last SUMA_SendToSuma call will only clean up the dtype that was being sent last.
-      SUMA_SendToSuma can only clean when the same dtype is being sent. THAT NEEDS TO BE FIXED, perhaps send
-      a flag to indicate how many objects you intend to send of any type. If it is one object
-      then SendToSuma will do cleanup automatically without hangup ...*/
+      last SUMA_SendToSuma call will only clean up the dtype that 
+      was being sent last.
+      SUMA_SendToSuma can only clean when the same dtype is being sent. 
+      THAT NEEDS TO BE FIXED, perhaps send
+      a flag to indicate how many objects you intend to send of any type. 
+      If it is one object then SendToSuma will do cleanup automatically 
+      without hangup ...*/
       SUMA_Mesh_IJK2Mesh_IJK_nel (SO, NULL, YUP, SUMA_NEW_MESH_IJK);
       SUMA_NodeXYZ2NodeXYZ_nel (SO, NULL, YUP, SUMA_NEW_NODE_XYZ);
    } else {
@@ -3775,7 +3785,8 @@ void SUMA_Wait_Till_Stream_Goes_Bad(SUMA_COMM_STRUCT *cs, int slp, int WaitMax, 
    
    NOTE: For some data (lile                                  
 */
-SUMA_Boolean SUMA_SendToSuma (SUMA_SurfaceObject *SO, SUMA_COMM_STRUCT *cs, void *data, SUMA_DSET_TYPE dtype, int action)
+SUMA_Boolean SUMA_SendToSuma (SUMA_SurfaceObject *SO, SUMA_COMM_STRUCT *cs, 
+                              void *data, SUMA_DSET_TYPE dtype, int action)
 {
    static char FuncName[]={"SUMA_SendToSuma"};
    static float etm = 0.0;
@@ -3799,7 +3810,7 @@ SUMA_Boolean SUMA_SendToSuma (SUMA_SurfaceObject *SO, SUMA_COMM_STRUCT *cs, void
       SUMA_LH("Setting up for communication with SUMA ...");
       cs->Send = YUP;
       if(!SUMA_Assign_HostName (SUMAg_CF, cs->suma_host_name, cs->istream)) {
-		   fprintf (SUMA_STDERR, "Error %s: Failed in SUMA_Assign_HostName", FuncName);
+		   SUMA_S_Err("Failed in SUMA_Assign_HostName");
 		   exit (1);
 	   }
       if (!SUMA_niml_call (SUMAg_CF, cs->istream, NOPE)) {
@@ -3811,10 +3822,12 @@ SUMA_Boolean SUMA_SendToSuma (SUMA_SurfaceObject *SO, SUMA_COMM_STRUCT *cs, void
 
       nel = NI_new_data_element("StartTracking", 0); 
       cs->TrackID = 1; /* that's the index for StartTracking command */
-      NI_set_attribute(nel,"ni_stream_name",  SUMAg_CF->NimlStream_v[cs->istream]);
+      NI_set_attribute(nel,"ni_stream_name",  
+                       SUMAg_CF->NimlStream_v[cs->istream]);
       sprintf(stmp, "%d", cs->TrackID);
       NI_set_attribute(nel,"Tracking_ID", stmp);
-      if (NI_write_element( SUMAg_CF->ns_v[cs->istream] , nel, cs->comm_NI_mode ) < 0) {
+      if (NI_write_element( SUMAg_CF->ns_v[cs->istream] , 
+                            nel, cs->comm_NI_mode ) < 0) {
          SUMA_SL_Err("Failed to start tracking.\nContinuing...");
       } 
       if (nel) NI_free_element(nel); nel = NULL;
@@ -3827,12 +3840,13 @@ SUMA_Boolean SUMA_SendToSuma (SUMA_SurfaceObject *SO, SUMA_COMM_STRUCT *cs, void
    
    if (action == 1) { /* action == 1,  send data mode */
       if (!i_in) {
-         SUMA_SL_Err("You must call SUMA_SendToSuma with action 0 before action 1.\nNo Communcation cleanup done.");
+         SUMA_SL_Err("You must call SUMA_SendToSuma with action 0 "
+                     "before action 1.\nNo Communcation cleanup done.");
          cs->Send = NOPE;
          SUMA_RETURN(NOPE);
       }
       if ((cs->ElInd[dtype] % cs->kth)) {
-         if (LocalHead) fprintf(SUMA_STDERR,"%s: Skipping element %d of type %d\n", FuncName, cs->ElInd[dtype], dtype);
+         SUMA_LHv("Skipping element %d of type %d\n", cs->ElInd[dtype], dtype);
          ++cs->ElInd[dtype];
          SUMA_RETURN(YUP);
       }
@@ -3953,7 +3967,8 @@ SUMA_Boolean SUMA_SendToSuma (SUMA_SurfaceObject *SO, SUMA_COMM_STRUCT *cs, void
          }
       }
       
-      #if SUMA_SUMA_NIML_DEBUG /* writes every element to a text file for debugging ... */
+      #if SUMA_SUMA_NIML_DEBUG /* writes every element to a 
+                                  text file for debugging ... */
       {
          NI_stream ns;  
          /* Test writing results in asc, 1D format */ 
@@ -4050,7 +4065,8 @@ SUMA_Boolean SUMA_SendToSuma (SUMA_SurfaceObject *SO, SUMA_COMM_STRUCT *cs, void
    
    if (action == 2) {
       if (i_in < 2) {
-         SUMA_SL_Err("You must call SUMA_SendToSuma with action 0 and 1 before action 2.\nNo Communcation cleanup done.");
+         SUMA_SL_Err("You must call SUMA_SendToSuma with action 0 and 1"
+                     " before action 2.\nNo Communcation cleanup done.");
          cs->Send = NOPE;
          SUMA_RETURN(NOPE);
       }
@@ -4065,9 +4081,11 @@ SUMA_Boolean SUMA_SendToSuma (SUMA_SurfaceObject *SO, SUMA_COMM_STRUCT *cs, void
          SUMA_LH("Cleanup of nel producing functions...");
          /* stop tracking */
          nel = NI_new_data_element("StopTracking", 0);
-         NI_set_attribute(nel,"ni_stream_name",  SUMAg_CF->NimlStream_v[cs->istream]);
+         NI_set_attribute(nel,"ni_stream_name",  
+                          SUMAg_CF->NimlStream_v[cs->istream]);
 
-         if (NI_write_element( SUMAg_CF->ns_v[cs->istream] , nel, cs->comm_NI_mode ) < 0) {
+         if (NI_write_element( SUMAg_CF->ns_v[cs->istream] , nel, 
+                               cs->comm_NI_mode ) < 0) {
             SUMA_SL_Err("Failed to stop tracking.\nContinuing...");
          } 
          if (nel) NI_free_element(nel); nel = NULL;
@@ -4079,8 +4097,10 @@ SUMA_Boolean SUMA_SendToSuma (SUMA_SurfaceObject *SO, SUMA_COMM_STRUCT *cs, void
             exit(1);
          }
 
-         NI_set_attribute (nel, "ni_stream_name",  SUMAg_CF->NimlStream_v[cs->istream]);
-         if (NI_write_element( SUMAg_CF->ns_v[cs->istream] , nel, cs->comm_NI_mode ) < 0) {
+         NI_set_attribute (nel, "ni_stream_name",  
+                           SUMAg_CF->NimlStream_v[cs->istream]);
+         if (NI_write_element( SUMAg_CF->ns_v[cs->istream] , nel, 
+                               cs->comm_NI_mode ) < 0) {
                         SUMA_LH("Failed updating SUMA...");
          }
          if (nel) NI_free_element(nel) ; nel = NULL;

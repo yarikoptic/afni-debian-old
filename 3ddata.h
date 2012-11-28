@@ -1002,8 +1002,9 @@ static THD_warp tempA_warp ;
 #define STORAGE_BY_NIML          12  /* NIML AFNI dset   25 May 2006 [rickr] */
 #define STORAGE_BY_NI_SURF_DSET  13  /* NIML surface dset */
 #define STORAGE_BY_GIFTI         14  /* GIFTI surface dset */
+#define STORAGE_BY_NI_TRACT      15  /* NIML tract dset */
 
-#define LAST_STORAGE_MODE        14
+#define LAST_STORAGE_MODE        15
 
 /*! Contains information about where/how dataset is stored on disk.
 
@@ -1523,12 +1524,17 @@ extern mat44 THD_resample_mat44( mat44 , int,int,int ,
 /******* Function below is not in nifti1_io.c, due to some oversight ******/
 
 extern mat44 THD_mat44_mul( mat44 A , mat44 B ) ;      /* matrix multiply */
-static mat44 tempA_mat44 ;
+
+static mat44 tempA_mat44 ;                   /* temp storage for matrices */
+static mat33 tempZ_mat33 ;
 
 extern mat44 THD_mat44_sqrt( mat44 A ) ;  /* matrix square root [30 Jul 2007] */
 
 #undef  MAT44_MUL
 #define MAT44_MUL THD_mat44_mul
+
+#undef  MAT33_MUL
+#define MAT33_MUL nifti_mat33_mul
 
 #undef  MAT44_SQRT
 #define MAT44_SQRT THD_mat44_sqrt
@@ -1543,15 +1549,58 @@ extern mat44 THD_mat44_sqrt( mat44 A ) ;  /* matrix square root [30 Jul 2007] */
 #define INVALIDATE_MAT44(AA) ((AA).m[3][3] = 0.0f)
 
 #undef  ISZERO_MAT44
-#define ISZERO_MAT44(AA) \
- ((AA.m[0][0] == 0.0) && \
-  (AA.m[0][2] == 0.0) && \
-  (AA.m[1][0] == 0.0) && \
-  (AA.m[1][2] == 0.0) && \
-  (AA.m[2][0] == 0.0) && \
-  (AA.m[2][2] == 0.0) && \
-  (AA.m[3][0] == 0.0) && \
-  (AA.m[3][2] == 0.0) )
+#define ISZERO_MAT44(AA)  \
+ ((AA.m[0][0] == 0.0f) && \
+  (AA.m[0][1] == 0.0f) && \
+  (AA.m[0][2] == 0.0f) && \
+  (AA.m[0][3] == 0.0f) && \
+  (AA.m[1][0] == 0.0f) && \
+  (AA.m[1][1] == 0.0f) && \
+  (AA.m[1][2] == 0.0f) && \
+  (AA.m[1][3] == 0.0f) && \
+  (AA.m[2][0] == 0.0f) && \
+  (AA.m[2][1] == 0.0f) && \
+  (AA.m[2][2] == 0.0f) && \
+  (AA.m[2][3] == 0.0f)   )
+
+#undef  ISZERO_MAT33
+#define ISZERO_MAT33(AA)  \
+ ((AA.m[0][0] == 0.0f) && \
+  (AA.m[0][1] == 0.0f) && \
+  (AA.m[0][2] == 0.0f) && \
+  (AA.m[1][0] == 0.0f) && \
+  (AA.m[1][1] == 0.0f) && \
+  (AA.m[1][2] == 0.0f) && \
+  (AA.m[2][0] == 0.0f) && \
+  (AA.m[2][1] == 0.0f) && \
+  (AA.m[2][2] == 0.0f)     )
+
+#undef  ISIDENT_MAT44
+#define ISIDENT_MAT44(AA) \
+ ((AA.m[0][0] == 1.0f) && \
+  (AA.m[0][1] == 0.0f) && \
+  (AA.m[0][2] == 0.0f) && \
+  (AA.m[0][3] == 0.0f) && \
+  (AA.m[1][0] == 0.0f) && \
+  (AA.m[1][1] == 1.0f) && \
+  (AA.m[1][2] == 0.0f) && \
+  (AA.m[1][3] == 0.0f) && \
+  (AA.m[2][0] == 0.0f) && \
+  (AA.m[2][1] == 0.0f) && \
+  (AA.m[2][2] == 1.0f) && \
+  (AA.m[2][3] == 0.0f)   )
+
+#undef  ISIDENT_MAT33
+#define ISIDENT_MAT33(AA) \
+ ((AA.m[0][0] == 1.0f) && \
+  (AA.m[0][1] == 0.0f) && \
+  (AA.m[0][2] == 0.0f) && \
+  (AA.m[1][0] == 0.0f) && \
+  (AA.m[1][1] == 1.0f) && \
+  (AA.m[1][2] == 0.0f) && \
+  (AA.m[2][0] == 0.0f) && \
+  (AA.m[2][1] == 0.0f) && \
+  (AA.m[2][2] == 1.0f)     )
 
 /* check if 2 mat44 matrices are equal-ish */
 
@@ -1583,8 +1632,14 @@ extern mat44 THD_mat44_sqrt( mat44 A ) ;  /* matrix square root [30 Jul 2007] */
 #define LOAD_DIAG_MAT44(AA,a,b,c)                                         \
   LOAD_MAT44( AA , (a),0,0,0 , 0,(b),0,0 , 0,0,(c),0 )
 
+#undef  LOAD_IDENT_MAT44
+#define LOAD_IDENT_MAT44(AA)                                              \
+  LOAD_MAT44( AA , 1,0,0,0 , 0,1,0,0 , 0,0,1,0 )
+
 #undef  ZERO_MAT44
-#define ZERO_MAT44(AA) LOAD_DIAG_MAT44(AA,0.0,0.0,0.0)
+#define ZERO_MAT44(AA)  LOAD_DIAG_MAT44(AA,0.0,0.0,0.0)
+#undef  LOAD_ZERO_MAT44
+#define LOAD_ZERO_MAT44 ZERO_MAT44
 
 #undef  LOAD_MAT44_VEC
 #define LOAD_MAT44_VEC(AA,x,y,z) ( AA.m[0][3]=(x) , AA.m[1][3]=(y) , AA.m[2][3]=(z) )
@@ -1607,6 +1662,17 @@ extern mat44 THD_mat44_sqrt( mat44 A ) ;  /* matrix square root [30 Jul 2007] */
 #define LOAD_MAT44_AR(AA,vv)                                       \
  LOAD_MAT44(AA,(vv)[0],(vv)[1],(vv)[2],(vv)[3],(vv)[4 ],(vv)[5 ],  \
                (vv)[6],(vv)[7],(vv)[8],(vv)[9],(vv)[10],(vv)[11] )
+
+#undef  UNLOAD_MAT33
+#define UNLOAD_MAT33(AA,a11,a12,a13,a21,a22,a23,a31,a32,a33) \
+  ( a11=AA.m[0][0] , a12=AA.m[0][1] , a13=AA.m[0][2] ,       \
+    a21=AA.m[1][0] , a22=AA.m[1][1] , a23=AA.m[1][2] ,       \
+    a31=AA.m[2][0] , a32=AA.m[2][1] , a33=AA.m[2][2]  )
+
+#undef  UNLOAD_MAT33_AR
+#define UNLOAD_MAT33_AR(AA,vv)                               \
+ UNLOAD_MAT33(AA,(vv)[0],(vv)[1],(vv)[2],(vv)[3],            \
+                 (vv)[4],(vv)[5],(vv)[6],(vv)[7],(vv)[8] )
 
 /* negate the top 2 rows of a mat44 matrix
    (for transforming between NIfTI-1 and DICOM coord systems) */
@@ -1675,6 +1741,11 @@ extern mat44 THD_mat44_sqrt( mat44 A ) ;  /* matrix square root [30 Jul 2007] */
   ( AA.m[0][0]=a11 , AA.m[0][1]=a12 , AA.m[0][2]=a13 ,      \
     AA.m[1][0]=a21 , AA.m[1][1]=a22 , AA.m[1][2]=a23 ,      \
     AA.m[2][0]=a31 , AA.m[2][1]=a32 , AA.m[2][2]=a33  )
+
+/* fill a mat33 with zeros */
+
+#undef  LOAD_ZERO_MAT33
+#define LOAD_ZERO_MAT33(AA) LOAD_MAT33(AA,0,0,0,0,0,0,0,0,0)
 
 /* copy the upper left corner of a mat44 struct into a mat33 struct */
 
@@ -1800,6 +1871,53 @@ extern mat44 THD_mat44_sqrt( mat44 A ) ;  /* matrix square root [30 Jul 2007] */
 
 #undef  MAT44_TRACE
 #define MAT44_TRACE(AA) ( AA.m[0][0] + AA.m[1][1] + AA.m[2][2] )
+
+/* scale */
+
+#undef  MAT44_SCALE
+#define MAT44_SCALE(AA,ff)                                                                 \
+ ( (AA).m[0][0] *= (ff), (AA).m[0][1] *= (ff), (AA).m[0][2] *= (ff), (AA).m[0][3] *= (ff), \
+   (AA).m[1][0] *= (ff), (AA).m[1][1] *= (ff), (AA).m[1][2] *= (ff), (AA).m[1][3] *= (ff), \
+   (AA).m[2][0] *= (ff), (AA).m[2][1] *= (ff), (AA).m[2][2] *= (ff), (AA).m[2][3] *= (ff)   )
+
+/* scale */
+
+#undef  MAT33_SCALE
+#define MAT33_SCALE(AA,ff)                                           \
+ ( (AA).m[0][0] *= (ff), (AA).m[0][1] *= (ff), (AA).m[0][2] *= (ff), \
+   (AA).m[1][0] *= (ff), (AA).m[1][1] *= (ff), (AA).m[1][2] *= (ff), \
+   (AA).m[2][0] *= (ff), (AA).m[2][1] *= (ff), (AA).m[2][2] *= (ff)    )
+
+/* add */
+
+#undef  MAT44_SUM
+#define MAT44_SUM(AA,ff,BB,gg)                                    \
+  ( tempA_mat44.m[0][0] = (AA).m[0][0]*(ff) + (BB).m[0][0]*(gg) , \
+    tempA_mat44.m[0][1] = (AA).m[0][1]*(ff) + (BB).m[0][1]*(gg) , \
+    tempA_mat44.m[0][2] = (AA).m[0][2]*(ff) + (BB).m[0][2]*(gg) , \
+    tempA_mat44.m[0][3] = (AA).m[0][3]*(ff) + (BB).m[0][3]*(gg) , \
+    tempA_mat44.m[1][0] = (AA).m[1][0]*(ff) + (BB).m[1][0]*(gg) , \
+    tempA_mat44.m[1][1] = (AA).m[1][1]*(ff) + (BB).m[1][1]*(gg) , \
+    tempA_mat44.m[1][2] = (AA).m[1][2]*(ff) + (BB).m[1][2]*(gg) , \
+    tempA_mat44.m[1][3] = (AA).m[1][3]*(ff) + (BB).m[1][3]*(gg) , \
+    tempA_mat44.m[2][0] = (AA).m[2][0]*(ff) + (BB).m[2][0]*(gg) , \
+    tempA_mat44.m[2][1] = (AA).m[2][1]*(ff) + (BB).m[2][1]*(gg) , \
+    tempA_mat44.m[2][2] = (AA).m[2][2]*(ff) + (BB).m[2][2]*(gg) , \
+    tempA_mat44.m[2][3] = (AA).m[2][3]*(ff) + (BB).m[2][3]*(gg) , tempA_mat44 )
+
+/* add */
+
+#undef  MAT33_SUM
+#define MAT33_SUM(AA,ff,BB,gg)                                    \
+  ( tempZ_mat33.m[0][0] = (AA).m[0][0]*(ff) + (BB).m[0][0]*(gg) , \
+    tempZ_mat33.m[0][1] = (AA).m[0][1]*(ff) + (BB).m[0][1]*(gg) , \
+    tempZ_mat33.m[0][2] = (AA).m[0][2]*(ff) + (BB).m[0][2]*(gg) , \
+    tempZ_mat33.m[1][0] = (AA).m[1][0]*(ff) + (BB).m[1][0]*(gg) , \
+    tempZ_mat33.m[1][1] = (AA).m[1][1]*(ff) + (BB).m[1][1]*(gg) , \
+    tempZ_mat33.m[1][2] = (AA).m[1][2]*(ff) + (BB).m[1][2]*(gg) , \
+    tempZ_mat33.m[2][0] = (AA).m[2][0]*(ff) + (BB).m[2][0]*(gg) , \
+    tempZ_mat33.m[2][1] = (AA).m[2][1]*(ff) + (BB).m[2][1]*(gg) , \
+    tempZ_mat33.m[2][2] = (AA).m[2][2]*(ff) + (BB).m[2][2]*(gg) , tempZ_mat33 )
 
 /*---------------------------------------------------------------------*/
 /*--- data structure for information about time axis of 3D dataset ----*/
@@ -2268,6 +2386,10 @@ static int FUNC_ival_thr[] = { FIMTHR, 1,1,1,1,1,1,1,1,1,1, 0 } ; /* index of th
 
 #define FUNC_IS_STAT(ftyp)   ((ftyp) >= FIRST_STAT_TYPE && (ftyp) <= LAST_STAT_TYPE)
 #define FUNC_HAVE_PVAL       FUNC_IS_STAT
+
+#define STAT_SIDES(fcod)     \
+ ( !FUNC_IS_STAT(fcod) ? 0   \
+  : ((fcod)==FUNC_COR_TYPE || (fcod)==FUNC_TT_TYPE || (fcod)==FUNC_ZT_TYPE) ? 2 : 1 )
 
 /******* dimension of auxiliary array for functional statistics *******/
 
@@ -2751,6 +2873,7 @@ typedef struct THD_3dim_dataset {
             (ds)->dblk->diskptr->storage_mode == STORAGE_BY_MPEG         ||  \
             (ds)->dblk->diskptr->storage_mode == STORAGE_BY_NIML         ||  \
             (ds)->dblk->diskptr->storage_mode == STORAGE_BY_NI_SURF_DSET ||  \
+            (ds)->dblk->diskptr->storage_mode == STORAGE_BY_NI_TRACT     ||  \
             (ds)->dblk->diskptr->storage_mode == STORAGE_BY_GIFTI            \
           ) )
 
@@ -2809,6 +2932,17 @@ typedef struct THD_3dim_dataset {
 /*! Return the pointer to the actual data in the iv-th volume of dataset ds */
 
 #define DSET_ARRAY(ds,iv) DBLK_ARRAY((ds)->dblk,(iv))
+
+/* set a sub-brick pointer to null              ZSS May 08 2012 */
+#define DSET_NULL_ARRAY(ds,iv) \
+   mri_clear_data_pointer(DBLK_BRICK((ds)->dblk,(iv)))
+/* free then set a sub-brick pointer to null    ZSS May 08 2012 */
+#define DSET_FREE_ARRAY(ds,iv) { \
+   if (DSET_ARRAY((ds),(iv))) {\
+      free(DSET_ARRAY((ds),(iv))); \
+      mri_clear_data_pointer(DBLK_BRICK((ds)->dblk,(iv)));  \
+   }  \
+}
 
 #define DSET_BRICK_ARRAY DSET_ARRAY  /* Because I sometimes forget the  */
 #define DBLK_BRICK_ARRAY DBLK_ARRAY  /* correct names given above - RWC */
@@ -3868,7 +4002,7 @@ extern int THD_is_file     ( char * ) ;
 extern int THD_is_symlink  ( char * ) ;  /* 03 Mar 1999 */
 extern int THD_is_directory( char * ) ;
 extern int THD_is_ondisk   ( char * ) ;  /* 19 Dec 2002 */
-extern int THD_is_prefix_ondisk( char *pathname ) ; /* Dec 2011 */
+extern int THD_is_prefix_ondisk( char *pathname, int stripsels ) ; /* Dec 2011 */
 extern int THD_mkdir       ( char * ) ;  /* 19 Dec 2002 */
 extern int THD_cwd         ( char * ) ;  /* 19 Dec 2002 */
 extern int THD_equiv_files ( char * , char * ) ;
@@ -4023,6 +4157,8 @@ extern MRI_IMAGE *        THD_fetch_1D           (char *) ; /* 26 Mar 2001 */
 extern void THD_set_storage_mode( THD_3dim_dataset *,int ); /* 21 Mar 2003 */
 
 extern int * get_count_intlist ( char *str , int *nret);
+int * get_1dcat_intlist ( char *str , int *nret);     /* May 15 2012 ZSS */
+
 extern int * MCW_get_intlist( int , char * ) ;
 extern int * MCW_get_labels_intlist( char ** , int,  char * ); /* ZSS Dec 09 */
 extern int * MCW_get_thd_intlist( THD_3dim_dataset * , char * ); /* ZSS Dec 09 */
@@ -4159,7 +4295,7 @@ extern THD_3dim_dataset * THD_copy_one_sub  ( THD_3dim_dataset * , int ) ;
    "   Try 1dplot '1D: 3 4 3 5 | 3 5 4 3'\n"                                  \
    "\n"                                                                       \
    "** TRANSPOSITION WITH \\' **\n"                                           \
-   "Finally, you can force most AFNI programs to tranpose a 1D file on\n"     \
+   "Finally, you can force most AFNI programs to transpose a 1D file on\n"     \
    "input by appending a single ' character at the end of the filename.\n"    \
    "N.B.: Since the ' character is also special to the shell, you'll\n"       \
    "      probably have to put a \\ character before it. Examples:\n"         \
@@ -4286,6 +4422,7 @@ extern float THD_timeof_slice( int , int , THD_3dim_dataset * ) ;  /* BDW */
 extern float * TS_parse_tpattern( int, float, char * ) ;  /* 11 Dec 2007 */
 
 extern THD_fvec3 THD_dataset_center( THD_3dim_dataset * ) ;  /* 01 Feb 2001 */
+extern THD_fvec3 THD_cmass( THD_3dim_dataset *xset , int iv , byte *mmm );
 extern int THD_dataset_mismatch(THD_3dim_dataset *, THD_3dim_dataset *) ;
 extern double THD_diff_vol_vals(THD_3dim_dataset *d1, THD_3dim_dataset *d2,
                                 int scl);
@@ -4408,6 +4545,8 @@ typedef struct {
  } while(0)
 
 extern MRI_vectim * THD_dset_to_vectim( THD_3dim_dataset *dset, byte *mask, int ignore );
+extern MRI_vectim * THD_dset_to_vectim_stend( THD_3dim_dataset *dset, byte *mask , int start, int end ) ;
+
 MRI_vectim * THD_2dset_to_vectim( THD_3dim_dataset *dset1, byte *mask1 ,
                                   THD_3dim_dataset *dset2, byte *mask2 ,
                                   int ignore );
@@ -4420,9 +4559,12 @@ extern void mri_blur3D_vectim( MRI_vectim *vim , float fwhm ) ;
 extern void THD_vectim_normalize( MRI_vectim *mrv ) ;
 extern void THD_vectim_dotprod  ( MRI_vectim *mrv, float *vec, float *dp, int ata ) ;
 extern void THD_vectim_spearman ( MRI_vectim *mrv, float *vec, float *dp ) ; /* 01 Mar 2010 */
+extern void THD_vectim_quantile ( MRI_vectim *mrv, float *vec, float *dp ) ; /* 11 May 2012 */
 extern void THD_vectim_quadrant ( MRI_vectim *mrv, float *vec, float *dp ) ; /* 01 Mar 2010 */
 extern void THD_vectim_ktaub    ( MRI_vectim *mrv, float *vec, float *dp ) ; /* 29 Apr 2010 */
 extern void THD_vectim_tictactoe( MRI_vectim *mrv, float *vec, float *dp ) ; /* 30 Mar 2011 */
+
+extern void THD_vectim_applyfunc( MRI_vectim *mrv , void *vp ) ;        /* 10 May 2012 */
 
 extern void THD_vectim_pearsonBC( MRI_vectim *mrv, float srad, int sijk, int pv, float *par ) ;
 
@@ -4443,9 +4585,9 @@ typedef struct {
   THD_3dim_dataset *dset , *mset ;
   byte *mmm ;
   MRI_IMAGE *gortim ;
-  int ignore , automask , mindex ;
+  int start,end , automask , mindex ;
   float fbot , ftop , blur , sblur ;
-  int polort , cmeth , despike ;
+  int polort , cmeth , despike , change ;
   MRI_vectim *mv ;
   char *prefix ; int ndet ;
   float *tseed ;
@@ -4473,7 +4615,7 @@ typedef struct {
 
 extern int         THD_instacorr_prepare( ICOR_setup *iset ) ;
 extern MRI_IMAGE * THD_instacorr        ( ICOR_setup *iset, int ijk, int ata ) ;
-
+extern int         THD_instacorr_cmeth_needs_normalize( int cmeth );
 /*---------------------------------------------------------------------------*/
 
 extern int THD_extract_array      ( int, THD_3dim_dataset *, int, void * ) ;
@@ -4621,6 +4763,7 @@ extern byte * THD_boxballmask( THD_3dim_dataset *, int, float * ) ;
 
 extern byte * THD_makemask( THD_3dim_dataset *, int,float,float) ;
 extern int    THD_makedsetmask( THD_3dim_dataset *, int,float,float, byte* ) ;
+extern int THD_applydsetmask( THD_3dim_dataset *dset , byte *cmask );
 extern int *THD_unique_vals( THD_3dim_dataset *mask_dset, int miv,
                               int *n_unique, byte*cmask );
 extern int *THD_unique_rank( THD_3dim_dataset *mask_dset ,
@@ -4670,9 +4813,13 @@ extern int THD_mask_fillin_completely( int,int,int, byte *, int ) ; /* 19 Apr 20
 extern int THD_mask_fillin_once      ( int,int,int, byte *, int ) ;
 
 extern int THD_mask_clip_neighbors( int,int,int, byte *, float,float,float *) ; /* 28 Oct 2003 */
+extern int THD_mask_fill_holes( int,int,int, byte *, int);  /* 27 Apr 2012 */
+
 
 extern void THD_mask_clust( int nx, int ny, int nz, byte *mmm ) ;
 extern void THD_mask_erode( int nx, int ny, int nz, byte *mmm, int redilate ) ;
+extern void THD_mask_erode_sym(int nx,int ny,int nz, byte *mmm, int nerode);
+
 extern void THD_mask_erodemany( int nx, int ny, int nz, byte *mmm, int npeel ) ; /* 24 Oct 2006 */
 
 extern int THD_peel_mask( int nx, int ny, int nz , byte *mmm, int pdepth ) ;
@@ -4971,6 +5118,9 @@ extern int THD_freemegabytes( char * ) ; /* 28 Mar 2005 */
 extern int THD_character_ok( char ) ;    /* 04 Feb 2010 */
 extern int THD_filename_fix( char * ) ;  /* 04 Feb 2010 */
 
+#undef  HAS_WILDCARD                     /* 19 Jun 2012 */
+#define HAS_WILDCARD(sss) ( strchr((sss),'*') != NULL || strchr((sss),'?') != NULL )
+
 extern THD_warp * AFNI_make_voxwarp( THD_warp * , THD_3dim_dataset * ,
                                                   THD_3dim_dataset *  ) ;
 
@@ -5165,9 +5315,15 @@ extern char **atlas_chooser_formatted_labels(char *atname);
 extern float THD_spearman_corr( int,float *,float *) ;  /* 23 Aug 2001 */
 extern float THD_quadrant_corr( int,float *,float *) ;
 extern float THD_pearson_corr ( int,float *,float *) ;
+extern float THD_covariance( int n, float *x , float *y );
 extern float THD_ktaub_corr   ( int,float *,float *) ;  /* 29 Apr 2010 */
 extern float THD_eta_squared  ( int,float *,float *) ;  /* 25 Jun 2010 */
 extern double THD_eta_squared_masked(int,float *,float *,byte *);/* 16 Jun'11 */
+
+extern float THD_quantile_corr( int,float *,float *) ;  /* 10 May 2012 */
+extern float quantile_corr( int n , float *x , float rv , float *r ) ;
+extern void THD_quantile_corr_setup( int ) ;
+extern float quantile_prepare( int n , float *a ) ;
 
 extern float THD_tictactoe_corr( int,float *,float *) ;  /* 19 Jul 2011 */
 
@@ -5187,7 +5343,10 @@ extern float THD_bootstrap_vectcorr( int nlen, int nboot, int use_pv, int xtyp,
 
 extern float THD_spearman_corr_nd( int,float *,float *) ;  /* 23 Aug 2006 */
 extern float THD_quadrant_corr_nd( int,float *,float *) ;
+extern float THD_distance( int, float *, float *, int ); /* 04 May 2012 */
 #define THD_pearson_corr_nd THD_pearson_corr
+
+double THD_spearman_corr_dble( int n , double *x , double *y ) ;
 
 extern void  rank_order_float     ( int , float * );
 extern float spearman_rank_prepare( int , float * );
@@ -5294,11 +5453,12 @@ extern THD_fvec3 THD_autonudge( THD_3dim_dataset *dsepi, int ivepi,
 extern MRI_IMAGE * mri_brainormalize( MRI_IMAGE *, int,int,int , MRI_IMAGE **, MRI_IMAGE **) ; /* 05 Apr 2004 */
 extern void mri_brainormalize_verbose( int ) ;
 extern void brainnormalize_coord( float  ispat, float  jspat, float  kspat ,
-                           float *iorig, float *jorig, float *korig ,
-                           THD_3dim_dataset *origset,
-                           float *xrai_orig, float *yrai_orig, float *zrai_orig); /* ZSS */
+                float *iorig, float *jorig, float *korig ,
+                THD_3dim_dataset *origset,
+                float *xrai_orig, float *yrai_orig, float *zrai_orig); /* ZSS */
 extern MRI_IMAGE * mri_watershedize( MRI_IMAGE * , float ) ;
 extern void mri_speciebusiness( int ) ;
+extern void mri_brain_normalize_cuts ( char * );
 extern void mri_brainormalize_initialize(float dx, float dy, float dz);
 extern float THD_BN_dxyz(void);
 extern int THD_BN_nx(void);

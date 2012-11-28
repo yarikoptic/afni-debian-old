@@ -2616,6 +2616,127 @@ void SUMA_error_message (char *s1,char *s2,int ext)
   }
 
 /*!
+   Return a string that is a catenation
+   of the characters that differ between s1 and s2
+   s1 and s2 are switched in the function so that
+   s1 is always the longest of the two
+*/
+char *SUMA_StringDiff(char *s1, char *s2) 
+{
+   static char FuncName[]={"SUMA_StringDiff"};
+   char *sd=NULL;
+   int ns1=0, ns2=0, ns=0, i;
+   SUMA_Boolean LocalHead = NOPE;
+  
+   SUMA_ENTRY;
+    
+   SUMA_LHv("Will diff on %p and %p\n", s1, s2);
+   if (!s1 && !s2) {
+      SUMA_RETURN(sd);
+   }
+   if (!s1 && s2) {
+      SUMA_RETURN(SUMA_copy_string(s2));
+   }
+   if (s1 && !s2) {
+      SUMA_RETURN(SUMA_copy_string(s1));
+   }
+   ns1 = strlen(s1);
+   ns2 = strlen(s2);
+   if (ns1 < ns2) {
+      sd = s1; ns = ns1;
+      s1 = s2;
+      s2 = sd; sd = NULL;
+      ns1 = ns2;
+      ns2 = ns; ns = 0;
+   }
+   
+   /* OK, have s1, and s2, and s1 is the longest */
+   sd = (char *)calloc(ns1+1, sizeof(char));
+   ns = 0;
+   for (i=0; i < ns2; ++i) {
+      if (s1[i] != s2[i]) {
+         sd[ns]=s1[i];++ns;
+      }
+   }
+   for (i=ns2; i < ns1; ++i) {
+      sd[ns]=s1[i];++ns;
+   }
+   sd[ns]='\0';
+   
+   SUMA_LHv("Diff of %s and %s is\n%s\n",
+               s1, s2, sd);
+   RETURN(sd);
+} 
+
+/*!
+   Return a string that contains matching
+   characters between s1 and s2
+   s1 and s2 are switched in the function so that
+   s1 is always the longest of the two
+   firstdiff: if 1, then stop at the firt difference
+   filler : if filler != '\0' then fill differing spots with 'filler'
+            Otherwise differing characters are dropped from the output.
+*/
+char *SUMA_StringMatch(char *s1, char *s2, int firstdiff, char filler) 
+{
+   static char FuncName[]={"SUMA_StringMatch"};
+   char *sm=NULL;
+   int ns1=0, ns2=0, ns=0, i;
+   SUMA_Boolean LocalHead = NOPE;
+  
+   SUMA_ENTRY;
+    
+   SUMA_LHv("Will match on %p and %p\n", s1, s2);
+   if (!s1 && !s2) {
+      SUMA_RETURN(sm);
+   }
+   if (!s1 && s2) {
+      SUMA_RETURN(sm);
+   }
+   if (s1 && !s2) {
+      SUMA_RETURN(sm);
+   }
+   ns1 = strlen(s1);
+   ns2 = strlen(s2);
+   if (ns1 < ns2) {
+      sm = s1; ns = ns1;
+      s1 = s2;
+      s2 = sm; sm = NULL;
+      ns1 = ns2;
+      ns2 = ns; ns = 0;
+   }
+   
+   /* OK, have s1, and s2, and s1 is the longest */
+   sm = (char *)calloc(ns1+1, sizeof(char));
+   ns = 0;
+   for (i=0; i < ns2; ++i) {
+      if (s1[i] != s2[i]) {
+         if (firstdiff) {
+            sm[ns] = '\0'; 
+            RETURN(sm);
+         } else {
+            if (filler != '\0') {
+               sm[ns] = filler; ++ns;
+            }
+         }
+      } else {
+         sm[ns]=s1[i];++ns;
+      }
+   }
+   if (filler != '\0') {
+      for (i=ns2; i < ns1; ++i) {
+         sm[ns]=filler;++ns;
+      }
+   }
+   sm[ns]='\0';
+   
+   SUMA_LHv("Match of %s and %s (firstdiff=%d, filler=%c) is\n%s\n",
+               s1, s2, firstdiff, filler, sm);
+   RETURN(sm);
+} 
+
+
+/*!
    \brief case insensitive version of SUMA_iswordin 
 */
 int SUMA_iswordin_ci ( const char *sbig, const char *ssub)
@@ -3996,6 +4117,26 @@ SUMA_ISINSPHERE SUMA_isinsphere (float * NodeList, int nr, float *S_cent ,
    
 }/*SUMA_isinsphere*/
 
+/* Same as SUMA_isinsphere but return a byte mask */
+byte *SUMA_isinsphere_bm (float * NodeList, int nr, float *S_cent , 
+                                 float S_rad , int BoundIn )
+{/*SUMA_isinsphere_bm*/
+   static char FuncName[]={"SUMA_isinsphere_bm"}; 
+   int k;
+   SUMA_ISINSPHERE IsIn_strct;
+   byte *bm = NULL;
+   
+   SUMA_ENTRY;
+   
+   if (!NodeList || !nr) SUMA_RETURN(bm);
+   IsIn_strct = SUMA_isinsphere(NodeList, nr, S_cent, S_rad, BoundIn);
+   bm = (byte *)calloc(nr, sizeof(byte));
+   for (k=0; k<IsIn_strct.nIsIn;++k) bm[IsIn_strct.IsIn[k]]=1;
+   SUMA_Free_IsInSphere(&IsIn_strct);
+   
+   SUMA_RETURN(bm);
+}
+
 /*!
 free SUMA_ISINSPHERE structure contents. 
 Structure pointer is not freed
@@ -4229,9 +4370,35 @@ int SUMA_nodesinbox2 (float *XYZ, int nr,
    
    SUMA_RETURN(nin);
 }
+/* Same as SUMA_nodesinbox2 but return a byte mask */
+byte *SUMA_nodesinbox2_bm (float *NodeList, int nr, 
+                        float *S_cent , float *S_edge, 
+                        byte *bmu)
+{/*SUMA_nodesinbox2_bm*/
+   static char FuncName[]={"SUMA_nodesinbox2_bm"}; 
+   int k, nin;
+   int *nodesin=NULL;
+   byte *bm = NULL;
+   
+   SUMA_ENTRY;
+   
+   if (!NodeList || !nr) SUMA_RETURN(bm);
+   nodesin = (int *)SUMA_calloc(nr, sizeof(int));
+   nin = SUMA_nodesinbox2(NodeList, nr, S_cent, S_edge, nodesin, NULL);
+   if (!bmu) bm = (byte *)calloc(nr, sizeof(byte));
+   else bm = bmu;
+   for (k=0; k<nin;++k) bm[nodesin[k]]=1;
+   SUMA_free(nodesin); nodesin = NULL;
+   
+   SUMA_RETURN(bm);
+}
+
+
+
 /* same as nodesinbox2 only sdim is one float, specifying the RADIUS,
 see SUMA_NODESINSPHERE2 for slimmed, slightly faster version*/
-int SUMA_nodesinsphere2 (float *XYZ, int nr, float *S_cent , float S_dim , int *nodesin, float *dinsq)
+int SUMA_nodesinsphere2 (float *XYZ, int nr, float *S_cent , float S_dim , 
+                         int *nodesin, float *dinsq)
 {
    static char FuncName[]={"SUMA_nodesinsphere2"};
    int k;
@@ -4271,6 +4438,29 @@ int SUMA_nodesinsphere2 (float *XYZ, int nr, float *S_cent , float S_dim , int *
    
    SUMA_RETURN(nin);
 }
+/* Same as SUMA_nodesinsphere2 but return a byte mask */
+byte *SUMA_nodesinsphere2_bm (float * NodeList, int nr, 
+                           float *S_cent , float S_rad,
+                           byte *bmu)
+{/*SUMA_nodesinsphere2_bm*/
+   static char FuncName[]={"SUMA_nodesinsphere2_bm"}; 
+   int k, nin;
+   int *nodesin=NULL;
+   byte *bm = NULL;
+   
+   SUMA_ENTRY;
+   
+   if (!NodeList || !nr) SUMA_RETURN(bm);
+   nodesin = (int *)SUMA_calloc(nr, sizeof(int));
+   nin = SUMA_nodesinsphere2(NodeList, nr, S_cent, S_rad, nodesin, NULL);
+   if (!bmu) bm = (byte *)calloc(nr, sizeof(byte));
+   else bm = bmu;
+   for (k=0; k<nin;++k) bm[nodesin[k]]=1;
+   SUMA_free(nodesin); nodesin = NULL;
+   
+   SUMA_RETURN(bm);
+}
+
 
 
 /*!
@@ -4908,7 +5098,7 @@ SUMA_Boolean SUMA_Point_To_Point_Distance (float *NodeList, int N_points, float 
    \param N_points (int) number of points in Points
    \param P0, P1, P2 (float *) XYZ coords of each vertex in the triangle
    \param itri (int) an integer representing the triangle's ID
-   \param distp (float **) pointer to array which will contain the distance
+   \param distp (float **) pointer to array which will contain the (squared if city==0)
                            distance from each point to the triangle <P0, P1, P2>
                 if (*distp == NULL) it is allocated for and initialized and
                                     *distp[i] contains SD, the shortest distance 
@@ -4918,6 +5108,7 @@ SUMA_Boolean SUMA_Point_To_Point_Distance (float *NodeList, int N_points, float 
    \param closestp (int **) pointer to array wich will contain for each point i
                                     the index of the triangle itri which
                                     resulted in the value of *distp[i]
+   \param city (byte) 1 == City block distance, 0 == Euclidian distance squared
    \return NOPE on FAILURE, YUP on SUCCESS.
    This function is meant to be called repeatedly for each new triangle.
    See SUMA_Shortest_Point_To_Triangles_Distance()         
@@ -4925,7 +5116,8 @@ SUMA_Boolean SUMA_Point_To_Point_Distance (float *NodeList, int N_points, float 
 int SUMA_Point_To_Triangle_Distance (float *Points, int N_points, 
                                      float *P0, float *P1, float *P2, int itri,
                                      float *tnorm,
-                                     float **distp, int **closestp, byte **sgnp )
+                                     float **distp, int **closestp, byte **sgnp,
+                                     byte city)
 {
    static char FuncName[]={"SUMA_Point_To_Triangle_Distance"};
    float *dist=NULL, *P=NULL;
@@ -4977,7 +5169,10 @@ int SUMA_Point_To_Triangle_Distance (float *Points, int N_points,
    for (in=0; in < N_points; ++in) {
       in3 = 3*in; P = Points+in3;
       BmP[0] = B[0]-P[0]; BmP[1] = B[1]-P[1]; BmP[2] = B[2]-P[2]; 
-      d = SUMA_DOT3(E0, BmP); e = SUMA_DOT3(E1, BmP); f = SUMA_DOT3(BmP, BmP);          det = a*c-b*b; s = b*e-c*d; t=b*d-a*e;
+      d = SUMA_DOT3(E0, BmP); 
+      e = SUMA_DOT3(E1, BmP); 
+      f = SUMA_DOT3(BmP, BmP);          
+      det = a*c-b*b; s = b*e-c*d; t=b*d-a*e;
       reg = -1;
       if (s+t <= det) {
          if (s < 0) { 
@@ -5034,7 +5229,11 @@ int SUMA_Point_To_Triangle_Distance (float *Points, int N_points,
       }
       SUMA_FROM_BARYCENTRIC(s, t, P0, P1, P2, I);
       I[0] = I[0]-P[0]; I[1] = I[1]-P[1]; I[2] = I[2]-P[2];
-      sd = I[0]*I[0]+I[1]*I[1]+I[2]*I[2];
+      if (city) {
+         sd = SUMA_ABS(I[0])+SUMA_ABS(I[1])+SUMA_ABS(I[2]);
+      } else {
+         sd = I[0]*I[0]+I[1]*I[1]+I[2]*I[2];         
+      }
       if (dist[in] < 0) {
          dist[in] = (float)sd;
          if (closest) closest[in] = itri;
@@ -5056,7 +5255,7 @@ int SUMA_Point_To_Triangle_Distance (float *Points, int N_points,
                "I=[%f %f %f] dist2[%d]=%f, sign=%d\n", 
                reg, s, t, P[0], P[1], P[2], 
                I[0], I[1], I[2], in, dist[in], 
-               (sgn[in]==2) ? 1:-1); 
+               (sgn && sgn[in]==1) ? -1:1); 
    } /* for each point */
    ++icall;
    SUMA_RETURN(YUP);
@@ -5071,11 +5270,13 @@ void Bad_Optimizer_Bad_Bad() {
    return;
 }
 
+/* Square of distance is computed, if city == 0 */
 SUMA_Boolean SUMA_Shortest_Point_To_Triangles_Distance(
          float *Points, int N_points, 
          float *NodeList, int *FaceSetList, int N_FaceSet,
          float *FaceNormList,
-         float **distp, int **closestp, byte **sgnp ) {
+         float **distp, int **closestp, byte **sgnp,
+         byte city ) {
    static char FuncName[]={"SUMA_Shortest_Point_To_Triangles_Distance"};
    float  *P0, *P1, *P2;
    int i=0;
@@ -5099,12 +5300,11 @@ SUMA_Boolean SUMA_Shortest_Point_To_Triangles_Distance(
       if (!SUMA_Point_To_Triangle_Distance(Points, N_points,
                                            P0, P1, P2, i,
                                            FaceNormList+3*i,
-                                           distp, closestp, sgnp)) {
+                                           distp, closestp, sgnp,
+                                           city)) {
          SUMA_S_Errv("Failed at triangle %d\n", i);
          SUMA_RETURN(NOPE); 
-      }
-
-            
+      }            
    }
    SUMA_RETURN(YUP);        
 }
@@ -5611,6 +5811,7 @@ void SUMA_Set_VoxIntersDbg(int v)
    \param dxyz (float *): dimensions of voxel
    \param en (int): corner of voxel (0 -- 7)
    \param P0 (float *): corner coords (set by macro)
+   See labbook NIH-6 pp 201 for a recent diagram of edge and corner numbers 
 */
 #define SUMA_CORNER_OF_VOXEL(center, dxyz, cn, P){\
    switch(cn) {   \
@@ -5654,6 +5855,7 @@ void SUMA_Set_VoxIntersDbg(int v)
    \param en (int): edge of voxel (0 -- 11)
    \param P0 (float *): first point forming edge (set by macro)
    \param P1 (float *): second point forming edge (set by macro)
+   See labbook NIH-6 pp 201 for a recent diagram of edge and corner numbers 
 */
 #define SUMA_EDGE_OF_VOXEL(center, dxyz, en, P0, P1){ \
    switch(en) {   \
@@ -5738,7 +5940,9 @@ SUMA_Boolean SUMA_isVoxelIntersect_Triangle
                                         iP, NULL, NULL)) {
          #if 0 
             if (VoxIntersDbg) 
-               fprintf(SUMA_STDERR, "%s: intersection detected.\n", FuncName);
+               fprintf(SUMA_STDERR, 
+                       "%s: intersection detected (dxyz [%f %f %f], edge %d\n", 
+                           FuncName, dxyz[0], dxyz[1], dxyz[2], i);
          #endif
          /* intersects, make sure intersection is between P0 and P1 */
          if (SUMA_IS_POINT_IN_SEGMENT(iP, P0, P1)) {
@@ -5909,7 +6113,9 @@ SUMA_MT_intersect_triangle(float *P0, float *P1,
                This change appears to save about 18% of the function's 
                execution time. Be careful not to free PrevMTI without setting 
                it to NULL and then send it to SUMA_MT_intersect_triangle.
-
+\param   posonly if 1 then search only in the positive direction. P0 --> P1
+                 if 0 then abs min
+                 if -1 then only in neg direction
 \ret   MTI (SUMA_MT_INTERSECT_TRIANGLE *) pointer to structure containing 
                isHit (SUMA_Boolean *) N_FaceSet x 1 vector. 
                isHit[i] = YUP --> FaceSet i is pierced by ray P0-->P1
@@ -5933,7 +6139,8 @@ SUMA_MT_INTERSECT_TRIANGLE *
 SUMA_MT_intersect_triangle(float *P0, float *P1, 
                            float *NodeList, int N_Node, 
                            int *FaceSetList, int N_FaceSet, 
-                           SUMA_MT_INTERSECT_TRIANGLE *PrevMTI)
+                           SUMA_MT_INTERSECT_TRIANGLE *PrevMTI,
+                           int posonly)
 {
    static char FuncName[]={"SUMA_MT_intersect_triangle"};
    double edge1[3], edge2[3], tvec[3], pvec[3], qvec[3];
@@ -6132,9 +6339,13 @@ SUMA_MT_intersect_triangle(float *P0, float *P1,
                MTI->isHit[iface] = YUP;
                ++MTI->N_hits;
                /* store shortest distance triangle info */
-               if (MTI->t[iface] < 0) disttest = -MTI->t[iface];
-                  else  { disttest = MTI->t[iface]; ++MTI->N_poshits;}
-               
+               if (MTI->t[iface] < 0) {
+                  if (posonly>0) continue; 
+                  disttest = -MTI->t[iface];
+               }   else  { 
+                  if (posonly<0) continue; 
+                  disttest = MTI->t[iface]; ++MTI->N_poshits;
+               }
                if (disttest < tmin) {
                   tmin = disttest;
                   MTI->ifacemin = iface;
@@ -6430,7 +6641,8 @@ SUMA_Boolean SUMA_MT_count_intersect_triangle(void *v0, void *v1,
 /*!
 Show contents of SUMA_MT_INTERSECT_TRIANGLE structure
 */
-SUMA_Boolean SUMA_Show_MT_intersect_triangle(SUMA_MT_INTERSECT_TRIANGLE *MTI, FILE *Out)
+SUMA_Boolean SUMA_Show_MT_intersect_triangle(
+               SUMA_MT_INTERSECT_TRIANGLE *MTI, FILE *Out)
 {
    static char FuncName[]={"SUMA_Show_MT_intersect_triangle"};
    int MaxShow = 5, i,j;
@@ -6451,34 +6663,46 @@ SUMA_Boolean SUMA_Show_MT_intersect_triangle(SUMA_MT_INTERSECT_TRIANGLE *MTI, FI
    }
    
    if (MTI->isHit == NULL) {
-      fprintf (SUMA_STDERR,"Error SUMA_Show_MT_intersect_triangle: isHit is NULL\n\n");
+      fprintf (SUMA_STDERR,
+         "Error SUMA_Show_MT_intersect_triangle: isHit is NULL\n\n");
       SUMA_RETURN (NOPE);
    }
    else {
       if (MaxShow > MTI->N_el) MaxShow = MTI->N_el; 
-      fprintf (Out, "Intersection results (showing first %d out of %d elements):\n", MaxShow, MTI->N_el);
+      fprintf (Out, 
+         "Intersection results (showing first %d out of %d elements):\n", 
+               MaxShow, MTI->N_el);
       for (i=0; i < MaxShow; ++i)   {
-         fprintf (Out, "\tisHit: %d t %f u %f v %f", MTI->isHit[i], MTI->t[i], MTI->u[i],MTI->v[i]);
+         fprintf (Out, "\tisHit: %d t %f u %f v %f", 
+            MTI->isHit[i], MTI->t[i], MTI->u[i],MTI->v[i]);
       }
          fprintf (Out, "\n");
       
       if (MTI->N_hits) {
-         fprintf (Out, "\n%d hits, (%d hists with positive distance).\n", MTI->N_hits, MTI->N_poshits);
-         fprintf (Out, "Minimum Distance: %d t %f u %f v %f\n", \
-                  MTI->ifacemin, MTI->t[MTI->ifacemin], MTI->u[MTI->ifacemin],MTI->v[MTI->ifacemin]);
-         fprintf (Out, "Intersection point P at Minimum Distance FaceSet:\n%f, %f, %f\n", \
+         fprintf (Out, "\n%d hits, (%d hists with positive distance).\n", 
+                  MTI->N_hits, MTI->N_poshits);
+         fprintf (Out, "Minimum Distance: %d t %f u %f v %f\n",
+                  MTI->ifacemin, MTI->t[MTI->ifacemin], 
+                  MTI->u[MTI->ifacemin],MTI->v[MTI->ifacemin]);
+         fprintf (Out, "Intersection point P at Minimum Distance FaceSet:\n"
+                       "%f, %f, %f\n",
                   MTI->P[0], MTI->P[1], MTI->P[2]);
-         fprintf (Out, "Closest node is number %d in Minimum Distance Faceset (%d in NodeList) at %f distance.\n",\
+         fprintf (Out, "Closest node is number %d in Minimum Distance Faceset "
+                       "(%d in NodeList) at %f distance.\n",
                   MTI->inodeminlocal, MTI->inodemin, MTI->d);                           
-         fprintf (Out, "Maximum Distance: %d t %f u %f v %f\n\n", \
-                  MTI->ifacemax, MTI->t[MTI->ifacemax], MTI->u[MTI->ifacemax],MTI->v[MTI->ifacemax]);
-         fprintf (Out, "Intersection of ray with surface (showing first %d out of %d elements):\n", MaxShow, MTI->N_el);
+         fprintf (Out, "Maximum Distance: %d t %f u %f v %f\n\n", 
+                  MTI->ifacemax, MTI->t[MTI->ifacemax], 
+                  MTI->u[MTI->ifacemax],MTI->v[MTI->ifacemax]);
+         fprintf (Out, "Intersection of ray with surface "
+                       "(showing first %d out of %d elements):\n", 
+                  MaxShow, MTI->N_el);
          i = 0;
          j = 0;
          while (i< MTI->N_el && j < MTI->N_hits) {
             if (MTI->isHit[i]) {
                ++j;
-               fprintf (Out, "\tisHit: %d t %f u %f v %f\n", MTI->isHit[i], MTI->t[i], MTI->u[i],MTI->v[i]);
+               fprintf (Out, "\tisHit: %d t %f u %f v %f\n", 
+                        MTI->isHit[i], MTI->t[i], MTI->u[i],MTI->v[i]);
             }
             ++i;
          }
@@ -8048,24 +8272,32 @@ SUMA_Boolean SUMA_MakeConsistent (int *FL, int N_FL, SUMA_EDGE_LIST *SEL, int de
    Smooth the attributes of the nodes based on the neighboring values. 
    Nodes are neighbors if they are connected by an edge in the triangulation.
 
-   \param attr (float *) pointer to vector of type tp containing a node's attribute
+   \param attr (float *) pointer to vector of type tp containing a 
+                           node's attribute
    \param N_attr (int) number of elements in attr. 
-   \param attr_sm (float *) pointer to smoothed version of attr. If you pass NULL then
-            the pointer is allocated for and returned from the function. If attr_sm is not
-            null then it is assumed to have the required allocated space for the proper type.
-   \param fn (SUMA_NODE_FIRST_NEIGHB) structure containing the first order neighbors of the nodes. 
-            It is assumed that fn contains the neighbors info for all nodes whose attributes are in attr.
+   \param attr_sm (float *) pointer to smoothed version of attr. 
+            If you pass NULL then the pointer is allocated and returned 
+            from the function. 
+            If attr_sm is not null then it is assumed to have the 
+            required allocated space for the proper type.
+   \param fn (SUMA_NODE_FIRST_NEIGHB) structure containing the first order 
+            neighbors of the nodes. 
+            It is assumed that fn contains the neighbors info for all nodes 
+            whose attributes are in attr.
             That is from 0 to N_attr. 
    \param nr (int) number of values per node in attr (for multiplexed vectors).
                    So, if attr was R0G0Bo R1 G1 B1, ..., RnGnBn then nr = 3
                    Only row major multiplexing is allowed.
-   \param nmask (byte *) if not NULL, then attributes are smoothed ONLY for nodes n where nmask[n] = 1 
+   \param nmask (byte *) if not NULL, then attributes are smoothed ONLY 
+                         for nodes n where nmask[n] = 1 
    \return attr_sm (float *) pointer to smoothed version of attr
    
    \sa   SUMA_SmoothAttr_Neighb_Rec  
    \sa SUMA_SmoothAttr_Neighb_wght (bugs here == bugs there)
 */
-float * SUMA_SmoothAttr_Neighb (float *attr, int N_attr, float *attr_sm, SUMA_NODE_FIRST_NEIGHB *fn, int nr, byte *nmask, byte strict_mask)
+float * SUMA_SmoothAttr_Neighb ( float *attr, int N_attr, float *attr_sm, 
+                                 SUMA_NODE_FIRST_NEIGHB *fn, int nr, 
+                                 byte *nmask, byte strict_mask)
 {
    static char FuncName[]={"SUMA_SmoothAttr_Neighb"};
    int ni, im, offs, j, nj, wgt;
@@ -8121,7 +8353,8 @@ float * SUMA_SmoothAttr_Neighb (float *attr, int N_attr, float *attr_sm, SUMA_NO
                   for (j=0; j < fn->N_Neighb[ni]; ++j)
                   {
                      nj = fn->FirstNeighb[ni][j];
-                     if (nmask[nj] || !strict_mask) { /* the neighbor is in the mask or we take in all neighbors */
+                     if (nmask[nj] || !strict_mask) { /* the neighbor is in the 
+                                             mask or we take in all neighbors */
                         attr_sm[offs+im] += attr[nr*nj+im]; ++wgt;
                      }
                   }   
@@ -8259,8 +8492,10 @@ float * SUMA_SmoothAttr_Neighb_wght (float *attr, int N_attr, float *wght,
    option is N_Rec the number of repeated smoothing calls.
    
 */
-float * SUMA_SmoothAttr_Neighb_Rec (float *attr, int N_attr, float *attr_sm_orig, 
-                                    SUMA_NODE_FIRST_NEIGHB *fn, int nr, int N_rep)
+float * SUMA_SmoothAttr_Neighb_Rec (float *attr, int N_attr, 
+                                    float *attr_sm_orig, 
+                                    SUMA_NODE_FIRST_NEIGHB *fn, 
+                                    int nr, int N_rep)
 {
    static char FuncName[]={"SUMA_SmoothAttr_Neighb_Rec"};
    int i;
@@ -9659,7 +9894,8 @@ int SUMA_ReadNumStdin (float *fv, int nv)
    }
    
    if (i == SUMA_MAX_STRING_LENGTH-1) {
-      fprintf(SUMA_STDERR,"Error %s: No more than %d characters are allowed on stdin.\n", FuncName, SUMA_MAX_STRING_LENGTH-1);
+      SUMA_S_Errv("No more than %d characters are allowed on stdin.\n", 
+                  SUMA_MAX_STRING_LENGTH-1);
       fflush(stdin);
       SUMA_RETURN(-1);
    }
@@ -9674,8 +9910,9 @@ int SUMA_ReadNumStdin (float *fv, int nv)
    nvr = 0;
    eos = NOPE;
    while (nvr < nv && !eos) {
+      errno = 0;
       fv[nvr] = strtod(strtp, &endp);
-      if (LocalHead) fprintf (SUMA_STDERR, "Local Debug %s: ERANGE: %d, EDOM %d, errno %d\n", FuncName, ERANGE, EDOM, errno); 
+      SUMA_LHv("ERANGE: %d, EDOM %d, errno %d\n", ERANGE, EDOM, errno);
       
       if (endp == strtp) { 
          eos = YUP;
@@ -9686,7 +9923,7 @@ int SUMA_ReadNumStdin (float *fv, int nv)
    }
    
    if (eos && nvr < nv) {
-      fprintf (SUMA_STDERR, "Warning %s: Expected to read %d elements, read only %d.\n", FuncName, nv, nvr);
+      SUMA_S_Warnv("Expected to read %d elements, read only %d.\n", nv, nvr);
    }
    
    SUMA_RETURN(nvr);

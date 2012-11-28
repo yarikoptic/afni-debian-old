@@ -59,7 +59,6 @@ extern float MRILIB_slicespacing ;
 extern int MRILIB_DomainMaxNodeIndex ;         /* 32 Dec 2007 */
 
 extern int   assume_dicom_mosaic ;   /* mri_read_dicom.c  13 Mar 2006 [rickr] */
-extern int   use_last_elem;          /* mri_read_dicom.c  10 Apr 2009 [rickr] */
 extern int   use_new_mosaic_code;    /* mri_process_siemens.c 23 Dec 2010 [r] */
 
 /* siemens slice timing info from mri_read.c         13 Apr 2011 [rickr] */
@@ -803,6 +802,7 @@ extern void binarize_mask( int , byte * ) ;
 #define NSTAT_FWHMy      64
 #define NSTAT_FWHMz      65
 #define NSTAT_FWHMbar    66
+#define NSTAT_FWHMbar12  67
 
 #define NBISTAT_BASE               66601
 #define NBISTAT_SPEARMAN_CORR      66601
@@ -819,9 +819,16 @@ extern void binarize_mask( int , byte * ) ;
 #define NBISTAT_NCD                66612
 #define NBISTAT_KENDALL_TAUB       66613 /* 29 Apr 2010 */
 #define NBISTAT_TICTACTOE_CORR     66614 /* 30 Mar 2011 */
+#define NBISTAT_L2SLOPE            66615 /* 26 Apr 2012 */
+#define NBISTAT_L1SLOPE            66616 /* 26 Apr 2012 */
+#define NBISTAT_QUANTILE_CORR      66617 /* 11 May 2012 */
 
 #define NBISTAT_BC_PEARSON_M       66691
 #define NBISTAT_BC_PEARSON_V       66692
+
+#define NBISTAT_EUCLIDIAN_DIST     66693 /* 4 May 2012, ZSS */
+#define NBISTAT_CITYBLOCK_DIST     66694 /* 4 May 2012, ZSS */
+
 
 extern float mri_nstat  ( int , int , float * , float) ;  /* 19 Aug 2005 */
 extern float mri_nbistat( int , MRI_IMAGE *, MRI_IMAGE * ) ; /* 26 Oct 2006 */
@@ -861,6 +868,7 @@ extern void   mri_dicom_nohex ( int ) ;
 extern void   mri_dicom_setvm ( int ) ;     /* 28 Oct 2002 */
 extern void   mri_dicom_seterr( int ) ;     /* 05 Nov 2002 */
 extern void   mri_dicom_header_use_printf( int ) ; /* 02 May 2008 */
+extern void   mri_dicom_header_show_size_offset( int ); /* 17 Oct 2012 [rcr] */
 
 extern MRI_IMARR * mri_read_dicom( char * )  ;
 extern int         mri_imcount_dicom( char * ) ;
@@ -870,7 +878,7 @@ extern int         mri_possibly_dicom( char * ) ;        /* 07 May 2003 */
 extern int         mri_siemens_slice_times( int *, int *, float ** );
 extern int         mri_sst_get_verb( void );
 extern int         mri_sst_set_verb( int );
-extern char *      mri_dicom_hdrinfo( char *fname, int natt, char **att , int dolast ) ;
+extern char *      mri_dicom_hdrinfo( char *fname, int natt, char **att , int nposn ) ;
 
 /*! Set the data pointer in an MRI_IMAGE to NULL. */
 
@@ -1303,6 +1311,10 @@ extern void memplot_to_RGB_sef( MRI_IMAGE *im , MEM_plotdata *mp ,
 extern void memplot_to_jpg( char * , MEM_plotdata * ) ; /* 05 Dec 2007 */
 extern void memplot_to_png( char * , MEM_plotdata * ) ;
 
+extern void memplot_to_mri_set_dothick( int ) ;         /* 30 Apr 2012 */
+extern void memplot_to_mri_set_dofreee( int ) ;         /* 30 Apr 2012 */
+extern MRI_IMAGE * mri_downsize_by2( MRI_IMAGE * ) ;    /* 27 Apr 2012 */
+
 /************************ Statistics routines *************************/
 
 /**
@@ -1425,6 +1437,8 @@ typedef struct { int nar ; int *ar ; } intvec ;
         if( (iv)->ar != NULL ) free((iv)->ar); \
         free(iv); (iv) = NULL;                 \
   } } while(0)
+
+typedef struct { int nvec ; intvec *ivar ; } intvecvec ;
 
 #define MAKE_intvec(iv,n)                           \
   do{ (iv) = (intvec *)malloc(sizeof(intvec)) ;     \
@@ -1759,6 +1773,8 @@ extern void mri_metrics( MRI_IMAGE *, MRI_IMAGE *, float * ) ;
 #define GA_MATCH_LPC_MICHO_SCALAR  13  /* experimental [24 Feb 2010] */
 
 #define GA_MATCH_NCDZLIB           14  /* very experimental */
+
+#define GA_MATCH_PEARCLP_SCALAR    15
 
 #define GA_MATCH_METHNUM_SCALAR    14  /* Largest value in sequence above */
 
@@ -2143,33 +2159,33 @@ extern void RBF_setup_kranges( RBF_knots *rbk , RBF_evalgrid *rbg ) ;
 
 #undef  VECTORME
 #define VECTORME(inpp,outp)                                                   \
- do{ int vv ; MRI_IMARR *qimar=NULL ; MRI_IMAGE *fim ;                        \
+ do{ int vv ; MRI_IMARR *qxmpq=NULL; MRI_IMAGE *qxm=NULL;                     \
      (outp) = NULL ;                                                          \
      switch( (inpp)->kind ){                                                  \
        default:                                             break ;           \
-       case MRI_fvect:   qimar = mri_fvect_to_imarr(inpp) ; break ;           \
-       case MRI_rgb:     qimar = mri_rgb_to_3float (inpp) ; break ;           \
-       case MRI_complex: qimar = mri_complex_to_pair(inpp); break ;           \
+       case MRI_fvect:   qxmpq = mri_fvect_to_imarr(inpp) ; break ;           \
+       case MRI_rgb:     qxmpq = mri_rgb_to_3float (inpp) ; break ;           \
+       case MRI_complex: qxmpq = mri_complex_to_pair(inpp); break ;           \
      }                                                                        \
-     if( qimar == NULL ) break ;                                              \
-     for( vv=0 ; vv < IMARR_COUNT(qimar) ; vv++ ){                            \
-       CALLME( IMARR_SUBIM(qimar,vv) , fim ) ;                                \
-       mri_free(IMARR_SUBIM(qimar,vv)) ;                                      \
-       IMARR_SUBIM(qimar,vv) = fim ;                                          \
+     if( qxmpq == NULL ) break ;                                              \
+     for( vv=0 ; vv < IMARR_COUNT(qxmpq) ; vv++ ){                            \
+       CALLME( IMARR_SUBIM(qxmpq,vv) , qxm ) ;                                \
+       mri_free(IMARR_SUBIM(qxmpq,vv)) ;                                      \
+       IMARR_SUBIM(qxmpq,vv) = qxm ;                                          \
      }                                                                        \
      switch( (inpp)->kind ){                                                  \
        default:          break ;                                              \
-       case MRI_fvect:   (outp) = mri_imarr_to_fvect(qimar) ;                 \
+       case MRI_fvect:   (outp) = mri_imarr_to_fvect(qxmpq) ;                 \
                          break ;                                              \
-       case MRI_rgb:     (outp) = mri_3to_rgb(IMARR_SUBIM(qimar,0),           \
-                                              IMARR_SUBIM(qimar,1),           \
-                                              IMARR_SUBIM(qimar,2) ) ;        \
+       case MRI_rgb:     (outp) = mri_3to_rgb(IMARR_SUBIM(qxmpq,0),           \
+                                              IMARR_SUBIM(qxmpq,1),           \
+                                              IMARR_SUBIM(qxmpq,2) ) ;        \
                          break ;                                              \
-       case MRI_complex: (outp) = mri_pair_to_complex(IMARR_SUBIM(qimar,0),   \
-                                                      IMARR_SUBIM(qimar,1) ); \
+       case MRI_complex: (outp) = mri_pair_to_complex(IMARR_SUBIM(qxmpq,0),   \
+                                                      IMARR_SUBIM(qxmpq,1) ); \
                          break ;                                              \
      }                                                                        \
-     DESTROY_IMARR(qimar) ;                                                   \
+     DESTROY_IMARR(qxmpq) ;                                                   \
    } while(0)
 /*----------------------------------------------------------------------------*/
 
@@ -2186,7 +2202,9 @@ extern int mri_principal_vectors( MRI_IMARR *imar, int nvec, float *sval, float 
 
 typedef struct {
   int    nx ,  ny ,  nz ;
-  float *xd , *yd , *zd , *hv ;
+  float *xd , *yd , *zd , *hv , *je , *se ;
+  mat33 emat ; int use_emat ;
+   /* stuff below here is for conversion to/from 3D dataset format */
   mat44 cmat , imat ;      /* cmat: i->x ; imat: x->i */
   char *geomstring ;
   int view ;
@@ -2197,6 +2215,21 @@ typedef struct {
   IndexWarp3D **warp ;
 } IndexWarp3DArray ;
 
+typedef struct {
+  MRI_IMAGE *im ;
+  IndexWarp3D *warp ;
+} Image_plus_Warp ;
+
+typedef struct {
+  IndexWarp3D *fwarp ;
+  IndexWarp3D *iwarp ;
+} IndexWarp3D_pair ;
+
+typedef struct {
+  mat44 fwarp ;
+  mat44 iwarp ;
+} mat44_pair ;
+
 extern IndexWarp3D * IW3D_create( int nx , int ny , int nz ) ;
 extern void IW3D_destroy( IndexWarp3D *AA ) ;
 extern float IW3D_normL1  ( IndexWarp3D *AA , IndexWarp3D *BB ) ;
@@ -2206,9 +2239,10 @@ extern IndexWarp3D * IW3D_empty_copy( IndexWarp3D *AA ) ;
 extern IndexWarp3D * IW3D_copy( IndexWarp3D *AA , float fac ) ;
 extern IndexWarp3D * IW3D_sum( IndexWarp3D *AA, float Afac, IndexWarp3D *BB, float Bfac ) ;
 extern void IW3D_scale( IndexWarp3D *AA , float fac ) ;
-extern IndexWarp3D * IW3D_from_dataset( THD_3dim_dataset *dset , int empty ) ;
+extern IndexWarp3D * IW3D_from_dataset( THD_3dim_dataset *dset , int empty , int ivs ) ;
 extern THD_3dim_dataset * IW3D_to_dataset( IndexWarp3D *AA , char *prefix ) ;
 extern float_pair IW3D_load_hexvol( IndexWarp3D *AA ) ;
+extern float_pair IW3D_load_energy( IndexWarp3D *AA ) ;
 extern IndexWarp3D * IW3D_compose( IndexWarp3D *AA , IndexWarp3D *BB     , int icode ) ;
 extern IndexWarp3D * IW3D_invert ( IndexWarp3D *AA , IndexWarp3D *BBinit , int icode ) ;
 extern IndexWarp3D * IW3D_sqrtinv( IndexWarp3D *AA , IndexWarp3D *BBinit , int icode ) ;
@@ -2228,7 +2262,7 @@ extern THD_3dim_dataset * THD_nwarp_dataset( THD_3dim_dataset *dset_nwarp ,
                                              THD_3dim_dataset *dset_src  ,
                                              THD_3dim_dataset *dset_mast ,
                                              char *prefix , int interp_code ,
-                                             float dxyz_mast , float wfac ) ;
+                                             float dxyz_mast , float wfac , int nvlim ) ;
 
 /*----------------------------------------------------------------------------*/
 

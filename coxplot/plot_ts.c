@@ -34,7 +34,8 @@ static int ilab[4] = { 0,2,3,1 } ;  /* whether to plot labels on axes */
 
 #define SY   0.07
 
-static float THIK = 0.003 ;  /* 27 Mar 2004: changed from a #define */
+static float THIK = 0.004f ;  /* 27 Mar 2004: changed from a #define */
+static float thik = 0.002f ;  /* 02 Apr 2012: for labels */
 
 /*----------------------------------------------------------------------*/
 static float tsbox  = 0.0f ;      /* 23 May 2011 */
@@ -136,10 +137,7 @@ static void init_colors(void)
    eee = getenv("AFNI_1DPLOT_THIK") ;                     /* 27 Mar 2004 */
    if( eee == NULL ) eee = getenv("AFNI_1DPLOT_THICK") ;  /* 15 Apr 2009 */
    if( eee != NULL ){
-     rf = (float)strtod(eee,NULL) ;
-     if( rf >= 0.0f && rf <= 0.05001f ) THIK = rf ;
-     else
-       fprintf(stderr,"** ERROR: AFNI_1DPLOT_THIK is not in usable range [0,0.05]\n") ;
+     rf = (float)strtod(eee,NULL) ; plot_ts_setTHIK(rf) ;
    }
 }
 
@@ -169,9 +167,53 @@ void plot_ts_setcolors( int ncol , float *rrr , float *ggg , float *bbb )
 
 /*-----------------------------------------------------------------------*/
 
-void plot_ts_setthik( float thk )
+void plot_ts_setTHIK( float thk )  /* for lines */
 {
-   THIK = (thk >= 0.0f && thk <= 0.05001f) ? thk : 0.003f ;
+        if( thk < 0.001f ) THIK = 0.001f ;
+   else if( thk > 0.020f ) THIK = 0.020f ;
+   else                    THIK = thk    ;
+}
+
+void plot_ts_setthik( float thk )  /* for labels */
+{
+        if( thk < 0.000f ) thik = 0.000f ;
+   else if( thk > 0.005f ) thik = 0.005f ;
+   else                    thik = thk    ;
+}
+
+/*-----------------------------------------------------------------------*/
+
+#undef  VBOX
+#define VBOX  1
+
+typedef struct {
+  int code ;
+  int ygr ;
+  float x1 , x2 ;
+  float rr , gg , bb ;
+} TS_vbox ;
+
+static int     nvbox = 0 ;
+static TS_vbox *vbox = NULL ;
+
+void plot_ts_add_vbox( int ygr , float x1 , float x2 ,
+                       float rr , float gg , float bb )
+{
+   vbox = (TS_vbox *)realloc( (void *)vbox , sizeof(TS_vbox)*(nvbox+1) ) ;
+   vbox[nvbox].code = VBOX ;
+   vbox[nvbox].ygr  = ygr ;
+   vbox[nvbox].x1   = x1 ;
+   vbox[nvbox].x2   = x2 ;
+   vbox[nvbox].rr   = rr ;
+   vbox[nvbox].gg   = gg ;
+   vbox[nvbox].bb   = bb ;
+   nvbox++ ;
+}
+
+void plot_ts_clear_vbox(void)
+{
+   if( vbox != NULL ) free(vbox) ;
+   vbox = NULL ; nvbox = 0 ; return ;
 }
 
 /*-----------------------------------------------------------------------
@@ -198,6 +240,7 @@ MEM_plotdata * plot_ts_mem( int nx , float *x , int ny , int ymask , float **y ,
    int yall , ysep ;
    float *ylo , *yhi , yll,yhh ;
    MEM_plotdata *mp ;
+   float xb1,xb2,yb1,yb2 ; int iv ;
 
    /*-- sanity check --*/
 
@@ -225,7 +268,7 @@ MEM_plotdata * plot_ts_mem( int nx , float *x , int ny , int ymask , float **y ,
 
    pbot = p10(xbot) ; ptop = p10(xtop) ; if( ptop < pbot ) ptop = pbot ;
    if( nnaxx >= 0 ){
-     nnax = nnaxx ; nnaxx = -1 ;
+     nnax = nnaxx ;
      mmax = mmaxx ;
      xbot = xxbot ;
      xtop = xxtop ;
@@ -289,7 +332,7 @@ MEM_plotdata * plot_ts_mem( int nx , float *x , int ny , int ymask , float **y ,
 
    pbot = p10(ybot) ; ptop = p10(ytop) ; if( ptop < pbot ) ptop = pbot ;
    if( nnayy >= 0 ){
-     nnay = nnayy ; nnayy = -1 ;
+     nnay = nnayy ;
      mmay = mmayy ;
      ybot = yybot ;
      ytop = yytop ;
@@ -314,29 +357,33 @@ MEM_plotdata * plot_ts_mem( int nx , float *x , int ny , int ymask , float **y ,
       nnay = 1 ; mmay = 10 ;
    }
 
-   for( jj=0 ; jj < ny ; jj++ ){
-      pbot = p10(ylo[jj]) ; ptop = p10(yhi[jj]) ; if( ptop < pbot ) ptop = pbot ;
-      if( ptop != 0.0 && ypush > 0 ){
-         np = (yhi[jj]-ylo[jj]) / ptop ;
-         switch( np ){
-            case 1:  ptop *= 0.1  ; break ;
-            case 2:  ptop *= 0.2  ; break ;
-            case 3:  ptop *= 0.25 ; break ;
-            case 4:
-            case 5:  ptop *= 0.5  ; break ;
-         }
-         ylo[jj] = floor( ylo[jj]/ptop ) * ptop ;
-         yhi[jj] =  ceil( yhi[jj]/ptop ) * ptop ;
-      } else if( ypush == 0 ){
-        float dif=(yhi[jj]-ylo[jj])*0.005f ;
-        ylo[jj] -= dif ; yhi[jj] += dif ;
-      }
+   if( nnayy < 0 ){
+     for( jj=0 ; jj < ny ; jj++ ){
+        pbot = p10(ylo[jj]) ; ptop = p10(yhi[jj]) ; if( ptop < pbot ) ptop = pbot ;
+        if( ptop != 0.0 && ypush > 0 ){
+           np = (yhi[jj]-ylo[jj]) / ptop ;
+           switch( np ){
+              case 1:  ptop *= 0.1  ; break ;
+              case 2:  ptop *= 0.2  ; break ;
+              case 3:  ptop *= 0.25 ; break ;
+              case 4:
+              case 5:  ptop *= 0.5  ; break ;
+           }
+           ylo[jj] = floor( ylo[jj]/ptop ) * ptop ;
+           yhi[jj] =  ceil( yhi[jj]/ptop ) * ptop ;
+        } else if( ypush == 0 ){
+          float dif=(yhi[jj]-ylo[jj])*0.005f ;
+          ylo[jj] -= dif ; yhi[jj] += dif ;
+        }
+     }
    }
 
+   nnaxx = nnayy = -1 ;
+  
    /*-- setup to plot --*/
 
    create_memplot_surely( "tsplot" , 1.3 ) ;
-   set_thick_memplot( 0.002f ) ;  /* for labels */
+   set_thick_memplot( thik ) ;  /* for labels */
 
    /*-- plot labels, if any --*/
 
@@ -376,11 +423,11 @@ MEM_plotdata * plot_ts_mem( int nx , float *x , int ny , int ymask , float **y ,
          for( jj=0 ; jj < ny ; jj++ ){
            if( STGOOD(nam_yyy[jj]) ){
              set_color_memplot( ccc[jj%NCLR][0] , ccc[jj%NCLR][1] , ccc[jj%NCLR][2] ) ;
-             set_thick_memplot( THIK ) ;
+             set_thick_memplot( 1.234f*THIK ) ;
              plotpak_line( xotop+0.008 , yv , xotop+0.042 , yv ) ;
-             set_thick_memplot( 0.002f ) ;
              set_color_memplot( 0.0 , 0.0 , 0.0 ) ;
-             sz = (strlen(nam_yyy[jj]) <= 10) ? 12 : 10 ;
+             sz = (strlen(nam_yyy[jj]) <= 10) ? 12 : 9 ;
+             set_thick_memplot( thik*sz/13.9f ) ;
              plotpak_pwritf( xotop+0.048 , yv , nam_yyy[jj] , sz , 0 , -1 ) ;
              yv -= 0.05 ;
            }
@@ -389,10 +436,22 @@ MEM_plotdata * plot_ts_mem( int nx , float *x , int ny , int ymask , float **y ,
 
       /* plot axes */
 
-      set_color_memplot( 0.0 , 0.0 , 0.0 ) ;
-      set_thick_memplot( 0.002f ) ;
       floatfix(ybot) ; floatfix(ytop) ;
       plotpak_set( xobot,xotop , yobot,yotop , xbot,xtop , ybot,ytop , 1 ) ;
+
+      /* 24 Apr 2012: add vbox stuff now, before other plotting */
+
+      for( iv=0 ; iv < nvbox ; iv++ ){
+        set_color_memplot( vbox[iv].rr , vbox[iv].gg , vbox[iv].bb ) ;
+        set_thick_memplot( 0 ) ;
+        xb1 = vbox[iv].x1 ; xb2 = vbox[iv].x2 ;
+        yb1 = ybot        ; yb2 = ytop        ;
+        zzphys_(&xb1,&yb1); zzphys_(&xb2,&yb2); 
+        plotfrect_memplot( xb1,yb1 , xb2,yb2 ) ;
+      }
+
+      set_color_memplot( 0.0 , 0.0 , 0.0 ) ;
+      set_thick_memplot( thik ) ;
       plotpak_perimm( nnax,mmax , nnay,mmay , ilab[(nnax>0)+2*(nnay>0)] ) ;
 
       /* plot data */
@@ -411,7 +470,7 @@ MEM_plotdata * plot_ts_mem( int nx , float *x , int ny , int ymask , float **y ,
          }
 
          if( tsbox > 0.0f ){
-           set_thick_memplot( 0.002f ) ;
+           set_thick_memplot( thik ) ;
            for( ii=0 ; ii < nx ; ii++ ){
              if( noline != 2 ||
                  ( xx[ii] >= xbot && xx[ii] <= xtop &&
@@ -421,7 +480,7 @@ MEM_plotdata * plot_ts_mem( int nx , float *x , int ny , int ymask , float **y ,
            set_thick_memplot( THIK ) ;
          }
       }
-      set_thick_memplot( 0.002f ) ;
+      set_thick_memplot( thik ) ;
       set_color_memplot( 0.0 , 0.0 , 0.0 ) ;
 
    } else {  /*-- plot each on separate vertical scale --*/
@@ -437,12 +496,13 @@ MEM_plotdata * plot_ts_mem( int nx , float *x , int ny , int ymask , float **y ,
             yll = yobot + jj*(1.0+SY)*dyo ; yhh = yll + dyo ;
             if( STGOOD(nam_yyy[jj]) ){
                set_color_memplot( ccc[jj%NCLR][0] , ccc[jj%NCLR][1] , ccc[jj%NCLR][2] ) ;
-               set_thick_memplot( 2*THIK ) ;
+               set_thick_memplot( 1.234f*THIK ) ;
                yv = 0.7*yhh + 0.3*yll ;
                plotpak_line( xotop+0.008 , yv , xotop+0.042 , yv ) ;
-               set_thick_memplot( 0.002f ) ;
+               set_thick_memplot( thik ) ;
                set_color_memplot( 0.0 , 0.0 , 0.0 ) ;
-               sz = (strlen(nam_yyy[jj]) <= 10) ? 12 : 10 ;
+               sz = (strlen(nam_yyy[jj]) <= 10) ? 12 : 9 ;
+               set_thick_memplot( thik*sz/13.9f ) ;
                plotpak_pwritf( xotop+0.048 , yv , nam_yyy[jj] , sz , 0 , -1 ) ;
             }
          }
@@ -458,6 +518,19 @@ MEM_plotdata * plot_ts_mem( int nx , float *x , int ny , int ymask , float **y ,
          floatfix(ylo[jj]) ; floatfix(yhi[jj]) ;
          plotpak_set( xobot,xotop , yll,yhh , xbot,xtop , ylo[jj],yhi[jj] , 1 ) ;
 
+         /* 24 Apr 2012: add vbox stuff now, before other plotting */
+
+         set_thick_memplot(0.0f) ;
+         for( iv=0 ; iv < nvbox ; iv++ ){
+           if( vbox[iv].ygr == jj || vbox[iv].ygr < 0 ){
+             set_color_memplot( vbox[iv].rr , vbox[iv].gg , vbox[iv].bb ) ;
+             xb1 = vbox[iv].x1 ; xb2 = vbox[iv].x2 ;
+             yb1 = ylo[jj]     ; yb2 = yhi[jj]     ;
+             zzphys_(&xb1,&yb1); zzphys_(&xb2,&yb2); 
+             plotfrect_memplot( xb1,yb1 , xb2,yb2 ) ;
+           }
+         }
+
          if( nnay > 0 ){
            nnay = 1 ;
            pbot = p10(ylo[jj]) ; ptop = p10(yhi[jj]) ;
@@ -470,12 +543,12 @@ MEM_plotdata * plot_ts_mem( int nx , float *x , int ny , int ymask , float **y ,
            else if( mmay == 3 ) mmay = 6 ;
          }
 
-         set_thick_memplot( 0.002f ) ;
+         set_thick_memplot( thik ) ;
          set_color_memplot( 0.0 , 0.0 , 0.0 ) ;
          plotpak_perimm( nnax,mmax , nnay,mmay , ilab[(nnax>0)*(jj==0)+2*(nnay>0)] ) ;
          if( ylo[jj] < 0.0 && yhi[jj] > 0.0 ){
            set_thick_memplot( 0.0 ) ;
-           plotpak_setlin(5) ;
+           plotpak_setlin(3) ;
            plotpak_line( xbot,0.0 , xtop,0.0 ) ;
            plotpak_setlin(1) ;
          }
@@ -490,7 +563,7 @@ MEM_plotdata * plot_ts_mem( int nx , float *x , int ny , int ymask , float **y ,
                   yy[ii-1] < WAY_BIG && yy[ii] < WAY_BIG   )
                 plotpak_line( xx[ii-1] , yy[ii-1] , xx[ii] , yy[ii] ) ;
            }
-           set_thick_memplot( 0.002f ) ;
+           set_thick_memplot( thik ) ;
          }
 
          if( tsbox > 0.0f ){
@@ -510,6 +583,7 @@ MEM_plotdata * plot_ts_mem( int nx , float *x , int ny , int ymask , float **y ,
 
    set_thick_memplot( 0.0 ) ;
    set_color_memplot( 0.0 , 0.0 , 0.0 ) ;
+   plot_ts_clear_vbox() ;
 
    if( xx != x ) free(xx) ;
    free(ylo) ; free(yhi) ;
@@ -634,7 +708,7 @@ MEM_topshell_data * plot_ts_init( Display * dpy ,
    /*-- setup to plot --*/
 
    create_memplot_surely( "Tsplot" , 1.3 ) ;
-   set_thick_memplot( 0.5*THIK ) ;
+   set_thick_memplot( thik*1.5f ) ;
 
    /*-- plot labels, if any --*/
 
@@ -678,11 +752,11 @@ MEM_topshell_data * plot_ts_init( Display * dpy ,
          for( jj=0 ; jj < ny ; jj++ ){
             if( STGOOD(nam_yyy[jj]) ){
                set_color_memplot( ccc[jj%NCLR][0] , ccc[jj%NCLR][1] , ccc[jj%NCLR][2] ) ;
-               set_thick_memplot( 2*THIK ) ;
+               set_thick_memplot( 1.234f*THIK ) ;
                plotpak_line( xotop+0.008 , yv , xotop+0.042 , yv ) ;
-               set_thick_memplot( 0.5*THIK ) ;
                set_color_memplot( 0.0 , 0.0 , 0.0 ) ;
-               sz = (strlen(nam_yyy[jj]) <= 10) ? 12 : 10 ;
+               sz = (strlen(nam_yyy[jj]) <= 10) ? 12 : 9 ;
+               set_thick_memplot( thik*sz/13.9f ) ;
                plotpak_pwritf( xotop+0.048 , yv , nam_yyy[jj] , sz , 0 , -1 ) ;
                yv -= 0.05 ;
             }
@@ -709,12 +783,12 @@ MEM_topshell_data * plot_ts_init( Display * dpy ,
             yll = yobot + jj*(1.0+SY)*dyo ; yhh = yll + dyo ;
             if( STGOOD(nam_yyy[jj]) ){
                set_color_memplot( ccc[jj%NCLR][0] , ccc[jj%NCLR][1] , ccc[jj%NCLR][2] ) ;
-               set_thick_memplot( 2*THIK ) ;
+               set_thick_memplot( 1.234f*THIK ) ;
                yv = 0.7*yhh + 0.3*yll ;
                plotpak_line( xotop+0.008 , yv , xotop+0.042 , yv ) ;
-               set_thick_memplot( 0.5*THIK ) ;
                set_color_memplot( 0.0 , 0.0 , 0.0 ) ;
-               sz = (strlen(nam_yyy[jj]) <= 10) ? 12 : 10 ;
+               sz = (strlen(nam_yyy[jj]) <= 10) ? 12 : 9 ;
+               set_thick_memplot( thik*sz/13.9f ) ;
                plotpak_pwritf( xotop+0.048 , yv , nam_yyy[jj] , sz , 0 , -1 ) ;
             }
          }
@@ -878,7 +952,7 @@ MEM_plotdata * plot_ts_ebar( int nx , float *x , float *y , float *ey ,
 
    pbot = p10(xbot) ; ptop = p10(xtop) ; if( ptop < pbot ) ptop = pbot ;
    if( nnaxx >= 0 ){
-     nnax = nnaxx ; nnaxx = -1 ;
+     nnax = nnaxx ;
      mmax = mmaxx ;
      xbot = xxbot ;
      xtop = xxtop ;
@@ -919,7 +993,7 @@ MEM_plotdata * plot_ts_ebar( int nx , float *x , float *y , float *ey ,
 
    pbot = p10(ybot) ; ptop = p10(ytop) ; if( ptop < pbot ) ptop = pbot ;
    if( nnayy >= 0 ){
-     nnay = nnayy ; nnayy = -1 ;
+     nnay = nnayy ;
      mmay = mmayy ;
      ybot = yybot ;
      ytop = yytop ;
@@ -943,27 +1017,31 @@ MEM_plotdata * plot_ts_ebar( int nx , float *x , float *y , float *ey ,
       nnay = 1 ; mmay = 10 ;
    }
 
-   pbot = p10(ybot) ; ptop = p10(ytop) ; if( ptop < pbot ) ptop = pbot ;
-   if( ptop != 0.0 && ypush > 0 ){
-     np = (ytop-ybot) / ptop ;
-     switch( np ){
-       case 1:  ptop *= 0.1  ; break ;
-       case 2:  ptop *= 0.2  ; break ;
-       case 3:  ptop *= 0.25 ; break ;
-       case 4:
-       case 5:  ptop *= 0.5  ; break ;
+   if( nnayy < 0 ){
+     pbot = p10(ybot) ; ptop = p10(ytop) ; if( ptop < pbot ) ptop = pbot ;
+     if( ptop != 0.0 && ypush > 0 ){
+       np = (ytop-ybot) / ptop ;
+       switch( np ){
+         case 1:  ptop *= 0.1  ; break ;
+         case 2:  ptop *= 0.2  ; break ;
+         case 3:  ptop *= 0.25 ; break ;
+         case 4:
+         case 5:  ptop *= 0.5  ; break ;
+       }
+       ybot = floor( ybot/ptop ) * ptop ;
+       ytop =  ceil( ytop/ptop ) * ptop ;
+     } else if( ypush == 0 ){
+       float dif=(ytop-ybot)*0.005f ;
+       ybot -= dif ; ytop += dif ;
      }
-     ybot = floor( ybot/ptop ) * ptop ;
-     ytop =  ceil( ytop/ptop ) * ptop ;
-   } else if( ypush == 0 ){
-     float dif=(ytop-ybot)*0.005f ;
-     ybot -= dif ; ytop += dif ;
    }
+
+   nnaxx = nnayy = -1 ;
 
    /*-- setup to plot --*/
 
    create_memplot_surely( "tsplot" , 1.3 ) ;
-   set_thick_memplot( 0.002f ) ;  /* for labels */
+   set_thick_memplot( thik ) ;  /* for labels */
 
    /*-- plot labels, if any --*/
 
@@ -995,7 +1073,7 @@ MEM_plotdata * plot_ts_ebar( int nx , float *x , float *y , float *ey ,
    /* plot axes */
 
    set_color_memplot( 0.0 , 0.0 , 0.0 ) ;
-   set_thick_memplot( 0.002f ) ;
+   set_thick_memplot( thik ) ;
    floatfix(ybot) ; floatfix(ytop) ;
    plotpak_set( xobot,xotop , yobot,yotop , xbot,xtop , ybot,ytop , 1 ) ;
    plotpak_perimm( nnax,mmax , nnay,mmay , ilab[(nnax>0)+2*(nnay>0)] ) ;

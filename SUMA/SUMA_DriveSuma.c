@@ -46,7 +46,7 @@ static char uDS_viewer_cont[]={
 };
 static char uDS_recorder_cont[]={
 "       DriveSuma -com  recorder_cont -save_as allanimgif.agif \\\n"
-"                 -com  recorder_cont -save_as lastone.jpg \\\n"
+"                 -com  recorder_cont -save_last lastone.jpg \\\n"
 "                 -com  recorder_cont -save_as three.jpg -save_index 3\\\n"
 "                 -com  recorder_cont -save_as some.png -save_range 3 6\n"
 };
@@ -73,6 +73,7 @@ static char uDS_surf_cont[]={
 "       DriveSuma -com surf_cont -B_sb 7 -B_range 0.5 -B_scale 0.1 0.9\n"
 "       DriveSuma -com surf_cont -switch_dset Convexity -1_only y\n"
 "       DriveSuma -com surf_cont -switch_cmap roi64 -1_only n\n"
+"       DriveSuma -com surf_cont -switch_cmode Dir \n"
 "       DriveSuma -com surf_cont -view_dset n\n"
 "       DriveSuma -com surf_cont -switch_dset blooby.curv.1D.dset \\\n"
 "                      -view_surf_cont n -I_range -0.05 0.14\n"
@@ -272,7 +273,7 @@ if (detail > 1) {
 "                  At the shell you would enter:\n"
 "                    DriveSuma -com viewer_cont '-key:v\"0.8 0 10.3\"' ctrl+j\n"
 "                  In another example, say you want to jump to node 54 on the\n"
-"                  right hemisphere, then you would execute:\n"
+"                  right hemisphere (hence the 'R' in '54R'), then you would execute:\n"
 "                    DriveSuma -com viewer_cont '-key:v54R' j\n"
 "        -viewer VIEWER: Specify which viewer should be acted \n"
 "                        upon. Default is viewer 'A'. Viewers\n"
@@ -356,6 +357,7 @@ if (detail > 1) {
 "       -view_dset y/n: Set view toggle button of DSET\n"
 "       -1_only y/n: Set 1_only toggle button of DSET\n"
 "       -switch_cmap CMAP: switch colormap to CMAP\n"
+"       -switch_cmode CMODE: switch color mapping mode to CMODE\n"
 "       -load_cmap CMAP.1D.cmap: load and switch colormap in \n"
 "                                file CMAP.1D.cmap\n"
 "       -I_sb ISB: Switch intensity to ISBth column (sub-brick)\n"
@@ -381,6 +383,7 @@ if (detail > 1) {
 "                         by BS1 factor for BR1 or higher, and linearly \n"
 "                         interpolate scaling for BR0 < values < BR1\n" 
 "       -Dim DIM: Set the dimming factor.\n"
+"       -Opa OPA: Set the opacity factor.\n"
 "       -setSUMAenv \"'ENVname=ENVvalue'\": Set an ENV in SUMA. Note that\n"
 "                      most SUMA env need to be set at SUMA's launch time. \n"
 "                      Setting the env from DriveSuma may not achieve what \n" 
@@ -648,6 +651,29 @@ int SUMA_DriveSuma_ParseCommon(NI_group *ngr, int argtc, char ** argt)
          }
          argt[kar][0] = '\0';
          NI_set_attribute(ngr, "switch_cmap", argt[++kar]);
+         argt[kar][0] = '\0';
+         brk = YUP;
+      }
+      
+      if (!brk && ( (strcmp(argt[kar], "-switch_cmode") == 0) ))
+      {
+         if (kar+1 >= argtc)
+         {
+            fprintf (SUMA_STDERR, 
+                     "need a color mapping mode after -switch_cmode \n");
+            SUMA_RETURN(0);
+         }
+         argt[kar][0] = '\0';
+         ++kar;
+         if (strcasecmp(argt[kar],"nn") &&
+             strcasecmp(argt[kar],"dir") &&
+             strcasecmp(argt[kar],"int")) {
+            fprintf(SUMA_STDERR,
+                  "CMODE %s not allowed. Choose from 'NN', 'Dir', or 'Int'\n", 
+                  argt[kar]);   
+            SUMA_RETURN(0);
+         }
+         NI_set_attribute(ngr, "switch_cmode", argt[kar]);
          argt[kar][0] = '\0';
          brk = YUP;
       }
@@ -981,6 +1007,20 @@ int SUMA_DriveSuma_ParseCommon(NI_group *ngr, int argtc, char ** argt)
          
          argt[kar][0] = '\0';
          NI_set_attribute(ngr, "Dim", argt[++kar]);
+         argt[kar][0] = '\0';
+         brk = YUP;
+      }
+      
+      if (!brk && ( (strcmp(argt[kar], "-Opa") == 0) ) )
+      {
+         if (kar+1 >= argtc)
+         {
+            fprintf (SUMA_STDERR, "need a value after -Opa \n");
+            SUMA_RETURN(0);
+         }
+         
+         argt[kar][0] = '\0';
+         NI_set_attribute(ngr, "Opa", argt[++kar]);
          argt[kar][0] = '\0';
          brk = YUP;
       }
@@ -2026,7 +2066,7 @@ NI_group *SUMA_ComToNgr(char *com, char *command)
    if (argtc > 0) {
       if (!SUMA_DriveSuma_ParseCommon(ngr, argtc, argt)) {
          SUMA_S_Err("Failed to parse common options.\n");
-         NI_free(ngr); ngr = NULL;
+         NI_free_element(ngr); ngr = NULL;
          SUMA_RETURN(ngr);
       }
    }
@@ -2044,7 +2084,7 @@ NI_group *SUMA_ComToNgr(char *com, char *command)
                   "Option %s not understood or not valid for command %s.\n"
                   " Try -help for usage\n",
                FuncName, argt[kar], NI_get_attribute(ngr, "Command"));
-			NI_free(ngr); ngr = NULL;
+			NI_free_element(ngr); ngr = NULL;
          SUMA_RETURN(ngr);
 		} else {	
 			brk = NOPE;

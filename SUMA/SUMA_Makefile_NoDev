@@ -2,8 +2,9 @@
 
 MAKE = make
 SUMALIB = libSUMA.a
+SUMASLIB = libSUMAseg.a
 SUMAGTSLIB = libSUMAGTS.a
-AFNILIB = -lmrix -lcoxplot -lmri -lf2c -l3DEdge
+AFNILIB = -lmrix -lcoxplot -lmri -ltracktools -lf2c -l3DEdge
 MAINCODE = SUMA
 SUMALIBLIST = libSUMA.a libglut.a libply.a 
 GLWLIB = libGLws.a
@@ -22,7 +23,9 @@ SUMA_SRCS = SUMA_trackball.c SUMA_SVmanip.c SUMA_input.c \
 		 SUMA_HomerFunc.c SUMA_xColBar.c SUMA_IsoSurfaceFunc.c \
 		 SUMA_BrainWrap.c SUMA_global.c \
 		 SUMA_SurfaceToSurface.c SUMA_LocalStat.c SUMA_spharm.c SUMA_dot.c\
-		 SUMA_plot.c SUMA_volume_render.c SUMA_SegFunc.c SUMA_SegOpts.c 
+		 SUMA_plot.c SUMA_volume_render.c 
+
+SUMA_SSRCS = SUMA_SegFunc.c SUMA_SegOpts.c SUMA_CoordMatch.c
 
 SUMA_EXECS = CreateIcosahedron  MapIcosahedron       \
 	ScaleToMap MakeColorMap CompareSurfaces		      \
@@ -51,11 +54,27 @@ GLw_local/GLwDrawA.o: GLw_local/GLwDrawA.c
  
        
 SUMA_gts.o: SUMA_gts.c
-	${CC} -DSUMA_COMPILED ${CCOPT} ${WARNOPT} ${SUMA_INPATH} -c SUMA_gts.c 
+	${CC} -DSUMA_COMPILED ${CCOPT} ${WARNOPT} ${SUMA_INPATH} \
+		    -c SUMA_gts.c 
+
+#Dropping optimization level for SUMA_xColBar.c because with gcc 4.7 and -O2 
+#SUMA crashes when the threshold bar is moved. Nothing but changing the optimization flag helped.
+#Using older gcc compilers worked fine, but then one worries about the recurrence
+#of the 3dAllineate convergence problem which happened haphazardly.
+#It was enough to change -O2 to -O1 for SUMA_xColBar.o. That is why the
+#special rule is here with the -O1 purposefully positioned to override -O flags
+#from parent Makefile
+#Consider removing this line with future compiler updates on macosx_10.7_Intel_64. 
+#See comment in SUMA_SetScaleThr_one() for instructions
+#on reproducing the crash 		Nov. 9 2012
+SUMA_xColBar.o: SUMA_xColBar.c
+	${CC} -O1 -DSUMA_COMPILED ${CCOPT} ${WARNOPT} ${SUMA_INPATH} \
+		    -c SUMA_xColBar.c 
 
 SUMA_SRCS_MAIN = SUMA_suma.c
 
 SUMA_OBJS = ${SUMA_SRCS:.c=.o}
+SUMA_SOBJS = ${SUMA_SSRCS:.c=.o}
 SUMA_GTS_OBJS = SUMA_gts.o
 GLW_OBJS = GLw_local/GLwMDrawA.o GLw_local/GLwDrawA.o
 
@@ -90,6 +109,14 @@ ${SUMALIB} : libply.a libglut.a ${SUMA_OBJS}
 	echo "library Rebuilt ..."
 	$(RANLIB) ${SUMALIB} 
 
+${SUMASLIB} : ${SUMA_SOBJS}
+	rm -f ${SUMASLIB}
+	ar q ${SUMASLIB} ${SUMA_SOBJS}
+	echo "SUMA Seg library Rebuilt ..."
+	$(RANLIB) ${SUMASLIB} 
+
+
+
 ${GLWLIB} : ${GLW_OBJS}
 	rm -f ${GLWLIB}
 	if [ ! -d GLw_local/GL ] ; then $(MKDIR) -p GLw_local/GL ; cd GLw_local; \ln -s GL GLw; cp *.h GL/ ; cd .. ; fi ; 
@@ -102,6 +129,11 @@ ${GLWLIB} : ${GLW_OBJS}
 libmri.a : ../suma_algorithms.c  ../suma_datasets.c  ../suma_niml.c
 	( cd .. ;	\
 	  $(MAKE) libmri.a ; \
+	  cd SUMA  )
+
+libtracktools.a : 
+	( cd .. ;	\
+	  $(MAKE) libtracktools.a ; \
 	  cd SUMA  )
 
 #library using GTS functions
@@ -288,37 +320,70 @@ ConvexHull: SUMA_ConvexHull.c
 		${AFNI_3dOBJS} MarchingCubes/debug/MarchingCubes.o			\
 		${SUMALIBLIST} ${AFNILIB} ${ZLIB} ${SUMA_LINK_LIB}
 
-3dSkullStrip: SUMA_3dSkullStrip.c
+3dSkullStrip: SUMA_3dSkullStrip.c ${SUMALIB} ${SUMASLIB}
 	$(RM) $@
 	${CC} -DSUMA_COMPILED  ${CCOPT} ${WARNOPT} -o $@ $(AFWARPOBJS) \
 		${AFNI_OBJS} SUMA_3dSkullStrip.c ${SUMA_INPATH} ${SUMA_LINK_PATH} 	\
-		${AFNI_3dOBJS} MarchingCubes/debug/MarchingCubes.o	-I../3DEdge/src -l3DEdge\
-		${SUMALIBLIST} ${AFNILIB} ${ZLIB} ${SUMA_LINK_LIB}
+		${AFNI_3dOBJS} MarchingCubes/debug/MarchingCubes.o	\
+		-I../3DEdge/src -l3DEdge -I../avovk \
+		${SUMALIBLIST} ${SUMASLIB} -lsegtools ${AFNILIB} ${ZLIB} ${SUMA_LINK_LIB} \
+		-lgsl -lgslcblas
 
-3dGenPriors: SUMA_3dGenPriors.c libSUMA.a
+SurfMatch: SUMA_SurfMatch.c ${SUMALIB} ${SUMASLIB} libgts.a ${SUMAGTSLIB}
 	$(RM) $@
 	${CC} -DSUMA_COMPILED  ${CCOPT} ${WARNOPT} -o $@ $(AFWARPOBJS) \
+		${AFNI_OBJS} SUMA_SurfMatch.c ${SUMA_INPATH} ${SUMA_LINK_PATH} 	\
+		${AFNI_3dOBJS} MarchingCubes/debug/MarchingCubes.o	\
+		-I../3DEdge/src -l3DEdge -I../avovk  \
+		libSUMAGTS.a ${SUMALIBLIST} ${SUMASLIB} -lglib${SUMA_GLIB_VER} \
+		${SUMASLIB} -lsegtools ${AFNILIB} ${ZLIB} ${SUMA_LINK_LIB} \
+		-lgsl -lgslcblas libgts.a
+
+3dGenPriors: SUMA_3dGenPriors.c ${SUMALIB} ${SUMASLIB}
+	$(RM) $@
+	${CC} -DSUMA_COMPILED  ${CCOPT} ${OMPFLAG} ${WARNOPT} -o $@ $(AFWARPOBJS) \
 		${AFNI_OBJS} SUMA_3dGenPriors.c ${SUMA_INPATH} ${SUMA_LINK_PATH} 	\
 		${AFNI_3dOBJS} MarchingCubes/debug/MarchingCubes.o	\
-		-I../3DEdge/src -l3DEdge -I../avovk ${SUMALIBLIST} \
+		-I../3DEdge/src -l3DEdge -I../avovk ${SUMALIBLIST} ${SUMASLIB}\
 		-lsegtools ${AFNILIB} ${ZLIB} ${SUMA_LINK_LIB} -lgsl -lgslcblas
 
-3dSeg: SUMA_3dSeg.c libSUMA.a
+3dGenFeatureDist: SUMA_3dGenFeatureDist.c ${SUMALIB} ${SUMASLIB}
 	$(RM) $@
-	${CC} -DSUMA_COMPILED ${CCOPT} $(OMPFLAG) ${WARNOPT} -o $@ $(AFWARPOBJS) \
+	${CC} -DSUMA_COMPILED  ${CCOPT} ${WARNOPT} -o $@ $(AFWARPOBJS) \
+		${AFNI_OBJS} SUMA_3dGenFeatureDist.c ${SUMA_INPATH} ${SUMA_LINK_PATH} 	\
+		${AFNI_3dOBJS} MarchingCubes/debug/MarchingCubes.o	\
+		-I../3DEdge/src -l3DEdge -I../avovk ${SUMALIBLIST} ${SUMASLIB} \
+		-lsegtools ${AFNILIB} ${ZLIB} ${SUMA_LINK_LIB} -lgsl -lgslcblas
+
+3dHist: SUMA_3dHist.c ${SUMALIB} ${SUMASLIB}
+	$(RM) $@
+	${CC} -DSUMA_COMPILED  ${CCOPT} ${WARNOPT} -o $@ $(AFWARPOBJS) \
+		${AFNI_OBJS} SUMA_3dHist.c ${SUMA_INPATH} ${SUMA_LINK_PATH} 	\
+		${AFNI_3dOBJS} MarchingCubes/debug/MarchingCubes.o	\
+		-I../3DEdge/src -l3DEdge -I../avovk ${SUMALIBLIST} ${SUMASLIB} \
+		-lsegtools ${AFNILIB} ${ZLIB} ${SUMA_LINK_LIB} -lgsl -lgslcblas
+
+niprobe: SUMA_niprobe.c
+	$(RM) $@
+	${CC} -DSUMA_COMPILED ${CCOPT} ${WARNOPT} -o $@ ${AFNI_OBJS} ${AFNI_3dOBJS} \
+         SUMA_niprobe.c ${SUMA_INPATH} ${SUMA_LINK_PATH} ${SUMALIBLIST} ${AFNILIB} ${ZLIB} ${SUMA_LINK_LIB}
+
+3dSeg: SUMA_3dSeg.c ${SUMALIB} ${SUMASLIB}
+	$(RM) $@
+	${CC} -DSUMA_COMPILED ${CCOPT} ${OMPFLAG} ${WARNOPT} -o $@ $(AFWARPOBJS) \
 		${AFNI_OBJS} SUMA_3dSeg.c ${SUMA_INPATH} ${SUMA_LINK_PATH} 	\
 		${AFNI_3dOBJS} MarchingCubes/debug/MarchingCubes.o	\
 		-I../3DEdge/src -l3DEdge -I../avovk \
-		${SUMALIBLIST} -lsegtools ${AFNILIB} ${ZLIB} ${SUMA_LINK_LIB} \
+		${SUMALIBLIST} ${SUMASLIB} -lsegtools ${AFNILIB} ${ZLIB} ${SUMA_LINK_LIB} \
 		-lgsl -lgslcblas 
 
-3dinfill: SUMA_3dinfill.c libSUMA.a
+3dinfill: SUMA_3dinfill.c ${SUMALIB} ${SUMASLIB}
 	$(RM) $@
-	${CC} -DSUMA_COMPILED ${CCOPT} $(OMPFLAG) ${WARNOPT} -o $@ $(AFWARPOBJS) \
+	${CC} -DSUMA_COMPILED ${CCOPT} ${OMPFLAG} ${WARNOPT} -o $@ $(AFWARPOBJS) \
 		${AFNI_OBJS} SUMA_3dinfill.c ${SUMA_INPATH} ${SUMA_LINK_PATH} 	\
 		${AFNI_3dOBJS} MarchingCubes/debug/MarchingCubes.o	\
 		-I../3DEdge/src -l3DEdge -I../avovk \
-		${SUMALIBLIST} -lsegtools ${AFNILIB} ${ZLIB} ${SUMA_LINK_LIB} \
+		${SUMALIBLIST} ${SUMASLIB} -lsegtools ${AFNILIB} ${ZLIB} ${SUMA_LINK_LIB} \
 		-lgsl -lgslcblas 
 
 3dSeg_noomp: SUMA_3dSeg.c libSUMA.a
@@ -398,7 +463,7 @@ BrainSkin: SUMA_BrainSkin.c ${SUMALIB}
 		${SUMA_INPATH}	${SUMA_LINK_PATH}		\
 		${AFNI_3dOBJS} MarchingCubes/debug/MarchingCubes.o		\
 		${AFNI_OBJS} -I../avovk -lf2c			\
-		libSUMAGTS.a ${SUMALIBLIST} -lglib${SUMA_GLIB_VER} \
+		libSUMAGTS.a ${SUMALIBLIST} ${SUMASLIB} -lglib${SUMA_GLIB_VER} \
 		-lsegtools ${AFNILIB} ${ZLIB}			\
 		${SUMA_LINK_LIB} -lgsl -lgslcblas libgts.a  
 
@@ -435,12 +500,12 @@ SurfMesh: SUMA_coarsen.c libgts.a ${SUMAGTSLIB}
 		libSUMAGTS.a ${SUMALIBLIST} -lglib${SUMA_GLIB_VER} ${AFNILIB} ${ZLIB}			\
 		${SUMA_LINK_LIB} libgts.a 
 
-3dSurfMask: SUMA_3dSurfMask.c
+3dSurfMask: SUMA_3dSurfMask.c ${SUMALIB} ${SUMASLIB}
 	$(RM) $@
 	${CC} -DSUMA_COMPILED ${CCOPT} ${WARNOPT} -o $@ $(AFWARPOBJS) ${AFNI_OBJS} SUMA_3dSurfMask.c ${SUMA_INPATH} ${SUMA_LINK_PATH} 	\
 		${AFNI_3dOBJS} MarchingCubes/debug/MarchingCubes.o			\
 		-I../3DEdge/src -l3DEdge -I../avovk \
-		${SUMALIBLIST} -lsegtools ${AFNILIB} ${ZLIB} ${SUMA_LINK_LIB} \
+		${SUMALIBLIST} ${SUMASLIB} -lsegtools ${AFNILIB} ${ZLIB} ${SUMA_LINK_LIB} \
 		-lgsl -lgslcblas 
 
 Surf2VolCoord: SUMA_Surf2VolCoord_demo.c
@@ -571,7 +636,7 @@ prompt_user: SUMA_prompt_user.c
 
 RestSym: SUMA_RestSym.c
 	$(RM) $@
-	${CC} $(OMPFLAG) -DSUMA_COMPILED ${CCOPT} ${WARNOPT} -o $@ $(AFWARPOBJS) ${AFNI_OBJS} SUMA_RestSym.c ${SUMA_INPATH} ${SUMA_LINK_PATH}  	\
+	${CC} ${OMPFLAG} -DSUMA_COMPILED ${CCOPT} ${WARNOPT} -o $@ $(AFWARPOBJS) ${AFNI_OBJS} SUMA_RestSym.c ${SUMA_INPATH} ${SUMA_LINK_PATH}  	\
 		${AFNI_3dOBJS} MarchingCubes/debug/MarchingCubes.o			\
 		${SUMALIBLIST} ${AFNILIB} ${ZLIB} ${SUMA_LINK_LIB}
 
@@ -729,8 +794,8 @@ packbins:
 	$(TAR) -cf $(SUMA_BIN_ARCHIVE) SUMA_bin
 	${RM} -r SUMA_bin
 	
-all: libGLws.a libmri.a libSUMA.a mainobj suma install 
-allgts: libGLws.a libmri.a libSUMA.a libgts.a mainobj suma SurfMesh install 
+all: libGLws.a libmri.a libtracktools.a libSUMA.a mainobj suma install 
+allgts: libGLws.a libmri.a libtracktools.a libSUMA.a libgts.a mainobj suma SurfMesh install 
 
 standalones: ${SUMA_EXECS}
 

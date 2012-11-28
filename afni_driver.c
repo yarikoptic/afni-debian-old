@@ -91,6 +91,7 @@ static int AFNI_redisplay              ( char *cmd ) ;
 static int AFNI_read_niml_file         ( char *cmd ) ; /* 01 Feb 2008 */
 static int AFNI_drive_quiet_plugouts   ( char *cmd);   /* 15 Oct 2008 */
 static int AFNI_drive_noisy_plugouts   ( char *cmd);   /* 15 Oct 2008 */
+static int AFNI_set_func_percentile    ( char *cmd ) ; /* 27 Apr 2012 */
 
 static int AFNI_trace                  ( char *cmd ) ; /* 04 Oct 2005 */
 
@@ -203,6 +204,7 @@ static AFNI_driver_pair dpair[] = {
  { "TRACE"              , AFNI_trace                   } , /* debugging */
  { "QUIET_PLUGOUTS"     , AFNI_drive_quiet_plugouts    } , /* 15 Oct 2008 */
  { "NOISY_PLUGOUTS"     , AFNI_drive_noisy_plugouts    } , /* 15 Oct 2008 */
+ { "SET_FUNC_PERCENTILE", AFNI_set_func_percentile     } , /* 27 Apr 2012,zss */
 
  { NULL , NULL }  /* flag that we've reached the end times */
 } ;
@@ -304,7 +306,9 @@ ENTRY("AFNI_driver") ;
 
    /*--- didn't match user command to anything at all?!? ---*/
 
-   ERROR_message("Can't drive AFNI with '%s'",cmd) ;  /* 22 Feb 2007 */
+   ERROR_message( "Can't drive AFNI with '%s'\n"
+         "  For command options see README.driver or try:\n"
+         "       apsearch -view_readme driv \n",cmd) ;  /* 22 Feb 2007 */
 
    free(dmd) ; RETURN(-1) ;  /* not in the lists */
 }
@@ -868,6 +872,17 @@ ENTRY("AFNI_drive_open_window") ;
                iar+0 , &s1 , iar+1 , &s2 , iar+2 , &s3 , iar+3 ) ;
         if( iar[0] >= 0 && iar[1] >= iar[0] && iar[2] >= 0 && iar[3] >= iar[2] )
           drive_MCW_imseq( isq , isqDR_set_crop , (XtPointer)iar ) ;
+      }
+
+      /* range [15 Oct 2012] */
+
+      cpt = strstr(cmd,"range=") ;
+      if( cpt == NULL ) cpt = strstr(cmd,"range:") ;
+      if( cpt != NULL ){
+        float rrr[3] = {0.0f,0.0f,0.f} ; char s1 ;
+        sscanf( cpt+6 , "%f%c%f" , rrr+0 , &s1 , rrr+1 ) ;
+        if( rrr[0] >= rrr[1] ) rrr[0] = rrr[1] = 0.0f ;
+        drive_MCW_imseq( isq , isqDR_setrange , (XtPointer)rrr ) ;
       }
 
       /* keypress [18 Feb 2005] */
@@ -2189,6 +2204,39 @@ ENTRY("AFNI_set_func_autorange") ;
 }
 
 /*-------------------------------------------------------------------------*/
+/*! SET_FUNC_PERCENTILE [c.]{+|-}
+   "SET_FUNC_PERCENTILE A.+"
+---------------------------------------------------------------------------*/
+
+static int AFNI_set_func_percentile( char *cmd )
+{
+   int ic , dadd=2 , nn ;
+   Three_D_View *im3d ;
+
+ENTRY("AFNI_set_func_percentile") ;
+
+   if( cmd == NULL || strlen(cmd) < 1 ) RETURN(-1) ;
+
+   ic = AFNI_controller_code_to_index( cmd ) ;
+   if( ic < 0 ){ ic = 0 ; dadd = 0 ; }
+
+   im3d = GLOBAL_library.controllers[ic] ;
+   if( !IM3D_OPEN(im3d) ) RETURN(-1) ;
+
+   switch( cmd[dadd] ){
+     default: RETURN(-1) ;
+     case '+': nn = 1 ; break ;
+     case '-': nn = 0 ; break ;
+   }
+
+   MCW_set_bbox( im3d->vwid->func->perc_bbox , nn ) ;
+   AFNI_perc_bbox_CB( im3d->vwid->func->perc_bbox->wbut[PERC_AUTOBUT] ,
+                       im3d , NULL ) ;
+   RETURN(0) ;
+}
+
+
+/*-------------------------------------------------------------------------*/
 /*! SET_FUNC_RANGE [c.]value
    "SET_FUNC_RANGE A.0.3333"
 ---------------------------------------------------------------------------*/
@@ -2998,7 +3046,7 @@ static int AFNI_drive_instacorr( char *cmd )
      for( ii=dadd+4 ; cmd[ii] != '\0' && !isspace(cmd[ii]) ; ii++ ) ; /*nada*/
      if( cmd[ii] == '\0' ) return -1 ;
 
-     /*  break up rest command into set of 'name=value' strings */
+     /*  break up rest of command into set of 'name=value' strings */
 
      sar = NI_decode_string_list(cmd+ii,";") ;
      if( sar == NULL ) return -1 ;
@@ -3008,7 +3056,8 @@ static int AFNI_drive_instacorr( char *cmd )
        iset->dset     = im3d->iset->dset ;
        iset->automask = im3d->iset->automask ;
        iset->mset     = (iset->automask) ? NULL : im3d->iset->mset ;
-       iset->ignore   = im3d->iset->ignore ;
+       iset->start    = im3d->iset->start ;
+       iset->end      = im3d->iset->end ;
        iset->mindex   = im3d->iset->mindex ;
        iset->fbot     = im3d->iset->fbot ;
        iset->ftop     = im3d->iset->ftop ;
@@ -3020,7 +3069,6 @@ static int AFNI_drive_instacorr( char *cmd )
        if( im3d->iset->prefix != NULL ) iset->prefix = strdup  (im3d->iset->prefix) ;
        if( im3d->iset->gortim != NULL ) iset->gortim = mri_copy(im3d->iset->gortim) ;
 
-/** INFO_message("INSTACORR INIT: copied old setup") ; **/
      } else {                              /* set some default params */
        iset->automask = 1 ;
        iset->fbot     = 0.01f ;
@@ -3028,7 +3076,6 @@ static int AFNI_drive_instacorr( char *cmd )
        iset->polort   = 2 ;
        iset->cmeth    = NBISTAT_PEARSON_CORR ;
        mm             = 1 ;
-/** INFO_message("INSTACORR INIT: created new setup") ; **/
      }
 
      if( iset->prefix == NULL ){
@@ -3062,8 +3109,22 @@ static int AFNI_drive_instacorr( char *cmd )
            ERROR_message("INSTACORR INIT: failed to find Extraset %s",dpt) ;
 
        } else if( strcasecmp(cpt,"ignore") == 0 ){                  /* ignore */
-         iset->ignore = strtod(dpt,NULL) ; mm++ ;
-         if( iset->ignore < 0 ) iset->ignore = 0 ;
+         iset->start = strtod(dpt,NULL) ; mm++ ;
+         if( iset->start < 0 ) iset->start = 0 ;
+         iset->end = 0 ;
+
+       } else if( strcasecmp(cpt,"startend")  == 0 ||
+                  strcasecmp(cpt,"start,end") == 0   ){        /* 21 Nov 2012 */
+         int start=0, end=0 ; char *qpt ;
+         start = (int)strtod(dpt,&qpt) ; mm++ ;
+         if( start < 0 ) start = 0 ;
+         if( *qpt != '\0' ){
+           char qc=*qpt ;
+           if( !isdigit(*qpt) ) qpt++ ;
+           end = (int)strtod(qpt,NULL) ;
+           if( qc == '+' && end > 0 ) end = start + end-1 ;
+         }
+         iset->start = start ; iset->end = end ;
 
        } else if( strcasecmp(cpt,"blur") == 0 ){                      /* blur */
          iset->blur = strtod(dpt,NULL) ; mm++ ;
@@ -3094,6 +3155,8 @@ static int AFNI_drive_instacorr( char *cmd )
            case 'B': iset->cmeth = NBISTAT_BC_PEARSON_M  ; break ;
            case 'V': iset->cmeth = NBISTAT_BC_PEARSON_V  ; break ;
            case 'T': iset->cmeth = NBISTAT_TICTACTOE_CORR; break ;
+           case 'E': iset->cmeth = NBISTAT_EUCLIDIAN_DIST; break ; /* ZSS */
+           case 'C': iset->cmeth = NBISTAT_CITYBLOCK_DIST; break ; /* ZSS */
          }
 
        } else if( strcasecmp(cpt,"polort") == 0 ){                  /* polort */
@@ -3111,6 +3174,8 @@ static int AFNI_drive_instacorr( char *cmd )
        ERROR_message("INSTACORR INIT dataset not set -- cannot continue :-(") ;
        return -1 ;
      }
+     if( iset->end <= 0 || iset->end <= iset->start || iset->end >= DSET_NVALS(iset->dset) )
+       iset->end = DSET_NVALS(iset->dset)-1 ;
 
      NI_delete_str_array(sar) ;  /* send it to the graveyard of unwanted data */
 

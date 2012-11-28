@@ -49,6 +49,99 @@
 
 
 afni_history_struct dglen_history[] = {
+{ 16 , OCT, 2012 , DRG , "afni show atlas colors" , 
+    MINOR , TYPE_BUG_FIX, 
+    "Fixed bug that would crash afni if paned color and show atlas colors",
+} ,
+{ 15 , AUG, 2012 , DRG , "whereami web" , 
+    MICRO , TYPE_BUG_FIX, 
+    "Web-based atlases would not open webpage with ampersands, punctuation",
+} ,
+{ 14 , AUG, 2012 , DRG , "whereami minimum probability" , 
+    MINOR , TYPE_NEW_OPT, 
+    "Minimum probability option to consider for probabilistic atlases",
+    "Can set option, -min_prob, or environment variable,\n"
+    "AFNI_WHEREAMI_PROB_MIN, to control output of whereami reports or\n"
+    "masks from probabilistic atlases"
+} ,
+
+{ 14 , AUG, 2012 , DRG , "3drefit -epan error" , 
+    MINOR , TYPE_BUG_FIX, 
+    "Removed error for refitting data type",
+    "3drefit would exit with error for -epan and multi-subbrick data\n"
+    "Removed incorrect checks against archaic timepoints per TR nvals"
+} ,
+
+{ 06 , AUG, 2012 , DRG , "NIFTI reading" , 
+    MINOR , TYPE_NEW_ENV, 
+    "Handling view equivalents for NIFTI",
+    "AFNI_NIFTI_VIEW sets default view for AFNI datasets marked as\n"
+    "'aligned' (sform_code or qform_code = 2). This variable should\n"
+    "be set to 'TLRC', 'ORIG' or 'ACPC'."
+} ,
+
+{ 28 , JUN, 2012 , DRG , "Draw Dataset plugin" , 
+    MINOR , TYPE_BUG_FIX, 
+    "Resampling of atlas regions to lower resolution undercounted",
+    "Draw Dataset plugin atlas resampling to a lower resolution dataset\n"
+    "undercounts number of voxels. Incorrect usage of temporary volume\n"
+    "in byte storage was fixed with float volume. Additionally, new\n"
+    "environment variable, AFNI_DRAW_THRESH, allows for variable\n"
+    "threshold level (done with RCR)"
+} ,
+
+{ 30 , MAY, 2012 , DRG , "3dinfo, 3drefit" , 
+    MINOR , TYPE_MODIFY, 
+    "av_space option handling and orig/other space refitting",
+    "3dinfo reports view extension for -av_space instead of generic\n"
+    "space view extension. 3drefit will warn if setting non-orig\n"
+    "space on orig view data or orig space on tlrc view data."
+} ,
+{ 24 , MAY, 2012 , DRG , "3dDWItoDT" , 
+    MINOR , TYPE_NEW_OPT, 
+    "csf_val and csf_fa options apply to linear solutions too"
+} ,
+{ 23 , MAY, 2012 , DRG , "3dinfo, @auto_tlrc" , 
+    MAJOR , TYPE_BUG_FIX, 
+    "Generic space handling corrected for TT_N27 and other spaces",
+    "@auto_tlrc would crash with improper generic spaces\n"
+    "Generic space restricted to AFNI view names (orig, acpc, tlrc)"
+} ,
+{ 22 , MAY, 2012 , DRG , "3dDWItoDT" , 
+    MINOR , TYPE_NEW_OPT, 
+    "csf_val and csf_fa options for default values if B=0 less than gradient values"
+} ,
+{ 8 , MAY, 2012 , DRG , "3dinfo" , 
+    MICRO , TYPE_NEW_OPT, 
+    "gen_space option to see generic space type for a dataset"
+} ,
+{ 7 , MAY, 2012 , DRG , "NIFTI input/output" , 
+    MINOR , TYPE_MODIFY, 
+    "NIFTI qform/sform codes from generic space of template space",
+    "qform and sform codes are set by string in generic space, not template\n"
+    "space, of input dataset. For example, TT_N27 spaces will be marked for\n"
+    "NIFTI output as TLRC. NIFTI data with any non-ORIG or ACPC space will\n"
+    "be marked as an 'aligned' space in NIFTI with the sform and qform codes.\n"
+    "Currently only TLRC/MNI/Aligned are supported spaces in NIFTI standard.\n"
+    "'aligned' space datasets will be interpreted as equivalent to TLRC view\n"
+    "datasets. See AFNI_atlas_spaces.niml for space definitions that include\n"
+    "generic space names."
+} ,
+{ 7 , MAY, 2012 , DRG , "@auto_tlrc" , 
+    MICRO , TYPE_NEW_OPT, 
+    "out_space option to force output space for auto-talairached data"
+} ,
+{ 7 , MAY, 2012 , DRG , "to3d" , 
+    MICRO , TYPE_MODIFY, 
+    "Clearer warning for illegal transfer syntax"
+} ,
+{ 7 , MAY, 2012 , DRG , "whereami" , 
+    MINOR , TYPE_BUG_FIX, 
+    "Coordinate transformations in atlas access",
+    "Coordinates were not transformed properly if an inverse affine\n"
+    "transformation was required for the case of atlases in another\n"
+    "space than the dataset."
+} ,
 { 9 , APR, 2012 , DRG , "whereami" , 
     MICRO , TYPE_BUG_FIX, 
     "Typo in AFNI_WAMI_MAX_SEARCH_RAD",

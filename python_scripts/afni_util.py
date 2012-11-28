@@ -8,6 +8,10 @@ import lib_textdata as TD
 import glob
 import pdb
 
+# global lists for basis functions
+basis_known_resp_l = ['GAM', 'BLOCK', 'dmBLOCK', 'SPMG1', 'WAV', 'MION']
+basis_one_regr_l   = ['GAM', 'BLOCK', 'SPMG1', 'WAV', 'EXPR', 'MION']
+
 # this file contains various afni utilities   17 Nov 2006 [rickr]
 
 def change_path_basename(orig, prefix, suffix):
@@ -22,7 +26,7 @@ def change_path_basename(orig, prefix, suffix):
     return "%s/%s%s" % (head, prefix, suffix)
 
 # write text to a file
-def write_text_to_file(fname, text, mode='w', wrap=0, wrapstr='\n', exe=0):
+def write_text_to_file(fname, text, mode='w', wrap=0, wrapstr='\\\n', exe=0):
     """write the given text to the given file
           fname   : file name to write (or append) to
           text    : text to write
@@ -38,7 +42,7 @@ def write_text_to_file(fname, text, mode='w', wrap=0, wrapstr='\n', exe=0):
         print "** WTTF: missing text or filename"
         return 1
 
-    if wrap: text = add_line_wrappers(text, warpstr)
+    if wrap: text = add_line_wrappers(text, wrapstr)
     
     if fname == 'stdout':   fp = sys.stdout
     elif fname == 'stderr': fp = sys.stderr
@@ -219,14 +223,23 @@ def uniq_list_as_dsets(dsets, whine=0):
 
     if not dsets or len(dsets) < 2: return 1
 
+    if type(dsets[0]) == str:
+       anlist = [BASE.afni_name(dset) for dset in dsets]
+    elif isinstance(dsets[0], BASE.afni_name):
+       anlist = dsets
+    else:
+       print '** ULAD: invalid type for dset list, have value %s' % dsets[0]
+       return 0
+
+    plist = [an.prefix for an in anlist]
+    plist.sort()
+
     # iterate over dsets, searching for matches
     uniq = 1
-    for i1 in range(len(dsets)):
-        for i2 in range(i1+1, len(dsets)):
-            if dsets[i1].prefix == dsets[i2].prefix:
-                uniq = 0
-                break
-        if not uniq: break
+    for ind in range(len(plist)-1):
+       if anlist[ind].prefix == anlist[ind+1].prefix:
+          uniq = 0
+          break
 
     if not uniq and whine:
         print                                                               \
@@ -238,7 +251,7 @@ def uniq_list_as_dsets(dsets, whine=0):
           "            e.g.  bad use:    ED_r*+orig*\n"                     \
           "            e.g.  good use:   ED_r*+orig.HEAD\n"                 \
           "-----------------------------------------------------------\n"   \
-          % (i1+1, i2+1, dsets[i1].pve(), dsets[i2].pve())
+          % (i1+1, i2+1, anlist[i1].pve(), anlist[i2].pve())
 
     return uniq
 
@@ -278,7 +291,6 @@ def list_to_datasets(words, whine=0):
         return None
     return dsets
 
-
 def basis_has_known_response(basis, warn=0):
     """given a string, if the prefix is either GAM or BLOCK, then the basis
        function has a known response curve
@@ -286,14 +298,37 @@ def basis_has_known_response(basis, warn=0):
        if warn, warn users about any basis function peculiarities"""
     if not basis: return 0
 
-    if warn and basis == 'dmBLOCK':
-        print '** basis function is dmBLOCK  ==>  script must be edited'
-        print '   --> please change -stim_times to either'
-        print '        -stim_times_AM1 or -stim_times_AM2'
-        print '   (please mention this on the AFNI message board)'
+    if starts_with_any_str(basis, basis_known_resp_l): return 1
+    return 0
 
-    if basis[0:3] == 'GAM' or basis[0:5] == 'BLOCK': return 1
-    else:                                            return 0
+def basis_is_married(basis):
+    """if the given basis function is known to require married times, return 1
+    """
+    if not basis: return 0
+
+    if starts_with(basis, 'dmBLOCK'): return 1
+    else:                             return 0
+
+def basis_has_one_reg(basis):
+    """if the given basis function is known to have 1 regressor, return 1
+    """
+    if not basis: return 0
+
+    if starts_with_any_str(basis, basis_one_regr_l): return 1
+    return 0
+
+def starts_with(word, sstr):
+    """return 1 if word starts with sstr"""
+    slen = len(sstr)
+    if word[0:slen] == sstr: return 1
+    return 0
+
+def starts_with_any_str(word, slist):
+    """return 1 if word starts with anything in slist"""
+    for sstr in slist:
+       slen = len(sstr)
+       if word[0:slen] == sstr: return 1
+    return 0
 
 def get_default_polort(tr, reps):
     """compute a default run polort, as done in 3dDeconvolve
@@ -653,10 +688,11 @@ def transpose(matrix):
         newmat.append(newrow)
     return newmat
 
-def derivative(vector, in_place=0):
+def derivative(vector, in_place=0, direct=0):
     """take the derivative of the vector, setting d(t=0) = 0
 
         in_place: if set, the passed vector will be modified
+        direct:   if 0, use backward difference, if 1 use forward
 
        return v[t]-v[t-1] for 1 in {1,..,len(v)-1}, d[0]=0"""
 
@@ -668,9 +704,15 @@ def derivative(vector, in_place=0):
     else:        vec = vector[:] # start with copy
     
     # count from the end to allow memory overwrite
-    for t in range(len(vec)-1, 0, -1):
-        vec[t] -= vec[t-1]
-    vec[0] = 0
+    if direct:  # forward difference
+       vlen = len(vec)
+       for t in range(vlen-1):
+           vec[t] = vec[t+1] - vec[t]
+       vec[vlen-1] = 0
+    else:       # backward difference
+       for t in range(len(vec)-1, 0, -1):
+           vec[t] -= vec[t-1]
+       vec[0] = 0
 
     return vec
 
@@ -1400,6 +1442,21 @@ def lists_are_same(list1, list2):
 
    return 1
 
+def string_to_float_list(fstring):
+   """return a list of floats, converted from the string
+      return None on error
+   """
+
+   if type(fstring) != str: return None
+   slist = fstring.split()
+
+   if len(slist) == 0: return []
+
+   try: flist = [float(sval) for sval in slist]
+   except: return None
+
+   return flist
+
 def float_list_string(vals, nchar=7, ndec=3, nspaces=2, mesg='', left=0):
    """return a string to display the floats:
         vals    : the list of float values
@@ -1554,7 +1611,11 @@ def first_last_match_strs(slist):
    if hmatch+tmatch > maxlen:           # weird, but constructable
       tmatch = maxlen - hmatch          # so shrink to fit
 
-   return slist[0][0:hmatch], slist[0][-tmatch:]
+   # list[-0:] is not empty but is the whole list
+   if tmatch > 0: tstr = slist[0][-tmatch:]
+   else:          tstr = ''
+
+   return slist[0][0:hmatch], tstr
 
 def glob_form_from_list(slist):
    """given a list of strings, return a glob form
@@ -1565,7 +1626,11 @@ def glob_form_from_list(slist):
       Somewhat opposite list_minus_glob_form().
    """
 
+   if len(slist) == 0: return ''
+   if vals_are_constant(slist): return slist[0]
+
    first, last = first_last_match_strs(slist)
+   if not first and not last: return '' # failure
    globstr = '%s*%s' % (first,last)
 
    return globstr
@@ -1626,7 +1691,7 @@ def list_minus_glob_form(slist, hpad=0, tpad=0):
 
    if hpad < 0 or tpad < 0:
       print '** list_minus_glob_form: hpad/tpad must be non-negative'
-      return []
+      hpad = 0 ; tpad = 0
 
    # get head, tail and note lengths
    head, tail = first_last_match_strs(slist)
@@ -1747,6 +1812,7 @@ def parse_as_stim_list(flist):
 
    # if suffix contains an extension, make the suffix into the extension
    dot = suffix.find('.')
+   if dot < 0: dot = 0
 
    # strip prefix, suffix: might include part of 'suffix' in label
    inner_list = list_minus_glob_form(flist, tpad=dot)
@@ -1910,6 +1976,9 @@ def flist_to_table_pieces(flist):
 def get_ids_from_dsets(dsets, prefix='', suffix='', hpad=0, tpad=0, verb=1):
    """return a list of subject IDs corresponding to the datasets
 
+      Make sure we have afni_name objects to take the prefix from.
+      If simple strings, turn into afni_names.
+
       Try list_minus_glob_form on the datasets.  If that fails, try
       on the directories.
 
@@ -1924,9 +1993,19 @@ def get_ids_from_dsets(dsets, prefix='', suffix='', hpad=0, tpad=0, verb=1):
 
    if len(dsets) == 0: return None
 
-   dlist = [dset.split('/')[-1] for dset in dsets]
+   # be more aggressive, use dataset prefix names
+   # dlist = [dset.split('/')[-1] for dset in dsets]
+   if type(dsets[0]) == str: 
+      nlist = [BASE.afni_name(dset) for dset in dsets]
+   elif isinstance(dsets[0], BASE.afni_name):
+      nlist = dsets
+   else:
+      print '** GIFD: invalid type for dset list, have value %s' % dsets[0]
+      return None
 
-   # if nothing to come from file tail, try the complete path names
+   dlist = [dname.prefix for dname in nlist]
+
+   # if nothing to come from file prefixes, try the complete path names
    if vals_are_constant(dlist): dlist = dsets
 
    slist = list_minus_glob_form(dlist, hpad, tpad)
@@ -1968,9 +2047,24 @@ def sumsq(vals):
    return ssq
 
 def euclidean_norm(vals):
+   """name is toooooo long"""
 
    if len(vals) < 1: return 0.0
-   return math.sqrt(loc_sum([v*v for v in vals]))
+   return math.sqrt(sumsq(vals))
+
+def L2_norm(vals):
+   return euclidean_norm(vals)
+
+def weighted_enorm(vals, weights):
+
+   if len(vals) < 1: return 0.0
+   if len(vals) != len(weights): return 0.0
+
+   sum = 0.0
+   for ind in range(len(vals)):
+      vv = vals[ind]*weights[ind]
+      sum += vv*vv
+   return math.sqrt(sum)
 
 def dotprod(v1,v2):
    """compute the dot product of 2 vectors"""
@@ -1982,6 +2076,7 @@ def dotprod(v1,v2):
 
 def maxabs(vals):
    """convenience function for the maximum of the absolute values"""
+   if len(vals) == 0: return 0
    return max([abs(v) for v in vals])
 
 def ndigits_lod(num, base=10):
@@ -2015,6 +2110,10 @@ def mean(vec, ibot=-1, itop=-1):
 
     return tot/(itop-ibot+1)
 
+# ----------------------------------------------------------------------
+# vector manipulation functions
+# ----------------------------------------------------------------------
+
 # almost identical to mean, but subtract the mean instead of returning it
 def demean(vec, ibot=-1, itop=-1):
     """demean the vector (in place), from index ibot to index itop
@@ -2047,6 +2146,49 @@ def demean(vec, ibot=-1, itop=-1):
        vec[ind] -= mm
 
     return 0
+
+def lin_vec_sum(s1, vec1, s2, vec2):
+   """return s1*[vec1] + s2*[vec2]
+      note: vec2 can be None"""
+
+   if vec2 == None:
+      return [s1*vec1[i] for i in range(len(vec1))]
+
+   l1 = len(vec1)
+   l2 = len(vec2)
+   if l1 != l2:
+      print '** LVC: vectors have different lengths (%d, %d)' % (l1, l2)
+      return []
+
+   return [s1*vec1[i]+s2*vec2[i] for i in range(l1)]
+
+def proj_onto_vec(v1, v2, unit_v2=0):
+   """return vector v1 projected onto v2
+
+      unit_v2: flag denoting whether v2 is a unit vector
+
+      return <v1,v2>/<v2,v2> * v2"""
+
+   if unit_v2: scalar = dotprod(v1,v2)
+   else:
+      len2 = L2_norm(v2,v2)
+      if len2 == 0:
+         print '** cannot project onto <0> vector'
+         return []
+      scalar = dotprod(v1,v2) * 1.0 / len2
+
+   return lin_vec_sum(scalar, v2, 0, None)
+
+def proj_out_vec(v1, v2, unit_v2=0):
+   """return vector v1 with v2 projected out
+      (return the component of v1 that is orthogonal to v2)
+
+      unit_v2: flag denoting whether v2 is a unit vector
+
+      return v1 - (v1 projected onto v2)
+   """
+
+   return lin_vec_sum(1, v1, -1, proj_onto_vec(v1, v2, unit_v2))
 
 # ----------------------------------------------------------------------
 # statistical routines - stdev, variance, ttest
@@ -2168,29 +2310,26 @@ def variance(data):
     if val < 0.0 : return 0.0
     return val
 
-def r(vA, vB, sample=0):
+def r(vA, vB):
     """return Pearson's correlation coefficient
-       if sample, divide by length-1, not length
 
-       for demeaned and unit length vectors, r = dot product / length
+       for demeaned and unit vectors, r = dot product
+
+       note: correlation_p should be faster
     """
-    length = len(vA)
-    if len(vB) != length:
-        print '** correlation_pearson: vectors have different lengths'
+    if len(vB) != len(vA):
+        print '** r (correlation): vectors have different lengths'
         return 0.0
-    if length < 2: return 0.0
     ma = mean(vA)
     mb = mean(vB)
     dA = [v-ma for v in vA]
     dB = [v-mb for v in vB]
-    sA = stdev(dA)
-    sB = stdev(dB)
+    sA = L2_norm(dA)
+    sB = L2_norm(dB)
     dA = [v/sA for v in dA]
     dB = [v/sB for v in dB]
 
-    if sample: length -= 1
-
-    return dotprod(dA,dB)/length
+    return dotprod(dA,dB)
 
 def eta2(vA, vB):
     """return eta^2 (eta squared - Cohen, NeuroImage 2008
@@ -2207,7 +2346,7 @@ def eta2(vA, vB):
 
     length = len(vA)
     if len(vB) != length:
-        print '** correlation_pearson: vectors have different lengths'
+        print '** eta2: vectors have different lengths'
         return 0.0
     if length < 1: return 0.0
 
@@ -2230,8 +2369,9 @@ def eta2(vA, vB):
         return 0.0
     return 1.0 - num/denom
 
-def correlation_p(vA, vB):
+def correlation_p(vA, vB, demean=1):
     """return the Pearson correlation between the 2 vectors
+       (allow no demean for speed)
     """
 
     length = len(vA)
@@ -2241,17 +2381,20 @@ def correlation_p(vA, vB):
 
     if length < 2: return 0.0
 
-    ma = mean(vA)
-    mb = mean(vB)
-
-    dA = [v-ma for v in vA]
-    dB = [v-mb for v in vB]
+    if demean:
+       ma = mean(vA)
+       mb = mean(vB)
+       dA = [v-ma for v in vA]
+       dB = [v-mb for v in vB]
+    else:
+       dA = vA
+       dB = vB
 
     sAB = dotprod(dA, dB)
     ssA = sumsq(dA)
     ssB = sumsq(dB)
 
-    del(dA); del(dB)
+    if demean: del(dA); del(dB)
 
     if ssA <= 0.0 or ssB <= 0.0: return 0.0
     else:                        return sAB/math.sqrt(ssA*ssB)
@@ -2560,9 +2703,23 @@ def test_tent_vecs(val, freq, length):
     return correlation_p(a,b)
 
 def main():
-   if len(sys.argv) > 2:
-      if sys.argv[1] == '-eval':
-         print eval(' '.join(sys.argv[2:]))
+   argv = sys.argv
+   if len(argv) > 2:
+      if argv[1] == '-eval':
+         print eval(' '.join(argv[2:]))
+         return 0
+      elif argv[1] == '-listfunc':
+         do_join = 0
+         argbase = 3
+         if len(argv) < argbase :
+            print '** -listfunc usage requires at least 3 args'
+            return 1
+         if argv[argbase] == '-join':
+            do_join = 1
+            argbase += 1
+         func = eval(argv[2])
+         if do_join: print ' '.join(func(argv[argbase:]))
+         else:       func(argv[argbase:])
          return 0
 
    print 'afni_util.py: not intended as a main program'

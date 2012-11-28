@@ -69,11 +69,16 @@ Examples:
              -anat FT_anat+orig.HEAD -epi FT_epi_r*.HEAD   \\
              -stim AV*.txt -stim_basis 'BLOCK(15,1)'
 
-      2. Process the EPI data as in a very simple resting state analysis.
-         Pass a subject ID, EPI datasets and the number of TRs to remove.
+      2. Process the EPI data as resting state analysis.
+
+         Pass a subject ID, anat and EPI datasets, and # TRs to remove.
+         Also, bandpass via 3dDeconvolve (while censoring), and regress
+         motion derivatives (in addition to motion).
 
          uber_subject.py -no_gui -save_ap_command cmd.rest_state  \\
-             -sid FT.rest -tcat_nfirst 2 -epi FT/FT_epi_r*.HEAD
+             -sid FT.rest -tcat_nfirst 2                          \\
+             -anat FT/FT_anat+orig -epi FT/FT_epi_r*.HEAD         \\
+             -regress_bandpass 0.01 0.1 -regress_mot_deriv yes
 
 ----------------------------------------------------------------------
 Note, for passing subject variables, use of -svar is safer then using
@@ -94,7 +99,11 @@ files would be taken as more -stim inputs.
 
 In any case, passing variables this way is mostly available for my own
 evil purposes.  This is supposed to be a GUI after all...
+
 ----------------------------------------------------------------------
+"""
+
+g_help_trailer = """
 
 - R Reynolds  Feb, 2011
 ===========================================================================
@@ -107,6 +116,7 @@ def get_valid_opts():
    vopts = OPT.OptionList('uber_subject.py options')
    vopts.add_opt('-help', 0, [], helpstr='show this help')
    vopts.add_opt('-help_gui', 0, [], helpstr='show help for GUI')
+   vopts.add_opt('-help_howto_program', 0, [], helpstr='help for programming')
    vopts.add_opt('-help_install', 0, [], helpstr='show install notes')
    vopts.add_opt('-help_install_nokia', 0, [], helpstr='Nokia install help')
    vopts.add_opt('-hist', 0, [], helpstr='show revision history')
@@ -157,10 +167,16 @@ def process_options(valid_opts, argv):
    # check for terminal options before processing the rest
    if '-help' in sys.argv:
       print g_command_help
+      valid_opts.show('', 1, show_count=0)
+      print g_help_trailer
       return 1, None, None, None
 
    if '-help_gui' in sys.argv:
       print USUBJ.helpstr_usubj_gui
+      return 1, None, None, None
+
+   if '-help_howto_program' in sys.argv:
+      print USUBJ.helpstr_howto_program
       return 1, None, None, None
 
    if '-help_install' in sys.argv:
@@ -220,11 +236,44 @@ def process_options(valid_opts, argv):
    use_gui = 1 # assume GUI unless we hear otherwise
    svar_keys = USUBJ.g_svar_dict.keys()
 
-   # first process all setup options
    errs = 0
+
+   # ------------------------------------------------------------
+   # first process all setup options (e.g. -anal_type/domain)
+   # - since they might go via -svar, we must search
+   for opt in uopts.olist:
+      # just check for 'rest' here
+      if opt.name == '-anal_type':
+         val, err = uopts.get_string_opt('', opt=opt)
+         if val == None or err: return -1, None, None, None
+         if val == 'rest':
+            if verb > 1: print '-- init from rest defaults'
+            svars.merge(USUBJ.g_rdef_strs)
+      elif opt.name == '-anal_domain':
+         val, err = uopts.get_string_opt('', opt=opt)
+         if val == None or err: return -1, None, None, None
+         if val == 'surface':
+            print '** uber_subject.py: not ready for surface analysis'
+            return -1, None, None, None
+
+      elif opt.name == '-svar':
+         val, err = uopts.get_string_list('', opt=opt)
+         if val == None or err: return -1, None, None, None
+         if val[0] == '-anal_type':
+            if val[1] == 'rest':
+               if verb > 1: print '-- init from rest defaults'
+               svars.merge(USUBJ.g_rdef_strs)
+         elif val[0] == '-anal_domain':
+            if val[1] == 'surface':
+               print '** uber_subject.py: not ready for surface analysis'
+               return -1, None, None, None
+
+   # done with analysis init options
+   # ------------------------------------------------------------
+
    for opt in uopts.olist:
       # skip -verb and any terminal option (though they should not be here)
-      if   opt.name == '-help':              continue
+      if   opt.name == '-help':            continue
       elif opt.name == '-help_gui':        continue
       elif opt.name == '-hist':            continue
       elif opt.name == '-show_valid_opts': continue
@@ -233,9 +282,13 @@ def process_options(valid_opts, argv):
 
       elif opt.name == '-verb':            continue
 
+      # and skip any pre-setup options ...
+      elif opt.name == '-anal_type':       continue
+      elif opt.name == '-anal_domain':     continue
+
       # and skip any post-setup options ...
       elif opt.name == '-print_ap_command':continue
-      elif opt.name == '-save_ap_command':continue
+      elif opt.name == '-save_ap_command': continue
       elif opt.name == '-exec_ap_command': continue
       elif opt.name == '-exec_proc_script':continue
 
@@ -303,6 +356,14 @@ def process_options(valid_opts, argv):
          subj = run_ap_command(svars, cvars)
          if subj != None and uopts.find_opt('-exec_proc_script'):
             subj.exec_proc_script()
+
+   if verb > 2: # show applied subject variables
+      changestr = cvars.changed_attrs_str(USUBJ.g_cdef_strs, skiplist='name',
+                                         showskip=0, showdel=0)
+      print '++ applied control variables: %s\n' % changestr
+      changestr = svars.changed_attrs_str(USUBJ.g_sdef_strs, skiplist='name',
+                                         showskip=0, showdel=0)
+      print '++ applied subject variables: %s\n' % changestr
 
    if errs:    return -1, None, None, None
    if use_gui: return  0, svars, cvars, guiopts

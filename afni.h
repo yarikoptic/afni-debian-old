@@ -305,7 +305,10 @@ typedef struct {
 
       int   i1_icor , j2_icor , k3_icor;  /* for InstaCorr -- 08 May 2009 */
       float xi_icor , yj_icor , zk_icor ; /* DICOM coords -- 17 Mar 2010 */
-
+      
+      float *th_sort;  /* sorted values of overlay threshold */
+      int N_th_sort; /* number of values stored in th_sort */
+      char  th_sortid[256]; /* indentifier of provenance of th_sort */
 } AFNI_view_info ;
 
 #define AXIAL    1       /* 20 Feb 2003: view_setter codes */
@@ -369,6 +372,7 @@ typedef struct {
       Widget topper , popmenu , pop_bkgd_lab ,
              pop_jumpback_pb , pop_imageonly_pb , pop_jumpto_pb , pop_talto_pb ;
       Widget pop_jumpto_ijk_pb ;
+      Widget pop_jumpto_clus_pb ;                                   /* 19 Oct 2012*/
 
       Widget crosshair_frame , crosshair_rowcol , crosshair_label ;
 
@@ -564,6 +568,13 @@ typedef struct {
 
 extern void AFNI_sesslab_EV( Widget, XtPointer, XEvent *, Boolean * ) ; /* 30 Apr 2010 */
 
+extern void flush_vinfo_sort(AFNI_view_info *vinfo, char *sel);/*ZSS: 04/26/12*/
+extern void flush_3Dview_sort(struct Three_D_View *im3d, char *sel);
+extern float *get_3Dview_sort(struct Three_D_View *im3d, char *sel);
+extern float  get_3Dview_func_thresh(struct Three_D_View *im3d, 
+                                     int apply_power);
+extern float AFNI_thresh_from_percentile(struct Three_D_View *im3d, float perc);
+
 #define OPEN_PANEL(iq,panel)                                            \
    {  XtManageChild( (iq)->vwid->  panel  ->frame ) ;                    \
       if( ! (iq)->vwid->view->  panel ## _pb_inverted ){                  \
@@ -694,6 +705,7 @@ typedef struct {
 
       Widget range_frame , range_rowcol , range_label ;
       MCW_bbox     *range_bbox ;
+      MCW_bbox     *perc_bbox ;
       MCW_arrowval *range_av ;
 
 #ifdef USE_FUNC_FIM
@@ -730,6 +742,8 @@ extern void AFNI_func_fdr_CB    (Widget,XtPointer,XtPointer) ;    /* 29 Jan 2008
 
 #define RANGE_AUTOBUT 0
 #define RANGE_AUTOVAL (1 << RANGE_AUTOBUT)
+
+#define PERC_AUTOBUT 0  /* ZSS: April 27 2012 */
 
 /** On Motif 2.0 on Linux, resized pbar pieces causes the
     threshold scale to behave bizarrely.  This macro is a fixup **/
@@ -1098,6 +1112,7 @@ typedef struct Three_D_View {
       float cont_range_fval;
       int cont_pbar_index, int_pbar_index;
       int first_integral;
+      int cont_perc_thr;       /* ZSS percentile thresholding. April 26 2012 */
 } Three_D_View ;
 
 /*! Force re-volume-editing when this viewer is redisplayed */
@@ -1579,6 +1594,8 @@ extern void AFNI_viewbut_EV( Widget, XtPointer, XEvent *, Boolean * ) ;
 extern void AFNI_cluster_EV( Widget, XtPointer, XEvent *, Boolean * ) ;
 extern void AFNI_clus_update_widgets( Three_D_View *im3d ) ;
 extern void AFNI_clus_popdown( Three_D_View *im3d ) ;
+extern int AFNI_clus_find_xyz( Three_D_View *im3d , float x,float y,float z ) ;
+extern void AFNI_clus_action_CB( Widget w , XtPointer cd , XtPointer cbs ) ;
 
 extern void AFNI_update_dataset_viewing( THD_3dim_dataset * ); /* 21 Jul 2009 */
 extern void AFNI_alter_wami_text(Three_D_View *im3d, char *utlab); 
@@ -1636,6 +1653,7 @@ extern void AFNI_do_many_writes      ( Widget , XtPointer , MCW_choose_cbs * ) ;
 extern void AFNI_finalize_dataset_CB ( Widget , XtPointer , MCW_choose_cbs * ) ;
 extern void AFNI_jumpto_CB           ( Widget , XtPointer , MCW_choose_cbs * ) ;
 extern int  AFNI_jumpto_dicom        ( Three_D_View * , float, float, float  ) ;
+extern int  AFNI_creepto_dicom       ( Three_D_View * , float, float, float  ) ;
 extern int  AFNI_jumpto_ijk          ( Three_D_View * , int, int, int  ) ;
 extern void AFNI_jumpto_ijk_CB       ( Widget , XtPointer , MCW_choose_cbs * ) ;
 extern void AFNI_sumato_CB           ( Widget , XtPointer , MCW_choose_cbs * ) ;
@@ -1757,6 +1775,7 @@ extern XmString AFNI_range_label( Three_D_View * ) ;
 extern XmString AFNI_autorange_label( Three_D_View * ) ;
 
 extern void AFNI_range_bbox_CB( Widget , XtPointer , XtPointer ) ;
+extern void AFNI_perc_bbox_CB( Widget , XtPointer , XtPointer ) ;
 extern void AFNI_range_av_CB  ( MCW_arrowval * , XtPointer ) ;
 extern void AFNI_inten_bbox_CB( Widget , XtPointer , XtPointer ) ;
 extern void AFNI_wrap_bbox_CB( Widget , XtPointer , XtPointer ) ;

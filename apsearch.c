@@ -64,12 +64,14 @@ int update_help_for_afni_programs(int force_recreate,
       snprintf(houtc, 120*sizeof(char),
                "%s/%s.complete", hdir, etr);
       if (!force_recreate && THD_is_file(hout)) {
-         if (verb) fprintf(stderr,"Reusing %s (%d/%d)\n", hout, ii, progs->num );
+         if (verb) 
+            fprintf(stderr,"Reusing %s (%d/%d)\n", hout, ii, progs->num );
          if (!THD_is_file(houtc)) {
             prog_complete_command(etr, houtc);
          }      
       } else {
-         if (verb) fprintf(stderr,"Creating %s (%d/%d)\n", hout, ii, progs->num); 
+         if (verb) 
+            fprintf(stderr,"Creating %s (%d/%d)\n", hout, ii, progs->num); 
          if (icomm > 25) { /* sleep a little to allow 
                               forked processes to end */
             NI_sleep(250); icomm = 0;
@@ -200,7 +202,8 @@ void apsearch_usage(int detail)
    "  -view_prog_help PROG: Open the help file for PROG in a GUI editor.\n"
    "                        This is like the option -h_view in C programs.\n"
    "  -web_prog_help PROG: Open the help file for PROG in a web brower.\n"
-   "                        This is like the option -h_web in C programs.\n"
+   "                       This is like the option -h_web in C programs.\n"
+   "              Use ALL to view the page containing help for all programs.\n"
    "  -web_class_docs: Open the webpage with latest class pdfs.\n"
    "\n"
    "  NOTE: The maximum number of results depends on the combination of\n"

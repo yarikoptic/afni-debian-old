@@ -316,7 +316,7 @@ SUMA_M2M_STRUCT *SUMA_GetM2M_NN( SUMA_SurfaceObject *SO1,
       } 
       /* now determine the distance along normal */
       MTI = SUMA_MT_intersect_triangle(P0, P1, SO2->NodeList, SO2->N_Node, 
-                                       SO2->FaceSetList, SO2->N_FaceSet, MTI);
+                                       SO2->FaceSetList, SO2->N_FaceSet, MTI, 0);
       if (LocalHead) 
          fprintf(SUMA_STDERR,"%s: number of hits for node %d : %d\n", 
                              FuncName, nj, MTI->N_hits);  
@@ -887,8 +887,10 @@ SUMA_DSET *SUMA_morphDsetToStd (SUMA_DSET *dset, SUMA_M2M_STRUCT *M2M,
          SUMA_RETURN(ndset);
       }  
       /* stick fout in output */
-      SUMA_LHv("Sticking column %d in dset (fout[0]=%f)\n", i, fout[0]);
-      if (!SUMA_Vec2DsetCol (ndset, i, (void *)fout, SUMA_float, 0, bfull)) {
+      SUMA_LHv("Sticking column %d in dset (fout[0]=%f, %d values expected)\n", 
+               i, fout[0], SDSET_VECLEN(ndset));
+               /* Do not use bfull in call below. bfull is for orignal array */
+      if (!SUMA_Vec2DsetCol (ndset, i, (void *)fout, SUMA_float, 0, NULL)) { 
          SUMA_S_Err("Failed to store output");
          SUMA_free(fin); fin = NULL; SUMA_free(fout); fout = NULL; 
          if (bfull) SUMA_free(bfull); bfull=NULL;

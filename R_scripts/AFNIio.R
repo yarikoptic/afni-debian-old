@@ -15,17 +15,26 @@ find.in.path <- function(file) { #Pretty much same as first.in.path
    return(aa) 
 }
 
-if (R_io == -1) {
-   R_io <<- 0
+set_R_io <- function() {
+   rio <- 0
    ll <- find.in.path('R_io.so')
    if (!is.null(ll)) {
       dd <- try(dyn.load(ll), silent=TRUE)
       if (!exists('dd')) {
          note.AFNI(paste("Failed to load R_io.so."));
       } else {
-         R_io <<- 1
+         rio <- 1
       }
    }
+   return(rio) 
+}
+
+if (R_io == -1) {
+   R_io <<- set_R_io()
+}
+
+have_R_io <- function() {
+   if (R_io == 1) return(TRUE) else return(FALSE)
 }
 
 libLoad <- function(myLib) {
@@ -568,6 +577,7 @@ check.AFNI.args <- function ( ops, params = NULL, verb=0) {
             opsvec <- ops[[i]];
             if (length(pp) == 1) { #exact number 
                if (length(opsvec) !=  pp) {
+                  #browser()
                   msg <- paste( 'Expecting ',pp, ' parameters for option "',
                                  names(ops)[i], '".\n   Have ', 
                                  length(opsvec), ' parameter(s) in string "', 
@@ -724,10 +734,10 @@ parse.AFNI.args <- function ( args, params = NULL,
       for (i in 1:(length(iflg)-1)) {
          if (0) { # Why remove the -?, makes things inconsistent elsewhere
             #newnm <- strsplit(args[[iflg[i]]],'-')[[1]][2] 
-         } else {
-            newnm <- args[[iflg[i]]]
-         }
+         } else newnm <- args[[iflg[i]]]
+
          if (length(nm) && length(which(newnm == nm)) &&
+             (newnm != '-gltLabel') && (newnm != '-gltCode') &&  # 10/18/2012 GC: added this line for 3dMVM
              (!length(duplicate_okvec) || 
                length(which(iflg[i] == duplicate_okvec))) ){
             warning(paste('option ', newnm, 'already specified.\n'),
@@ -735,13 +745,13 @@ parse.AFNI.args <- function ( args, params = NULL,
             show.AFNI.args(ops)
             return(NULL); 
          }
-         nm <- append(nm, newnm)
+         #nm <- append(nm, newnm)
          
          used[iflg[i]] <- TRUE;
          istrt = iflg[i]+1;
          pp <- vector('character');
          if (istrt <= length(args) && istrt != iflg[i+1]) {
-            iend <- max(c(iflg[i+1]-1, istrt));
+            iend <- max(c(iflg[i+1]-1, istrt))
             for (ii in istrt:iend) {
                pp <- append(pp, args[[ii]]);
                used[ii] <- TRUE;
@@ -759,11 +769,17 @@ parse.AFNI.args <- function ( args, params = NULL,
             }
             pp <- strsplit(clean.args.string(pp), ' ')
          }
-         ops <- c(ops, (pp));
-         names(ops)[length(ops)] <- newnm;
+         if((newnm != '-gltLabel') && (newnm != '-gltCode')) {
+            ops <- c(ops, (pp))
+            names(ops)[length(ops)] <- newnm
+         } else if(length(which(newnm == nm))) 
+            ops[[newnm]] <- c(ops[[newnm]], pp) else {
+            ops <- c(ops, list(pp))
+            names(ops)[length(ops)] <- newnm
+         }
+         nm <- append(nm, newnm)  
       }
    }
-   
    #cleanup
    if (length(ops)) {
       for (i in 1:length(ops)) {
@@ -772,13 +788,10 @@ parse.AFNI.args <- function ( args, params = NULL,
    }
    
    #numeric changes 
-   if (length(ops)) {
-      for (i in 1:length(ops)) {
-         if (is.num.string(ops[[i]])) {
-            ops[[i]] <- as.numeric(ops[[i]]);
-         }
-      }
-   }
+   if (length(ops))
+      for (i in 1:length(ops))
+         if(!is.list(ops[[i]])) if (is.num.string(ops[[i]]))
+            ops[[i]] <- as.numeric(ops[[i]])
    
    #defaults
    pp <- c(args[used == FALSE])
@@ -1446,6 +1459,14 @@ r.NI_read_str_element <- function (ff, HeadOnly = TRUE) {
       return(NULL)
    }
    
+   #If you have a group, jump to next element.
+   shead <- ff[strv[1]:stpv[1]]
+   if (length(grep('ni_form[[:space:]]*=[[:space:]]*\"ni_group\"', shead))
+      && stpv[1]+1<length(ff)) {
+      #try again
+      return(r.NI_read_str_element(ff[stpv[1]+1:length(ff)], HeadOnly))
+   }
+   
    #Get only the first element, for now
    for (i in 1:1) {
       shead <- ff[strv[i]:stpv[i]]
@@ -1508,7 +1529,7 @@ r.NI_write_str_element<- function(nel, HeadOnly = TRUE) {
                            '\n', sep='')
             }
          } else {
-            ff <- paste(ff,nel$dat,'\n',sep='')
+            ff <- paste(ff,paste(nel$dat, collapse= '', sep=''),'\n',sep='')
          }
       }
    }
@@ -1537,7 +1558,7 @@ is.NI.file <- function (fname, asc=TRUE, hs=TRUE) {
 
 apply.AFNI.matrix.header <- function (fname, mat, 
                               brsel=NULL, rosel=NULL,rasel=NULL, 
-                              nheadmax = 10) {
+                              nheadmax = 10, checkNI=TRUE) {
    attr(mat,'name') <- 'noname'
    attr(mat,'FileName') <- fname
    
@@ -1548,7 +1569,7 @@ apply.AFNI.matrix.header <- function (fname, mat,
    }
   
    #Does this look 1D nimly?
-   if (!is.NI.file(fnp$file, asc=TRUE, hs=TRUE)) {
+   if (checkNI && !is.NI.file(fnp$file, asc=TRUE, hs=TRUE)) {
       return(mat)
    }
    
@@ -1584,9 +1605,15 @@ apply.AFNI.matrix.header <- function (fname, mat,
          attr(mat, 'TR') <- as.double(TR)
       }
    } else if (nel$name == 'DICE') {
-   } else if (nel$name == '3dhistog') {
+   } else if (nel$name == '3dhistog' || nel$name == 'seg_histogram') {
       if (!is.null(bw <- r.NI_get_attribute(nel, 'BinWidth'))){
          attr(mat, 'BinWidth') <- as.double(bw)
+      }
+      if (!is.null(bw <- r.NI_get_attribute(nel, 'window'))){
+         attr(mat, 'BinWidth') <- as.double(bw)
+      }
+      if (!is.null(bw <- r.NI_get_attribute(nel, 'xlabel'))){
+         attr(mat, 'xlabel') <- bw
       }
    } else {
       if (0) { #No need to whine 
@@ -1815,7 +1842,7 @@ R_EXPR: An R expression, "R: rep(seq(1,3),2)"
 read.AFNI.matrix <- function (fname, 
                               usercolnames=NULL, 
                               userrownames=NULL,
-                              verb = 0) {
+                              checkNI = TRUE, verb = 0) {
    if (length(fname)>1) {
       err.AFNI(paste("Cannot handle more than one name.\nHave ",
                      paste(fname,collapse=' '), sep=''))
@@ -1859,7 +1886,20 @@ read.AFNI.matrix <- function (fname,
    } else {
       #str(fname)
       #fname$file
-      brk <- read.table(fname$file, colClasses='character');
+      brk <- NULL
+      brk <- tryCatch({read.table(fname$file, colClasses='character')}, 
+                      error=function(a){})
+      if (is.null(brk)) { #try as niml, just in case 
+         if (verb) note.AFNI(paste("Attempting read as NIML."), callstr='');
+         fff <- r.NI_read_element(fname$file, FALSE)
+         if (!is.null(fff$dat)) {
+            brk <- as.data.frame(fff$dat, stringsAsFactors=FALSE)
+            checkNI = FALSE;
+         } else {
+            err.AFNI(paste("Failed to read matrix from ", fname$file,".\n"));
+            return(NULL);
+         }
+      }
    }
    if ( tolower(brk$V1[1]) == 'name' || 
         tolower(brk$V1[1]) == 'subj' ||
@@ -1992,7 +2032,7 @@ read.AFNI.matrix <- function (fname,
    
    covMatrix <- apply.AFNI.matrix.header(fnameattr, covMatrix, 
                             brsel=sbsel, rosel=rosel, 
-                            rasel=rasel)
+                            rasel=rasel,checkNI = checkNI)
 
    return(covMatrix)
 }   
@@ -2254,15 +2294,41 @@ statsym.list2code <- function(statsym) {
 #   rs <- dset.attr(rs,"BRICK_LABS",val=c('one', 'two', 'three'))
 #To set an attribute to a default if none exists
 #   rs <- dset.attr(rs,"BRICK_LABS",default=c('set if none existed'))
+#In query mode only, one can also pass the old '$header' list 
+#generated by the old read.AFNI
+header.version <- function(hh, defmeth='UNKNOWN') {
+   if (defmeth == 'AUTO') {
+      if (have_R_io()) defmeth <- 'clib' else defmeth <- 'Rlib'
+   }
+   if (!is.null(hh) && length(hh)>0) {
+      if (is.null(names(hh[[1]]))) return('Rlib');
+      if (length(which("atlist" == names(hh[[1]]))) > 0) return('clib');
+      #Cannot tell, return default
+      return(defmeth)
+   }
+   return(defmeth)
+}
+
 dset.attr <- function (dset, name=NULL, colwise=FALSE, num=FALSE, 
                        val=NULL, default=NULL, tp=NULL) {
    attr <- NULL
+   if (class(dset) != 'AFNI_R_dataset' && class(dset) != 'AFNI_c_dataset') {
+      if (header.version(dset) == 'Rlib') {
+         #OK to change nature of dset, only queries allowed for old style
+         dset <- list(header=dset);
+      }
+   }
    if (!is.null(dset$header)) { #olde way
       if (!is.null(val)) {
          err.AFNI("Cannot set values with old header format");
          return(attr)
       }
-      if (is.null(attr <- dset$header[name])) return(attr)
+      iattr <- which(name == names(dset$header))
+      if (!length(iattr)) {
+         return(attr)
+      } else {
+         attr <- dset$header[[iattr]]
+      }
       if (colwise) {
          attr <- sub("^'",'', attr)
          attr <- strsplit(attr,'~')[[1]]
@@ -2454,7 +2520,10 @@ dset.1DBRKarrayto3D <- function(dset, dd=NULL) {
    return(dset)
 }
 
-array2dset <- function (brk=NULL, format='BRIK', meth='Rlib') {
+array2dset <- function (brk=NULL, format='BRIK', meth='AUTO') {
+   if (meth == 'AUTO') {
+      if (have_R_io()) meth <- 'clib' else meth <- 'Rlib'
+   }
    if (is.vector(brk)) {
       brk <- as.array(brk, dim=c(length(brk),1,1,1))
    }
@@ -2484,6 +2553,28 @@ array2dset <- function (brk=NULL, format='BRIK', meth='Rlib') {
    return(z)   
 }
 
+typecode.AFNI <- function(typestr, def='MRI_short') {
+   if (is.null(typestr)) return(typecode.AFNI(def))
+   if (is.character(typestr)) {
+      if (typestr == 'MRI_byte' || typestr == 'byte') return(0)
+      if (typestr == 'MRI_short' || typestr == 'short') return(1)
+      if (typestr == 'MRI_int' || typestr == 'int') return(2)
+      if (typestr == 'MRI_float' || typestr == 'float') return(3)
+      if (typestr == 'MRI_double' || typestr == 'double') return(4)
+      if (typestr == 'MRI_complex' || typestr == 'complex') return(5)
+      if (typestr == 'MRI_rgb' || typestr == 'rgb') return(6)
+      err.AFNI(paste('Bad typecode ', typestr));
+      return(NULL);
+   } else {
+      if (typestr < 0  || typestr >6) {
+         err.AFNI(paste('Bad typecode ', typestr));
+         return(NULL);
+      }
+      return(typestr);
+   } 
+   err.AFNI(paste('Should not be here ', typestr));
+   return(NULL);
+}
 
 orcode.AFNI <- function(orstr) {
    if (is.character(orstr)) {
@@ -2522,7 +2613,12 @@ orcode.AFNI <- function(orstr) {
 #------------------------------------------------------------------
 
 read.AFNI <- function(filename, verb = 0, ApplyScale = 1, PercMask=0.0,
-                      meth = 'Rlib') {
+                      meth = 'AUTO') {
+  
+  if (meth == 'AUTO') {
+   if (have_R_io()) meth <- 'clib' else meth <- 'Rlib'
+  }
+  
   an <- parse.AFNI.name(filename);
   
   if (verb > 1) {
@@ -2757,7 +2853,7 @@ unparse.c.AFNI.head <- function (nel) {
    head <- NULL;
    nms <- NULL;
    while (j <= length(nel)) {
-      r.NI_write_str_element(nel[[j]],FALSE)
+      #r.NI_write_str_element(nel[[j]],FALSE)
       nm <- r.NI_get_attribute(nel[[j]],"atr_name")
       if (!is.null(nm)) nms <- c(nms,nm)
       else nms <- c(nms, 'noname');
@@ -2830,7 +2926,7 @@ write.c.AFNI <- function( filename, dset=NULL, label=NULL,
                         maskinf=0, scale = TRUE, 
                         overwrite=FALSE, addFDR=0,
                         statsym=NULL, view="+tlrc",
-                        com_hist=NULL) {
+                        com_hist=NULL, type=NULL) {
   
    an <- parse.AFNI.name(filename);
    if (verb > 1) {
@@ -2865,21 +2961,52 @@ write.c.AFNI <- function( filename, dset=NULL, label=NULL,
                         default = c(AFNI.view2viewtype(view),11,3, rep(0,5))) 
 
          #The user options
+   if (is.null(idcode) && !is.null(defhead)) 
+      idcode <- dset.attr(defhead,"IDCODE_STRING")
    if (!is.null(idcode)) dset$NI_head <- 
                            dset.attr(dset$NI_head, "IDCODE_STRING", val=idcode)
+   
+   if (is.null(origin) && !is.null(defhead)) 
+      origin <- dset.attr(defhead,"ORIGIN")
    if (!is.null(origin)) dset$NI_head <- 
                            dset.attr(dset$NI_head, "ORIGIN", val=origin)
+   
+   if (is.null(delta) && !is.null(defhead)) 
+      delta <- dset.attr(defhead,"DELTA")
    if (!is.null(delta)) dset$NI_head <- 
                            dset.attr(dset$NI_head, "DELTA", val=delta)
+   
+   if (is.null(orient) && !is.null(defhead)) 
+      orient <- dset.attr(defhead,"ORIENT_SPECIFIC")
    if (!is.null(orient)) dset$NI_head <- 
                            dset.attr(dset$NI_head, "ORIENT_SPECIFIC",
                                     val = orcode.AFNI(orient))
+   
+   if (is.null(label) && !is.null(defhead)) 
+      label <- dset.attr(defhead,"BRICK_LABS")
    if (!is.null(label)) dset$NI_head <- 
                            dset.attr(dset$NI_head, "BRICK_LABS",
                                     val = label);
+   
+   if (is.null(type) && !is.null(defhead)) {
+      tps = dset.attr(defhead,"BRICK_TYPES");
+      if (!is.null(tps) && length(tps)>0) type <- tps[1]
+   }   
+   if (!is.null(type)) {
+      if (!is.null(type <- typecode.AFNI(type))) {
+         type <- rep(type,  dset.dimBRKarray(dset)[4])
+         dset$NI_head <- dset.attr(dset$NI_head, "BRICK_TYPES", val=type)
+      }
+   }
+   
+   if (is.null(note) && !is.null(defhead)) 
+      note <- dset.attr(defhead,"note")
    if (!is.null(note)) dset$NI_head <- 
                            dset.attr(dset$NI_head, "note",
                                     val = note);
+   
+   if (is.null(statsym) && !is.null(defhead)) 
+      statsym <- dset.attr(defhead,"statsym")
    if (!is.null(statsym)) dset$NI_head <- 
                            dset.attr(dset$NI_head, "statsym",
                                     val = statsym);
@@ -2903,10 +3030,22 @@ write.AFNI <- function( filename, brk=NULL, label=NULL,
                         idcode=NULL, defhead=NULL,
                         verb = 0,
                         maskinf=0, scale = TRUE, 
-                        meth='Rlib', addFDR=FALSE, 
+                        meth='AUTO', addFDR=FALSE, 
                         statsym=NULL, view="+tlrc",
                         com_hist=NULL) {
-  
+
+  if (meth == 'AUTO') {
+   if (class(brk) == 'AFNI_R_dataset') {
+      meth = 'Rlib'
+   } else if (class(brk) == 'AFNI_c_dataset') {
+      meth = 'clib'
+   } else if (have_R_io()) {
+      meth <- 'clib' 
+   } else {
+      meth <- 'Rlib'
+   }
+  }
+
   an <- parse.AFNI.name(filename);
   if (verb>1) {
    show.AFNI.name(an);

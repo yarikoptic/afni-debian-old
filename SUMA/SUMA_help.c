@@ -714,6 +714,30 @@ char * SUMA_OptList_string(HELP_OPT *hol)
    SUMA_RETURN (s);
 }
 
+char *SUMA_OptList_get(HELP_OPT *hol, char *opname, char *what) 
+{
+   static char FuncName[]={"SUMA_OptList_default"};
+   int i = 0;
+   
+   SUMA_ENTRY;
+   
+   while (hol[i].name) {
+      if (!strcasecmp(hol[i].name, opname)) {
+         if (what[0] == 'd' || what[0] == 'D') {
+            SUMA_RETURN(hol[i].val);
+         } else if (what[0] == 'v' || what[0] == 'V') {
+            SUMA_RETURN(hol[i].val);
+         } else if (what[0] == 'h' || what[0] == 'H') {
+            SUMA_RETURN(hol[i].help);
+         } else {
+            SUMA_RETURN(NULL);
+         }
+      }
+      ++i;
+   }
+   SUMA_RETURN(NULL);  
+}
+
 char * SUMA_sources_Info(void)
 {
    static char FuncName[]={"SUMA_sources_Info"};
@@ -1130,6 +1154,7 @@ static char PlotCommonHelp[]={
       "        A graphing window can be opened for each\n"
       "        dataset, and all graphs will update unless\n"
       "        '1 Only' is set in Surface Controller.\n"
+      "        For complex data its magnitude is plotted instead.\n"
       "        Use 'ctrl+h' in graph window for more help.\n" };
 
 char * SUMA_help_Plot_message_Info(void)
@@ -1625,7 +1650,7 @@ char * SUMA_help_message_Info(void)
    SS = SUMA_StringAppend (SS, 
       "     ESCAPE: close the surface viewer window.\n");
    SS = SUMA_StringAppend (SS, 
-      "     Shft+ESCAPE: close all surface viewer windows.\n\n");
+      "     Shift+ESCAPE: close all surface viewer windows.\n\n");
    SS = SUMA_StringAppend (SS, 
       "     Mouse Controls:\n");
    SS = SUMA_StringAppend (SS, 
@@ -1649,22 +1674,29 @@ char * SUMA_help_message_Info(void)
    SS = SUMA_StringAppend (SS, 
       "     Button 2-Motion: translation\n"); 
    SS = SUMA_StringAppend (SS, 
-      "     Button 1+2-Motion OR \n"
-      "      Shift+Button2-Motion: \n"
+      "     Button 1+2-Motion    OR \n"
+      "     Shift+Button2-Motion: \n"
       "          Zoom in/out\n");
    SS = SUMA_StringAppend (SS, 
       "     Button 3-Press: Node picking \n"
       "                     Initiates a path to new node in DrawROI mode.\n"
-      "                     No calls in Dot xform mode, or GroupInCorr\n" );
-   SS = SUMA_StringAppend (SS, 
-      "     shft+ctrl+Button 3-Press: Pick and initiate call in Dot xform\n"
-      "                               mode, or to GroupInCorr\n"
-      );
+      "                     No calls in Dot xform mode, or GroupInCorr\n" 
+      "     Shift+Button 3-Press: Same as without shift, except does not draw\n"
+      "                           in DrawROI mode.\n"
+      "     Ctrl+Button 3-Press: Yoke intensity selection to index of \n"
+      "                          selected node*K. This is only possible if\n"
+      "                          the currently visualized dataset has K times \n"
+      "                          many sub-bricks as the surface has nodes. \n"
+      "                          K is an integer.\n"
+      "     Shift+Ctrl+Button 3-Press: Pick and initiate call in Dot xform\n"
+      "                               mode, or to GroupInCorr\n");
    SS = SUMA_StringAppend (SS, 
       "     Button 3-Motion: continuous picking\n"
       "                      No calls for dot product (InstaCorr)\n"
       "                           or GroupInCorr, while dragging.\n" 
-      "     shft+ctrl+Button 3-Motion: Continuous picking and calls \n"
+      "     Ctrl+Button 3-Motion: continous yoking of intensity selection to\n"
+      "                           selected node*K.\n" 
+      "     Shift+Ctrl+Button 3-Motion: Continuous picking and calls \n"
       "                                for dot product (InstaCorr)\n"
       "                               or GroupInCorr, while dragging.\n"
       ); 
@@ -2059,7 +2091,8 @@ char * SUMA_Help_AllSurfCont ()
          "++ Switch Dset:\n%s\n"
          "\n", 
          SUMA_SurfContHelp_DsetLblTblr0, SUMA_SurfContHelp_DsetLblTblr1, 
-         SUMA_SurfContHelp_DsetOrd, SUMA_SurfContHelp_DsetOpa, SUMA_SurfContHelp_DsetDim,
+         SUMA_SurfContHelp_DsetOrd, SUMA_SurfContHelp_DsetOpa, 
+         SUMA_SurfContHelp_DsetDim,
          SUMA_SurfContHelp_DsetView, SUMA_SurfContHelp_DsetSwitch);
    
    SS = SUMA_StringAppend_va(SS,       
@@ -2082,11 +2115,14 @@ char * SUMA_Help_AllSurfCont ()
          "++++ v\n%s\n"
          "+++ B\n%s\n"
          "++++ v\n%s\n"
+         "\n"
+         "     Note: %s\n"
          "\n", 
          SUMA_SurfContHelp_Link, 
          SUMA_SurfContHelp_SelInt, SUMA_SurfContHelp_SelIntTgl,
          SUMA_SurfContHelp_SelThr, SUMA_SurfContHelp_SelThrTgl, 
-         SUMA_SurfContHelp_SelBrt, SUMA_SurfContHelp_SelBrtTgl );
+         SUMA_SurfContHelp_SelBrt, SUMA_SurfContHelp_SelBrtTgl,
+         SUMA_SurfContHelp_ArrowFieldMenu );
          
    SS = SUMA_StringAppend_va(SS, 
          "++ Mapping Parameters Table:\n%s\n"

@@ -61,7 +61,9 @@ L_INIT_VARS:
     set endstr = "$prog_name ... finished"
     set debug     = 0
     set ldlist = (141 60)
-
+    #set fsdsets = (thickness.gii.dset)
+    set fsdsets = (thickness curv sulc) 
+    
     set surf_attribs = (smoothwm      \
          pial         \
          inflated      \
@@ -110,6 +112,7 @@ L_PARSE_COMMAND:
     set neuro_ori   = 0
     set ldu = ()
     set ldpref = ()
+    set use_mgz = 0
     set args     = $#argv
     set count    = 1
 
@@ -163,6 +166,14 @@ L_PARSE_COMMAND:
        case "-neuro":
 
       set neuro_ori = 1
+
+       breaksw
+
+       # ----------------------------------------------------------
+       # usage : -neuro
+       case "-use_mgz":
+
+      set use_mgz = 1
 
        breaksw
 
@@ -500,7 +511,8 @@ L_CONVERT_SURFACES:
        mris_convert -p $surf $surf.asc
    else
        echo "-- running 'mris_convert $surf $surf.asc'"
-       mris_convert $surf $surf.asc
+       mris_convert $surf $surf.asc >& ___out
+       tail ___out ; \rm -f ___out
    endif
 
    if ( ! -f $surf.asc ) then
@@ -568,6 +580,19 @@ L_CONVERT_SURFACES:
       end
       cd $start_dir
    endif
+   
+   #and the thickness data
+   cd $surf_dir
+   foreach hand ( lh rh )
+      foreach tp ($fsdsets)
+      if ( -f ${hand}.${tp} ) then
+         mris_convert -c ${hand}.${tp} ${hand}.white ${hand}.${tp}.gii
+         mv    ${hand}.${tp}.gii   \
+               $start_dir/$suma_dir/${hand}.${tp}.gii.dset
+      endif
+      end
+   end
+   cd $start_dir
    
 goto L_CONVERT_SURFACES_DONE
 
@@ -789,7 +814,7 @@ L_CREATE_BRICK:
     # verify existence of 256 COR files, Checking for 256 is now obsolete ZSS Oct 14 04
     set cor_files = ( `echo COR-???` ) >& /dev/null 
     
-    if ( $status) then
+    if ( $status || $use_mgz == 1) then
       if ($orig_mgz != "") then   
          #Try the orig.mgz business
          echo "No COR files, converting $orig_mgz ..."
@@ -797,13 +822,17 @@ L_CREATE_BRICK:
          mri_convert -ot cor $orig_mgz $orig_dir
          cd $orig_dir
       else 
-         set endstr = "failure: No COR files and no $orig.mgz"
+         if ($use_mgz == 0) then
+            set endstr = "failure: No COR files and no $orig.mgz"
+         else
+            set endstr = "failure: No mgz files"
+         endif
          goto L_BAD_END
       endif
     else
       if ($orig_mgz != "") then  
          echo ""
-         echo "Warning: Found COR files and $orig_mgz"
+         echo "Notice: Found COR files and $orig_mgz"
          echo "******** Will use COR files."
          echo ""
       endif
@@ -825,7 +854,8 @@ L_CREATE_BRICK:
     #out by A. Thomas. Good info found here:
     #www.wideman-one.com/gw/brain/fs/coords/fscoords.htm
     
-      #New block added for reading COR images that are no longer 256x256x256 / 1mm cubic voxels ZSS Oct 20 04
+      #New block added for reading COR images that are no longer 
+      #256x256x256 / 1mm cubic voxels ZSS Oct 20 04
       
       set Sr = `grep -w imnr0 COR-.info`
       set i0 = $Sr[$#Sr]
@@ -856,20 +886,30 @@ L_CREATE_BRICK:
          echo "pdim = $psize mm, thick = $zthick mm"
          echo "SLABS: $xSLAB0..$xSLAB1, $ySLAB0..$ySLAB1, $zSLAB0..$zSLAB1"
          if ( $neuro_ori == 1 ) then
-            echo "to3d -xSLAB $xSLAB0'L'-$xSLAB1'R' -ySLAB $ySLAB0'S'-$ySLAB1'I' \
-                     -zSLAB $zSLAB0'P'-$zSLAB1'A' '3Db:0:0:'$nx':'$ny':1:COR-???'"
+            echo "to3d -xSLAB $xSLAB0'L'-$xSLAB1'R' \
+                     -ySLAB $ySLAB0'S'-$ySLAB1'I' \
+                     -zSLAB $zSLAB0'P'-$zSLAB1'A' \
+                        '3Db:0:0:'$nx':'$ny':1:COR-???'"
          else 
-            echo "to3d -xSLAB $xSLAB0'R'-$xSLAB1'L' -ySLAB $ySLAB0'S'-$ySLAB1'I' \
-                     -zSLAB $zSLAB0'P'-$zSLAB1'A' '3Db:0:0:'$nx':'$ny':1:COR-???'"
+            echo "to3d -xSLAB $xSLAB0'R'-$xSLAB1'L' \
+                     -ySLAB $ySLAB0'S'-$ySLAB1'I' \
+                     -zSLAB $zSLAB0'P'-$zSLAB1'A' \
+                        '3Db:0:0:'$nx':'$ny':1:COR-???'"
          endif
       endif
     
     if ( $neuro_ori == 1 ) then
-      to3d -prefix $afni_prefix -xSLAB $xSLAB0'L'-$xSLAB1'R' -ySLAB $ySLAB0'S'-$ySLAB1'I' -zSLAB $zSLAB0'P'-$zSLAB1'A' '3Db:0:0:'$nx':'$ny':1:COR-???'
+      to3d -prefix $afni_prefix \
+               -xSLAB $xSLAB0'L'-$xSLAB1'R' \
+               -ySLAB $ySLAB0'S'-$ySLAB1'I' \
+               -zSLAB $zSLAB0'P'-$zSLAB1'A' '3Db:0:0:'$nx':'$ny':1:COR-???'
       #to3d -prefix $afni_prefix -xSLAB 127L-128R -ySLAB 128S-127I \
       #  -zSLAB 128P-127A $cor_files
     else
-      to3d -prefix $afni_prefix -xSLAB $xSLAB0'R'-$xSLAB1'L' -ySLAB $ySLAB0'S'-$ySLAB1'I' -zSLAB $zSLAB0'P'-$zSLAB1'A' '3Db:0:0:'$nx':'$ny':1:COR-???'
+      to3d -prefix $afni_prefix \
+               -xSLAB $xSLAB0'R'-$xSLAB1'L' \
+               -ySLAB $ySLAB0'S'-$ySLAB1'I' \
+               -zSLAB $zSLAB0'P'-$zSLAB1'A' '3Db:0:0:'$nx':'$ny':1:COR-???'
       #to3d -prefix $afni_prefix -xSLAB 128R-127L -ySLAB 128S-127I \
       #  -zSLAB 128P-127A $cor_files
     endif
@@ -886,7 +926,7 @@ L_CREATE_BRICK:
        foreach other ($other_mgz)
          #@SUMA_FSvolToBRIK $other $start_dir/$suma_dir/$other:t:r
          #rm -f $start_dir/$suma_dir/COR-??? $start_dir/$suma_dir/COR-.info \
-         #                                                           >& /dev/null
+         #                                                        >& /dev/null
          mri_convert -ot nii $other $start_dir/$suma_dir/${other:t:r}".nii"
          #Now shift the damned volumes to match the surface volumes
          cd $start_dir/$suma_dir/
@@ -935,11 +975,21 @@ L_ICO:
       @ ild ++
       set both = ()
       foreach hem (lh rh)
+         set echo
          set sp = {$subj_id}_${hem}.spec
+         set dm = ()
+         if ($#fsdsets > 0) then
+            foreach fsd ($fsdsets)
+               if ( -f ${hem}.${fsd}.gii.dset ) then
+                  set dm = ($dm "-dset_map" ${hem}.${fsd}.gii.dset)
+               endif
+            end
+         endif
          if ( -f $sp) then
-            MapIcosahedron -spec $sp -ld $ld -prefix $ldpref[$ild] 
+            MapIcosahedron -spec $sp -ld $ld $dm -prefix $ldpref[$ild] 
             set both = ($both ${ldpref[$ild]}{$subj_id}_${hem}.spec)
          endif
+         unset echo
       end
       if ($#both == 2) then
          inspec -LRmerge $both -prefix ${ldpref[$ild]}{$subj_id}_both.spec
@@ -1017,6 +1067,8 @@ L_HELP_END:
     echo ""
     echo "          Note: when this option is provided, all file/path"
     echo "          messages will be with respect to this directory."
+    echo ""
+    echo "    -use_mgz        : use MGZ volumes even if COR volumes are there"
     echo ""
     echo "    -neuro          : use neurological orientation"
     echo "          e.g. -neuro"

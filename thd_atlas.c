@@ -65,6 +65,59 @@ char * THD_get_space(THD_3dim_dataset *dset)
    RETURN(dset->atlas_space);
 }
 
+/* return the generic space associated with the space of a dataset
+   the principal goal is to give generic TLRC for all flavors of TLRC, TT_N27
+   or generic MNI for all flavors of MNI, MNI_FSL, MNI_ANAT */
+char * THD_get_generic_space(THD_3dim_dataset *dset)
+{
+   char *spcstr=NULL, *genspcstr=NULL;
+
+   ENTRY("THD_get_generic_space");
+
+   if(!dset) RETURN(NULL);
+   spcstr = THD_get_space(dset); /* space from dataset structure - do not free */
+   if(spcstr) 
+       genspcstr = gen_space_str(spcstr); /* space string from space structure - also do not free */
+   if(genspcstr)
+      RETURN(genspcstr);
+   else
+      RETURN(spcstr);
+}
+
+/* return the VIEW (ORIG,ACPC or TLRC) for a dataset */
+/* This is intended as the AFNI output view for a given dataset,
+   i.e.what dataset view should be associated with an AFNI output file.
+   Given an AFNI format input dataset, this will usually be the same
+   as the view of the input (dset->dblk->diskptr->viewcode), but is not
+   guaranteed to be the same. The function solves the problem of 
+   NIFTI or other format input and naming the AFNI format output.
+
+   For NIFTI format, the sform or qform codes determine whether the
+   data is in TLRC, MNI or some other aligned space. If it is any aligned
+   space, the dataset will be assigned a TLRC view and a space if one
+   is already defined in an AFNI extension. Otherwise, the TLRC space
+   is assigned to the dataset */
+char * THD_get_view_space(THD_3dim_dataset *dset)
+{
+   char *spcstr=NULL, *space=NULL;
+
+   ENTRY("THD_get_view_space");
+
+   if(!dset) RETURN(NULL);
+   spcstr = dset->dblk->diskptr->viewcode;
+   if(spcstr != NULL)
+      RETURN(spcstr);
+
+   spcstr = THD_get_generic_space(dset); /* space from dataset structure - do not free */
+
+   if (strcmp(spcstr, "ORIG")==0)
+      RETURN("ORIG");
+   if (strcmp(spcstr, "ACPC")==0)
+      RETURN("ACPC");
+   /* all other spaces are assumed to be TLRC */
+   RETURN("TLRC");
+}
+
 /* assign space codes used by whereami for specific atlases */
 int
 THD_space_code(char *space)
@@ -1192,7 +1245,6 @@ void print_space_list(ATLAS_SPACE_LIST *xsl)
          INFO_message("NULL Space list pointer, showing global list\n");
       xsl = get_G_space_list();
    }
-   INFO_message("Space list pointer %p\n", xsl);
    if(wami_verb() > 1)
       INFO_message("Space list has %d spaces\n",xsl->nspaces);
    INFO_message("----- List of available spaces: -------");
@@ -1762,6 +1814,8 @@ invert_affine(ATLAS_XFORM *xf)
    float *xfptr;
    ENTRY("invert_affine");
 
+   if ( !xf || !xf->xform) RETURN(1);
+   
    matrix_initialize (&tempmat);
    matrix_create(4,4,&tempmat);
    xfptr = (float *) xf->xform;
@@ -1781,7 +1835,7 @@ invert_affine(ATLAS_XFORM *xf)
    matrix_destroy(&invmat);
    matrix_destroy(&tempmat);
 
-   return(0);
+   RETURN(0);
 }
 
 /* invert a 12 piece matrix - do in place */
@@ -1967,6 +2021,8 @@ apply_xform_general(ATLAS_XFORM *xf, float x,float y,float z,
                         float *xout, float *yout, float *zout)
 {
    int xgc = 1;
+
+   invert_xform(xf);   /* possibly need to invert transform */
 
    if(strcmp(xf->xform_type,"Affine")==0){
       xgc = apply_xform_affine(xf, x, y, z, xout, yout, zout);
@@ -2423,11 +2479,11 @@ int atlas_read_atlas(NI_element *nel, ATLAS *atlas, char *parentdir)
 
    if ((s=NI_get_attribute(nel, "dset_name"))) {
       atlas->dset_name = NULL;
-      if (!THD_is_prefix_ondisk(s) && 
+      if (!THD_is_prefix_ondisk(s, 0) && 
           parentdir && !THD_filehaspath(s)) {
          char *ss=(char *)calloc(strlen(parentdir)+strlen(s)+2,sizeof(char*));
          sprintf(ss,"%s/%s",parentdir,s);
-         if (THD_is_prefix_ondisk(ss)) 
+         if (THD_is_prefix_ondisk(ss, 0)) 
             atlas->dset_name = nifti_strdup(ss); 
          free(ss); ss=NULL;
       } 

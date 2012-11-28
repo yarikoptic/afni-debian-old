@@ -2984,6 +2984,7 @@ SUMA_GENERIC_PROG_OPTIONS_STRUCT * SUMA_Alloc_Generic_Prog_Options_Struct(void)
    Opt->in_vol_view[0]='\0';
    Opt->in_vol_exists = -1;
    Opt->out_prefix = NULL;
+   Opt->oform = SUMA_NO_DSET_FORMAT;
    Opt->sv_name = NULL;
    Opt->N_surf = -1;
    Opt->in_name = NULL;
@@ -3372,6 +3373,9 @@ char *SUMA_help_IO_Args(SUMA_GENERIC_ARGV_PARSE *opt)
 " Note that if the surface filename has the proper extension, \n"
 " it is enough to use the -i option and let the programs guess\n"
 " the type from the extension.\n"
+" By default, each -i_* surface has its own state. Precede all -i\n"
+" options with -onestate, if you want all -i_* surfaces to be of \n"
+" the same state.\n"
       );
    }
    if (opt->accept_ipar) {
@@ -4108,6 +4112,7 @@ SUMA_GENERIC_ARGV_PARSE *SUMA_Parse_IO_Args (int argc, char *argv[],
       }
       if (!brk && ps->accept_i) {
          char *tmp_i = NULL;
+         
          if (strcmp(argv[kar], "-i_") == 0 || strcmp(argv[kar], "-i") == 0) {
             if (kar+1 >= argc)  {
 	            SUMA_S_Err( "need argument after -i_ ");
@@ -4156,6 +4161,11 @@ SUMA_GENERIC_ARGV_PARSE *SUMA_Parse_IO_Args (int argc, char *argv[],
             }
          } else {
             tmp_i = SUMA_copy_string(argv[kar]);
+         }
+         if (!brk && ( !strcmp(tmp_i, "-onestate") )) {
+            ps->arg_checked[kar]=1;
+            ps->onestate = 1;
+            brk = YUP;
          }
          SUMA_LHv("accept_i %d (argv[%d]=%s)\n", ps->accept_i, kar, argv[kar]);
          if (!brk && ( (strcmp(tmp_i, "-i_bv") == 0) || 

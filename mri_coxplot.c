@@ -18,6 +18,9 @@ static int box_xbot=0 , box_xtop=0 ,
            box_ybot=0 , box_ytop=0  ;
 
 static int do_thick=0 ;
+void memplot_to_mri_set_dothick( int dt ){ do_thick = dt ; }
+static int do_freee=0 ;
+void memplot_to_mri_set_dofreee( int df ){ do_freee = df ; }
 
 void set_memplot_RGB_box( int xbot, int ybot, int xtop, int ytop )
 {
@@ -45,9 +48,10 @@ void memplot_to_RGB_sef( MRI_IMAGE *im , MEM_plotdata *mp ,
 {
    byte rrr=0,ggg=0,bbb=0 ;
    int ii , nline , same ;
-   float old_thick , old_color , new_color , new_thick , sthick=0.0 ;
+   float old_thick , old_color , new_color , new_thick , sthick=0.0f ;
    float scal,xscal,yscal , xoff,yoff ;
    int x1,y1 , x2,y2 ;
+   int x1_old=-666,y1_old=-666 , x2_old=-666,y2_old=-666 ; float sthick_old=-666.f ;
    int skip ;
 
 ENTRY("memplot_to_RGB_sef") ;
@@ -69,29 +73,29 @@ ENTRY("memplot_to_RGB_sef") ;
    if( box_xbot >= box_xtop || box_ybot >= box_ytop ){
 
       xscal = im->nx / mp->aspect ; /* aspect = x-axis objective size */
-      yscal = im->ny / 1.0 ;        /* 1.0    = y-axis objective size */
-      xoff  = yoff = 0.499 ;
+      yscal = im->ny / 1.0f ;       /* 1.0    = y-axis objective size */
+      xoff  = yoff = 0.499f ;
 
    } else {  /* scale to a given sub-box in the window */
 
       xscal = box_xtop - box_xbot ;
       yscal = box_ytop - box_ybot ;
-      xoff  = box_xbot + 0.499    ;
-      yoff  = box_ybot + 0.499    ;
+      xoff  = box_xbot + 0.499f   ;
+      yoff  = box_ybot + 0.499f   ;
    }
 
-   if( !freee ){                           /* no aspect freedom ==> */
+   if( !freee && !do_freee ){              /* no aspect freedom ==> */
       if( yscal < xscal ) xscal = yscal ;  /* use smaller scaling   */
       else                yscal = xscal ;
    }
    scal = sqrt(fabs(xscal*yscal)) ;
 
-   old_color = -1.0 ;            /* these don't occur naturally */
+   old_color = -1.0f ;            /* these don't occur naturally */
    old_thick = -THCODE_INVALID ;
 
    /*--- loop over lines, scale and plot ---*/
 
-   mri_draw_opacity( 1.0 ) ;
+   mri_draw_opacity( 1.0f ) ;
 
    for( ii=start ; ii < end ; ii++ ){
 
@@ -116,6 +120,7 @@ fprintf(stderr,"Changing color to %f %f %f\n",rr,gg,bb) ;
       if( new_thick < 0.0 ){               /* special negative thickness codes */
          int thc = (int)(-new_thick) ;
          switch( thc ){
+            case THCODE_FRECT:
             case THCODE_RECT:{        /* rectangle */
                int xb,yb , xt,yt ;
                int w,h ;
@@ -154,7 +159,7 @@ fprintf(stderr,"Changing color to %f %f %f\n",rr,gg,bb) ;
       } else if( new_thick != old_thick ){ /* normal case: change line thickness */
 
          old_thick = new_thick ;  /* thickness not used at this time */
-         sthick = new_thick * scal ; sthick = MIN(sthick,9.0f) ;
+         sthick = new_thick * scal ; /* sthick = MIN(sthick,9.0f) ; */
 
       }
 
@@ -177,7 +182,20 @@ fprintf(stderr,"Changing color to %f %f %f\n",rr,gg,bb) ;
           float da=a2-a1 , db=b2-b1 , dl=new_thick/sqrtf(da*da+db*db) ;
           float c1,c2 , d1,d2 ;
           int jj , ss=(int)(3.5f*sthick) ;
-          dl /= (2*ss) ; da *= dl ; db *= dl ; ss = MIN(ss,9) ;
+
+          dl /= (2*ss) ; da *= dl ; db *= dl ; ss = MAX(ss,2) ;
+#if 1
+          if( sthick >= 2.0f && sthick == sthick_old ){  /* 01 May 2012 */
+            int rad = (int)(0.505f*sthick+0.001f) ;
+            if( x1 == x2_old && y1 == y2_old ){
+              mri_drawcircle( im , x1,y1 , rad, rrr,ggg,bbb , 1 ) ;
+            }
+            else if( x2 == x1_old && y2 == y1_old ){
+              mri_drawcircle( im , x2,y2 , rad, rrr,ggg,bbb , 1 ) ;
+            }
+          }
+          x1_old = x1; x2_old = x2; y1_old = y1; y2_old = y2; sthick_old = sthick;
+#endif
           for( jj=-ss ; jj <= ss ; jj++ ){
             if( jj == 0 ) continue ;
             c1 = a1 + jj*db ; c2 = a2 + jj*db ;
@@ -195,6 +213,54 @@ fprintf(stderr,"Changing color to %f %f %f\n",rr,gg,bb) ;
 }
 
 /*-----------------------------------------------------------------------*/
+# undef  BOr
+# undef  BOg
+# undef  BOb
+# define BOr(i,j) bout[3*((i)+(j)*nxout)+0]
+# define BOg(i,j) bout[3*((i)+(j)*nxout)+1]
+# define BOb(i,j) bout[3*((i)+(j)*nxout)+2]
+# undef  BIr
+# undef  BIg
+# undef  BIb
+# define BIr(i,j) ((unsigned int)bin [3*((i)+(j)*nxin )+0])
+# define BIg(i,j) ((unsigned int)bin [3*((i)+(j)*nxin )+1])
+# define BIb(i,j) ((unsigned int)bin [3*((i)+(j)*nxin )+2])
+
+MRI_IMAGE * mri_downsize_by2( MRI_IMAGE *imin )
+{
+   MRI_IMAGE *imout ; int nxin,nyin , nxout,nyout , ii,jj,i2,j2 ;
+   byte *bin , *bout ; unsigned int val ;
+
+   if( imin == NULL || imin->kind != MRI_rgb ) return NULL ;
+
+   nxin = imin->nx ; nyin  = imin->ny ;
+   nxout = nxin /2 ; nyout = nyin / 2 ;
+
+   imout = mri_new( nxout , nyout , MRI_rgb ) ;
+   bout  = MRI_RGB_PTR(imout) ;
+   bin   = MRI_RGB_PTR(imin) ;
+
+   for( jj=0 ; jj < nyout ; jj++ ){
+     j2 = 2*jj ;
+     for( ii=0 ; ii < nxout ; ii++ ){
+       i2 = 2*ii ;
+       val = BIr(i2,j2)+BIr(i2+1,j2)+BIr(i2,j2+1)+BIr(i2+1,j2+1)+1; BOr(ii,jj) = (byte)(val >> 2);
+       val = BIg(i2,j2)+BIg(i2+1,j2)+BIg(i2,j2+1)+BIg(i2+1,j2+1)+1; BOg(ii,jj) = (byte)(val >> 2);
+       val = BIb(i2,j2)+BIb(i2+1,j2)+BIb(i2,j2+1)+BIb(i2+1,j2+1)+1; BOb(ii,jj) = (byte)(val >> 2);
+     }
+   }
+
+   return imout ;
+}
+
+# undef  BOr
+# undef  BOg
+# undef  BOb
+# undef  BIr
+# undef  BIg
+# undef  BIb
+
+/*-----------------------------------------------------------------------*/
 
 #undef  IMSIZ
 #define IMSIZ 1024
@@ -203,6 +269,7 @@ static MRI_IMAGE * memplot_to_mri( MEM_plotdata *mp )  /* 05 Dec 2007 */
 {
    MRI_IMAGE *im ; int nx , ny , imsiz ;
    byte *imp ;
+   int did_dup=0 ;
 
    if( mp == NULL || MEMPLOT_NLINE(mp) < 1 ) return NULL ;
 
@@ -214,12 +281,16 @@ static MRI_IMAGE * memplot_to_mri( MEM_plotdata *mp )  /* 05 Dec 2007 */
    } else {
      nx = imsiz * mp->aspect ; ny = imsiz ;
    }
+   if( imsiz <= 2048 ){ nx *=2 ; ny *=2 ; did_dup = 1 ; }
    im = mri_new( nx , ny , MRI_rgb ) ;
    imp = MRI_RGB_PTR(im) ; memset( imp , 255 , 3*nx*ny ) ; /* white-ize */
    set_memplot_RGB_box(0,0,0,0) ;
    do_thick = 1 ;
    memplot_to_RGB_sef( im , mp , 0 , 0 , 0 ) ;
    do_thick = 0 ;
+   if( did_dup ){
+     MRI_IMAGE *qim = mri_downsize_by2(im) ; mri_free(im) ; im = qim ;
+   }
    return im ;
 }
 

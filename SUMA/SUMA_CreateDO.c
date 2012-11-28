@@ -776,6 +776,8 @@ SUMA_DO_Types SUMA_Guess_DO_Type(char *s)
    
    if (strstr(s,"<nido_head")) SUMA_RETURN(NIDO_type);
    
+   if (SUMA_isExtension(s,".niml.tract")) SUMA_RETURN(TRACT_type);
+   
    fid = fopen(s,"r");
    
    if (!fid) {
@@ -1981,13 +1983,40 @@ SUMA_SphereDO * SUMA_ReadSphDO (char *s)
       /* fill up idividual style */
       itmp = 0;
       while (itmp < SDO->N_n) {
-         SDO->stylev[itmp]     = SUMA_SphereStyleConvert((int)far[itmp+(icol_style  )*ncol]);
+         SDO->stylev[itmp] = SUMA_SphereStyleConvert(
+                                 (int)far[itmp+(icol_style  )*ncol]);
          ++itmp;
       } 
    }
    mri_free(im); im = NULL; far = NULL;
 
    SUMA_RETURN(SDO);
+}
+
+SUMA_TractDO *SUMA_ReadTractDO(char *s, char *parent_SO_id) 
+{
+   static char FuncName[]={"SUMA_ReadTractDO"};
+   TAYLOR_BUNDLE *tb=NULL;
+   SUMA_TractDO *TDO=NULL;
+   
+   SUMA_ENTRY;
+      
+   if (!s) {
+      SUMA_SLP_Err("NULL s");
+      SUMA_RETURN(NULL);
+   }
+   if (!(tb = Read_Bundle(s))) {
+      SUMA_S_Errv("Failed to read %s\n",s);
+      SUMA_RETURN(NULL);
+   }
+   if (!(TDO = SUMA_Alloc_TractDO (s, parent_SO_id))) {
+      SUMA_S_Err("Failed to init TDO.");
+      SUMA_RETURN(NULL);
+   }
+   
+   TDO->tb = tb;
+   
+   SUMA_RETURN(TDO);
 }
 
 SUMA_SphereDO * SUMA_ReadNBSphDO (char *s, char *parent_SO_id)
@@ -2463,6 +2492,8 @@ void SUMA_EyeAxisStandard (SUMA_Axis* Ax, SUMA_SurfaceViewer *csv)
 void SUMA_MeshAxisStandard (SUMA_Axis* Ax, SUMA_SurfaceObject *cso)
 {
    static char FuncName[]={"SUMA_MeshAxisStandard"};
+   SUMA_SurfaceViewer *sv=NULL;
+   SUMA_Boolean LocalHead = NOPE;
    
    SUMA_ENTRY;
 
@@ -2474,8 +2505,13 @@ void SUMA_MeshAxisStandard (SUMA_Axis* Ax, SUMA_SurfaceObject *cso)
    Ax->Center[0] = cso->Center[0];
    Ax->Center[1] = cso->Center[1];
    Ax->Center[2] = cso->Center[2];
-   Ax->MTspace = 10; Ax->mTspace = 2;
+   sv = SUMA_BestViewerForSO(cso);
+   if (!sv) sv = SUMAg_SVv;
+   Ax->MTspace = 10; 
+   Ax->mTspace = 2;
    Ax->MTsize = 4; Ax->mTsize = 2;
+   SUMA_LHv("MTspace = %f, DimSclFac = %f\n", 
+      Ax->MTspace, sv->GVS[sv->StdView].DimSclFac);
    {
       char *eee = getenv("SUMA_UseCrossTicks");
       if (eee) {
@@ -2506,8 +2542,10 @@ void SUMA_WorldAxisStandard (SUMA_Axis* Ax, SUMA_SurfaceViewer *sv)
    
    Ax->Stipple = SUMA_SOLID_LINE;
    Ax->XYZspan[0]= Ax->XYZspan[1]= Ax->XYZspan[2]= 100.0;
-   Ax->MTspace = 10; Ax->mTspace = 2;
-   Ax->MTsize = 4; Ax->mTsize = 2;
+   Ax->MTspace = 10/sv->GVS[sv->StdView].DimSclFac; 
+   Ax->mTspace = 2/sv->GVS[sv->StdView].DimSclFac;
+   Ax->MTsize = 4/sv->GVS[sv->StdView].DimSclFac; 
+   Ax->mTsize = 2/sv->GVS[sv->StdView].DimSclFac;
    {
       char *eee = getenv("SUMA_UseCrossTicks");
       if (eee) {
@@ -2729,7 +2767,10 @@ SUMA_SphereDO * SUMA_Alloc_SphereDO (  int N_n, char *Label,
    /* setup some default values */
    SDO->LineWidth = 4.0;
    SDO->CommonRad = 2.0;
-   SDO->CommonCol[0] = 1.0; SDO->CommonCol[1] = 1.0; SDO->CommonCol[2] = 1.0; SDO->CommonCol[3] = 1.0; 
+   SDO->CommonCol[0] = 1.0; 
+   SDO->CommonCol[1] = 1.0; 
+   SDO->CommonCol[2] = 1.0; 
+   SDO->CommonCol[3] = 1.0; 
    SDO->CommonSlices = 10;
    SDO->CommonStacks = 10;
    SDO->CommonStyle = GLU_FILL;
@@ -2759,6 +2800,75 @@ void SUMA_free_SphereDO (SUMA_SphereDO * SDO)
    if (SDO->stylev) SUMA_free(SDO->stylev);
 
    if (SDO) SUMA_free(SDO);
+   
+   SUMA_RETURNe;
+
+}
+
+SUMA_TractDO * SUMA_Alloc_TractDO (  char *Label, 
+                                     char *Parent_idcode_str)
+{
+   static char FuncName[]={"SUMA_Alloc_TractDO"};
+   SUMA_TractDO* TDO;
+   char *hs = NULL;
+   
+   SUMA_ENTRY;
+
+   TDO = (SUMA_TractDO*)SUMA_calloc(1,sizeof (SUMA_TractDO));
+   if (TDO == NULL) {
+      fprintf(stderr,"SUMA_Alloc_TractDO Error: Failed to allocate TDO\n");
+      SUMA_RETURN (NULL);
+   }
+   TDO->do_type = TRACT_type;
+   
+   
+   if (!Parent_idcode_str) {
+      TDO->Parent_idcode_str = NULL;
+   } else {
+      TDO->Parent_idcode_str = SUMA_copy_string(Parent_idcode_str);
+   } 
+   
+   /* create a string to hash an idcode */
+   if (Label) hs = SUMA_copy_string(Label);
+   else hs = SUMA_copy_string("NULL_");
+   if (Parent_idcode_str) 
+      hs = SUMA_append_replace_string(hs,Parent_idcode_str,"_",1);
+   else hs = SUMA_append_replace_string(hs,"NULL","",1);
+   TDO->idcode_str = UNIQ_hashcode(hs);
+   SUMA_free(hs); hs = NULL;
+
+   
+   if (Label) {
+      TDO->Label = (char *)SUMA_calloc (strlen(Label)+1, sizeof(char));
+      TDO->Label = strcpy (TDO->Label, Label);
+   } else {
+      TDO->Label = NULL;
+   }
+   
+   TDO->LineWidth = 1.0;
+   TDO->LineCol[0] = 1.0;
+   TDO->colv = NULL;
+   TDO->thickv = NULL;
+   
+   TDO->Stipple = SUMA_SOLID_LINE;
+   
+   SUMA_RETURN (TDO);
+}
+
+void SUMA_free_TractDO (SUMA_TractDO * TDO)
+{
+   static char FuncName[]={"SUMA_free_TractDO"};
+
+   SUMA_ENTRY;
+   
+   if (!TDO) SUMA_RETURNe;
+   
+   if (TDO->Parent_idcode_str) SUMA_free(TDO->Parent_idcode_str);
+   if (TDO->Label) SUMA_free(TDO->Label);
+   if (TDO->idcode_str) SUMA_free(TDO->idcode_str);
+   if (TDO->tb) Free_Bundle(TDO->tb);
+   
+   if (TDO) SUMA_free(TDO);
    
    SUMA_RETURNe;
 
@@ -3072,6 +3182,136 @@ void SUMA_free_PlaneDO (SUMA_PlaneDO * SDO)
    
    SUMA_RETURNe;
 
+}
+
+SUMA_Boolean SUMA_DrawTractDO (SUMA_TractDO *TDO, SUMA_SurfaceViewer *sv)
+{
+   static char FuncName[]={"SUMA_DrawTractDO"};
+   static GLfloat NoColor[] = {0.0, 0.0, 0.0, 0.0};
+   int i, i3a, i3b, n, N_pts;
+   float origwidth=0.0, Un, U[4]={0.0, 0.0, 0.0, 1.0}, *pa=NULL, *pb=NULL;
+   TAYLOR_TRACT *tt=NULL;
+   byte *mask=NULL;
+   byte color_by_mid = 0; /* this one should be interactively set ... */
+   GLboolean gl_sm=FALSE;
+   SUMA_Boolean ans = YUP;
+   SUMA_Boolean LocalHead = NOPE; 
+   
+   SUMA_ENTRY;
+   
+   if (!TDO || !sv) {
+      fprintf(stderr,"Error %s: NULL pointer.\n", FuncName);
+      SUMA_RETURN (NOPE);
+   }
+   
+   if (!TDO->tb) SUMA_RETURN(YUP);
+   
+   glGetFloatv(GL_LINE_WIDTH, &origwidth);
+   gl_sm = glIsEnabled(GL_LINE_SMOOTH);
+   if (!TDO->thickv) glLineWidth(0.1); //TDO->LineWidth);  
+   
+   switch (TDO->Stipple) {
+      case SUMA_DASHED_LINE:
+         glEnable(GL_LINE_STIPPLE);
+         glLineStipple (1, 0x00FF); /* dashed, see OpenGL Prog guide, page 55 */
+         break;
+      case SUMA_SOLID_LINE:
+         if (0) { 
+            glEnable (GL_LINE_SMOOTH); /* makes lines fat, can't go too low 
+                                          in thickness, fughetaboutit */
+            if (0) glDepthMask(FALSE); /* Disabling depth masking makes lines 
+                           coplanar with polygons
+                           render without stitching, bleeding, or Z fighting.
+                           Problem is, that it need to be turned on for proper
+                           rendering of remaing objects, and that brings the 
+                           artifact back. */
+            glHint (GL_LINE_SMOOTH_HINT, GL_NICEST); 
+         } else {
+            glDisable(GL_LINE_SMOOTH);
+         }
+         break;
+      default:
+         fprintf(stderr,"Error %s: Unrecognized Stipple option\n", FuncName);
+         ans = NOPE; goto GETOUT;
+   }
+   
+   if (TDO->thickv) {/* slow slow slow */
+      SUMA_S_Err("Not ready for thickness business");
+      #if 0
+      SUMA_LH("Drawing xyz to xyz with thickness ");
+      if (!TDO->colv) glMaterialfv(GL_FRONT, GL_EMISSION, TDO->LineCol);
+      glMaterialfv(GL_FRONT, GL_AMBIENT, NoColor); 
+         /* turn off ambient and diffuse components */
+      glMaterialfv(GL_FRONT, GL_DIFFUSE, NoColor);
+      i = 0;
+      N_n3 = 3*SDO->N_n;
+      while (i < N_n3) {
+         if (TDO->thickv) glLineWidth(TDO->thickv[i/3]);   
+         glBegin(GL_LINES);
+         if (TDO->colv) 
+            glMaterialfv(GL_FRONT, GL_EMISSION, &(TDO->colv[4*(i/3)]));
+         glVertex3f(SDO->n0[i], SDO->n0[i+1], SDO->n0[i+2]);
+         glVertex3f(SDO->n1[i], SDO->n1[i+1], SDO->n1[i+2]); 
+         i += 3;
+         glEnd();
+      }
+      #endif
+   } else {
+      SUMA_LH("Drawing xyz to xyz ");
+      glBegin(GL_LINES);
+      if (!TDO->colv) 
+         glMaterialfv(GL_FRONT, GL_EMISSION, TDO->LineCol); 
+               /*turn on emissivity  */
+      glMaterialfv(GL_FRONT, GL_AMBIENT, NoColor); 
+               /* turn off ambient and diffuse components */
+      glMaterialfv(GL_FRONT, GL_DIFFUSE, NoColor);
+      
+      for (n=0; n<TDO->tb->N_tracts; ++n) {
+         tt = TDO->tb->tracts+n;
+         N_pts = TRACT_NPTS(tt);
+         if (N_pts>2 && color_by_mid) {
+            /* set color based on mid point */
+            pa = tt->pts+(tt->N_pts3/2);
+            pb = pa - 3;
+            SUMA_SEG_DELTA_COL(pa,pb,U);
+            glMaterialfv(GL_FRONT, GL_EMISSION, U);
+         }
+         i = 1;
+         while (i < N_pts) {
+            i3a = 3*(i-1); i3b = 3*i;
+            pa = tt->pts+i3a; pb = tt->pts+i3b;
+            if (TDO->colv) {
+               glMaterialfv(GL_FRONT, GL_EMISSION, &(TDO->colv[4*(i/3)]));
+            } else if (!color_by_mid) { 
+               SUMA_SEG_DELTA_COL(pa,pb,U);
+               glMaterialfv(GL_FRONT, GL_EMISSION, U);
+            }   
+            glVertex3f(pa[0], pa[1], pa[2]);
+            glVertex3f(pb[0], pb[1], pb[2]);
+            ++i;
+         }
+      }
+      glEnd();
+   }
+         
+   switch (TDO->Stipple) {
+      case SUMA_DASHED_LINE:
+         glDisable(GL_LINE_STIPPLE);
+         break;
+      case SUMA_SOLID_LINE:
+         glDisable(GL_LINE_SMOOTH);
+         break;
+   }
+   
+
+   GETOUT:
+   glMaterialfv(GL_FRONT, GL_EMISSION, NoColor); /*turn off emissivity */
+   glLineWidth(origwidth);
+   if (gl_sm) glEnable(GL_LINE_SMOOTH); else glDisable(GL_LINE_SMOOTH);
+   if (mask) SUMA_free(mask); mask=NULL;
+   
+   
+   SUMA_RETURN(ans);
 }
 
 SUMA_Boolean SUMA_DrawSegmentDO (SUMA_SegmentDO *SDO, SUMA_SurfaceViewer *sv)
@@ -4599,29 +4839,46 @@ SUMA_Boolean SUMA_DrawNIDO (SUMA_NIDO *SDO, SUMA_SurfaceViewer *sv)
 #define SUMA_SORTED_AXIS_WORKS { \
             ASIp->Quad[0] = Q[ASIp->PointIndex[0]];   \
             ASIp->Quad[1] = Q[ASIp->PointIndex[1]];   \
-            for (i=0;i<3;++i) d[i] = ( P[ASIp->PointIndex[1]][i] - P[ASIp->PointIndex[0]][i] ); \
+            for (i=0;i<3;++i) d[i] = \
+               ( P[ASIp->PointIndex[1]][i] - P[ASIp->PointIndex[0]][i] ); \
             SUMA_NORM_VEC (d, 3, ASIp->world_length); \
-            ASIp->screen_length_x = S[ASIp->PointIndex[1]*3] - S[ASIp->PointIndex[0]*3];   \
-            ASIp->screen_length_y = S[ASIp->PointIndex[1]*3+1] - S[ASIp->PointIndex[0]*3+1];   \
-            for (i=0;i<3;++i) d[i] = ( ( P[ASIp->PointIndex[0]][i] + P[ASIp->PointIndex[1]][i] ) / 2.0 - sv->Pcenter_close[i] ); \
+            for (i=0; i<3;++i) { /* projection direction along screen */ \
+               ASIp->ScreenProj[i] = S[ASIp->PointIndex[1]*3+i] -   \
+                                    S[ASIp->PointIndex[0]*3+i];    \
+               if (i<2) { /* Don't want to use screen z depth */\
+                  ASIp->ScreenProj_xy_length = ASIp->ScreenProj_xy_length + \
+                                    ASIp->ScreenProj[i]*ASIp->ScreenProj[i]; \
+               }  \
+            }  \
+            ASIp->ScreenProj_xy_length = sqrt(ASIp->ScreenProj_xy_length);  \
+            for (i=0;i<3;++i) d[i] = \
+               ( ( P[ASIp->PointIndex[0]][i] + P[ASIp->PointIndex[1]][i] ) \
+                        / 2.0 - sv->Pcenter_close[i] ); \
             SUMA_NORM_VEC (d, 3, ASIp->MidSegDist);   \
             for (i=0;i<2;++i) d[i] = ( S[ASIp->PointIndex[0]*3+i] - LLC[i] );  \
             SUMA_NORM_VEC (d, 2, d1);  \
             for (i=0;i<2;++i) d[i] = ( S[ASIp->PointIndex[1]*3+i] - LLC[i] );  \
             SUMA_NORM_VEC (d, 2, d2);  \
-            if (d1 < d2) { ASIp->LLCclosestDist = d1; ASIp->LLCclosestPoint = 0; }  \
+            if (d1 < d2) { \
+               ASIp->LLCclosestDist = d1; ASIp->LLCclosestPoint = 0; \
+            }  \
             else { ASIp->LLCclosestDist = d2; ASIp->LLCclosestPoint = 1; } \
-            for (i=0;i<3;++i) d[i] = ( C[ASIp->FaceIndex[0]][i] - sv->Pcenter_close[i] ); \
+            for (i=0;i<3;++i) d[i] = \
+                  ( C[ASIp->FaceIndex[0]][i] - sv->Pcenter_close[i] ); \
             SUMA_NORM_VEC (d, 3, d1);  \
-            for (i=0;i<3;++i) d[i] = ( C[ASIp->FaceIndex[1]][i] - sv->Pcenter_close[i] ); \
-            SUMA_NORM_VEC (d, 3, d2); if (d1 < d2) ASIp->MidFaceDist = d1; else ASIp->MidFaceDist = d2;  \
-            SUMA_COPY_VEC(P[ASIp->PointIndex[0]], ASIp->P1, 3, double, double);  \
-            SUMA_COPY_VEC(P[ASIp->PointIndex[1]], ASIp->P2, 3, double, double);  \
+            for (i=0;i<3;++i) d[i] = \
+                  ( C[ASIp->FaceIndex[1]][i] - sv->Pcenter_close[i] ); \
+            SUMA_NORM_VEC (d, 3, d2); \
+            if (d1 < d2) ASIp->MidFaceDist = d1; else ASIp->MidFaceDist = d2;  \
+            SUMA_COPY_VEC(P[ASIp->PointIndex[0]], ASIp->P1, 3, double, double); \
+            SUMA_COPY_VEC(P[ASIp->PointIndex[1]], ASIp->P2, 3, double, double); \
             ASIp->TxOff[0] = (-ASIp->tick2_dir[0] - ASIp->tick1_dir[0]);   \
             ASIp->TxOff[1] = (-ASIp->tick2_dir[1] - ASIp->tick1_dir[1]);   \
             ASIp->TxOff[2] = (-ASIp->tick2_dir[2] - ASIp->tick1_dir[2]);   \
-            SUMA_NORM_VEC (ASIp->TxOff, 3, d1); /* DO NOT USE /= in the next line !!! */\
-            ASIp->TxOff[0] = ASIp->TxOff[0] / d1; ASIp->TxOff[1] = ASIp->TxOff[1] / d1; ASIp->TxOff[2] = ASIp->TxOff[2] / d1; \
+            SUMA_NORM_VEC (ASIp->TxOff, 3, d1); /* DON'T USE /= in next line! */\
+            ASIp->TxOff[0] = ASIp->TxOff[0] / d1; \
+            ASIp->TxOff[1] = ASIp->TxOff[1] / d1; \
+            ASIp->TxOff[2] = ASIp->TxOff[2] / d1; \
 }
 /*!
    
@@ -4633,13 +4890,17 @@ SUMA_Boolean SUMA_DrawNIDO (SUMA_NIDO *SDO, SUMA_SurfaceViewer *sv)
    
    \sa Labbook NIH-4 page 21 for annotation of Box Axis ....
 */
-DList *SUMA_SortedAxisSegmentList (SUMA_SurfaceViewer *sv, SUMA_Axis *Ax, SUMA_SORT_BOX_AXIS_OPTION opt)
+DList *SUMA_SortedAxisSegmentList (SUMA_SurfaceViewer *sv, 
+                                   SUMA_Axis *Ax, SUMA_SORT_BOX_AXIS_OPTION opt)
 {
    static char FuncName[]={"SUMA_SortedAxisSegmentList"};
-   double P[8][3], C[6][3], d[3], d1, d2, S[24], world_length, screen_length_x, screen_length_y;
+   double P[8][3], C[6][3], d[3], d1, d2, S[24], 
+          world_length;
    int Q[8];
-   static double xAx[3] = {1, 0, 0}, yAx[3] = { 0, 1, 0 }, zAx[3] = {0, 0, 1}, LLC[3] = {0, 0, 0};
-   static double mxAx[3] = {-1, 0, 0}, myAx[3] = { 0, -1, 0 }, mzAx[3] = {0, 0, -1};
+   static double xAx[3] = {1, 0, 0}, yAx[3] = { 0, 1, 0 }, zAx[3] = {0, 0, 1}, 
+                 LLC[3] = {0, 0, 0};
+   static double mxAx[3] = {-1, 0, 0}, myAx[3] = { 0, -1, 0 }, 
+                 mzAx[3] = {0, 0, -1};
    DList *list = NULL;
    DListElmt *Elm = NULL;
    SUMA_Boolean Found = NOPE;
@@ -4656,25 +4917,45 @@ DList *SUMA_SortedAxisSegmentList (SUMA_SurfaceViewer *sv, SUMA_Axis *Ax, SUMA_S
    }
    
    /* form box corner points */
-   P[0][0] = Ax->BR[0][0]; P[0][1] = Ax->BR[1][0]; P[0][2] = Ax->BR[2][0]; /*xmin, ymin, zmin */ 
-   P[1][0] = Ax->BR[0][1]; P[1][1] = Ax->BR[1][0]; P[1][2] = Ax->BR[2][0]; /*xmax, ymin, zmin */ 
-   P[2][0] = Ax->BR[0][0]; P[2][1] = Ax->BR[1][1]; P[2][2] = Ax->BR[2][0]; /*xmin, ymax, zmin */ 
-   P[3][0] = Ax->BR[0][1]; P[3][1] = Ax->BR[1][1]; P[3][2] = Ax->BR[2][0]; /*xmax, ymax, zmin */
-   P[4][0] = Ax->BR[0][0]; P[4][1] = Ax->BR[1][0]; P[4][2] = Ax->BR[2][1]; /*xmin, ymin, zmax */ 
-   P[5][0] = Ax->BR[0][1]; P[5][1] = Ax->BR[1][0]; P[5][2] = Ax->BR[2][1]; /*xmax, ymin, zmax */ 
-   P[6][0] = Ax->BR[0][0]; P[6][1] = Ax->BR[1][1]; P[6][2] = Ax->BR[2][1]; /*xmin, ymax, zmax */ 
-   P[7][0] = Ax->BR[0][1]; P[7][1] = Ax->BR[1][1]; P[7][2] = Ax->BR[2][1]; /*xmax, ymax, zmax */
+   P[0][0] = Ax->BR[0][0]; P[0][1] = Ax->BR[1][0]; P[0][2] = Ax->BR[2][0]; 
+                                                         /*xmin, ymin, zmin */ 
+   P[1][0] = Ax->BR[0][1]; P[1][1] = Ax->BR[1][0]; P[1][2] = Ax->BR[2][0];
+                                                          /*xmax, ymin, zmin */ 
+   P[2][0] = Ax->BR[0][0]; P[2][1] = Ax->BR[1][1]; P[2][2] = Ax->BR[2][0];
+                                                          /*xmin, ymax, zmin */ 
+   P[3][0] = Ax->BR[0][1]; P[3][1] = Ax->BR[1][1]; P[3][2] = Ax->BR[2][0];
+                                                          /*xmax, ymax, zmin */
+   P[4][0] = Ax->BR[0][0]; P[4][1] = Ax->BR[1][0]; P[4][2] = Ax->BR[2][1];
+                                                          /*xmin, ymin, zmax */ 
+   P[5][0] = Ax->BR[0][1]; P[5][1] = Ax->BR[1][0]; P[5][2] = Ax->BR[2][1];
+                                                          /*xmax, ymin, zmax */ 
+   P[6][0] = Ax->BR[0][0]; P[6][1] = Ax->BR[1][1]; P[6][2] = Ax->BR[2][1];
+                                                          /*xmin, ymax, zmax */ 
+   P[7][0] = Ax->BR[0][1]; P[7][1] = Ax->BR[1][1]; P[7][2] = Ax->BR[2][1];
+                                                          /*xmax, ymax, zmax */
    
    /* figure out equivalent screen coords */
    SUMA_World2ScreenCoords (sv, 8, (double *)P, S, Q, 0);
    
    /* form plane centers */
-   for (i=0; i<3; ++i) { C[0][i] = ( P[0][i] + P[1][i] + P[5][i] + P[4][i] ) / 4.0; } /* Plane a, b, f, e*/
-   for (i=0; i<3; ++i) { C[1][i] = ( P[0][i] + P[1][i] + P[3][i] + P[2][i] ) / 4.0; } /* Plane a, b, d, c*/
-   for (i=0; i<3; ++i) { C[2][i] = ( P[0][i] + P[2][i] + P[6][i] + P[4][i] ) / 4.0; } /* Plane a, c, g, e*/
-   for (i=0; i<3; ++i) { C[3][i] = ( P[4][i] + P[5][i] + P[7][i] + P[6][i] ) / 4.0; } /* Plane e, f, h, g*/
-   for (i=0; i<3; ++i) { C[4][i] = ( P[1][i] + P[3][i] + P[7][i] + P[5][i] ) / 4.0; } /* Plane b, d, h, f*/
-   for (i=0; i<3; ++i) { C[5][i] = ( P[2][i] + P[3][i] + P[7][i] + P[6][i] ) / 4.0; } /* Plane c, d, h, g*/
+   for (i=0; i<3; ++i) { /* Plane a, b, f, e*/
+      C[0][i] = ( P[0][i] + P[1][i] + P[5][i] + P[4][i] ) / 4.0; 
+   } 
+   for (i=0; i<3; ++i) {  /* Plane a, b, d, c*/
+      C[1][i] = ( P[0][i] + P[1][i] + P[3][i] + P[2][i] ) / 4.0; 
+   }
+   for (i=0; i<3; ++i) {  /* Plane a, c, g, e*/
+      C[2][i] = ( P[0][i] + P[2][i] + P[6][i] + P[4][i] ) / 4.0; 
+   }
+   for (i=0; i<3; ++i) {  /* Plane e, f, h, g*/
+      C[3][i] = ( P[4][i] + P[5][i] + P[7][i] + P[6][i] ) / 4.0; 
+   }
+   for (i=0; i<3; ++i) {  /* Plane b, d, h, f*/
+      C[4][i] = ( P[1][i] + P[3][i] + P[7][i] + P[5][i] ) / 4.0; 
+   }
+   for (i=0; i<3; ++i) {  /* Plane c, d, h, g*/
+      C[5][i] = ( P[2][i] + P[3][i] + P[7][i] + P[6][i] ) / 4.0; 
+   }
   
    /* for (i=0; i<3; ++i) sv->Ch->c[i] = sv->Plist_close[i];  */
    if (LocalHead) { 
@@ -4850,7 +5131,8 @@ DList *SUMA_SortedAxisSegmentList (SUMA_SurfaceViewer *sv, SUMA_Axis *Ax, SUMA_S
                      }
                      break;
                   case SUMA_SORT_BY_LL_QUAD:
-                     if (ASIp->Quad[0] == SUMA_LOWER_LEFT_SCREEN || ASIp->Quad[1] == SUMA_LOWER_LEFT_SCREEN) {
+                     if (ASIp->Quad[0] == SUMA_LOWER_LEFT_SCREEN || 
+                         ASIp->Quad[1] == SUMA_LOWER_LEFT_SCREEN) {
                         SUMA_LH("Found a LLS");
                         dlist_ins_prev(list, dlist_head(list), (void *)ASIp);
                         Found = YUP;
@@ -4864,7 +5146,8 @@ DList *SUMA_SortedAxisSegmentList (SUMA_SurfaceViewer *sv, SUMA_Axis *Ax, SUMA_S
                      Found = YUP;
                      break;
                   default:
-                     SUMA_S_Err("Whatchyoutalkingboutwillis?\nBad, bad bad bad.");
+                     SUMA_S_Err("Whatchyoutalkingboutwillis?\n"
+                                "Bad, bad bad bad.");
                      SUMA_RETURN(NULL);
                }
                if (!Found && Elm == dlist_tail(list)) {
@@ -4887,7 +5170,7 @@ DList *SUMA_SortedAxisSegmentList (SUMA_SurfaceViewer *sv, SUMA_Axis *Ax, SUMA_S
          }
          ASIp = (SUMA_AxisSegmentInfo *)Elm->data;
          if (LocalHead) fprintf (SUMA_STDERR,"%s:\ni %d\ttype %d\tMidSegDist %f\tMidFaceDist %f\tQuads[%d, %d]\t world_length, screen_length_x, screen_length_y = [%.2f %.2f %.2f]\n", 
-                     FuncName, i, ASIp->AxisDim, ASIp->MidSegDist, ASIp->MidFaceDist, ASIp->Quad[0], ASIp->Quad[1], ASIp->world_length, ASIp->screen_length_x, ASIp->screen_length_y);
+                     FuncName, i, ASIp->AxisDim, ASIp->MidSegDist, ASIp->MidFaceDist, ASIp->Quad[0], ASIp->Quad[1], ASIp->world_length, ASIp->ScreenProj[0], ASIp->ScreenProj[1]);
          ++i;
       } while(Elm != dlist_tail(list));
    }
@@ -4896,6 +5179,17 @@ DList *SUMA_SortedAxisSegmentList (SUMA_SurfaceViewer *sv, SUMA_Axis *Ax, SUMA_S
    SUMA_RETURN(list);
 }
 
+double SUMA_ScreenProjAngle(SUMA_AxisSegmentInfo *asi0, 
+                            SUMA_AxisSegmentInfo *asi1) 
+{
+   int i=0;
+   double u[2], dotdot=0.0;
+   if (!asi0 || !asi1) return(dotdot);
+   for (i=0; i<2; ++i) {
+        dotdot += asi1->ScreenProj[i]/asi1->ScreenProj_xy_length*
+                  asi0->ScreenProj[i]/asi0->ScreenProj_xy_length;                   } 
+   return(fabs(dotdot));
+}
 
 /*!
    \sa Labbook NIH-4 page 21 for annotation of Box Axis ....
@@ -4905,10 +5199,13 @@ SUMA_Boolean SUMA_DrawAxis (SUMA_Axis* Ax, SUMA_SurfaceViewer *sv)
    static char FuncName[]={"SUMA_DrawAxis"};
    static GLfloat NoColor[] = {0.0, 0.0, 0.0, 0.0};
    double P1[3], P2[3], cP[8][3], SC[12][3], d[12];
-   int i, N_Ax;
+   int i, N_Ax, fst=-1, sec=-1, thr=-1;
    DList *slist=NULL;
    DListElmt *Elm=NULL;
    SUMA_AxisSegmentInfo *ASI = NULL;
+   SUMA_AxisSegmentInfo *ASIv[3] = { NULL, NULL, NULL };
+   SUMA_Boolean ShowTxt[3];
+   float coslim = 0.9;
    SUMA_Boolean LocalHead = NOPE;
    
    SUMA_ENTRY;
@@ -4935,65 +5232,166 @@ SUMA_Boolean SUMA_DrawAxis (SUMA_Axis* Ax, SUMA_SurfaceViewer *sv)
       case SUMA_STD_ZERO_CENTERED:
          SUMA_LHv("SUMA_STD_ZERO_CENTERED at %f %f %f\n",
                   Ax->Center[0], Ax->Center[1], Ax->Center[2]);
-         glMaterialfv(GL_FRONT, GL_AMBIENT, NoColor); /* turn off ambient and diffuse components */
+         glMaterialfv(GL_FRONT, GL_AMBIENT, NoColor); 
+            /* turn off ambient and diffuse components */
          glMaterialfv(GL_FRONT, GL_DIFFUSE, NoColor);
          
-         glMaterialfv(GL_FRONT, GL_EMISSION, Ax->XaxisColor); /*turn on emissivity for axis*/
+         glMaterialfv(GL_FRONT, GL_EMISSION, Ax->XaxisColor); 
+            /*turn on emissivity for axis*/
          glBegin(GL_LINES);
          glVertex3f(-Ax->XYZspan[0]+Ax->Center[0], Ax->Center[1], Ax->Center[2]);
          glVertex3f(Ax->XYZspan[0]+Ax->Center[0], Ax->Center[1], Ax->Center[2]); 
          glEnd();
          
-         glMaterialfv(GL_FRONT, GL_EMISSION, Ax->YaxisColor); /*turn on emissivity for axis*/
+         glMaterialfv(GL_FRONT, GL_EMISSION, Ax->YaxisColor); 
+            /*turn on emissivity for axis*/
          glBegin(GL_LINES);
          glVertex3f(Ax->Center[0], -Ax->XYZspan[1]+Ax->Center[1], Ax->Center[2]);
          glVertex3f(Ax->Center[0], +Ax->XYZspan[1]+Ax->Center[1], Ax->Center[2]); 
          glEnd();
          
-         glMaterialfv(GL_FRONT, GL_EMISSION, Ax->ZaxisColor); /*turn on emissivity for axis*/
+         glMaterialfv(GL_FRONT, GL_EMISSION, Ax->ZaxisColor); 
+            /*turn on emissivity for axis*/
          glBegin(GL_LINES);
          glVertex3f(Ax->Center[0], Ax->Center[1], -Ax->XYZspan[2]+Ax->Center[2]);
          glVertex3f(Ax->Center[0], Ax->Center[1], Ax->XYZspan[2]+Ax->Center[2]); 
          glEnd();
          
-         glMaterialfv(GL_FRONT_AND_BACK, GL_EMISSION, NoColor); /*turn off emissivity for axis*/
+         glMaterialfv(GL_FRONT_AND_BACK, GL_EMISSION, NoColor); 
+            /*turn off emissivity for axis*/
 
          break;
       case SUMA_SCALE_BOX:
          /* Sort segments by distance from screen center*/
          slist = SUMA_SortedAxisSegmentList (sv , Ax, SUMA_SORT_BY_LLC_DISTANCE); 
-                     /* - when using SUMA_BY_PLANE_DISTANCE, it makes sense to show  
-                        the first 4 segments, but you have no perception of the depth
-                        - when using SUMA_NO_SORT, show all 12 segments so you'll see the box
-                        - The world distance thingy does not quite work because because the plane you want to
-                        hide is the one opposite to the one closest to your face. That plane is not
-                        necessarily the farthest from sv->Pcenter_close, perhaps what you need to do is 
-                        define the lower left point of the box and allow for either a boxed axis
-                        or a 3d axis from the lower left corner.... 
-                        - So I am now using the screen coordinates SUMA_SORT_BY_LLC_DISTANCE and SUMA_SORT_BY_LL_QUAD,
-                        and sorting by SUMA_SORT_BY_LLC_DISTANCE works best. You can just show the first 3 axis and you're
-                        cool, for most angles.
-                        - You also need a pixels/mm number
-                        to decide on where to put the text.*/ 
-         
-         if (sv->ShowWorldAxis == SUMA_THREE_WAX || sv->ShowWorldAxis == SUMA_THREE_TEXT_WAX) N_Ax = 3;
+            /* - when using SUMA_BY_PLANE_DISTANCE, it makes sense to show  
+               the first 4 segments, but you have no perception of the depth
+               - when using SUMA_NO_SORT, show all 12 segments so you'll see 
+                 the box
+               - The world distance thingy does not quite work because because 
+                 the plane you want to hide is the one opposite to the one 
+                 closest to your face. That plane is not necessarily the farthest
+                 from sv->Pcenter_close, perhaps what you need to do is 
+                 define the lower left point of the box and allow for either a 
+                 boxed axis or a 3d axis from the lower left corner.... 
+               - So I am now using the screen coordinates 
+                  SUMA_SORT_BY_LLC_DISTANCE and SUMA_SORT_BY_LL_QUAD,
+                 and sorting by SUMA_SORT_BY_LLC_DISTANCE works best. 
+                 You can just show the first 3 axis and you're cool, for most 
+                 angles.
+               - You also need a pixels/mm number to decide on where to put the 
+                 text.*/ 
+
+         if (sv->ShowWorldAxis == SUMA_THREE_WAX || 
+             sv->ShowWorldAxis == SUMA_THREE_TEXT_WAX) N_Ax = 3;
          else N_Ax = slist->size;
  
+         /* go through list first and decide which get text */
+         ShowTxt[0]=NOPE; ShowTxt[1]=NOPE; ShowTxt[2]=NOPE;
+         if (sv->ShowWorldAxis == SUMA_THREE_TEXT_WAX || 
+             sv->ShowWorldAxis == SUMA_BOX_TEXT_WAX) { 
+            Elm = dlist_head(slist); i = 0;
+            do {
+               if (!(ASIv[i]=(SUMA_AxisSegmentInfo *)Elm->data)) {
+                  SUMA_S_Errv("Unexpected nullity at i=%d\n",i);
+                  SUMA_RETURN(NOPE);
+               }
+               if (Elm != dlist_tail(slist)) {
+                  Elm = dlist_next(Elm); 
+               } else {
+                  Elm = NULL;
+               }
+               ++i;
+            } while (i < 3 && Elm);
+            if (i < 3) {
+               SUMA_S_Errv("Unexpected i = %d\n", i);
+               SUMA_RETURN(NOPE);
+            }
+            if (ASIv[0]->ScreenProj_xy_length >= ASIv[1]->ScreenProj_xy_length &&
+                ASIv[0]->ScreenProj_xy_length >= ASIv[2]->ScreenProj_xy_length) {
+               fst = 0;
+               if (ASIv[1]->ScreenProj_xy_length > 
+                                          ASIv[2]->ScreenProj_xy_length){ 
+                  sec = 1; thr = 2;
+               } else {
+                  sec = 2; thr = 1;
+               }
+            } 
+            if (ASIv[1]->ScreenProj_xy_length >= ASIv[0]->ScreenProj_xy_length &&
+                ASIv[1]->ScreenProj_xy_length >= ASIv[2]->ScreenProj_xy_length) {
+               fst = 1; 
+               if (ASIv[0]->ScreenProj_xy_length > 
+                                          ASIv[2]->ScreenProj_xy_length){ 
+                  sec = 0; thr = 2;
+               } else {
+                  sec = 2; thr = 0;
+               }
+            }
+            if (ASIv[2]->ScreenProj_xy_length >= ASIv[0]->ScreenProj_xy_length &&
+                ASIv[2]->ScreenProj_xy_length >= ASIv[1]->ScreenProj_xy_length) {
+               fst = 2; 
+               if (ASIv[0]->ScreenProj_xy_length > 
+                                          ASIv[1]->ScreenProj_xy_length){ 
+                  sec = 0; thr = 1;
+               } else {
+                  sec = 1; thr = 0;
+               }
+            }   
+            /* always show first */
+            ShowTxt[fst]=YUP;
+            /* if second does not overlap with 1st show it too */
+            if (SUMA_ScreenProjAngle(ASIv[fst], ASIv[sec]) < coslim) {
+               ShowTxt[sec]=YUP;
+            }
+            /* if the third does not overlap with the 1st, 
+               AND with the second if it is showing */
+            SUMA_LHv("Dot 1 3 = %f, Dot 2 3 = %f\n",
+               SUMA_ScreenProjAngle(ASIv[fst], ASIv[thr]),
+               SUMA_ScreenProjAngle(ASIv[sec], ASIv[thr]));
+               
+            if (SUMA_ScreenProjAngle(ASIv[fst], ASIv[thr]) < coslim &&
+                (!ShowTxt[sec] || 
+                  SUMA_ScreenProjAngle(ASIv[sec], ASIv[thr]) < coslim) ) {
+               ShowTxt[thr]=YUP;
+            }
+         }
+         SUMA_LHv("fst, sec, thr: %d %d %d\n"
+                      "Show flags[0,1,2]   : %d, %d, %d\n", 
+                      fst, sec, thr,
+                      ShowTxt[0], ShowTxt[1], ShowTxt[2]);
+         
          Elm = dlist_head(slist); i = 0;
          do {
             ASI = (SUMA_AxisSegmentInfo *)Elm->data;
             if (ASI->AxisDim == 0) {
-               if (LocalHead) fprintf(SUMA_STDERR,"%s: X axis, i = %d, SegIndex = %d, world, Sx, Sy = %.2f,%.2f,%.2f, off = %f, %f %f\n", FuncName, i, ASI->SegIndex, ASI->world_length, ASI->screen_length_x, ASI->screen_length_y, ASI->TxOff[0], ASI->TxOff[1],ASI->TxOff[2]); 
+               SUMA_LHv("X axis, i = %d, SegIndex = %d, "
+                        "world, Sx, Sy = %.2f,%.2f,%.2f, off = %f, %f %f\n", 
+                         i, ASI->SegIndex, ASI->world_length, 
+                         ASI->ScreenProj[0], ASI->ScreenProj[1], 
+                         ASI->TxOff[0], ASI->TxOff[1],ASI->TxOff[2]); 
             } else if (ASI->AxisDim == 1) {
-               if (LocalHead) fprintf(SUMA_STDERR,"%s: Y axis, i = %d, SegIndex = %d, world, Sx, Sy = %.2f,%.2f,%.2f, off = %f, %f %f\n", FuncName, i, ASI->SegIndex, ASI->world_length, ASI->screen_length_x, ASI->screen_length_y, ASI->TxOff[0], ASI->TxOff[1],ASI->TxOff[2]); 
+               SUMA_LHv("Y axis, i = %d, SegIndex = %d, "
+                        "world, Sx, Sy = %.2f,%.2f,%.2f, off = %f, %f %f\n", 
+                        i, ASI->SegIndex, ASI->world_length, 
+                        ASI->ScreenProj[0], ASI->ScreenProj[1], 
+                        ASI->TxOff[0], ASI->TxOff[1],ASI->TxOff[2]); 
             } else if (ASI->AxisDim == 2) {
-               if (LocalHead) fprintf(SUMA_STDERR,"%s: Z axis, i = %d, SegIndex = %d, world, Sx, Sy = %.2f,%.2f,%.2f, off = %f, %f %f\n", FuncName, i, ASI->SegIndex, ASI->world_length, ASI->screen_length_x, ASI->screen_length_y, ASI->TxOff[0], ASI->TxOff[1],ASI->TxOff[2]); 
+               SUMA_LHv("Z axis, i = %d, SegIndex = %d, "
+                        "world, Sx, Sy = %.2f,%.2f,%.2f, off = %f, %f %f\n", 
+                        i, ASI->SegIndex, ASI->world_length, 
+                        ASI->ScreenProj[0], ASI->ScreenProj[1], 
+                        ASI->TxOff[0], ASI->TxOff[1],ASI->TxOff[2]); 
             } else { SUMA_S_Err("Major bobo."); SUMA_RETURN(NOPE); }
             
-            if (i < 3 && (sv->ShowWorldAxis == SUMA_THREE_TEXT_WAX || sv->ShowWorldAxis == SUMA_BOX_TEXT_WAX)) 
+            if (i < 3 && ShowTxt[i]) { 
+               SUMA_LHv("Axis %d, ScrLen=[%f %f], ScrVec=[%f %f %f]\n",
+                     i, ASI->ScreenProj[0], ASI->ScreenProj[1], 
+                     ASI->ScreenProj[0], ASI->ScreenProj[1], ASI->ScreenProj[2]);
+                            
                SUMA_DrawLineAxis (ASI, Ax, YUP);
-            else SUMA_DrawLineAxis (ASI, Ax, NOPE);
-            
+            } else {
+               SUMA_DrawLineAxis (ASI, Ax, NOPE);
+            }
             SUMA_free(ASI); ASI = NULL; 
             if (Elm != dlist_tail(slist)) {
                Elm = dlist_next(Elm); 
@@ -5252,7 +5650,8 @@ SUMA_Boolean SUMA_TextBoxSize (char *txt, int *w, int *h, int *nl, void *font)
    \param ASIp (SUMA_AxisSegmentInfo *) structure containing segment info
    \param Ax (SUMA_Axis *)
 */
-SUMA_Boolean SUMA_DrawLineAxis ( SUMA_AxisSegmentInfo *ASIp, SUMA_Axis *Ax, SUMA_Boolean AddText)
+SUMA_Boolean SUMA_DrawLineAxis ( SUMA_AxisSegmentInfo *ASIp, 
+                                 SUMA_Axis *Ax, SUMA_Boolean AddText)
 {
    static char FuncName[]={"SUMA_DrawLineAxis"};
    double u3[3],nu, nu3, txofffac, size[2], space[2];
@@ -5264,17 +5663,21 @@ SUMA_Boolean SUMA_DrawLineAxis ( SUMA_AxisSegmentInfo *ASIp, SUMA_Axis *Ax, SUMA
       
    SUMA_ENTRY;
          
-   glMaterialfv(GL_FRONT, GL_AMBIENT, NoColor); /* turn off ambient and diffuse components */
+   glMaterialfv(GL_FRONT, GL_AMBIENT, NoColor); 
+                           /* turn off ambient and diffuse components */
    glMaterialfv(GL_FRONT, GL_DIFFUSE, NoColor);
             
    if (ASIp->AxisDim == 0) {
-      glMaterialfv(GL_FRONT, GL_EMISSION, Ax->XaxisColor); /*turn on emissivity for X axis*/
+      glMaterialfv(GL_FRONT, GL_EMISSION, Ax->XaxisColor); 
+                                       /*turn on emissivity for X axis*/
       if (LocalHead) fprintf(SUMA_STDERR,"%s: X axis\n", FuncName); 
    } else if (ASIp->AxisDim == 1) {
-      glMaterialfv(GL_FRONT, GL_EMISSION, Ax->YaxisColor); /*turn on emissivity for Y axis*/
+      glMaterialfv(GL_FRONT, GL_EMISSION, Ax->YaxisColor); 
+                                       /*turn on emissivity for Y axis*/
       if (LocalHead) fprintf(SUMA_STDERR,"%s: Y axis\n", FuncName); 
    } else if (ASIp->AxisDim == 2) {
-      glMaterialfv(GL_FRONT, GL_EMISSION, Ax->ZaxisColor); /*turn on emissivity for Z axis*/
+      glMaterialfv(GL_FRONT, GL_EMISSION, Ax->ZaxisColor); 
+                                       /*turn on emissivity for Z axis*/
       if (LocalHead) fprintf(SUMA_STDERR,"%s: Z axis\n", FuncName); 
    }
             
@@ -5304,9 +5707,12 @@ SUMA_Boolean SUMA_DrawLineAxis ( SUMA_AxisSegmentInfo *ASIp, SUMA_Axis *Ax, SUMA
          SUMA_LH("Using ASIp->P1 as starting tick point"); 
       } else {
           NmT = (int)(prec * nu) / (int)(prec * space[jj]); NmT /= prec;
-          Pt[0] = NmT * space[jj] * u3[0] +ASIp->P1[0]; Pt[1] = NmT * space[jj] * u3[1]+ASIp->P1[1];  Pt[2] = NmT * space[jj] * u3[2]+ASIp->P1[2];
+          Pt[0] = NmT * space[jj] * u3[0] +ASIp->P1[0]; 
+          Pt[1] = NmT * space[jj] * u3[1]+ASIp->P1[1];  
+          Pt[2] = NmT * space[jj] * u3[2]+ASIp->P1[2];
       }
-      if (LocalHead) fprintf(SUMA_STDERR,"%s:\nStarting ticks at [%f %f %f]\nnu3 = %f\n", FuncName, Pt[0], Pt[1], Pt[2], nu3);
+      SUMA_LHv("Starting ticks at [%f %f %f]\nnu3 = %f\n", 
+               Pt[0], Pt[1], Pt[2], nu3);
 
 
       /* draw the ticks */
@@ -5387,8 +5793,9 @@ SUMA_Boolean SUMA_DrawLineAxis ( SUMA_AxisSegmentInfo *ASIp, SUMA_Axis *Ax, SUMA
    if (AddText) { /* do the text for major ticks only */
       float MinYstep, MinXstep, dSxT, dSyT, curXstep, curYstep;
       int OKnext;
-      dSxT = (float)fabs(ASIp->screen_length_x) / (float)nTick[1];
-      dSyT = (float)fabs(ASIp->screen_length_y) / (float)nTick[1];
+      int DoZero = 0; /* skip zero label, they get all bunched up */
+      dSxT = (float)fabs(ASIp->ScreenProj[0]) / (float)nTick[1];
+      dSyT = (float)fabs(ASIp->ScreenProj[1]) / (float)nTick[1];
       MinYstep = 15 ; /* height of letters in pixels 
                         (using GLUT_BITMAP_9_BY_15) 
                         Might want to use SUMA_glutBitmapFontHeight
@@ -5404,24 +5811,29 @@ SUMA_Boolean SUMA_DrawLineAxis ( SUMA_AxisSegmentInfo *ASIp, SUMA_Axis *Ax, SUMA
       } else {
          txofffac = 1.0 * size[1];
       }
+      
+      OKnext = 1;
+      curXstep =0; curYstep=0;
+      while (i*space[1] < nu3) {
+         if(OKnext) {
+            Ps[0] = i*space[1]*u3[0] + Pt[0] + txofffac * ASIp->TxOff[0]; 
+            Ps[1] = i*space[1]*u3[1] + Pt[1] + txofffac * ASIp->TxOff[1]; 
+            Ps[2] = i*space[1]*u3[2] + Pt[2] + txofffac * ASIp->TxOff[2];
+            if (DoZero || i > 0) {
+               SUMA_AxisText(ASIp, Ps);
+               SUMA_LHv("txofffac = %f, ASIp->TxOff=[%f %f %f]\n",
+                  txofffac, ASIp->TxOff[0], ASIp->TxOff[1], ASIp->TxOff[2]);
+            }
+         }
+         curXstep += dSxT; curYstep += dSyT; 
+         if (curXstep > MinXstep || curYstep > MinYstep) { 
             OKnext = 1;
             curXstep =0; curYstep=0;
-            while (i*space[1] < nu3) {
-               if(OKnext) {
-                  Ps[0] = i*space[1]*u3[0] + Pt[0] + txofffac * ASIp->TxOff[0]; 
-                  Ps[1] = i*space[1]*u3[1] + Pt[1] + txofffac * ASIp->TxOff[1]; 
-                  Ps[2] = i*space[1]*u3[2] + Pt[2] + txofffac * ASIp->TxOff[2];
-                  SUMA_AxisText(ASIp, Ps);
-               }
-               curXstep += dSxT; curYstep += dSyT; 
-               if (curXstep > MinXstep || curYstep > MinYstep) { 
-                  OKnext = 1;
-                  curXstep =0; curYstep=0;
-               } else {
-                  OKnext = 0;
-               }
-               ++i;
-            }
+         } else {
+            OKnext = 0;
+         }
+         ++i;
+      }
    }
 
    SUMA_RETURN(YUP);
@@ -5733,7 +6145,9 @@ SUMA_Boolean SUMA_Draw_SO_Dset_Contours(SUMA_SurfaceObject *SO,
          SUMA_LHv("Have Dset %s related to SO\n", SDSET_LABEL(dd));
          if (!(colplane = SUMA_Fetch_OverlayPointerByDset (
                            SO->Overlays, SO->N_Overlays, dd, &OverInd))) {
-               SUMA_S_Err("Failed to fetch existing dset's overlay pointer");
+               SUMA_S_Errv(
+                  "Failed to fetch existing %s dset's overlay pointer\n", 
+                  SDSET_LABEL(dd));
                SUMA_RETURN(NOPE);
          }
          /* any contours? */
@@ -7133,13 +7547,15 @@ SUMA_Boolean SUMA_DrawCrossHair (SUMA_SurfaceViewer *sv)
    static GLdouble radsph, fac;
    static GLfloat gapch, radch;
    GLboolean gl_dt;
-   float origwidth = 0.0, off[3]={0.0, 0.0, 0.0};
+   float origwidth = 0.0, off[3]={0.0, 0.0, 0.0}, *xyz=NULL;
    int scl = 0;
    SUMA_CrossHair* Ch = sv->Ch;
+   SUMA_CLUST_DATUM *cd = NULL;
    SUMA_SurfaceObject *SO=NULL;
    
    SUMA_ENTRY;
-   if (sv->Focus_SO_ID) {
+   
+   if (sv->Focus_SO_ID >= 0) {
       SO = (SUMA_SurfaceObject *)(SUMAg_DOv[sv->Focus_SO_ID].OP);
    }else SO=NULL;
    
@@ -7250,6 +7666,23 @@ SUMA_Boolean SUMA_DrawCrossHair (SUMA_SurfaceViewer *sv)
       glMaterialfv(GL_FRONT, GL_EMISSION, NoColor); 
    }
    
+   if (SO && SO->SurfCont &&
+       SUMA_NodeClustNumber(SO->SurfCont->curColPlane, Ch->NodeID,
+                            SO, &cd)) { 
+            /* Mark node with maximum value in cluster where you just
+               clicked, if possible. The Dale Stephens Option */
+      
+      if (cd->maxabsnode >=0) {
+         xyz = SO->NodeList+SO->NodeDim*cd->maxabsnode;
+         glMaterialfv(GL_FRONT, GL_EMISSION, Ch->sphcolCmax); 
+         glTranslatef (xyz[0], xyz[1],xyz[2]);
+         gluSphere(Ch->sphobjCmax, radsph, 4, 4);
+         glTranslatef (-xyz[0], -xyz[1],-xyz[2]);
+                           /*turn off emissivity for axis*/
+         glMaterialfv(GL_FRONT, GL_EMISSION, NoColor); 
+      }
+   }
+   
    glLineWidth(origwidth);
    
    /* DEPTH_TEST is on for this function, turn it off
@@ -7321,6 +7754,17 @@ SUMA_CrossHair* SUMA_Alloc_CrossHair (void)
    
    Ch->SurfaceID = -1;
    Ch->NodeID = -1;
+   
+   Ch->sphobjCmax = gluNewQuadric();
+   Ch->sphcolCmax[0] = 0.0; Ch->sphcolCmax[1] = 0.0; 
+   Ch->sphcolCmax[2] = 0.0; Ch->sphcolCmax[3] = 0.0;
+   #ifdef SUMA_SOLID_LOCAL
+      gluQuadricDrawStyle (Ch->sphobjCmax, GLU_FILL); 
+      gluQuadricNormals (Ch->sphobjCmax , GLU_SMOOTH);
+   #else
+      gluQuadricDrawStyle (Ch->sphobjCmax, GLU_LINE);
+      gluQuadricNormals (Ch->sphobjCmax , GLU_NONE);
+   #endif
    SUMA_RETURN (Ch);
 }
 
@@ -7332,6 +7776,7 @@ void SUMA_Free_CrossHair (SUMA_CrossHair *Ch)
    SUMA_ENTRY;
 
    if (Ch->sphobj) gluDeleteQuadric(Ch->sphobj);
+   if (Ch->sphobjCmax) gluDeleteQuadric(Ch->sphobjCmax);
    if (Ch) SUMA_free(Ch);
    SUMA_RETURNe;
 }
@@ -7362,8 +7807,9 @@ SUMA_SphereMarker* SUMA_Alloc_SphereMarker (void)
       gluQuadricDrawStyle (SM->sphobj, GLU_LINE);
       gluQuadricNormals (SM->sphobj , GLU_NONE);
    #endif
-   SM->sphcol[0] = 0.50; SM->sphcol[1] = 0.5; SM->sphcol[2] = 1.0; SM->sphcol[3] = 1.0;
-   SM->sphrad = SUMA_SELECTED_NODE_SPHERE_RADIUS;
+   SM->sphcol[0] = 0.50; SM->sphcol[1] = 0.5; SM->sphcol[2] = 1.0; 
+                                              SM->sphcol[3] = 1.0;
+   SM->sphrad = SUMA_SELECTED_NODE_SPHERE_RADIUS/SUMA_DimSclFac(NULL, NULL);
    SM->slices = 10;
    SM->stacks = 10;
    SM->c[0] = SM->c[1] = SM->c[2] = 0.0; 
@@ -7384,7 +7830,8 @@ void SUMA_Free_SphereMarker (SUMA_SphereMarker *SM)
 }
 
 /*! Create the highlighted faceset  marker */
-SUMA_Boolean SUMA_DrawFaceSetMarker (SUMA_FaceSetMarker* FM, SUMA_SurfaceViewer *sv)
+SUMA_Boolean SUMA_DrawFaceSetMarker (SUMA_FaceSetMarker* FM, 
+                                     SUMA_SurfaceViewer *sv)
 {   
    static GLfloat NoColor[] = {0.0, 0.0, 0.0, 0.0}, dx, dy, dz, fac;
    static char FuncName[]={"SUMA_DrawFaceSetMarker"};
@@ -7981,6 +8428,7 @@ SUMA_Boolean SUMA_Free_Surface_Object (SUMA_SurfaceObject *SO)
       SO->FN = NULL;
    }
    
+   if (LocalHead) fprintf (SUMA_STDERR, "%s: freeing Label\n", FuncName);
    /* freeing Label */
    if (SO->Label) SUMA_free(SO->Label);
    
@@ -7990,19 +8438,25 @@ SUMA_Boolean SUMA_Free_Surface_Object (SUMA_SurfaceObject *SO)
    }
    SO->EL = NULL;
    
+   if (LocalHead) fprintf (SUMA_STDERR, "%s: freeing MF\n", FuncName);
    if (SO->MF){ 
       SUMA_Free_MemberFaceSets (SO->MF);
       SO->MF = NULL;
    }
+   if (LocalHead) fprintf (SUMA_STDERR, "%s: freeing SurfCont\n", FuncName);
    if (SO->SurfCont) SUMA_FreeSurfContStruct(SO->SurfCont);
    
    if (SO->PermCol) SUMA_free(SO->PermCol);
    
+   if (LocalHead) fprintf (SUMA_STDERR, "%s: freeing VolPar\n", FuncName);
    if (SO->VolPar) SUMA_Free_VolPar(SO->VolPar); 
    
+   if (LocalHead) fprintf (SUMA_STDERR, "%s: freeing aSO\n", FuncName);
    if (SO->aSO) SO->aSO = SUMA_FreeAfniSurfaceObject(SO->aSO);
    
    
+   if (LocalHead) 
+      fprintf (SUMA_STDERR, "%s: freeing CommonNodeObject\n", FuncName);
    if (SO->CommonNodeObject) 
       SUMA_Free_Displayable_Object_Vect(SO->CommonNodeObject,1);
       SO->CommonNodeObject = NULL;
@@ -8016,6 +8470,8 @@ SUMA_Boolean SUMA_Free_Surface_Object (SUMA_SurfaceObject *SO)
       }
       SUMA_free(SO->NodeNIDOObjects);
    }
+   
+   if (SO->NodeAreas) SUMA_free(SO->NodeAreas); 
    if (SO) SUMA_free(SO);
    
    if (LocalHead) fprintf (stdout, "Done\n");
@@ -8359,6 +8815,13 @@ char *SUMA_SurfaceObject_Info (SUMA_SurfaceObject *SO, DList *DsetList)
          sprintf (stmp,"Sphere Radius Set To: [%.3f]\n", SO->SphereRadius);
          SS = SUMA_StringAppend (SS,stmp);
       }
+      sprintf (stmp,"MaxDist From Center: %.3f at node %d\n", 
+                     SO->MaxCentDist, SO->MaxCentDistNode);
+      SS = SUMA_StringAppend (SS,stmp);
+      sprintf (stmp,"MinDist From Center: %.3f at node %d\n", 
+                     SO->MinCentDist, SO->MinCentDistNode);
+      SS = SUMA_StringAppend (SS,stmp);
+      
       sprintf (stmp,"Maximum: [%.3f\t%.3f\t%.3f]\t (aMax %.3f)\n", 
                      SO->MaxDims[0], SO->MaxDims[1],SO->MaxDims[2], 
                      SO->aMaxDims);
@@ -8424,6 +8887,21 @@ char *SUMA_SurfaceObject_Info (SUMA_SurfaceObject *SO, DList *DsetList)
          SS = SUMA_StringAppend (SS,stmp);
       }
 
+      if (SO->NodeAreas == NULL) {
+         sprintf (stmp,"NodeAreas is NULL\n\n");
+         SS = SUMA_StringAppend (SS,stmp);
+      } else {
+         if (MaxShow > SO->N_Node) MaxShow = SO->N_Node; 
+         sprintf (stmp, "NodeAreas (showing %d out of %d elements):\n",
+                        MaxShow, SO->N_Node);
+         SS = SUMA_StringAppend (SS,stmp);
+         for (i=0; i < MaxShow; ++i)   {
+               sprintf (stmp, "\t%.3f\n", SO->NodeAreas[i]);
+               SS = SUMA_StringAppend (SS,stmp);
+         }
+         sprintf (stmp, "\n");
+         SS = SUMA_StringAppend (SS,stmp);
+      }
 
       if (SO->FaceSetList == NULL) {
          sprintf (stmp,"FaceSetList is NULL\n\n");
@@ -9192,6 +9670,10 @@ SUMA_SurfaceObject *SUMA_Alloc_SurfObject_Struct(int N)
       SO[i].MinDims[0] = SO[i].MinDims[1] = SO[i].MinDims[2] = 0.0;        
       SO[i].aMinDims = 0.0;                                                
       SO[i].aMaxDims = 0.0;                                                
+      SO[i].MaxCentDist = 0.0;
+      SO[i].MaxCentDistNode = -1;
+      SO[i].MinCentDist = 0.0;
+      SO[i].MinCentDistNode = -1;
       
       SO[i].ViewCenterWeight = -1;
       SO[i].RotationWeight = -1;
@@ -9285,6 +9767,7 @@ SUMA_SurfaceObject *SUMA_Alloc_SurfObject_Struct(int N)
       SO[i].CommonNodeObject = NULL;
       SO[i].NodeObjects = NULL;
       SO[i].NodeNIDOObjects = NULL;
+      SO[i].NodeAreas = NULL;
      }
    SUMA_RETURN(SO);
 }/* SUMA_Alloc_SurfObject_Struct */
@@ -9293,8 +9776,10 @@ SUMA_Boolean SUMA_isSODimInitialized(SUMA_SurfaceObject *SO)
 {
    if (!SO) return(NOPE);
    
-   if (  SO->MaxDims[0] == 0.0 && SO->MaxDims[1] == 0.0 && SO->MaxDims[2] == 0.0 &&
-         SO->MinDims[0] == 0.0 && SO->MinDims[1] == 0.0 && SO->MinDims[2] == 0.0 &&
+   if (  SO->MaxDims[0] == 0.0 && SO->MaxDims[1] == 0.0 && 
+                                          SO->MaxDims[2] == 0.0 &&
+         SO->MinDims[0] == 0.0 && SO->MinDims[1] == 0.0 && 
+                                          SO->MinDims[2] == 0.0 &&
          SO->aMinDims == 0.0 && SO->aMaxDims == 0.0) { 
          
          return(NOPE); 
@@ -9321,12 +9806,21 @@ SUMA_Boolean SUMA_SetSODims(SUMA_SurfaceObject *SO)
 
       SUMA_MIN_VEC (SO->MinDims, 3, SO->aMinDims );
       SUMA_MAX_VEC (SO->MaxDims, 3, SO->aMaxDims);
+      
+      SUMA_SO_MAX_MIN_DIST(SO, SO->MaxCentDist, SO->MaxCentDistNode,
+                               SO->MinCentDist, SO->MinCentDistNode);
+       
    SUMA_LHv("Min:[%f %f %f]\n"
             "Max:[%f %f %f]\n"
-            "aMax: %f, aMin %f\n",
+            "aMax: %f, aMin %f\n"
+            "Max Dist To Cent: %f at %d\n"
+            "Min Dist To Cent: %f at %d\n",
             SO->MinDims[0], SO->MinDims[1],SO->MinDims[2],
             SO->MaxDims[0], SO->MaxDims[1],SO->MaxDims[2],
-            SO->aMaxDims, SO->aMinDims );
+            SO->aMaxDims, SO->aMinDims,
+            SO->MaxCentDist, SO->MaxCentDistNode,
+            SO->MinCentDist, SO->MinCentDistNode);
+   
    SUMA_RETURN(YUP);
 }
 
