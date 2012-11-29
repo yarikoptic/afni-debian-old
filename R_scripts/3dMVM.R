@@ -28,7 +28,7 @@ greeting.MVM <- function ()
           ================== Welcome to 3dMVM ==================          
    AFNI Group Analysis Program with Multivariate Linear Modeling Approach
 #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-Version 0.1.1, Nov 21, 2012
+Version 0.1.2, Nov 27, 2012
 Author: Gang Chen (gangchen@mail.nih.gov)
 Website - http://afni.nimh.nih.gov/sscc/gangc/MVM.html
 SSCC/NIMH, National Institutes of Health, Bethesda MD 20892
@@ -44,7 +44,7 @@ help.MVM.opts <- function (params, alpha = TRUE, itspace='   ', adieu=FALSE) {
           ================== Welcome to 3dMVM ==================          
     AFNI Group Analysis Program with Multi-Variate Modeling Approach
 #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-Version 0.1.1, Nov 21, 2012
+Version 0.1.2, Nov 27, 2012
 Author: Gang Chen (gangchen@mail.nih.gov)
 Website - http://afni.nimh.nih.gov/sscc/gangc/MVM.html
 SSCC/NIMH, National Institutes of Health, Bethesda MD 20892
@@ -511,13 +511,14 @@ scanLine <- function(file, lnNo=1, marker="\\:")
    strip.white=TRUE, nline=1)), marker))[2]
 
 
-runAOV <- function(inData, dataframe, ModelForm, pars, tag) {
+runAOV <- function(inData, dataframe, ModelForm, pars) {
    Stat <- rep(0, pars[[1]])
    #browser()
    options(warn = -1)
    if (!all(abs(inData) < 10e-8)) {        
       dataframe$Beta<-inData
-      tryCatch(fm <- aov.car(ModelForm, data=dataframe, return='lm'), error=function(e) NULL)
+      fm <- NULL
+      try(fm <- aov.car(ModelForm, data=dataframe, return='lm'), silent=TRUE)
       if(!is.null(fm)) {
          #if(pars[[6]]) try(Stat[1:pars[[2]]] <- univ(fm[[1]])[2:(1+pars[[2]]),3], silent=TRUE) else
          #   try(Stat[1:pars[[2]]] <- unname(univ(fm[[1]])[[1]][-1,5]), silent=TRUE)
@@ -750,29 +751,32 @@ if(dimz==1) zinit <- 1 else zinit <- dimz%/%2
 
 ii <- xinit; jj <- yinit; kk <- zinit
 
-tag<-1
+fm<-NULL
 gltRes <- vector('list', lop$num_glt)
 
-while (tag == 1) {
-   tag<-0
+while(is.null(fm)) {
+   fm<-NULL
    lop$dataStr$Beta<-inData[ii, jj, kk,]
    options(warn=-1)     
-   try(fm <- aov.car(ModelForm, data=lop$dataStr, return='lm'), tag <- 1)
-   if(tag == 0) if (lop$num_glt > 0) try(for (n in 1:lop$num_glt) 
-      gltRes[[n]] <- testInteractions(fm[[2]], custom=lop$gltList[[n]], slope=lop$slpList[[n]], 
-         adjustment="none", idata = fm[["idata"]]) )
-   if (tag == 1) if(ii<dimx) ii<-ii+1 else if(jj<dimy) {ii<-xinit; jj <- jj+1} else if(kk<dimz) {
+   fm <- try(aov.car(ModelForm, data=lop$dataStr, return='lm'), silent=TRUE)
+   if(!is.null(fm)) if (lop$num_glt > 0) {
+      n <- 1
+      while(!is.null(fm) & (n <= lop$num_glt)) {
+         gltRes[[n]] <- tryCatch(testInteractions(fm[[2]], custom=lop$gltList[[n]], slope=lop$slpList[[n]], 
+            adjustment="none", idata = fm[["idata"]]), error=function(e) NULL)
+         if(is.null(gltRes[[n]])) fm <- NULL
+         n <- n+1
+      }      
+   }
+   if (is.null(fm)) if(ii<dimx) ii<-ii+1 else if(jj<dimy) {ii<-xinit; jj <- jj+1} else if(kk<dimz) {
       ii<-xinit; jj <- yinit; kk <- kk+1 } else {
-      errex.AFNI("Something is not quite right during testing!")
+      errex.AFNI("Testing indicates that something is not quite right!")
       #break
    }
 }
 
-if(tag == 0)  {
+if(!is.null(fm))  {
    print(sprintf("Great, test run passed at voxel (%i, %i, %i)!", ii, jj, kk))
-   #if (NoConst) NoF <- nrow(anova(fm)) else NoF <- nrow(anova(fm))-1  # Just assume an intercept in the model
-        #NoF <- nrow(anova(fm))
-   #for (n in 1:lop$num_glt) contrDF[n] <- temp[n]$df
    } else { 
       errex.AFNI(sprintf("Ouch, model testing failed! Multiple reasons could cause the failure.... \n"))
 #                "might be inappropriate, or there are incorrect specifications in model.txt \n",
@@ -830,9 +834,9 @@ if(dimy == 1 & dimz == 1) {
    dim(inData) <- c(dimx_n, nSeg, NoFile)
    if (lop$nNodes==1) for(kk in 1:nSeg) {
       if(NoBrick > 1) Stat[,kk,] <- aperm(apply(inData[,kk,], 1, runAOV, dataframe=lop$dataStr,
-            ModelForm=ModelForm, pars=pars, tag=0), c(2,1)) else
+            ModelForm=ModelForm, pars=pars), c(2,1)) else
          Stat[,kk,] <- aperm(apply(inData[,kk,], 1, runAOV, dataframe=lop$dataStr,
-            ModelForm=ModelForm, pars=pars, tag=0), dim=c(dimx_n, 1))
+            ModelForm=ModelForm, pars=pars), dim=c(dimx_n, 1))
       cat("Computation done: ", 100*kk/nSeg, "%", format(Sys.time(), "%D %H:%M:%OS3"), "\n", sep='')   
    }
    
@@ -842,9 +846,9 @@ if(dimy == 1 & dimz == 1) {
    clusterEvalQ(cl, library(afex)); clusterEvalQ(cl, library(phia))
    for(kk in 1:nSeg) {
       if(NoBrick > 1) Stat[,kk,] <- aperm(parApply(cl, inData[,kk,], 1, runAOV, dataframe=lop$dataStr,
-            ModelForm=ModelForm, pars=pars, tag=0), c(2,1)) else
+            ModelForm=ModelForm, pars=pars), c(2,1)) else
       Stat[,kk,] <- aperm(parApply(cl, inData[,kk,], 1, runAOV, dataframe=lop$dataStr,
-            ModelForm=ModelForm, pars=pars, tag=0), dim=c(dimx_n, 1))
+            ModelForm=ModelForm, pars=pars), dim=c(dimx_n, 1))
       cat("Computation done ", 100*kk/nSeg, "%: ", format(Sys.time(), "%D %H:%M:%OS3"), "\n", sep='')   
    }
    stopCluster(cl)
@@ -860,9 +864,9 @@ Stat <- array(0, dim=c(dimx, dimy, dimz, NoBrick))
 
 if (lop$nNodes==1) for (kk in 1:dimz) {
    if(NoBrick > 1) Stat[,,kk,] <- aperm(apply(inData[,,kk,], c(1,2), runAOV, dataframe=lop$dataStr, 
-         ModelForm=ModelForm, pars=pars, tag=0), c(2,3,1)) else
+         ModelForm=ModelForm, pars=pars), c(2,3,1)) else
       Stat[,,kk,] <- array(apply(inData[,,kk,], c(1,2), runAOV, dataframe=lop$dataStr, 
-         ModelForm=ModelForm, pars=pars, tag=0), dim=c(dimx, dimy, 1))      
+         ModelForm=ModelForm, pars=pars), dim=c(dimx, dimy, 1))      
    cat("Z slice ", kk, "done: ", format(Sys.time(), "%D %H:%M:%OS3"), "\n")
 } 
 
@@ -873,9 +877,9 @@ if (lop$nNodes>1) {
    clusterEvalQ(cl, library(afex)); clusterEvalQ(cl, library(phia)) 
    for (kk in 1:dimz) {
       if(NoBrick > 1) Stat[,,kk,] <- aperm(parApply(cl, inData[,,kk,], c(1,2), runAOV, 
-            dataframe=lop$dataStr, ModelForm=ModelForm, pars=pars, tag=0), c(2,3,1)) else
+            dataframe=lop$dataStr, ModelForm=ModelForm, pars=pars), c(2,3,1)) else
          Stat[,,kk,] <- array(parApply(cl, inData[,,kk,], c(1,2), runAOV, 
-            dataframe=lop$dataStr, ModelForm=ModelForm, pars=pars, tag=0), dim=c(dimx, dimy, 1))
+            dataframe=lop$dataStr, ModelForm=ModelForm, pars=pars), dim=c(dimx, dimy, 1))
       cat("Z slice ", kk, "done: ", format(Sys.time(), "%D %H:%M:%OS3"), "\n")
    } 
    stopCluster(cl)
@@ -890,7 +894,7 @@ if (lop$nNodes>1) {
 #   clusterEvalQ(cl, library(afex)); #clusterEvalQ(cl, library(contrast))
 #   kk<- 32
 #   
-#      Stat[,,kk,] <-aperm(parApply(cl, inData[,,kk,], c(1,2), runAOV, dataframe=lop$dataStr, ModelForm=ModelForm, pars=pars, tag=0), c(2,3,1))
+#      Stat[,,kk,] <-aperm(parApply(cl, inData[,,kk,], c(1,2), runAOV, dataframe=lop$dataStr, ModelForm=ModelForm, pars=pars), c(2,3,1))
 #      cat("Z slice ", kk, "done: ", format(Sys.time(), "%D %H:%M:%OS3"), "\n")
 #   stopCluster(cl)
 #}
@@ -908,7 +912,7 @@ statpar <- "3drefit"
 for(ii in 1:nF) statpar <- paste(statpar, " -substatpar ", ii-1, " fift ",
    ifelse(is.na(lop$wsVars), univ(fm[[1]])[ii+1, 'Df'], unname(univ(fm[[1]])[[1]][ii+1,'num Df'])), " ",
    ifelse(is.na(lop$wsVars), univ(fm[[1]])[2+nF, 'Df'], unname(univ(fm[[1]])[[1]][ii+1,'den Df'])) )
-for(ii in 1:lop$num_glt) statpar <- paste(statpar, " -substatpar ", nF+2*ii-1, " fitt", 
+if(lop$num_glt>0) for(ii in 1:lop$num_glt) statpar <- paste(statpar, " -substatpar ", nF+2*ii-1, " fitt", 
    ifelse(is.na(lop$wsVars), gltRes[[ii]][2,2], gltRes[[ii]][,6]))    
 statpar <- paste(statpar, " -addFDR -newid ", lop$outFN)
 
