@@ -1,0 +1,49 @@
+From: Yaroslav Halchenko <debian@onerussian.com>
+Subject: Initiated by fixing crash while providing a single 4D volume
+
+since it requires 1 more formatcard (%s) in the string for the interpolation
+
+also complemented with use of os.path.merge as exemplars to write OS-agnostic
+path handling
+
+Origin: NeuroDebian
+Last-Update: 2012-11-29
+
+--- a/pkundu/meica.py
++++ b/pkundu/meica.py
+@@ -283,7 +283,7 @@ if options.anat!='':
+ 		sl.append("3dcalc -a eBmask%s -b eBmask_bias%s -expr 'a/b' -prefix eBbase%s" % ( osf, osf, osf))
+ 		weightline = ' -lpc -weight eBmask_pve_0.nii.gz -base eBbase%s ' % (osf)
+ 	else: weightline = ' -lpc+ZZ -automask -autoweight -base _eBmask%s ' % (osf)
+-	sl.append("cp %s/%s* ." % (startdir,nsmprage))	
++	sl.append("cp %s* ." % os.path.merge(startdir,nsmprage))
+ 	abmprage = nsmprage
+ 	if options.tlrc:
+ 		sl.append("afnibinloc=`which 3dSkullStrip`")
+@@ -294,7 +294,7 @@ if options.anat!='':
+ 		sl.append("3dcopy %s %s" % (atnsmprage,dsprefix(atnsmprage)))
+ 		sl.append("3drefit -view orig %s+tlrc " % dsprefix(atnsmprage) )
+ 		sl.append("cp %s %s" % (atnsmprage,startdir))
+-		sl.append("gzip -f %s/%s" % (startdir,atnsmprage))
++		sl.append("gzip -f %s" % os.path.merge(startdir,atnsmprage))
+ 		abmprage = atnsmprage
+ 	align_args=""
+ 
+@@ -302,7 +302,7 @@ if options.anat!='':
+ 	elif oblique_mode: align_args = " -maxrot 10 -maxshf 10 "
+ 	else: align_args=" -maxrot 20 -maxshf 20 -parfix 7 1  -parang 9 0.83 1.0 "
+ 	if oblique_mode: alnsmprage = "./%s_ob.nii.gz" % (anatprefix)
+-	else: alnsmprage = "%s/%s" % (startdir,nsmprage)
++	else: alnsmprage = os.path.merge(startdir,nsmprage)
+ 	sl.append("3dAllineate -weight_frac 1.0 -VERB -warp aff %s -source_automask+10 -cmass -master SOURCE -source %s -prefix ./%s_al -1Dmatrix_save %s_al_mat %s" % (weightline,alnsmprage, anatprefix,anatprefix,align_args))
+ 	if options.tlrc: tlrc_opt = "%s::WARP_DATA -I" % (atnsmprage)
+ 	else: tlrc_opt = ""
+@@ -366,7 +366,7 @@ sl.append("echo 2 > stage")
+ if len(ica_datasets)==1:
+ 	dsin = ''.join(ica_datasets)+trailing
+ 	ica_prefix = dsin
+-	ica_input="./%s_in%s" % (prefix,''.join(ica_datasets),trailing)
++	ica_input="./%s_in%s%s" % (prefix,''.join(ica_datasets),trailing)
+ 	ica_mask="eBvrmask.nii.gz"
+ else:
+ 	ica_input = "zcat_ffd.nii.gz" 

@@ -6,7 +6,7 @@ afni (0.20121123~dfsg.1-1) neurodebian; urgency=low
     - New scripts: meica.py (requires nibabel and MDP, now Recommended)
   * Built with OpenMP support (libgomp1 dependency added)
   * New patches: up_pragma_var_definition, up_glut_init,
-    up_meica_tedana_upstream_mdp_api
+    up_meica_tedana_upstream_mdp_api, up_meica_fixes
 
  -- Yaroslav Halchenko <debian@onerussian.com>  Wed, 28 Nov 2012 14:59:31 -0500
 
