@@ -5,4 +5,7 @@ Duplicate files
 
 Additional optional dependencies
 ================================
-* OpenMP (gomp)
+
+Testing
+=======
+* 3DEdge comes with some basic tests, would be nice to build/execute

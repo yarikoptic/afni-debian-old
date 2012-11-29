@@ -1,3 +1,15 @@
+afni (0.20121123~dfsg.1-1) neurodebian; urgency=low
+
+  [ Michael Hanke, Yaroslav Halchenko ]
+  * New upstream code. Updated CMake build system:
+    - 3dedge library is now GPL-ed, thus not stripped
+    - New scripts: meica.py (requires nibabel and MDP, now Recommended)
+  * Built with OpenMP support (libgomp1 dependency added)
+  * New patches: up_pragma_var_definition, up_glut_init,
+    up_meica_tedana_upstream_mdp_api
+
+ -- Yaroslav Halchenko <debian@onerussian.com>  Wed, 28 Nov 2012 14:59:31 -0500
+
 afni (0.20120420~dfsg.1-1) UNRELEASED; urgency=low
 
   [ Alex Waite]

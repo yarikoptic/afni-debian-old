@@ -1,0 +1,6 @@
+afni (0.20121123~dfsg.1-1) neurodebian; urgency=low
+
+3dedge library is now released under GPL v3.0 license, thus it is no longer
+stripped out and all related functionality in AFNI should operate normally.
+
+ -- Yaroslav Halchenko <debian@onerussian.com>  Wed, 28 Nov 2012 14:10:36 -0500

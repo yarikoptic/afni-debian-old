@@ -1,0 +1,12 @@
+diff --git a/SUMA/SUMA_DataSets.h b/SUMA/SUMA_DataSets.h
+index ba03279..94c5c38 100755
+--- a/SUMA/SUMA_DataSets.h
++++ b/SUMA/SUMA_DataSets.h
+@@ -21,6 +21,7 @@
+ 	      }  \
+          /* SUMAg_CF->scm = SUMA_Build_Color_maps();  require X connection*/\
+       SUMA_ParseInput_basics_s (argv, argc);   \
++      glutInit(& argc, argv); \
+    }
+ #endif   
+ 

@@ -1,0 +1,16 @@
+From: Yaroslav Halchenko <debian@onerussian.com>
+Subject: Use coarse_limit in FastICANode parameters, as patch was adopted upstream
+
+Last-Update: 2012-11-28
+
+--- a/pkundu/meica.libs/tedana.py
++++ b/pkundu/meica.libs/tedana.py
+@@ -580,7 +580,7 @@ def tedica(dd,cost):
+ 	#Do ICA
+ 	climit = float("%s" % options.conv)
+ 	#icanode = mdp.nodes.FastICANode(white_comp=nc, white_parm={'svd':True},approach='symm', g=cost, fine_g=options.finalcost, limit=climit, verbose=True)
+-	icanode = mdp.nodes.FastICANode(white_comp=nc,approach='symm', g=cost, fine_g=options.finalcost, primary_limit=climit*100, limit=climit, verbose=True)
++	icanode = mdp.nodes.FastICANode(white_comp=nc,approach='symm', g=cost, fine_g=options.finalcost, coarse_limit=climit*100, limit=climit, verbose=True)
+ 	icanode.train(dd)
+ 	smaps = icanode.execute(dd)
+ 	mmix = icanode.get_recmatrix().T
