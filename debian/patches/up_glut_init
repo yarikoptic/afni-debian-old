@@ -1,3 +1,15 @@
+From: Yaroslav Halchenko <debian@onerussian.com>
+Subject: call glutInit in SUMA_STANDALONE_INIT
+
+Otherwise suma would crash with
+
+  freeglut  ERROR:  Function <glutBitmapWidth> called without first calling 'glutInit'.
+
+upon right click on a mesh
+
+Origin: Debian
+Last-Update: 2012-11-29
+
 diff --git a/SUMA/SUMA_DataSets.h b/SUMA/SUMA_DataSets.h
 index ba03279..94c5c38 100755
 --- a/SUMA/SUMA_DataSets.h
