@@ -20,6 +20,19 @@ for other shells than bash).
 Questions regarding the usage of \fBAFNI\fR or related theory can be
 posted in the
 \fBAFNI forum\fR (see \fIhttp://afni.nimh.nih.gov/afni/community/board\fR).
+.SH "ENVIRONMENT"
+This \fBAFNI\fR suite is built with \fBOPENMP\fR support, allowing
+some tools (e.g. 3dDespike) use multiple threads on a single box.  By
+default it will run 1 thread per each available CPU
+core.
+.Ev
+OMP_NUM_THREADS
+environment variable can be used to explicitly specify number of threads to use.
+.PP
+See
+.Pa
+/usr/share/doc/afni-common/README.environment.gz
+for description of other environment variables used by \fBAFNI\fR.
 .SH "FILES"
 .IP /etc/afni/afni.sh
 .IP /usr/share/doc/afni-common/README.environment.gz
