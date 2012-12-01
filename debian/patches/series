@@ -2,6 +2,7 @@ up_meica_fixes
 up_meica_tedana_upstream_mdp_api
 up_glut_init
 up_pragma_var_definition
+up_secure_snprintf
 ttatlas_location
 ffmpeg_support
 unmod_f2c

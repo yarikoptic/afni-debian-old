@@ -1,0 +1,21 @@
+From: Yaroslav Halchenko <debian@onerussian.com>
+Subject: explicit format, move the string into format parameter
+
+to overcome 
+
+error: format not a string literal and no format arguments [-Werror=format-security]
+
+Origin: NeuroDebian
+Last-Update: 2012-11-30
+
+--- a/rickr/serial_helper.c
++++ b/rickr/serial_helper.c
+@@ -1017,7 +1017,7 @@ int format_output(optiondata * opt, motp
+ 
+     /* motion params - common output*/
+     posn = 0;
+-    bytes = snprintf(*outstr+posn, len-posn, dhdr1);
++    bytes = snprintf(*outstr+posn, len-posn, "%s", dhdr1);
+     posn += bytes;
+     for( ind = 0; ind < mp->nvals; ind++ ) {
+         bytes = snprintf(*outstr+posn, len-posn, "  %10f", mp->data[ind]);
