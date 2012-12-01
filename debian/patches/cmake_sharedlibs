@@ -1282,7 +1282,7 @@ Last-Update: 2010-09-21
 +  1d_tool.py afni_proc.py afni_restproc.py align_epi_anat.py @DoPerRoi.py eg_main_chrono.py
 +  gen_epi_review.py gen_group_command.py gen_ss_review_scripts.py gui_xmat.py
 +  lpc_align.py make_pq_script.py make_random_timing.py make_stim_times.py
-+  neuro_deconvolve.py python_module_test.py realtime_receiver.py
++  neuro_deconvolve.py python_module_test.py quick.alpha.vals.py realtime_receiver.py
 +  slow_surf_clustsim.py timing_tool.py uber_align_test.py uber_proc.py
 +  uber_skel.py uber_subject.py uber_ttest.py xmat_tool.py)
 +
