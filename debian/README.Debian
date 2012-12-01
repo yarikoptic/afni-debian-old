@@ -9,14 +9,6 @@ of some of its dependencies. This concerns the following tools:
     covered by a non-free (non-commercial) license and has been removed from
     the Debian package.
 
-* 3dedge, 3dedge3 -- depend on lib3dedge, and the corresponding license even
-    forbids distribution of its source code. Hence, the library sources have
-    been removed and all tools depending on it are not available.
-
-    This change requires some commandline options to be specified for tools
-    employing skull stripping, since by default they would run 3dedge-related
-    functions. Please see the afni(1) manpage for more information.
-
 
 Matlab support
 --------------
@@ -26,4 +18,4 @@ to use it with Matlab one needs to add this path to Matlab's search path.
 
 Unfortunately, the current code is not compatible with Octave.
 
- -- Michael Hanke <michael.hanke@gmail.com>  Wed, 5 Jan 2011 11:44:06 -0500
+ -- Yaroslav Halchenko <debian@onerussian.com>, Fri, 30 Nov 2012 17:02:57 -0500

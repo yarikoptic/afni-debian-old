@@ -3,9 +3,20 @@ Duplicate files
   eispack.h eispack/eispack.h
   coxplot.h coxplot/coxplot.h
 
+Permissions
+===========
+
+
 Additional optional dependencies
 ================================
 
 Testing
 =======
 * 3DEdge comes with some basic tests, would be nice to build/execute
+
+* Failed to open plugin /usr/lib/afni/plugins/plug_retroicor.so -- /usr/lib/afni/plugins/plug_retroicor.so: undefined symbol: RIC_CalcVoxelMeans
+
+
+Missing installations
+=====================
+
