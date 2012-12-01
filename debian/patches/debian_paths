@@ -5,6 +5,15 @@ Author: Michael Hanke <michael.hanke@gmail.com>
 Last-Update: 2010-09-29
 --- a/afni_func.c
 +++ b/afni_func.c
+@@ -5783,7 +5783,7 @@ ENTRY("AFNI_tips_CB") ;
+      XMapRaised( XtDisplay(tips_hw->wshell) , XtWindow(tips_hw->wshell) ) ;
+      EXRETURN ;
+    } else if( !AFNI_noenv("AFNI_DONT_USE_HTMLWIN") ){
+-     fpt = THD_find_regular_file("afnigui.html", NULL) ;
++     fpt = THD_find_regular_file("afnigui.html", "/usr/share/afni/html") ;
+      if( fpt != NULL && *fpt != '\0' ){
+        inf = (char *)malloc(sizeof(char)*(strlen(fpt)+16)) ;
+        strcpy(inf,"file:") ; strcat(inf,fpt) ; free(fpt) ;
 @@ -6641,6 +6641,8 @@ ENTRY("AFNI_find_poem_files") ;
     /*----- get path to search -----*/
  
@@ -45,6 +54,20 @@ Last-Update: 2010-09-29
        if( epath == NULL ) epath = getenv("AFNI_PLUGIN_PATH") ;
        if( epath == NULL ) epath = getenv("PATH") ;
        if( epath == NULL ) RETURN(dset) ;
+@@ -2131,8 +2135,11 @@ char *find_atlas_niml_file(char * nimlna
+    }
+      
+    /* okay that didn't work, try the AFNI plugin directory */
+-   namebuf[0]='\0';
+-                       epath = getenv("AFNI_PLUGINPATH") ;
++   /* In Debian distribution most logical location is actually
++      atlas path, so let's use that one instead of PLUGINPATH
++      if it was defined and only use plugins path if not */
++   namebuf[0]='\0';    epath = getenv("AFNI_TTATLAS_DATASET");
++   if( epath == NULL ) epath = getenv("AFNI_PLUGINPATH") ;
+    if( epath == NULL ) epath = getenv("AFNI_PLUGIN_PATH") ;
+    if( epath != NULL ) {
+       if(wami_verb() > 1) 
 --- a/afni.c
 +++ b/afni.c
 @@ -4922,12 +4922,31 @@ ENTRY("AFNI_read_inputs") ;
