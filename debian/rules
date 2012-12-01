@@ -7,16 +7,19 @@ upstreamver = $(shell echo $(debver) | cut -d '-' -f 1,1 )
 # then described this commit by parsing its commit message
 gitver = $(shell [ -x /usr/bin/git ] && git log -n 1 --oneline $$(git merge-base -a HEAD upstream) | cut -d ' ' -f '4,4')
 
+# Enable hardening on systems which support it
+export DEB_BUILD_HARDENING=1
+
 # get install locations for matlab packages
 include /usr/share/matlab/debian/defs.make
 
 # TODO plugins do not handle this well
-LDFLAGS = -Wl,--allow-shlib-undefined
+LDFLAGS = $(shell dpkg-buildflags --get LDFLAGS) -Wl,--allow-shlib-undefined
 export LDFLAGS
 
 # need to do it after inclusion of cmake class to get the flag
 # appended after -Wall
-CFLAGS += -Wno-unused
+CFLAGS = $(shell dpkg-buildflags --get CFLAGS) -Wno-unused
 export CFLAGS
 
 # what are we doing this for
@@ -45,7 +48,8 @@ DEB_CMAKE_EXTRA_FLAGS = \
     -DAFNI_INSTALL_SCRIPT_DIR:STRING=/share/afni/scripts \
     -DAFNI_INSTALL_PICS_DIR:STRING=/share/afni/pics \
     -DAFNI_INSTALL_POEMS_DIR:STRING=/share/afni/poems \
-    -DAFNI_INSTALL_HTML_DIR:STRING=/share/afni/html
+    -DAFNI_INSTALL_HTML_DIR:STRING=/share/afni/html \
+    -DAFNI_INSTALL_ATLAS_DIR:STRING=/share/afni/atlases
 
 # one ring to rule them all ...
 %:
@@ -105,3 +109,23 @@ get-orig-source:
 	# orig tarball, turn directory into something nicer
 	git archive --format=tar --prefix=$(srcpkg)-$(gitver)/ HEAD | \
 		gzip -9 > $(srcpkg)_$(gitver).orig.tar.gz
+
+# Helper target to compare listing of installed afni against binary
+# upstream distribution.
+#
+# Ignore those missing which known to belong to externals, or built
+# under different names (e.g. R_io.so -> librio.so)
+test-missing:
+	@cat ../linux_openmp_64.filelist \
+    | grep -v -e README -e '\.a$$' -e 'meica\.libs' -e 'index.html.2012' \
+      -e '^\./\(demo.*\.niml\.do\|qhull\|rbox\|qdelaunay\|[cd]jpeg\|nifti1_test\|nifti_\(tool\|stats\)\|gifti_tool\|mpeg_encode\)$$' \
+      -e '^\./\(plug_3dsvm.so\|3dsvm\)$$' \
+      -e '^\./volpack\.h$$' -e 'AFNI\.....rc' \
+      -e '^\./R_io.so$$' \
+    | while read f; do \
+        bn=$$(basename $$f); \
+        n=$$(/usr/bin/find \
+            /usr/lib/afni /usr/share/afni /usr/include/afni /usr/include/nifti \
+            -name $$bn -type f | wc -l); \
+        [ $$n -eq 1 ] || echo "Found $$n for $$bn from $$f"; \
+    done
