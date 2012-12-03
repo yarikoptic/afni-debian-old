@@ -100,6 +100,8 @@ override_dh_auto_clean:
 	# ensure proper permissions for the wrapper
 	chmod +x debian/afni_wrapper
 
+override_dh_strip:
+	dh_strip --dbg-package=afni-dbg
 
 # make orig tarball from repository content
 get-orig-source:
