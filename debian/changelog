@@ -1,8 +1,10 @@
 afni (0.20121123~dfsg.1-2~pre1) UNRELEASED; urgency=low
 
   * Add afni-dbg package to provide debug symbols
-  * up_3rd_no_RefreshHTML_AtEvent patch to not even mention
-    RefreshHTML from the patched XmHTML
+  * debian/patches:
+    - up_3rd_no_RefreshHTML_AtEvent -- to not even mention
+      RefreshHTML from the patched XmHTML
+    - up_condition_dset_unload -- avoid dereferencing NULL
 
  -- Yaroslav Halchenko <debian@onerussian.com>  Mon, 03 Dec 2012 14:22:28 -0500
 
