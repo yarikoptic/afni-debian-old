@@ -28,7 +28,7 @@ greeting.MVM <- function ()
           ================== Welcome to 3dMVM ==================          
    AFNI Group Analysis Program with Multivariate Linear Modeling Approach
 #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-Version 0.1.2, Nov 27, 2012
+Version 0.1.5, Dec 13, 2012
 Author: Gang Chen (gangchen@mail.nih.gov)
 Website - http://afni.nimh.nih.gov/sscc/gangc/MVM.html
 SSCC/NIMH, National Institutes of Health, Bethesda MD 20892
@@ -44,7 +44,7 @@ help.MVM.opts <- function (params, alpha = TRUE, itspace='   ', adieu=FALSE) {
           ================== Welcome to 3dMVM ==================          
     AFNI Group Analysis Program with Multi-Variate Modeling Approach
 #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-Version 0.1.2, Nov 27, 2012
+Version 0.1.5, Dec 13, 2012
 Author: Gang Chen (gangchen@mail.nih.gov)
 Website - http://afni.nimh.nih.gov/sscc/gangc/MVM.html
 SSCC/NIMH, National Institutes of Health, Bethesda MD 20892
@@ -468,7 +468,8 @@ process.MVM.opts <- function (lop, verb = 0) {
             QVpos <- which(lop$gltCode[[n]] %in% lop$QV)
             lop$gltList[[n]]   <- gltConstr(lop$gltCode[[n]][-c(QVpos, QVpos+1)], lop$dataStr)
             lop$slpList[[n]] <- lop$gltCode[[n]][QVpos]   
-         } } else lop$gltList[[n]] <- gltConstr(lop$gltCode[[n]], lop$dataStr)
+         } else lop$gltList[[n]] <- gltConstr(lop$gltCode[[n]], lop$dataStr)
+         } else lop$gltList[[n]] <- gltConstr(lop$gltCode[[n]], lop$dataStr)
       }
    }
    
@@ -758,7 +759,7 @@ while(is.null(fm)) {
    fm<-NULL
    lop$dataStr$Beta<-inData[ii, jj, kk,]
    options(warn=-1)     
-   fm <- try(aov.car(ModelForm, data=lop$dataStr, return='lm'), silent=TRUE)
+   try(fm <- aov.car(ModelForm, data=lop$dataStr, return='lm'), silent=TRUE)
    if(!is.null(fm)) if (lop$num_glt > 0) {
       n <- 1
       while(!is.null(fm) & (n <= lop$num_glt)) {
