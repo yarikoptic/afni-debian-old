@@ -100,6 +100,20 @@ IndexWarp3D * IW3D_create( int nx , int ny , int nz )
 
 /*---------------------------------------------------------------------------*/
 
+void IW3D_zero_fill( IndexWarp3D *AA )
+{
+   size_t nbyt  ;
+
+   if( AA == NULL ) return ;
+   nbyt = sizeof(float) * AA->nx * AA->ny * AA->nz ;
+   if( AA->xd != NULL ) AAmemset( AA->xd , 0 , nbyt ) ;
+   if( AA->yd != NULL ) AAmemset( AA->yd , 0 , nbyt ) ;
+   if( AA->zd != NULL ) AAmemset( AA->zd , 0 , nbyt ) ;
+   return ;
+}
+
+/*---------------------------------------------------------------------------*/
+
 IndexWarp3D_pair * IW3D_pair_insert( IndexWarp3D *AA , IndexWarp3D *BB )
 {
    IndexWarp3D_pair *PP ;
@@ -3247,6 +3261,8 @@ ENTRY("NwarpCalcRPN") ;
 
 static int nbx=0, nby=0, nbz=0 ;  /* dimensions of patch */
 
+static int bmode_old = -666 ;
+
 static float *b0x=NULL, *b1x=NULL, *b2x=NULL, *ccx=NULL, dxi=0.0f ;
 static float *b0y=NULL, *b1y=NULL, *b2y=NULL, *ccy=NULL, dyi=0.0f ;
 static float *b0z=NULL, *b1z=NULL, *b2z=NULL, *ccz=NULL, dzi=0.0f ;
@@ -3433,6 +3449,11 @@ ENTRY("HCwarp_setup_basis") ;
 
    /* cleanup old stuff */
 
+   if( nx == nbx && ny == nby && nz == nbz && bmode_old == MRI_CUBIC ){
+     IW3D_zero_fill(Hwarp) ; IW3D_zero_fill(AHwarp) ; return ;
+   }
+   bmode_old = MRI_CUBIC ;
+
    if(  Hwarp != NULL ){ IW3D_destroy( Hwarp);  Hwarp = NULL; }
    if( AHwarp != NULL ){ IW3D_destroy(AHwarp); AHwarp = NULL; }
 
@@ -3570,6 +3591,11 @@ void HQwarp_setup_basis( int nx , int ny , int nz , int flags )
    float_triple ee ; int ii ; float ca,cb ;
 
 ENTRY("HQwarp_setup_basis") ;
+
+   if( nx == nbx && ny == nby && nz == nbz && bmode_old == MRI_QUINTIC ){
+     IW3D_zero_fill(Hwarp) ; IW3D_zero_fill(AHwarp) ; return ;
+   }
+   bmode_old = MRI_QUINTIC ;
 
    if( Hwarp  != NULL ){ IW3D_destroy( Hwarp);  Hwarp = NULL; }
    if( AHwarp != NULL ){ IW3D_destroy(AHwarp); AHwarp = NULL; }
@@ -4133,6 +4159,7 @@ ENTRY("IW3D_cleanup_improvement") ;
    FREEIFNN(b0x); FREEIFNN(b1x); FREEIFNN(b2x); FREEIFNN(ccx); nbx=0;
    FREEIFNN(b0y); FREEIFNN(b1y); FREEIFNN(b2y); FREEIFNN(ccy); nby=0;
    FREEIFNN(b0z); FREEIFNN(b1z); FREEIFNN(b2z); FREEIFNN(ccz); nbz=0;
+   bmode_old = -666 ;
 
    if( nbbbar > 0 && bbbar != NULL ){
      int ii ;
@@ -4179,9 +4206,12 @@ ENTRY("IW3D_setup_for_improvement") ;
    Hbasim = mri_to_float(bim) ;
    Hsrcim = mri_to_float(sim);
 
-   if( Hblur_s > 0.1f ){
+   if( Hblur_s >= 0.5f ){
      if( Hverb ) ININFO_message("   blurring source image %.3g voxels FWHM",Hblur_s) ;
      Hsrcim_blur = mri_float_blur3D( FWHM_TO_SIGMA(Hblur_s) , Hsrcim ) ;
+   } else if( Hblur_s <= -1.0f ){
+     if( Hverb ) ININFO_message("   median-izing source image %.3g voxels",-Hblur_s) ;
+     Hsrcim_blur = mri_medianfilter( Hsrcim , -Hblur_s , NULL , 0 ) ;
    } else {
      Hsrcim_blur = NULL ;
    }
@@ -4470,14 +4500,18 @@ ENTRY("IW3D_improve_warp") ;
 
    /***** HERE is the actual optimization! *****/
 
-   itmax = (Hduplo) ? 5*Hnparmap+67 : 9*Hnparmap+133 ;
+   itmax = (Hduplo) ? 5*Hnparmap+67 : 8*Hnparmap+107 ;
 
+#if 0
    if( Hverb ) powell_set_verbose(1) ;
+#endif
 
    iter = powell_newuoa_con( Hnparmap , parvec,xbot,xtop , 7 ,
                              prad,0.1*prad , itmax , IW3D_scalar_costfun ) ;
 
+#if 0
    if( Hverb ) powell_set_verbose(0) ;
+#endif
 
    /***** cleanup and exit phase ***/
 
@@ -4532,9 +4566,9 @@ static IndexWarp3D *WO_iwarp = NULL ;
 
 void (*iterfun)(char *,MRI_IMAGE *) = NULL ;
 
-#define ITEROUT(lll,aaa,bbb,ccc,ddd,eee,fff)                               \
+#define ITEROUT(lll)                                                       \
  do{ if( iterfun != NULL ){                                                \
-       MRI_IMAGE *outim = IW3D_warp_floatim(Haawarp,Hsrcim,MRI_LINEAR) ;   \
+       MRI_IMAGE *outim = IW3D_warp_floatim(Haawarp,Hsrcim,MRI_WSINC5) ;   \
        char str[256]; sprintf(str,"lev=%d",lll) ;                          \
        iterfun(str,outim) ; mri_free(outim) ;                              \
        ININFO_message("  ---ITEROUT(%s)",str) ;                            \
@@ -4582,13 +4616,16 @@ ENTRY("IW3D_warpomatic") ;
      Hforce = 1 ; Hfactor = 1.0f ; Hpen_use = 0 ;
      iter = IW3D_improve_warp( MRI_CUBIC  , ibbb,ittt, jbbb,jttt, kbbb,kttt ) ; /* top level */
      iter = IW3D_improve_warp( MRI_QUINTIC, ibbb,ittt, jbbb,jttt, kbbb,kttt ) ; /* top level */
-     ITEROUT(0,ibbb,ittt,jbbb,jttt,kbbb,kttt) ;
    }
    Hforce = 0 ; Hlev_final = 0 ;
 
+   if( !Hduplo ) ITEROUT(0) ;
+
                      eee = getenv("AFNI_WARPOMATIC_PATCHMIN") ;
    if( eee == NULL ) eee = getenv("AFNI_WARPOMATIC_MINPATCH") ;
-   if( eee != NULL && isdigit(eee[0]) ) ngmin = (int)strtod(eee,NULL) ;
+   if( eee != NULL && isdigit(eee[0]) ){
+     ngmin = (int)strtod(eee,NULL) ; if( Hduplo ) ngmin /= 2 ;
+   }
         if( ngmin   <  NGMIN ) ngmin = NGMIN ;
    else if( ngmin%2 == 0     ) ngmin-- ;
 
@@ -4723,7 +4760,7 @@ ENTRY("IW3D_warpomatic") ;
        }
      }
 
-     ITEROUT(lev,ibot,itop,jbot,jtop,kbot,ktop) ;
+     if( !Hduplo ) ITEROUT(lev) ;
 
    } /*-- end of loop over levels of refinement --*/
 
