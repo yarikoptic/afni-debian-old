@@ -3389,6 +3389,7 @@ static int          Hstopped    = 0 ;
 static int Hlev_start =   0 ;
 static int Hlev_end   = 666 ;
 static int Hlev_final =   0 ;
+static int Hlev_now   =   0 ;
 static int Hduplo     =   0 ;
 static int Hfinal     =   0 ;
 static int Hworkhard  =   0 ;
@@ -4887,8 +4888,8 @@ ENTRY("IW3D_improve_warp") ;
 
    /***** HERE is the actual optimization! *****/
 
-   itmax = (Hduplo) ? 5*Hnparmap+23 : 8*Hnparmap+37 ;
-   if( 0 && Hfinal ) itmax += Hnparmap ;
+   itmax = (Hduplo) ? 5*Hnparmap+21 : 8*Hnparmap+31 ;
+   if( Hworkhard > 0 && Hlev_now <= Hworkhard ) itmax -= Hnparmap ;
 
 #if 0
    if( Hverb ) powell_set_verbose(1) ;
@@ -4953,12 +4954,16 @@ static IndexWarp3D *WO_iwarp = NULL ;
 
 void (*iterfun)(char *,MRI_IMAGE *) = NULL ;
 
-#define ITEROUT(lll)                                                               \
- do{ if( iterfun != NULL ){                                                         \
-       MRI_IMAGE *outim = IW3D_warp_floatim(Haawarp,Hsrcim,MRI_WSINC5) ;             \
-       char str[256]; sprintf(str,"lev=%d",lll) ;                                     \
-       iterfun(str,outim) ; mri_free(outim) ;                                          \
-       ININFO_message("  ---ITEROUT(%s) -- %s",str,nice_time_string(NI_clock_time())) ; \
+#define ITEROUT(lll)                                                                    \
+ do{ if( iterfun != NULL ){                                                              \
+       MRI_IMAGE *outim = IW3D_warp_floatim(Haawarp,Hsrcim,MRI_WSINC5) ;                  \
+       char str[256]; sprintf(str,"lev=%d",lll) ;                                          \
+       iterfun(str,outim) ; mri_free(outim) ;                                               \
+       ININFO_message("  ---ITEROUT(%s) -- %s",str,nice_time_string(NI_clock_time())) ;      \
+       if( lll == 0 || nlevr < 2 )                                                            \
+         ININFO_message("   --(%s)-- final cost = %g",str,Hcostend) ;                          \
+       else                                                                                     \
+         ININFO_message("   --(%s)-- middle cost = %g  final cost = %g",str,Hcostmid,Hcostend) ; \
    } } while(0)
 
 IndexWarp3D * IW3D_warpomatic( MRI_IMAGE *bim, MRI_IMAGE *wbim, MRI_IMAGE *sim,
@@ -4967,7 +4972,7 @@ IndexWarp3D * IW3D_warpomatic( MRI_IMAGE *bim, MRI_IMAGE *wbim, MRI_IMAGE *sim,
    int lev,levs , xwid,ywid,zwid , xdel,ydel,zdel , iter ;
    int ibot,itop,idon , jbot,jtop,jdon , kbot,ktop,kdon , dox,doy,doz , iii ;
    IndexWarp3D *OutWarp ;
-   float flev , glev , Hcostold ;
+   float flev , glev , Hcostold , Hcostmid=0.0f,Hcostend=0.0f ;
    char *eee ;
    int imin,imax , jmin,jmax, kmin,kmax , ibbb,ittt , jbbb,jttt , kbbb,kttt ;
    int dkkk,djjj,diii , ngmin=0 , levdone=0 ;
@@ -5001,23 +5006,28 @@ ENTRY("IW3D_warpomatic") ;
 
    if( Hlev_start == 0 ){            /* top level = global warps */
      nlevr = (Hworkhard) ? 4 : 1 ;
-     Hforce = 1 ; Hfactor = 1.0f ; Hpen_use = 0 ;
+     Hforce = 1 ; Hfactor = 1.0f ; Hpen_use = 0 ; Hlev_now = 0 ;
      for( iii=0 ; iii < nlevr ; iii++ ){
        (void)IW3D_improve_warp( MRI_CUBIC  , ibbb,ittt,jbbb,jttt,kbbb,kttt );
        Hcostold = Hcost ;
        (void)IW3D_improve_warp( MRI_QUINTIC, ibbb,ittt,jbbb,jttt,kbbb,kttt );
-       if( Hcostold-Hcost < 0.01f ) break ;
+       if( iii > 0 && iii < nlevr-1 && Hcostold-Hcost < 0.01f ){
+         if( Hverb )
+           ININFO_message("       --> too little improvement: breaking out of WORKHARD iterates") ;
+         break ;
+       }
      }
    } else {
      Hcost = 666.666f ;  /* a beastly thing to do */
    }
    Hforce = 0 ; Hlev_final = 0 ; Hpen_use = (Hpen_fac > 0.0f) ;
+   Hcostmid = Hcostend = Hcost ;
 
    if( !Hduplo ) ITEROUT(0) ;
 
    if( Hngmin > 0 ){
      ngmin = Hngmin ;
-     if( Hduplo ){ ngmin /= 2 ; if( ngmin < 19 ) ngmin = 19 ; }
+     if( Hduplo ){ ngmin /= 2 ; if( ngmin < 21 ) ngmin = 21 ; }
    }
                      eee = getenv("AFNI_WARPOMATIC_PATCHMIN") ;
    if( eee == NULL ) eee = getenv("AFNI_WARPOMATIC_MINPATCH") ;
@@ -5058,7 +5068,7 @@ ENTRY("IW3D_warpomatic") ;
 
      /* here, we are doing something, so don't let any width go below threshold */
 
-     Hlev_final = lev ;  /* in case we leave this loop somewhere below */
+     Hlev_now = Hlev_final = lev ;  /* in case we leave this loop somewhere below */
 
      if( xwid < ngmin ) xwid = MIN(Hnx,ngmin);
      if( ywid < ngmin ) ywid = MIN(Hny,ngmin);
@@ -5114,12 +5124,12 @@ ENTRY("IW3D_warpomatic") ;
 
      (void)IW3D_load_energy(Haawarp) ;  /* initialize energy field for penalty use */
 
-     nlevr = (Hworkhard && (lev <= 4 || lev == levs) ) ? 2 : 1 ;
+     nlevr = (Hworkhard && (lev <= Hworkhard || lev == levs) ) ? 2 : 1 ;
 
      if( Hverb )
        ININFO_message("  .........  lev=%d xwid=%d ywid=%d zwid=%d Hfac=%g %s %s" ,
                       lev,xwid,ywid,zwid,Hfactor , (levdone   ? "FINAL"  : "\0") ,
-                                                   (nlevr > 1 ? "WORKING HARD" : "\0") ) ;
+                                                   (nlevr > 1 ? "WORKHARD" : "\0") ) ;
 
      /* alternate the direction of sweeping at different levels */
 
@@ -5155,6 +5165,7 @@ ENTRY("IW3D_warpomatic") ;
            }
          }
        }
+       Hcostmid = Hcostend = Hcost ;
      }
 
      if( lev%2 == 0 || nlevr > 1 ){ /* top to bot, kji */
@@ -5189,6 +5200,7 @@ ENTRY("IW3D_warpomatic") ;
            }
          }
        }
+       Hcostend = Hcost ;
      }
 
      if( !Hduplo ) ITEROUT(lev) ;
