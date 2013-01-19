@@ -49,6 +49,27 @@
 
 afni_history_struct rickr_history[] = {
 
+ { 18, Jan, 2013, RCR, "@compute_gcor", MINOR, TYPE_NEW_PROG,
+   "compute GCOR = global correlation of a dataset",
+   NULL
+ } ,
+
+ { 18, Jan, 2013, RCR, "3dDeconvolve", MICRO, TYPE_BUG_FIX,
+   "when jobs=1, only warn for -virtvec if the option was used",
+   "The result was just a warning which did not affect processing.\n"
+   "Thanks to J Britton and E Ronkin for noting the issue."
+ } ,
+
+ { 16, Jan, 2013, RCR, "1d_tool.py", MINOR, TYPE_NEW_OPT,
+   "added option -show_gcor (and _all and _doc)",
+   "compute GCOR (average correlation) on 1D files"
+ } ,
+
+ { 16, Jan, 2013, RCR, "realtime_receiver.py", MINOR, TYPE_NEW_OPT,
+   "added option -dc_params",
+   "To go with new scripts AFNI_data6/realtime.demos/demo.2.fback.*."
+ } ,
+
  { 9, Jan, 2013, RCR, "afni_proc.py", MINOR, TYPE_NEW_OPT,
    "added option -regress_compute_gcor",
    "If errts and EPI mask exist, GCOR is computed by default."
