@@ -28,7 +28,7 @@ greeting.MVM <- function ()
           ================== Welcome to 3dMVM ==================          
    AFNI Group Analysis Program with Multivariate Linear Modeling Approach
 #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-Version 0.1.9, Jan 17, 2013
+Version 0.1.10, Jan 23, 2013
 Author: Gang Chen (gangchen@mail.nih.gov)
 Website - http://afni.nimh.nih.gov/sscc/gangc/MVM.html
 SSCC/NIMH, National Institutes of Health, Bethesda MD 20892
@@ -44,7 +44,7 @@ help.MVM.opts <- function (params, alpha = TRUE, itspace='   ', adieu=FALSE) {
           ================== Welcome to 3dMVM ==================          
     AFNI Group Analysis Program with Multi-Variate Modeling Approach
 #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-Version 0.1.9, Jan 17, 2013
+Version 0.1.10, Jan 23, 2013
 Author: Gang Chen (gangchen@mail.nih.gov)
 Website - http://afni.nimh.nih.gov/sscc/gangc/MVM.html
 SSCC/NIMH, National Institutes of Health, Bethesda MD 20892
@@ -68,6 +68,11 @@ Usage:
  capability to correct for sphericity violations when within-subject variables
  with more than two levels are involved.
  
+ If you want to cite the analysis approach, use the following at this moment:
+ 
+ Chen, G., Saad, Z.S., Britton, J.C., Pine, D.S., Cox, R.W. (2013). Linear 
+ Mixed-Effects Modeling Approach to FMRI Group Analysis. NeuroImage, in press.
+
  In addition to R installtion, the following two R packages need to be acquired
  in R first before running 3dMVM:
  
@@ -436,7 +441,7 @@ gltConstr <- function(cStr, dataStr) {
 process.MVM.opts <- function (lop, verb = 0) {
    if(is.null(lop$outFN)) errex.AFNI(c("Output filename not specified! Add filename with -prefix.\n"))
    if(file.exists(paste(lop$outFN,"+tlrc.HEAD", sep="")) || 
-         file.exists(paste(lop$outFN,"+tlrc.HEAD", sep=""))) {
+         file.exists(paste(lop$outFN,"+tlrc.BRIK", sep=""))) {
          errex.AFNI(c("File ", lop$outFN, " exists! Try a different name.\n"))
          return(NULL)
    }      

@@ -555,7 +555,7 @@ g_help_string = """
 ## BEGIN common functions across scripts (loosely of course)
 class RegWrap:
    def __init__(self, label):
-      self.align_version = "1.35" # software version (update for changes)
+      self.align_version = "1.36" # software version (update for changes)
       self.label = label
       self.valid_opts = None
       self.user_opts = None
@@ -1195,7 +1195,11 @@ class RegWrap:
       if(dset1.input()==dset2.input()):
          print "# copy is not necessary"
          return 0
-         
+#      if((os.path.islink(dset1.p())) or (os.path.islink(dset2.p()))):
+      if(dset1.real_input() == dset2.real_input()):
+         print "# copy is not necessary"
+         return 0
+
       dset2.delete(exec_mode)
       com = shell_com(  \
             "3dcopy %s %s" % (dset1.input(), dset2.out_prefix()), exec_mode)
@@ -2797,9 +2801,15 @@ class RegWrap:
             self.info_msg( "Removing skull from %s data" % \
                        ps.dset1_generic_name)
 
-            com = shell_com(  \
+            if(ps.skullstrip_method=="3dSkullStrip"):
+               com = shell_com(  \
                   "%s -orig_vol %s -input %s -prefix %s" \
                   % (ps.skullstrip_method, ps.skullstrip_opt, a.input(), n.out_prefix()), ps.oexec)
+            else:
+               com = shell_com(  \
+                  "%s %s -apply_prefix %s %s" \
+                  % (ps.skullstrip_method, ps.skullstrip_opt, n.out_prefix(),a.input()),ps.oexec)
+
             com.run()
             if (not n.exist() and not ps.dry_run()):
                print "** ERROR: Could not strip skull\n"
