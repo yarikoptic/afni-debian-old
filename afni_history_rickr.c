@@ -49,6 +49,16 @@
 
 afni_history_struct rickr_history[] = {
 
+ { 31, Jan, 2013, RCR, "uber_proc.py", MICRO, TYPE_BUG_FIX,
+   "fixed blist error that had not been converted to bdict",
+   "Thanks to Piero C. for noting the problem."
+ } ,
+
+ { 30, Jan, 2013, RCR, "python-general", MINOR, TYPE_ENHANCE,
+   "added less biased correlations and various gcor utility functions",
+   NULL
+ } ,
+
  { 24, Jan, 2013, RCR, "Dimon", MINOR, TYPE_ENHANCE,
    "be able to process a run of AFNI volumes (-file_type AFNI)",
    "added for Der-Yow Chen and Cecil Yen"
