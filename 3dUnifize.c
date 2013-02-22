@@ -1,5 +1,7 @@
 #include "mrilib.h"
 
+static int verb = 1 ;
+
 /*---------------------------------------------------------------------------*/
 #undef  SWAP
 #define SWAP(x,y) (temp=x,x=y,y=temp)
@@ -17,6 +19,7 @@ static INLINE float median7(float *p)
 }
 
 /*---------------------------------------------------------------------------*/
+/* Shrink a 3D image down by a factor of 2 in all dimensions. */
 
 #undef  FSUB
 #define FSUB(far,i,j,k,ni,nij) far[(i)+(j)*(ni)+(k)*(nij)]
@@ -48,6 +51,9 @@ ENTRY("mri_double_down") ;
    gar = MRI_FLOAT_PTR(gim) ;
    far = MRI_FLOAT_PTR(fim) ;
 
+   /* for each output voxel (gim), take the median of the
+      corresponding input voxel and its 6 nearest neighbors */
+
    for( kk=0 ; kk < nzg ; kk++ ){
     kuu = 2*kk ; kum = kuu-1 ; if( kum <  0   ) kum = 0 ;
                  kup = kuu+1 ; if( kup >= nzf ) kup = nzf-1 ;
@@ -71,6 +77,9 @@ ENTRY("mri_double_down") ;
 }
 
 /*---------------------------------------------------------------------------*/
+/* Expand a 3D image by a factor of 2 in all directions.
+   Plus 1 more in x if xadd is nonzero, etc.
+*//*-------------------------------------------------------------------------*/
 
 MRI_IMAGE * mri_double_up( MRI_IMAGE *fim , int xadd,int yadd,int zadd )
 {
@@ -99,6 +108,9 @@ ENTRY("mri_double_up") ;
    gar = MRI_FLOAT_PTR(gim) ;
    far = MRI_FLOAT_PTR(fim) ;
 
+   /* for even output indexes, use the corresponding index in the input;
+      for odd output indexes, use the neighboring indexes in the input. */
+
    for( kk=0 ; kk < nzg ; kk++ ){
     kp = km = kk/2 ; if( kk%2 ){ kp++; if( kp >= nzf ) kp = nzf-1; }
     for( jj=0 ; jj < nyg ; jj++ ){
@@ -116,6 +128,7 @@ ENTRY("mri_double_up") ;
 }
 
 /*---------------------------------------------------------------------------*/
+/* Find the percentile perc (0..100) in a radius of vrad voxels. */
 
 MRI_IMAGE * mri_local_percentile( MRI_IMAGE *fim , float vrad , float perc )
 {
@@ -130,16 +143,24 @@ ENTRY("mri_local_percentile") ;
 
    if( fim == NULL || vrad < 4.0f || perc < 0.0f || perc > 100.0f ) RETURN(NULL) ;
 
+   /* compute automask */
+
    aim = mri_to_float(fim) ; aar = MRI_FLOAT_PTR(aim) ;
    ams = mri_automask_image(aim) ;
    if( ams == NULL ){ mri_free(aim) ; RETURN(NULL) ; }
 
+   /* apply automask */
+
    for( ii=0 ; ii < aim->nvox ; ii++ ) if( ams[ii] == 0 ) aar[ii] = 0.0f ;
    free(ams) ;
+
+   /* shrink image by 2 for speedup */
 
    bim = mri_double_down(aim) ; bar = MRI_FLOAT_PTR(bim) ; mri_free(aim) ;
    bms = (byte *)malloc(sizeof(byte)*bim->nvox) ;
    for( ii=0 ; ii < bim->nvox ; ii++ ) bms[ii] = (bar[ii] != 0.0f) ;
+
+   /* neighborhood has 1/2 radius in the shrunken volume */
 
    nbhd = MCW_spheremask( 1.0f,1.0f,1.0f , 0.5f*vrad+0.001f ) ;
    nbar = (float *)malloc(sizeof(float)*nbhd->num_pt) ;
@@ -148,6 +169,9 @@ ENTRY("mri_local_percentile") ;
    SetSearchAboutMaskedVoxel(1) ;
 
    nx = bim->nx ; ny = bim->ny ; nz = bim->nz ; nxy = nx*ny ;
+
+   /* for each voxel:
+        extract neighborhood array, sort it, get result */
 
    for( kk=0 ; kk < nz ; kk++ ){
      for( jj=0 ; jj < ny ; jj++ ){
@@ -182,13 +206,24 @@ ENTRY("mri_local_percentile") ;
 
 /*---------------------------------------------------------------------------*/
 
+static void vstep_print(void)
+{
+   static char xx[10] = "0123456789" ; static int vn=0 ;
+   fprintf(stderr , "%c" , xx[vn%10] ) ;
+   if( vn%10 == 9) fprintf(stderr,".") ;
+   vn++ ;
+}
+
+/*---------------------------------------------------------------------------*/
+/* Get the local (vrad radius) average value between percentiles p1 and p2. */
+
 MRI_IMAGE * mri_local_percmean( MRI_IMAGE *fim , float vrad , float p1, float p2 )
 {
    MRI_IMAGE *aim , *bim , *cim , *dim ;
    float     *aar , *bar , *car , *dar , *nbar ;
    byte      *ams , *bms ;
    MCW_cluster *nbhd ;
-   int ii,jj,kk , nbar_num , nx,ny,nz,nxy ;
+   int ii,jj,kk , nbar_num , nx,ny,nz,nxy , vstep,vvv ;
    float val ;
 
 ENTRY("mri_local_percmean") ;
@@ -199,16 +234,28 @@ ENTRY("mri_local_percmean") ;
 
    if( p1 == p2 ) RETURN( mri_local_percentile(fim,vrad,p1) ) ;
 
+   if( verb ) fprintf(stderr,"A") ;
+
+   /* create automask of input image */
+
    aim = mri_to_float(fim) ; aar = MRI_FLOAT_PTR(aim) ;
    ams = mri_automask_image(aim) ;
    if( ams == NULL ){ mri_free(aim) ; RETURN(NULL) ; }
 
+   if( verb ) fprintf(stderr,"B") ;
+
+   /* apply automask to input image */
+
    for( ii=0 ; ii < aim->nvox ; ii++ ) if( ams[ii] == 0 ) aar[ii] = 0.0f ;
    free(ams) ;
+
+   /* shrink image by 2 for speed */
 
    bim = mri_double_down(aim) ; bar = MRI_FLOAT_PTR(bim) ; mri_free(aim) ;
    bms = (byte *)malloc(sizeof(byte)*bim->nvox) ;
    for( ii=0 ; ii < bim->nvox ; ii++ ) bms[ii] = (bar[ii] != 0.0f) ;
+
+   /* create neighborhood mask */
 
    nbhd = MCW_spheremask( 1.0f,1.0f,1.0f , 0.5f*vrad+0.001f ) ;
    nbar = (float *)malloc(sizeof(float)*nbhd->num_pt) ;
@@ -218,9 +265,19 @@ ENTRY("mri_local_percmean") ;
 
    nx = bim->nx ; ny = bim->ny ; nz = bim->nz ; nxy = nx*ny ;
 
-   for( kk=0 ; kk < nz ; kk++ ){
+   vstep = (nxy*nz)/50 ; if( !verb || vstep < 10 ) vstep = 0 ;
+
+   if( verb ) fprintf(stderr,"\n") ;
+
+   if( vstep ) fprintf(stderr," + Voxel loop: ") ;
+
+   /* for each output voxel,
+        extract neighborhood array, sort it, average desired range */
+
+   for( vvv=kk=0 ; kk < nz ; kk++ ){
      for( jj=0 ; jj < ny ; jj++ ){
-       for( ii=0 ; ii < nx ; ii++ ){
+       for( ii=0 ; ii < nx ; ii++,vvv++ ){
+         if( vstep && vvv%vstep == vstep-1 ) vstep_print() ;
          nbar_num = mri_get_nbhd_array( bim,bms , ii,jj,kk , nbhd,nbar ) ;
          if( nbar_num < 1 ){
            val = 0.0f ;
@@ -239,9 +296,15 @@ ENTRY("mri_local_percmean") ;
          FSUB(car,ii,jj,kk,nx,nxy) = val ;
    }}}
 
+   if( vstep ) fprintf(stderr,"*") ;
+
    mri_free(bim) ; free(bms) ; free(nbar) ; KILL_CLUSTER(nbhd) ;
 
+   /* expand output image back to original size */
+
    dim = mri_double_up( cim , fim->nx%2 , fim->ny%2 , fim->nz%2 ) ;
+
+   if( verb ) fprintf(stderr,"C") ;
 
    mri_free(cim) ;
 
@@ -249,6 +312,10 @@ ENTRY("mri_local_percmean") ;
 }
 
 /*---------------------------------------------------------------------------*/
+
+static float Upbot = 70.0f ;
+static float Uptop = 80.0f ;
+static float Uprad = 17.0f ;
 
 MRI_IMAGE * mri_unifize( MRI_IMAGE *fim )
 {
@@ -258,25 +325,32 @@ ENTRY("mri_unifize") ;
 
    if( fim == NULL ) RETURN(NULL) ;
 
-   pim = mri_local_percmean( fim , 17.0f , 70.0f,80.0f ) ;
+   /* create image of local high-intensity value */
+
+   pim = mri_local_percmean( fim , Uprad , Upbot,Uptop ) ;
    if( pim == NULL ) RETURN(NULL) ;
    gim = mri_to_float(fim) ;
    par = MRI_FLOAT_PTR(pim) ; gar = MRI_FLOAT_PTR(gim) ;
+
+   /* scale input by the pim created above */
 
    for( ii=0 ; ii < gim->nvox ; ii++ ){
      pval = par[ii] ;
      gar[ii] = ( pval <= 0.0f ) ? 0.0f : 1000.0f * gar[ii] / pval ;
    }
 
+   if( verb ) fprintf(stderr,"D\n") ;
+
    mri_free(pim) ;
    RETURN(gim) ;
 }
 
 /*---------------------------------------------------------------------------*/
+/*---------------------------------------------------------------------------*/
 
 int main( int argc , char *argv[] )
 {
-   int iarg ;
+   int iarg , ct ;
    char *prefix = "Unifized" ;
    THD_3dim_dataset *inset=NULL , *outset ;
    MRI_IMAGE *imin , *imout ;
@@ -285,14 +359,16 @@ int main( int argc , char *argv[] )
      printf("Usage: 3dUnifize [options] inputdataset\n"
             "* The input dataset is supposed to be a T1-weighted volume,\n"
             "  preferably already skull-stripped (via 3dSkullStrip).\n"
-            "* The output dataset is the input dataset, with the intensities\n"
-            "  of white matter uniformized across space.\n"
+            "* The output dataset has the white matter intensity approximately\n"
+            "  uniformized across space.\n"
             "* The output dataset is always stored in float format.\n"
             "* If the input dataset has more than 1 sub-brick, only sub-brick\n"
             "  #0 will be processed.\n"
             "* Method: my personal variant of Ziad's sneaky trick.\n"
-            "* The principal motive for this program is image registration,\n"
-            "  and it may or may not be useful for other purposes.\n"
+            "  (If you want to know what his trick is, you'll have to ask him,\n"
+            "  or read my source code, which of course is a world of fun and joy.)\n"
+            "* The principal motive for this program is for use in an image\n"
+            "  registration script, and it may or may not be useful otherwise.\n"
             "\n"
             "Options:\n"
             "  -prefix pp = Use 'pp' for prefix of output dataset\n"
@@ -326,8 +402,23 @@ int main( int argc , char *argv[] )
        iarg++ ; continue ;
      }
 
+     if( strcmp(argv[iarg],"-param") == 0 ||      /* HIDDEN OPTION */
+         strcmp(argv[iarg],"-rbt"  ) == 0    ){
+       if( ++iarg >= argc-2 ) ERROR_exit("Need 3 arguments (R pb pt) after '%s'",argv[iarg-1]) ;
+       Uprad = (float)strtod(argv[iarg++],NULL) ;
+       Upbot = (float)strtod(argv[iarg++],NULL) ;
+       Uptop = (float)strtod(argv[iarg++],NULL) ;
+       if( Uprad <   5.0f || Uprad > 40.0f ||
+           Upbot <  40.0f || Upbot > 80.0f ||
+           Uptop <= Upbot || Uptop > 90.0f   )
+         ERROR_exit("Illegal values (R pb pt) after '%s'",argv[iarg-4]) ;
+       continue ;
+     }
+
      ERROR_exit("Unknown option: %s\n",argv[iarg]);
    }
+
+   /* read input dataset? */
 
    if( inset == NULL ){
      if( iarg >= argc ) ERROR_exit("No dataset name on command line?\n") ;
@@ -335,17 +426,29 @@ int main( int argc , char *argv[] )
      CHECK_OPEN_ERROR(inset,argv[iarg]) ;
    }
 
+   ct = NI_clock_time() ;
+
+   if( verb ) fprintf(stderr," + Pre-processing: ") ;
+
+   /* load from disk */
+
    DSET_load( inset ) ; CHECK_LOAD_ERROR(inset) ;
    if( DSET_NVALS(inset) > 1 )
      WARNING_message("Only processing sub-brick #0") ;
 
+   /* make a float copy for processing */
+
    imin = mri_to_float( DSET_BRICK(inset,0) ) ; DSET_unload(inset) ;
    if( imin == NULL ) ERROR_exit("Can't copy input dataset brick") ;
+
+   /* do all the actual work */
 
    imout = mri_unifize(imin) ; free(imin) ;
 
    if( imout == NULL )
      ERROR_exit("Can't compute Unifize-d dataset for some reason :-(") ;
+
+   /* create output dataset, and write it into the historical record */
 
    outset = EDIT_empty_copy( inset )  ;
    EDIT_dset_items( outset ,
@@ -358,5 +461,9 @@ int main( int argc , char *argv[] )
    tross_Make_History( "3dUnifize" , argc,argv , outset ) ;
    DSET_write(outset) ;
    WROTE_DSET(outset) ;
+
+   /* vamoose the ranch */
+
+   INFO_message("===== clock time =%s",nice_time_string(NI_clock_time()-ct)) ;
    exit(0) ;
 }
