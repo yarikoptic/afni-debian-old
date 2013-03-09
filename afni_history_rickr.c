@@ -49,6 +49,16 @@
 
 afni_history_struct rickr_history[] = {
 
+ {  8, Mar, 2013, RCR, "3dTcat", MINOR, TYPE_NEW_OPT,
+   "added -TR and -tpattern options",
+   NULL
+ } ,
+
+ {  7, Mar, 2013, RCR, "file_tool", MINOR, TYPE_ENHANCE,
+   "handle -prefix and -overwrite for -show_bad_backslash",
+   "The combination can be used to 'fix' bad files."
+ } ,
+
  { 27, Feb, 2013, RCR, "python-general", MICRO, TYPE_NEW_OPT,
    "added Ziad's apsearch global options: -all_opts, -h_find, -h_view",
    NULL

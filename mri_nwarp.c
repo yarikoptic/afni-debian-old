@@ -1215,10 +1215,11 @@ void IW3D_interp_wsinc5( int nxx , int nyy , int nzz ,
                          int npp, float *ip, float *jp, float *kp,
                          float *uar , float *var , float *war     )
 {
+ENTRY("IW3D_interp_wsinc5") ;
  AFNI_OMP_START ;
 #pragma omp parallel if( npp > 333 )
  {
-   int nx=nxx , ny=nyy , nz=nzz , nxy=nx*ny , pp , ix,jy,kz ;
+   int nx=nxx, ny=nyy, nz=nzz, nxy=nx*ny, nxyz=nxy*nz,nxyz1=nxyz-1, pp, ix,jy,kz ;
    float xx,yy,zz , fx,fy,fz ;
    float *aarjk , *barjk , *carjk ;
    int nx1=nx-1,ny1=ny-1,nz1=nz-1 ;
@@ -1232,7 +1233,7 @@ void IW3D_interp_wsinc5( int nxx , int nyy , int nzz ,
    float                cjk[2*IRAD][2*IRAD] , ck[2*IRAD]   ;
    int   iqq[2*IRAD]  ;
 
-   int uem=use_emat ;
+   int uem=use_emat , outside=0 ;
    float Exx,Exy,Exz , Eyx,Eyy,Eyz , Ezx,Ezy,Ezz , uex,vex,wex ;
 
    UNLOAD_MAT33(emat,Exx,Exy,Exz,Eyx,Eyy,Eyz,Ezx,Ezy,Ezz) ;
@@ -1244,15 +1245,15 @@ void IW3D_interp_wsinc5( int nxx , int nyy , int nzz ,
    for( pp=0 ; pp < npp ; pp++ ){
      xx = ip[pp] ; yy = jp[pp] ; zz = kp[pp] ;
      if( !uem ){
-            if( xx < 0.0f ){ ix = 0       ; fx = 0.0f ; }
-       else if( xx < nx1  ){ ix = (int)xx ; fx = xx-ix; }
-       else                { ix = nx2     ; fx = 1.0f ; }
-            if( yy < 0.0f ){ jy = 0       ; fy = 0.0f ; }
-       else if( yy < ny1  ){ jy = (int)yy ; fy = yy-jy; }
-       else                { jy = ny2     ; fy = 1.0f ; }
-            if( zz < 0.0f ){ kz = 0       ; fz = 0.0f ; }
-       else if( zz < nz1  ){ kz = (int)zz ; fz = zz-kz; }
-       else                { kz = nz2     ; fz = 1.0f ; }
+            if( xx < 0.0f ){ ix = 0       ; fx = 0.0f ; outside = 1 ; }
+       else if( xx < nx1  ){ ix = (int)xx ; fx = xx-ix; outside = 0 ; }
+       else                { ix = nx2     ; fx = 1.0f ; outside = 1 ; }
+            if( yy < 0.0f ){ jy = 0       ; fy = 0.0f ; outside = 1 ; }
+       else if( yy < ny1  ){ jy = (int)yy ; fy = yy-jy; outside = 0 ; }
+       else                { jy = ny2     ; fy = 1.0f ; outside = 1 ; }
+            if( zz < 0.0f ){ kz = 0       ; fz = 0.0f ; outside = 1 ; }
+       else if( zz < nz1  ){ kz = (int)zz ; fz = zz-kz; outside = 0 ; }
+       else                { kz = nz2     ; fz = 1.0f ; outside = 1 ; }
      } else {
        int aem=0 ; float eex,eey,eez ;
             if( xx < 0.0f ){ eex = xx    ; ix = 0      ; fx = 0.0f; aem++; }
@@ -1272,6 +1273,14 @@ void IW3D_interp_wsinc5( int nxx , int nyy , int nzz ,
          uex = vex = wex = 0.0f ;
        }
      }
+
+#if 0
+     if( outside ){                 /* use value at nearest edge point */
+       qq = ix + jy*nx + kz*nxy ; CLIP(qq,nxyz1) ;
+       uar[pp] = aar[qq] ; var[pp] = bar[qq] ; war[pp] = car[qq] ;
+       continue ;
+     }
+#endif
 
      /*- x interpolations -*/
 
@@ -1347,7 +1356,7 @@ void IW3D_interp_wsinc5( int nxx , int nyy , int nzz ,
  } /* end OpenMP */
  AFNI_OMP_END ;
 
-   return ;
+   EXRETURN ;
 }
 
 /*---------------------------------------------------------------------------*/
@@ -1673,7 +1682,7 @@ ENTRY("IW3D_compose_w1m2") ;
 #pragma omp for
      for( qq=0 ; qq < nxyz ; qq++ ){
        ii = qq % nx ; kk = qq / nxy ; jj = (qq-kk*nxy) / nx ;
-       MAT44_VEC(BL,xda[qq],yda[qq],zda[qq],xb,yb,zb) ;  /* B * dis(x) */
+       MAT33_VEC(BL,xda[qq],yda[qq],zda[qq],xb,yb,zb) ;  /* B * dis(x) */
        MAT44_VEC(BI,ii     ,jj     ,kk     ,xm,ym,zm) ;  /* (B-I) * x  */
        xdc[qq] = xb+xm ; ydc[qq] = yb+ym ; zdc[qq] = zb+zm ; /* add up */
      }
@@ -1743,9 +1752,9 @@ ENTRY("IW3D_compose_m1w2") ;
 #pragma omp for
      for( qq=pp ; qq < qtop ; qq++ ){
        ii = qq % nx ; kk = qq / nxy ; jj = (qq-kk*nxy) / nx ;
-       xdc[qq] += xq[pp-qq] - ii ;
-       ydc[qq] += yq[pp-qq] - jj ;
-       zdc[qq] += zq[pp-qq] - kk ;
+       xdc[qq] += xq[qq-pp] - ii ;
+       ydc[qq] += yq[qq-pp] - jj ;
+       zdc[qq] += zq[qq-pp] - kk ;
      }
  }
  AFNI_OMP_END ;
@@ -5708,4 +5717,220 @@ ENTRY("IW3D_warp_s2bim_duplo") ;
    imww->warp = Swarp ;
 
    RETURN(imww) ;
+}
+
+/*----------------------------------------------------------------------------*/
+
+#define CW_NMAX 99
+
+static int          CW_nwtop=0 ;
+static IndexWarp3D *CW_iwarp[CW_NMAX] ;
+static float        CW_iwfac[CW_NMAX] ;
+static mat44       *CW_awarp[CW_NMAX] ;
+static int CW_nx=0,CW_ny=0,CW_nz=0 ; char *CW_geomstring=NULL ;
+static mat44 CW_cmat , CW_imat ;
+
+static THD_3dim_dataset *CW_inset=NULL ;
+
+/*----------------------------------------------------------------------------*/
+
+static void CW_clear_data(void)
+{
+   int ii ;
+   for( ii=0 ; ii < CW_NMAX ; ii++ ){
+     CW_iwfac[ii] = 1.0f ;
+     if( CW_iwarp[ii] != NULL ){
+       IW3D_destroy(CW_iwarp[ii]) ; CW_iwarp[ii] = NULL ;
+     } else if( CW_awarp[ii] != NULL ){
+       free(CW_awarp[ii]) ; CW_awarp[ii] = NULL ;
+     }
+   }
+   CW_nwtop = CW_nx = CW_ny = CW_nz = 0.0f ;
+   if( CW_geomstring != NULL ){
+     free(CW_geomstring) ; CW_geomstring = NULL ;
+   }
+   if( CW_inset != NULL ){
+     DSET_delete(CW_inset) ; CW_inset = NULL ;
+   }
+   ZERO_MAT44(CW_imat) ; ZERO_MAT44(CW_cmat) ;
+
+   return ;
+}
+
+/*----------------------------------------------------------------------------*/
+
+static void CW_load_one_warp( int nn , char *cp )
+{
+   char *wp ; int do_inv=0 , ii ;
+
+ENTRY("CW_load_one_warp") ;
+
+   if( nn <= 0 || nn > CW_NMAX || cp == NULL || *cp == '\0' ){
+     ERROR_message("bad inputs to CW_load_warp") ;
+     EXRETURN ;
+   }
+
+   if( strncasecmp(cp,"INV(",4) == 0 ){
+     cp += 4 ; do_inv == 1 ;
+   } else if( strncasecmp(cp,"INVERSE(",8) == 0 ){
+     cp += 8 ; do_inv = 1 ;
+   }
+   wp = strdup(cp) ; ii = strlen(wp) ;
+   if( ii < 4 ){
+     ERROR_message("input string to CW_load_warp is too short :-((") ;
+     EXRETURN ;
+   }
+   if( wp[ii-1] == ')' ) wp[ii-1] = '\0' ;
+
+   if( nn > CW_nwtop ) CW_nwtop = nn ;  /* CW_nwtop = largest index thus far */
+
+   if( STRING_HAS_SUFFIX_CASE(wp,".1D")  ||
+       STRING_HAS_SUFFIX_CASE(wp,".txt")   ){      /* affine warp */
+
+     mat44 mmm ; MRI_IMAGE *qim ; float *qar ;
+     qim = mri_read_1D(wp) ;
+     if( qim == NULL || qim->nvox < 9 ){
+       ERROR_message("cannot read matrix from file '%s'",wp); EXRETURN ;
+     }
+     if( qim->ny > 1 ){
+       MRI_IMAGE *tim = mri_transpose(qim) ; mri_free(qim) ; qim = tim ;
+     }
+     qar = MRI_FLOAT_PTR(qim) ;
+     if( qim->nvox < 12 )                           /* presumably a rotation */
+       LOAD_MAT44(mmm,qar[0],qar[1],qar[2],0,
+                      qar[3],qar[4],qar[5],0,
+                      qar[6],qar[7],qar[8],0) ;
+     else                                           /* a full matrix */
+       LOAD_MAT44(mmm,qar[0],qar[1],qar[2],qar[3],
+                      qar[4],qar[5],qar[6],qar[7],
+                      qar[8],qar[9],qar[10],qar[11]) ;
+     mri_free(qim) ;
+
+     if( do_inv ){
+       mat44 imm = MAT44_INV(mmm) ; mmm = imm ;
+     }
+
+     CW_awarp[nn-1] = (mat44 *)malloc(sizeof(mat44)) ;
+     AAmemcpy(CW_awarp[nn-1],&mmm,sizeof(mat44)) ;
+     free(wp) ; EXRETURN ;
+
+   } else {                                        /* dataset warp */
+
+     THD_3dim_dataset *dset ; IndexWarp3D *AA ;
+     dset = THD_open_dataset(wp) ;
+     if( dset == NULL ){
+       ERROR_message("can't open dataset from file '%s'",wp); EXRETURN;
+     }
+     AA = IW3D_from_dataset(dset,0,0) ;
+     if( AA == NULL ){
+       ERROR_message("can't make warp from dataset '%s'",wp); EXRETURN;
+     }
+     if( CW_geomstring == NULL ){       /* first dataset => set geometry globals */
+       CW_geomstring = strdup(AA->geomstring) ;
+       CW_nx = AA->nx; CW_ny = AA->ny; CW_nz = AA->nz; CW_cmat = AA->cmat; CW_imat = AA->imat;
+     } else if( AA->nx != CW_nx || AA->ny != CW_ny || AA->nz != CW_nz ){ /* check them */
+       ERROR_message("warp from dataset '%s' doesn't match earlier inputs in grid size",wp) ;
+       EXRETURN ;
+     }
+     if( CW_inset == NULL ){ DSET_unload(dset) ; CW_inset = dset ; }  /* save as template */
+     else                  { DSET_delete(dset) ; }
+
+     if( do_inv ){
+       IndexWarp3D *BB ;
+       BB = IW3D_invert(AA,NULL,MRI_WSINC5); IW3D_destroy(AA); AA = BB;
+     }
+     AA->use_emat = 0 ;
+
+     CW_iwarp[nn-1] = AA ; free(wp) ; EXRETURN ;
+   }
+
+   /* unreachable */
+
+   EXRETURN ;
+}
+
+/*----------------------------------------------------------------------------*/
+
+THD_3dim_dataset * IW3D_read_catenated_warp( char *cstr )
+{
+   char *prefix = "NwarpCat" ;
+   mat44        wmat      , tmat , smat , qmat ;
+   IndexWarp3D *warp=NULL , *tarp=NULL ;
+   THD_3dim_dataset *oset ;
+   NI_str_array *csar ; int ii ;
+
+ENTRY("IW3D_read_catenated_warp") ;
+
+   if( cstr == NULL || *cstr == '\0' ) RETURN(NULL) ;
+
+   CW_clear_data() ;
+
+   csar = NI_decode_string_list(cstr,";") ;
+   if( csar == NULL || csar->num < 1 ) RETURN(NULL) ;
+
+   for( ii=0 ; ii < csar->num ; ii++ )
+     CW_load_warp( ii+1 , csar->str[ii] ) ;
+
+   NI_delete_str_array(csar) ;
+
+   if( CW_geomstring == NULL ){
+     ERROR_message("Can't compute nonlinear warp from string '%s'",cstr) ;
+     CW_clear_data() ; RETURN(NULL) ;
+   }
+
+   /*-- cat them --*/
+
+   LOAD_IDENT_MAT44(wmat) ;
+
+   for( ii=0 ; ii < CW_nwtop ; ii++ ){
+
+     if( CW_awarp[ii] != NULL ){  /* matrix to apply */
+
+       qmat = *(CW_awarp[ii]) ;             /* convert from xyz warp to ijk warp */
+       tmat = MAT44_MUL(qmat,CW_cmat) ;
+       smat = MAT44_MUL(CW_imat,tmat) ;
+
+       if( warp == NULL ){               /* thus far, only matrices */
+         qmat = MAT44_MUL(smat,wmat) ; wmat = qmat ;
+       } else {                          /* apply matrix to nonlinear warp */
+         tarp = IW3D_compose_w1m2(warp,smat,MRI_WSINC5) ;
+         IW3D_destroy(warp) ; warp = tarp ;
+       }
+
+       free(CW_awarp[ii]) ; CW_awarp[ii] = NULL ;
+
+     } else if( CW_iwarp[ii] != NULL ){   /* nonlinear warp to apply */
+
+       if( CW_iwfac[ii] != 1.0f ) IW3D_scale( CW_iwarp[ii] , CW_iwfac[ii] ) ;
+
+       if( warp == NULL ){            /* create nonlinear warp at this point */
+         if( ii == 0 ){  /* first one ==> don't compose with identity matrix */
+           warp = IW3D_copy(CW_iwarp[ii],1.0f) ;
+         } else {                            /* compose with previous matrix */
+           warp = IW3D_compose_m1w2(wmat,CW_iwarp[ii],MRI_WSINC5) ;
+         }
+       } else {          /* already have nonlinear warp, apply new one to it */
+         tarp = IW3D_compose(warp,CW_iwarp[ii],MRI_WSINC5) ;
+         IW3D_destroy(warp) ; warp = tarp ;
+       }
+
+       IW3D_destroy(CW_iwarp[ii]) ; CW_iwarp[ii] = NULL ;
+
+     }
+
+   }
+
+   /*--- create output dataset ---*/
+
+   if( warp == NULL ){
+     ERROR_message("This message should never appear!") ;
+     CW_clear_data() ; RETURN(NULL) ;
+   }
+
+   IW3D_adopt_dataset( warp , CW_inset ) ;
+   oset = IW3D_to_dataset( warp , prefix ) ;
+
+   IW3D_destroy(warp) ; CW_clear_data() ;
+
+   RETURN(oset) ;
 }
