@@ -822,7 +822,8 @@ def shell_exec2(s, capture=0):
    else:
       import subprocess as SP
       if(not capture):
-         pipe = SP.Popen(s,shell=True, executable='/bin/tcsh', stdout=None, stderr=None, close_fds=True)
+         pipe = SP.Popen(s,shell=True, stdout=None, stderr=None, close_fds=True)
+#         pipe = SP.Popen(s,shell=True, executable='/bin/tcsh', stdout=None, stderr=None, close_fds=True)
          status = pipe.wait() #Wait till it is over and store returncode
          so = ""
          se = ""
@@ -852,7 +853,8 @@ def simple_shell_exec(command, capture=0):
       so, se = pipe.communicate() # returns after command is done
       status = pipe.returncode
    else:
-      pipe = SP.Popen(command,shell=True, executable='/bin/tcsh',
+#      pipe = SP.Popen(command,shell=True, executable='/bin/tcsh',
+      pipe = SP.Popen(command,shell=True,
                       stdout=None, stderr=None, close_fds=True)
       status = pipe.wait() #Wait till it is over and store returncode
       so, se = "", ""
