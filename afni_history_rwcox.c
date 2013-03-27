@@ -43,7 +43,17 @@
 
 afni_history_struct rwcox_history[] = {
 /*=====BELOW THIS LINE=====*/
-  { 22 , MAR , 2013 , RWC , "afni" , MICRO , TYPE_MODIFY ,
+  { 26 , MAR , 2013 , RWC , "3dttest++" , MINOR , TYPE_NEW_OPT ,
+   "Add option -cmeth (MEAN or MEDIAN) for Steve Gotts" ,
+   NULL } ,
+
+ { 26 , MAR , 2013 , RWC , "afni" , MICRO , TYPE_MODIFY ,
+   "Minor changes to Fade feature in graph viewer" ,
+   "Toggle button in Opt menu.\n"
+   "AFNI_GRAPH_FADE environment variable.\n"
+   "Make sure it works with Clusterize and InstaCorr updates." } ,
+
+ { 22 , MAR , 2013 , RWC , "afni" , MICRO , TYPE_MODIFY ,
    "Fading of graph sub-windows with the 'F' key" ,
    NULL } ,
 

@@ -22,6 +22,8 @@ static void fd_line( MCW_grapher *, int,int,int,int ) ;
 static byte PLOT_FORCE_AUTOSCALE = 0;
 static Widget wtemp ;
 
+static int fade_color = 19 ;
+
 /*------------------------------------------------------------*/
 /*! Macro to call the getser function with correct prototype. */
 
@@ -77,7 +79,7 @@ ENTRY("new_MCW_grapher") ;
 
    grapher->tschosen        = 0 ;  /* 31 Mar 2004 */
    grapher->detrend         = -1;  /* 05 Dec 2012 */
-   grapher->thresh_fade     = 0 ;  /* Mar 2013 */
+   grapher->thresh_fade     = AFNI_yesenv("AFNI_GRAPH_FADE") ;  /* Mar 2013 */
 
    grapher->gx_max = 0 ;
    grapher->gy_max = 0 ;
@@ -735,7 +737,7 @@ ENTRY("new_MCW_grapher") ;
        grapher->common_base = BASELINE_INDIVIDUAL ;
      }
 
-     /* now create menu items */
+     /*- now create menu items -*/
 
      OPT_MENU_PULLRIGHT(opt_baseline_menu,opt_baseline_cbut,
                         "Baseline","Change sub-graphs baseline");
@@ -770,9 +772,9 @@ ENTRY("new_MCW_grapher") ;
      XmStringFree( xstr ) ; LABELIZE(grapher->opt_baseline_global_label) ;
    }
 
-   /* 22 Sep 2000: Text toggle */
+   /*----- 22 Sep 2000: Text toggle -----*/
 
-   { static char * bbox_label[1] = { "Show Text? [t]" } ;
+   { static char *bbox_label[1] = { "Show Text?   [t]" } ;
 
     grapher->opt_textgraph_bbox =
          new_MCW_bbox( grapher->opt_menu ,
@@ -783,6 +785,21 @@ ENTRY("new_MCW_grapher") ;
                           "Display text, not graphs" ) ;
 
     grapher->textgraph = 0 ;
+   }
+
+   /*----- Mar 2013: thresh fade toggle -----*/
+
+   { static char *bbox_label[1] = { "Thresh Fade? [F]" } ;
+
+    grapher->opt_tfade_bbox =
+         new_MCW_bbox( grapher->opt_menu ,
+                       1 , bbox_label , MCW_BB_check , MCW_BB_noframe ,
+                       GRA_tfade_CB , (XtPointer)grapher ) ;
+
+    MCW_set_bbox( grapher->opt_tfade_bbox , grapher->thresh_fade ) ;
+
+    MCW_reghint_children( grapher->opt_tfade_bbox->wrowcol ,
+                          "Fade out below-threshold voxel sub-graphs" ) ;
    }
 
    MENU_SLINE(opt_menu) ;
@@ -1122,6 +1139,7 @@ STATUS("destroying bboxes") ;
 
    myXtFree( grapher->opt_baseline_bbox ) ;      /* 07 Aug 2001 */
    myXtFree( grapher->opt_textgraph_bbox ) ;
+   myXtFree( grapher->opt_tfade_bbox ) ;
 
 STATUS("freeing cen_tsim") ;
    mri_free( grapher->cen_tsim ) ;
@@ -1573,10 +1591,10 @@ ENTRY("redraw_graph") ;
 
    if( grapher->init_ignore > 0 ){                    /* 23 May 2005 */
      sprintf(strp,"Ignore%4d",grapher->init_ignore) ;
-     if( grapher->thresh_fade ) sprintf(strp+strlen(strp)," Fade on") ;
+     if( grapher->thresh_fade ) sprintf(strp+strlen(strp)," Fading") ;
      fd_txt( grapher , xxx , 35, strp) ;
    } else if( grapher->thresh_fade ){
-     sprintf(strp,"Fade on") ;
+     sprintf(strp,"Fading") ;
      fd_txt( grapher , xxx , 35, strp) ;
    }
 
@@ -1846,6 +1864,15 @@ ENTRY("text_graphs") ;
            grapher->cen_tsim = mri_to_float( tsim ) ;
          }
 
+         if( grapher->thresh_fade && tsim->flags == 0 ){ /* Mar 2013 */
+           rectangle_fdX( grapher ,
+                          grapher->xorigin[ix][iy]+1 , grapher->yorigin[ix][iy]+1 ,
+                          grapher->gx-2              , grapher->gy-2 ,
+                          fade_color ) ;
+           DC_fg_color ( grapher->dc , DATA_COLOR(grapher) ) ;  /* must reset */
+           DC_linewidth( grapher->dc , DATA_THICK(grapher) ) ;
+         }
+
 #if 0
          if( grapher->transform0D_func != NULL )
 # if 0
@@ -1949,8 +1976,6 @@ void plot_graphs( MCW_grapher *grapher , int code )
 
 #define OVI_MAX 19
    int tt, use_ovi, ovi[OVI_MAX] ;  /* 29 Mar 2002: for multi-plots */
-
-   int fade_color=19 ;
 
 ENTRY("plot_graphs") ;
    if( grapher->dont_redraw ) EXRETURN ;  /* 27 Jan 2004 */
@@ -3747,6 +3772,7 @@ STATUS(str); }
 
       case 'F':
         grapher->thresh_fade = !grapher->thresh_fade ;
+        MCW_set_bbox( grapher->opt_tfade_bbox , grapher->thresh_fade ) ;
         redraw_graph( grapher , 0 ) ;
       break ;
 
@@ -6018,6 +6044,27 @@ ENTRY("GRA_textgraph_CB") ;
    bbb = MCW_val_bbox( grapher->opt_textgraph_bbox ) ;
    if( bbb != grapher->textgraph ){
      grapher->textgraph = bbb ;
+     redraw_graph( grapher , 0 ) ;
+   }
+   EXRETURN ;
+}
+
+/*----------------------------------------------------------------------------
+   Mar 2013: thresh fade toggle
+------------------------------------------------------------------------------*/
+
+void GRA_tfade_CB( Widget w , XtPointer client_data , XtPointer call_data )
+{
+   MCW_grapher *grapher = (MCW_grapher *)client_data ;
+   int bbb ;
+
+ENTRY("GRA_tfade_CB") ;
+
+   if( ! GRA_VALID(grapher) ) EXRETURN ;
+
+   bbb = MCW_val_bbox( grapher->opt_tfade_bbox ) ;
+   if( bbb != grapher->thresh_fade ){
+     grapher->thresh_fade = bbb ;
      redraw_graph( grapher , 0 ) ;
    }
    EXRETURN ;
