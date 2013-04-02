@@ -31,7 +31,7 @@ examples.1dRplot.getdata <- function () {
    return("
 To download demo data from AFNI's website run this command:
 -----------------------------------------------------------
-curl -o demo.xmat.1D afni.nimh.nih.gov/pub/dist/edu/data/samples/X.xmat.1D
+curl -o demo.X.xmat.1D afni.nimh.nih.gov/pub/dist/edu/data/samples/X.xmat.1D
 curl -o demo.motion.1D afni.nimh.nih.gov/pub/dist/edu/data/samples/motion.1D
 ")
 }
