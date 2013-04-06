@@ -1176,12 +1176,16 @@ int main( int argc , char *argv[] )
       "    computer with the data files.\n"
       " ++ However, 3dGroupInCorr does NOT need to be run on the same computer\n"
       "    as AFNI or SUMA: see the '-ah' option (described far below).\n"
+      "\n"
+      "* Once 3dGroupInCorr is connected to AFNI, you can 'drive' the selection\n"
+      "  of seed points via the AFNI driver commands (e.g., via the plugout_drive\n"
+      "  program).  For details, see the README.driver document.\n"
 #ifdef USE_OMP
       "\n"
       "* One reason this program is a server (rather than being built in\n"
       "  to AFNI) is that it is compiled to use OpenMP, which will let\n"
       "  it make use of multiple CPU cores on the computer system :-)\n"
-      " ++ For more information, see the end of this '-help' output.\n"
+      " ++ For more information, see the very end of this '-help' output.\n"
 #else
       "\n"
       "* One reason this program is a server (rather than being built in\n"
@@ -1238,7 +1242,7 @@ int main( int argc , char *argv[] )
       "          is to contrast (via a paired t-test) the correlation maps from the\n"
       "          different seeds.\n"
       "         ++ For Alex Martin and his horde of myrmidons.\n"
-      "         ++ You cannot use '-Apair' with '-setB' or with '-batch'.\n"
+      "       -->> You cannot use '-Apair' with '-setB' or with '-batch'.\n"
       "         ++ To use this in the AFNI GUI, you first have to set the Apair seed\n"
       "            using the 'GIC: Apair Set' button on the image viewer right-click\n"
       "            popup menu.  After that, the standard 'InstaCorr Set' button will\n"
@@ -1250,6 +1254,14 @@ int main( int argc , char *argv[] )
       "            near the InstaCorr seed and a negative (blue) hotspot near the\n"
       "            Apair seed.  If you don't understand why, then your understanding\n"
       "            of resting state FMRI correlation analyses needs some work.\n"
+      "       -->> It is regions AWAY from the positive and negative seeds that are\n"
+      "            potentially interesting -- significant results at region Q indicate\n"
+      "            a difference in 'connectivity' between Q and the two seeds.\n"
+      "         ++ In the case of mirroring, Q is asymmetrically 'connected' to one\n"
+      "            side of brain vs. the other; e.g., I've found that the left Broca's\n"
+      "            area (BA 45) makes a good seed -- much of the left temporal lobe is\n"
+      "            asymmetrically connected with respect to this seed and its mirror,\n"
+      "            but not so much of the right temporal lobe.\n"
       "\n"
       " -labelA aaa = Label to attach (in AFNI) to sub-bricks corresponding to setA.\n"
       "               If you don't give this option, the label used will be the prefix\n"
@@ -1257,6 +1269,9 @@ int main( int argc , char *argv[] )
       "\n"
       " -labelB bbb = Label to attach (in AFNI) to sub-bricks corresponding to setB.\n"
       "              ++ At most the first 11 characters of each label will be used!\n"
+      "              ++ In the case of '-Apair', you can still use '-labelB' to indicate\n"
+      "                 the label for the negative (Apair) seed; otherwise, the -setA\n"
+      "                 filename will be used with 'AP:' prepended.\n"
       "\n"
       "-----------------------*** Two-Sample Options ***-----------------------\n"
       "\n"
@@ -1272,6 +1287,7 @@ int main( int argc , char *argv[] )
       "               must be the same, and the datasets must have been input to\n"
       "               3dSetupGroupInCorr in the same relative order when each\n"
       "               collection was created. (Duh.)\n"
+      "            ++ '-paired' is automatically turned on when '-Apair' is used.\n"
       " -nosix    = For a 2-sample situation, the program by default computes\n"
       "             not only the t-test for the difference between the samples,\n"
       "             but also the individual (setA and setB) 1-sample t-tests, giving\n"
@@ -1279,6 +1295,9 @@ int main( int argc , char *argv[] )
       "             these 4 extra 1-sample sub-bricks, use the '-nosix' option.\n"
       "            ++ See the Covariates discussion, below, for an example of how\n"
       "               '-nosix' affects which covariate sub-bricks are computed.\n"
+      "            ++ In the case of '-Apair', you may want to keep these extra\n"
+      "               sub-bricks so you can see the separate maps from the positive\n"
+      "               and negative seeds, to make sure your results make sense.\n"
       "\n"
       " **++ None of these 'two-sample' options means anything for a 1-sample\n"
       "      t-test (i.e., where you don't use -setB).\n"
@@ -1340,7 +1359,7 @@ int main( int argc , char *argv[] )
       "\n"
       "        ++ If you use -paired, then the covariates for -setB will be the same\n"
       "            as those for -setA, even if the dataset labels are different!\n"
-      "            -- This restriction may be lifted in the future.  Or maybe not.\n"
+      "            -- This also applies to the '-Apair' case, of course.\n"
       "\n"
       "        ++ By default, each covariate column in the regression matrix will have\n"
       "            its mean removed (centered). If there are 2 sets of subjects, each\n"
@@ -2205,7 +2224,7 @@ int main( int argc , char *argv[] )
      shd_BBB = shd_AAA ;
      ii = strlen(qlab_AAA) ;
      qlab_BBB = (char *)malloc(sizeof(char)*(ii+8)) ;
-     strcpy(qlab_BBB,qlab_AAA) ; strcat(qlab_BBB,":AP") ;
+     strcpy(qlab_BBB,"AP:") ; strcat(qlab_BBB,qlab_AAA) ;
    }
 
    /** store some info about the datasets we will be constructing **/

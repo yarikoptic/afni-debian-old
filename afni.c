@@ -1469,7 +1469,10 @@ void AFNI_sigfunc_alrm(int sig)
      "Am I the crazy one, or is it everyone else on Earth?"          ,
      "Be sure to put your feet in the right place, then stand firm"  ,
      "May your cupcakes always have lots of rich creamy frosting"    ,
+     "Never take a cupcake from an eel"                              ,
+     "Do you prefer white chocolate or dark chocolate?"              ,
 
+     "One martini is just right; two are too many; three is never enough"             ,
      "If you can't explain it simply, you don't understand it well enough"            ,
      "Even the Universe bends back on itself, but stupidity goes on forever"          ,
      "Get your statistics first, then you can distort them as you please"             ,
