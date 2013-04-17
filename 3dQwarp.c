@@ -195,10 +195,12 @@ int main( int argc , char *argv[] )
    IndexWarp3D *oww , *owwi ; Image_plus_Warp *oiw ;
    char *prefix = "Qwarp" , ppp[256] ; int nopt , nevox=0 ;
    int meth = GA_MATCH_PEARCLP_SCALAR ;
-   int ilev = 0 , nowarps = 0 , mlev = 666 ;
+   int ilev = 0 , nowarp = 0 , nowarpi = 1 , mlev = 666 ;
    int duplo=0 , qsave=0 , minpatch=0 , nx,ny,nz , ct , nnn ;
    int flags = 0 ;
    double cput ;
+
+   /*--- enlighten the ignorant ---*/
 
    if( argc < 3 || strcasecmp(argv[1],"-help") == 0 ){
      printf("Usage: 3dQwarp [OPTIONS] base_dataset source_dataset\n") ;
@@ -265,17 +267,17 @@ int main( int argc , char *argv[] )
        "               * 3dNwarpApply would use 'ppp_WARP' to transform datasets\n"
        "                 aligned with the source dataset to be aligned with the\n"
        "                 base dataset.\n"
-       "               * The inverse to the 3D warp is saved in 'ppp_WARPINV'.\n"
-       "                 This warp could be used to transform data from base space\n"
-       "                 to source space, if there is a reason for such an operation,\n"
-       "                 using 3dNwarpApply.\n"
-       "              ** If you do not want either of these warps saved, use the option\n"
-       "                 option '-nowarps'.\n"
-       "              ** To skip the WARPINV dataset (but keep the WARP dataset),\n"
-       "                 use the option '-nowarpi'.  If you don't need the WARPINV\n"
-       "                 dataset, not computing it at the end will save some CPU time.\n"
-       "                 You can easily compute the inverse later, say by a command\n"
-       "                 of the form\n"
+       "              ** If you do NOT want this warp saved, use the option '-nowarp'.\n"
+       "                 (However, this warp is the most valuable possible output!)\n"
+       "               * If you want to calculate and save the inverse 3D warp,\n"
+       "                 use the option '-iwarp'.  This inverse warp will then be\n"
+       "                 saved in a dataset with prefix 'ppp_WARPINV'.\n"
+       "               * This inverse warp could be used to transform data from base\n"
+       "                 space to source space, if there is a reason for such an\n"
+       "                 operation, using 3dNwarpApply.\n"
+       "               * If you don't need the WARPINV dataset, not computing it at\n"
+       "                 the end will save a little CPU time. You can easily compute\n"
+       "                 the inverse later, say by a command like\n"
        "                   3dNwarpCat -prefix Z_WARPINV 'INV(Z_WARP+tlrc)'\n"
        "\n"
        " -pear        = Use Pearson correlation for matching.\n"
@@ -360,32 +362,27 @@ int main( int argc , char *argv[] )
        " -minpatch mm = Set the minimum patch size for warp searching to 'mm' voxels.\n"
        "   *OR*        * The value of mm should be an odd integer.\n"
        " -patchmin mm  * The default value of mm is 25.\n"
-       "               * For more accurate results than mm=25, try 19.\n"
+       "               * For more accurate results than mm=25, try 19 or 13.\n"
        "               * The smallest allowed value is 9 (which will be VERY slow).\n"
        "               * If you want to see the warped results at various levels\n"
        "                 of patch size, use the '-qsave' option.\n"
-       "               * To do only global warping (i.e., patch=size of whole dataset,\n"
-       "                 with no refinement), set 'mm' to a value larger than the\n"
-       "                 biggest dataset grid dimension (e.g., '-minpatch 666').\n"
        "\n"
-       " -maxlev lv   = Here, 'lv' is the maximum refinement 'level' to use.\n"
-       "                This is an alternate way to specify when the program should\n"
-       "                stop. \n"
+       " -maxlev lv   = Here, 'lv' is the maximum refinement 'level' to use.  This\n"
+       "                is an alternate way to specify when the program should stop.\n"
        "               * To only do global polynomial warping, use '-maxlev 0'.\n"
        "               * If you use both '-minpatch' and '-maxlev', then you are\n"
-       "                 living dangerously.\n"
+       "                 living on the edge of danger.\n"
        "\n"
        " -duplo       = Start off with 1/2 scale versions of the volumes,\n"
        "                for getting a speedy coarse first alignment.\n"
        "               * Then scales back up to register the full volumes.\n"
        "\n"
-       " -workhard    = Iterate more times at the coarser grid levels,\n"
-       "                which can help when the volumes are hard to align at all.\n"
+       " -workhard    = Iterate more times, which can help when the volumes are\n"
+       "                hard to align at all, or when you hope to get a more precise\n"
+       "                alignment.\n"
        "               * Slows the program down (possibly a lot), of course.\n"
-       "               * Although -workhard will work OK with -duplo, it is better\n"
-       "                 applied without the -duplo option.\n"
-       "               * You can also try '-workharder' and '-workhardest',\n"
-       "                 which of course are slower and slower.\n"
+       "               * When you combine '-workhard'  with '-duplo', only the\n"
+       "                 full size volumes get the extra iterations.\n"
        "               * For finer control over which refinement levels work hard,\n"
        "                 you can use this option in the form (for example)\n"
        "                     -workhard:4:7\n"
@@ -395,10 +392,10 @@ int main( int argc , char *argv[] )
        " -qsave       = Save intermediate warped results as well, in a dataset\n"
        "                with '_SAVE' appended to the '-prefix' value.\n"
        "               * This allows you to see the amount of improvement at\n"
-       "                 each patch refinement level, and so help you decide\n"
+       "                 each patch refinement level, and may help you decide\n"
        "                 the size for '-minpatch' for future work.\n"
        "\n"
-       " -verb        = Print verbose progress messages.\n"
+       " -verb        = Print very verbose progress messages.\n"
        " -quiet       = Cut out most progress messages.\n"
        "\n"
        "METHOD\n"
@@ -449,11 +446,20 @@ int main( int argc , char *argv[] )
      if( strcasecmp(argv[nopt],"-quiet") == 0 ){
        Hverb = 0 ; nopt++ ; continue ;
      }
-     if( strcasecmp(argv[nopt],"-nowarps") == 0 ){
-       nowarps =  1 ; nopt++ ; continue ;
+     if( strcasecmp(argv[nopt],"-nowarp") == 0 ){
+       nowarp =  1 ; nopt++ ; continue ;
      }
+     if( strcasecmp(argv[nopt],"-iwarp") == 0 ){
+       nowarpi = 0 ; nopt++ ; continue ;
+     }
+
+     if( strcasecmp(argv[nopt],"-nowarps") == 0 ){  /* these 2 options */
+       WARNING_message("-nowarps option is now deprecated: see the -help output") ;
+       nowarpi = nowarp = 1 ; nopt++ ; continue ;   /* are just for backward */
+     }                                              /* compatibility */
      if( strcasecmp(argv[nopt],"-nowarpi") == 0 ){
-       nowarps = -1 ; nopt++ ; continue ;
+       WARNING_message("-nowarpi option is now deprecated: see the -help output") ;
+       nowarpi = 1 ; nopt++ ; continue ;
      }
 
      if( strcasecmp(argv[nopt],"-patchmin") == 0 || strcasecmp(argv[nopt],"-minpatch") == 0 ){
@@ -524,19 +530,15 @@ int main( int argc , char *argv[] )
      if( strcasecmp(argv[nopt],"-duplo") == 0 ){
        if( iwset != NULL || iwvec != NULL )
          ERROR_exit("Cannot use -duplo with -iniwarp :-(") ;
-       if( ilev != 0 || mlev != 0 )
+       if( ilev != 0 || mlev < 99 )
          ERROR_exit("Cannot use -duplo with -inilev or -maxlev :-(") ;
        duplo = 1 ; nopt++ ; continue ;
      }
 
      if( strncasecmp(argv[nopt],"-workhard",9) == 0 ){
        char *wpt = argv[nopt]+9 ;
-       Hworkhard1 = 0 ;
-       if( strcasecmp(wpt,"er") == 0 ){
-         Hworkhard2 = 7 ;
-       } else if( strcasecmp(wpt,"est") == 0 ){
-         Hworkhard2 = 10 ;
-       } else if( *wpt == ':' && isdigit(*(wpt+1)) ){
+       Hworkhard1 = 0 ; Hworkhard2 = 66 ;
+       if( *wpt == ':' && isdigit(*(wpt+1)) ){
          char *cpt ;
          Hworkhard2 = (int)strtod(++wpt,NULL) ;
          cpt = strchr(wpt,':') ;
@@ -544,15 +546,7 @@ int main( int argc , char *argv[] )
            Hworkhard1 = Hworkhard2 ;
            Hworkhard2 = (int)strtod(++cpt,NULL) ;
          }
-       } else {
-         Hworkhard2 += 4 ;
        }
-       nopt++ ; continue ;
-     }
-
-     if( strcasecmp(argv[nopt],"-whard") == 0 ){                  /** HIDDEN **/
-       if( ++nopt >= argc ) ERROR_exit("need arg after -whard") ;
-       Hworkhard2 = (int)strtod(argv[nopt],NULL) ;
        nopt++ ; continue ;
      }
 
@@ -652,7 +646,7 @@ int main( int argc , char *argv[] )
 
    if( (iwset != NULL || iwvec != NULL) && duplo )
      ERROR_exit("You cannot combine -iniwarp and -duplo !! :-((") ;
-   if( (ilev != 0 || mlev != 0) && duplo )
+   if( (ilev != 0 || mlev < 99 ) && duplo )
      ERROR_exit("You cannot combine -inilev or -maxlev and -duplo !! :-((") ;
 
    bset = THD_open_dataset(argv[nopt++]) ; if( bset == NULL ) ERROR_exit("Can't open bset") ;
@@ -777,7 +771,7 @@ int main( int argc , char *argv[] )
      DSET_write(qset) ; WROTE_DSET(qset) ; DSET_delete(qset) ;
    }
 
-   if( nowarps <= 0 ){
+   if( !nowarp ){
      IW3D_adopt_dataset( oww , bset ) ;
      sprintf(ppp,"%s_WARP",prefix) ;
      qset = IW3D_to_dataset( oww , ppp ) ;
@@ -786,7 +780,7 @@ int main( int argc , char *argv[] )
      MCW_strncpy( qset->atlas_space , bset->atlas_space , THD_MAX_NAME ) ;
      DSET_write(qset) ; WROTE_DSET(qset) ; DSET_delete(qset) ;
    }
-   if( nowarps == 0 ){
+   if( !nowarpi ){
      if( Hverb ) ININFO_message("Inverting warp for output") ;
      owwi = IW3D_invert( oww , NULL , MRI_WSINC5 ) ;
      IW3D_adopt_dataset( owwi , bset ) ;
