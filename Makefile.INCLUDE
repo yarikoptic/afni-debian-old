@@ -92,7 +92,8 @@ PROGRAMS = afni to3d from3d abut 3dclust nsize 3dinfo 3dproject 3dmerge count   
            niccc rbox qdelaunay 3dkmeans 3dXYZcat 3dPolyfit 3dNwarpApply        \
            1dCorrelate 3dCountSpikes 3dNwarpCalc dicom_hinfo apsearch 1dBport   \
            3dNormalityTest 3dmask_tool FIRdesign help_format 2perm 3dClustCount \
-           column_cat 3dUnifize 3dNwarpCat 3dQwarp 3dLocalHistog $(EXTRAS)
+           column_cat 3dUnifize 3dNwarpCat 3dQwarp 3dLocalHistog 3dNwarpAdjust  \
+           $(EXTRAS)
 
 PROGRAMS_NOPLUG = afni to3d from3d abut 3dclust nsize 3dinfo 3dproject 3dmerge      \
                   sfim tfim ftosh 3dttest 3ddup imrotate imreg imstat 3dnoise count \
@@ -125,7 +126,7 @@ PROGRAMS_NOPLUG = afni to3d from3d abut 3dclust nsize 3dinfo 3dproject 3dmerge  
                   3dMaskToASCII 3dttest++ 3dDTtoDWI niccc 3dXYZcat 3dPolyfit        \
                   3dNwarpApply 1dCorrelate 3dCountSpikes 3dNwarpCalc dicom_hinfo    \
                   apsearch 3dNormalityTest 3dmask_tool 2perm 3dClustCount           \
-                  3dUnifize 3dNwarpCat 3dQwarp 3dLocalHistog $(EXTRAS)
+                  3dUnifize 3dNwarpCat 3dQwarp 3dLocalHistog 3dNwarpAdjust $(EXTRAS)
 
 # For CYGWIN (look for "exe" to find various places below)
 #  Note that 3dNLfim and 3dTSgen are missing for now
@@ -1223,6 +1224,10 @@ AlphaSim:AlphaSim.o
 	$(RM) $@
 	$(CCOMP) -o 3dNwarpApply 3dNwarpApply.o $(LFLAGS) $(LLIBS)
 
+3dNwarpAdjust:3dNwarpAdjust.o
+	$(RM) $@
+	$(CCOMP) -o 3dNwarpAdjust 3dNwarpAdjust.o $(LFLAGS) $(LLIBS)
+
 3dNwarpCat:3dNwarpCat.o
 	$(RM) $@
 	$(CCOMP) -o 3dNwarpCat 3dNwarpCat.o $(LFLAGS) $(LLIBS)
@@ -1254,6 +1259,10 @@ mri_rbfinterp.o:mri_rbfinterp.c
 3dNwarpApply.o:3dNwarpApply.c mri_nwarp.c mri_genalign.c mri_genalign_util.c
 	$(RM) $@
 	$(CCOMP) -c 3dNwarpApply.c $(INFLAGS)
+
+3dNwarpAdjust.o:3dNwarpAdjust.c mri_nwarp.c mri_genalign.c mri_genalign_util.c
+	$(RM) $@
+	$(CCOMP) -c 3dNwarpAdjust.c $(INFLAGS)
 
 3dNwarpCat.o:3dNwarpCat.c mri_nwarp.c mri_genalign.c mri_genalign_util.c
 	$(RM) $@
@@ -2004,7 +2013,7 @@ THD_OBJS = thd_atr.o thd_dsetto1D.o thd_initalldir.o thd_reconpar.o \
            thd_niml.o afni_vedit.o thd_fdrcurve.o thd_dset_to_vectim.o    \
            thd_bandpass.o thd_instacorr.o thd_svdblur.o thd_satcheck.o    \
            thd_dumdset.o ktaub.o bilinear_warp3D.o thd_table.o            \
-           thd_atlas.o thd_warp_tables.o thd_lasso.o
+           thd_atlas.o thd_warp_tables.o thd_lasso.o thd_mean_dset.o
 
 # these are now included in NIML
 
