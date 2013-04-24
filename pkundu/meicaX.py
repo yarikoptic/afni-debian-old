@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 """
-# Multi-Echo ICA, Version 2.0
+# Multi-Echo ICA, Version 2.5 beta1
 # See http://dx.doi.org/10.1016/j.neuroimage.2011.12.028
 # Kundu, P., Inati, S.J., Evans, J.W., Luh, W.M. & Bandettini, P.A. Differentiating 
 #   BOLD and non-BOLD signals in fMRI time series using multi-echo EPI. NeuroImage (2011).
@@ -127,7 +127,7 @@ parser.add_option_group(extopts)
 icaopts=OptionGroup(parser,"Extended ICA options (see tedana.py -h")
 icaopts.add_option('',"--daw",dest='daw',help="Dimensionality increase weight. Default 10. For low tSNR data, use -1",default='10')
 icaopts.add_option('',"--initcost",dest='initcost',help="Initial cost for ICA",default='pow3')
-icaopts.add_option('',"--finalcost",dest='finalcost',help="Final cost for ICA",default='pow3')
+icaopts.add_option('',"--finalcost",dest='finalcost',help="Final cost for ICA",default='tanh')
 icaopts.add_option('',"--sourceTEs",dest='sourceTEs',help="Source TEs for ICA",default='0')
 parser.add_option_group(icaopts)
 runopts=OptionGroup(parser,"Run optipns")
@@ -144,7 +144,7 @@ parser.add_option_group(runopts)
 (options,args) = parser.parse_args()
 
 #Welcome line
-print """\n-- Multi-Echo Independent Components Analysis (ME-ICA) v2.0 --
+print """\n-- Multi-Echo Independent Components Analysis (ME-ICA) v2.5 beta1 --
 
 Please cite: 
 Kundu, P., Inati, S.J., Evans, J.W., Luh, W.M. & Bandettini, P.A. Differentiating 
@@ -257,11 +257,15 @@ if options.anat != '':
 # Copy in datasets as NIFTI (if not), calculate rigid body alignment
 vrbase=prefix+datasets[0]+trailing
 sl.append("echo 1 > stage" )
-if isf==osf:
-	for ds in datasets: sl.append("cp %s/%s%s%s%s ./%s%s%s%s" % (startdir,prefix,ds,trailing,isf,prefix,ds,trailing,osf))
+if '.nii' in isf:
+	for ds in datasets: 
+		sl.append("3dcalc -a %s/%s%s%s%s -expr 'a' -prefix ./%s%s%s.nii" % (startdir,prefix,ds,trailing,isf,prefix,ds,trailing))
+		sl.append("nifti_tool -mod_hdr -mod_field sform_code 1 -mod_field qform_code 1 -infiles ./%s%s%s.nii -overwrite" % (prefix,ds,trailing))
+	isf='.nii'
 else:
 	for ds in datasets: sl.append("3dcalc -float -a %s/%s%s%s%s -expr 'a' -prefix ./%s%s%s%s" % (startdir,prefix,ds,trailing,isf,prefix,ds,trailing,osf))
-vrAinput = "./%s%s" % (vrbase,osf)
+	isf=osf
+vrAinput = "./%s%s" % (vrbase,isf)
 if options.align_base!='':
 	if options.align_base.isdigit():
 		basevol = '%s[%s]' % (vrAinput,options.align_base)
@@ -280,8 +284,40 @@ sl.append("3dcalc -float -expr 'a' -a %s[%s] -prefix ./_eBmask%s" % (vrAinput,al
 sl.append("3dAutomask -prefix eBmask%s -dilate 1 -peels 3 _eBmask%s" % (osf,osf))
 e2dsin = prefix+datasets[0]+trailing
 
+def graywt(infile,maskfile):
+	"""
+	Makes eBbase and epigraywt using either AFNI 3dSeg or FSL FAST and returns inputs to 3dAllineate.
+	If neither 3dSeg or FAST are found, the autoweight line is returned
+	"""
+	sl.append("3drefit -space ORIG %s " % infile)
+	if grayweight_ok == 1:
+		sl.append("3dSeg -anat %s -mask %s" %(infile,maskfile))
+		sl.append("sc0=`3dBrickStat -mask Segsy/Classes+orig. -mvalue 1 -count Segsy/Classes+orig.`;sc1=`3dBrickStat -mask Segsy/Classes+orig. -mvalue 2 -count Segsy/Classes+orig.`;sc2=`3dBrickStat -mask Segsy/Classes+orig. -mvalue 3 -count Segsy/Classes+orig.`")
+		sl.append("cc=\"$sc0 $sc1 $sc2\"")
+		sl.append("IC=(`tr ' ' '\\n' <<<$cc | cat -n | sort -k2,2nr | head -n1`)")
+		sl.append("mb=$(($IC-1))")
+		sl.append("3dcalc -float -a Segsy/Posterior+orig[${mb}] -expr 'a' -prefix epigraywt.nii.gz") #make grayweight
+		sl.append("3dcalc -float -a Segsy/AnatUB+orig -b Segsy/Classes+orig -expr 'a*step(b)' -prefix eBbase%s" % (osf))  #make eBbase
+		sl.append("3dmerge -1clust 4 100 -1erode 80 -1dindex 0 -1tindex 0 -1dilate -overwrite -prefix epigraywt.nii.gz epigraywt.nii.gz")
+		weightvol = "epigraywt%s" % osf
+		weightline = ' -lpc -weight %s -base eBbase%s ' % (weightvol,osf)
+	elif grayweight_ok == 2:
+		sl.append("3dcalc -float -overwrite -prefix eBbase%s -a %s -b %s -expr 'step(a)*b'" % (osf,maskfile,infile)) #make eBbase from input
+		sl.append("fast -t 2 -n 3 -H 0.1 -I 4 -l 20.0 -b -o eBbase %s" % (infile) )
+		sl.append("3dcalc -overwrite -float -a eBbase%s -b eBbase_bias%s -expr 'a/b' -overwrite -prefix eBbase%s" % ( osf,osf,osf)) 
+		sl.append("sc0=`3dBrickStat -mask eBbase_pve_0.nii.gz -count eBbase_pve_0.nii.gz`;sc1=`3dBrickStat -mask eBbase_pve_1.nii.gz -count eBbase_pve_1.nii.gz`;sc2=`3dBrickStat -mask eBbase_pve_2.nii.gz -count eBbase_pve_2.nii.gz`"  )
+		sl.append("IC=(`tr ' ' '\\n' <<<$cc | cat -n | sort -k2,2nr | head -n1`)")
+		sl.append("cp eBbase_pve_${IC}.nii.gz epigraywt%s" % osf)    #make grayweight
+		weightvol = "epigraywt%s" % osf
+		weightline = ' -lpc -weight %s -base eBbase%s ' % (weightvol,osf)
+	else: 
+		weightvol=infile
+		weightline = ' -lpc+ZZ -automask -autoweight -base %s ' % (infile)	
+	return weightvol,weightline
+
 # Calculate affine anatomical warp if anatomical provided, then combine motion correction and coregistration parameters 
 if options.anat!='':
+	#Compute base and weight volumes for 3dAllineate and return its option line
 	if options.t2salign:
 		dss = datasets
 		dss.sort()
@@ -289,7 +325,7 @@ if options.anat!='':
 		for echo_ii in range(len(dss)):
 			echo = datasets[echo_ii]
 			dsin = 'e'+echo+trailing
-			indata = prefix+echo+trailing+osf
+			indata = prefix+echo+trailing+isf
 			stackline+=" %s[%i..%i]" % (indata,int(options.basetime),int(options.basetime)+5)
 		sl.append("3dZcat -prefix basestack.nii.gz %s" % (stackline))
 		sl.append("3dcalc -float -a basestack.nii.gz -expr 'a' -overwrite")
@@ -300,29 +336,10 @@ if options.anat!='':
 		sl.append("3dBrickStat -mask t2svm.nii.gz -percentile 98 1 98 t2svm.nii.gz > maxt2svm.1D")
 		sl.append("maxt2svm=`cat maxt2svm.1D`; maxt2svma=($maxt2svm); vmax=${maxt2svma[1]}; p20=`ccalc ${vmax}*.20`" )
 		sl.append("3dcalc -a t2svm.nii.gz -expr \"step(a-${p20})*a\" -overwrite -prefix t2svm.nii.gz" )
-		sl.append("3dSeg -anat t2svm.nii.gz -mask t2svm.nii.gz")
-		sl.append("sc0=`3dBrickStat -mask Segsy/Classes+orig. -mvalue 1 -count Segsy/Classes+orig.`;sc1=`3dBrickStat -mask Segsy/Classes+orig. -mvalue 2 -count Segsy/Classes+orig.`;sc2=`3dBrickStat -mask Segsy/Classes+orig. -mvalue 3 -count Segsy/Classes+orig.`")
-		sl.append("cc=\"$sc0 $sc1 $sc2\"")
-		sl.append("IC=(`tr ' ' '\\n' <<<$cc | cat -n | sort -k2,2nr | head -n1`)")
-		sl.append("mb=$(($IC-1))")
-		sl.append("3dcalc -float -a Segsy/Posterior+orig[${mb}] -expr 'a' -prefix epigraywt.nii.gz")
-		sl.append("3dcalc -float -a Segsy/AnatUB+orig -b Segsy/Classes+orig -expr 'a*step(b)' -prefix eBbase%s" % (osf))
-		sl.append("3dmerge -1clust 4 100 -1erode 80 -1dindex 0 -1tindex 0 -1dilate -overwrite -prefix epigraywt.nii.gz epigraywt.nii.gz")
-		weightvol = "epigraywt%s" % osf
-		weightline = ' -lpc -weight %s -base eBbase%s ' % (weightvol,osf)
-	elif grayweight_ok == 1:
-		sl.append("3dSeg -mask eBmask%s -anat _eBmask%s" % (osf,osf))
-		sl.append("3dcalc -float -a Segsy/Posterior+orig[2] -expr 'a' -prefix epigraywt%s" % (osf))
-		sl.append("3dcalc -float -a Segsy/AnatUB+orig -b Segsy/Classes+orig -expr 'a*step(b)' -prefix eBbase%s" % (osf))
-		weightvol = "epigraywt%s" % osf
-		weightline = ' -lpc -weight epigraywt%s -base eBbase%s ' % (osf,osf)
-	elif grayweight_ok == 2:
-		sl.append("3dcalc -float -overwrite -prefix eBmask%s -a eBmask%s -b _eBmask%s -expr 'a*b'" % (osf,osf,osf))
-		sl.append("fast -t 2 -n 3 -H 0.1 -I 4 -l 20.0 -b -o eBmask eBmask%s" % (osf)) 
-		sl.append("3dcalc -float -a eBmask%s -b eBmask_bias%s -expr 'a/b' -prefix eBbase%s" % ( osf, osf, osf))
-		weightvol = "eBmask_pve_0.nii.gz"		
-		weightline = ' -lpc -weight eBmask_pve_0.nii.gz -base eBbase%s ' % (osf)
-	else: weightline = ' -lpc+ZZ -automask -autoweight -base _eBmask%s ' % (osf)
+		weightvol,weightline = graywt('t2svm.nii.gz','t2svm.nii.gz')		
+	else:
+		weightvol,weightline = graywt('_eBmask%s' % osf,'eBmask%s' % osf)
+	#Copy in anatomical and make sure its in +orig space
 	sl.append("cp %s/%s* ." % (startdir,nsmprage))	
 	abmprage = nsmprage
 	if options.tlrc:
@@ -337,7 +354,7 @@ if options.anat!='':
 		sl.append("gzip -f %s/%s" % (startdir,atnsmprage))
 		abmprage = atnsmprage
 	align_args=""
-
+	#Modify 3dAllineate options appropriately
 	if options.align_args!="": align_args=options.align_args
 	elif oblique_mode: align_args = " -maxrot 10 -maxshf 10 "
 	else: align_args=" -maxrot 20 -maxshf 20 -parfix 7 1  -parang 9 0.83 1.0 "
@@ -364,7 +381,7 @@ for echo_ii in range(len(datasets)):
 		tpat_opt = ' -tpattern %s ' % options.tpattern
 	else:
 		tpat_opt = ''
-	sl.append("3dTshift -slice 0 -heptic %s -prefix ./%s_ts+orig %s%s" % (tpat_opt,dsin,indata,osf) )
+	sl.append("3dTshift -slice 0 -heptic %s -prefix ./%s_ts+orig %s%s" % (tpat_opt,dsin,indata,isf) )
 	
 	if oblique_mode and options.anat=="":
 		sl.append("3dWarp -overwrite -deoblique -prefix ./%s_ts+orig ./%s_ts+orig" % (dsin,dsin))
@@ -422,8 +439,8 @@ else:
 if options.pp_only: tedflag='#'
 else: tedflag = ''
 
-if os.path.exists('%s/meica.libs' % (meicadir)): tedanapath = 'meica.libs/tedana.py'
-else: tedanapath = 'tedana.py'
+if os.path.exists('%s/meica.libs' % (meicadir)): tedanapath = 'meica.libs/tedanaX.py'
+else: tedanapath = 'tedanaX.py'
 sl.append("#\n#TE-Dependence analysis command:")
 sl.append("%s%s %s -e %s  -d %s --sourceTEs=%s --kdaw=%s --rdaw=1 --initcost=%s --finalcost=%s --OC --conv=2.5e-5" % (tedflag,sys.executable, '/'.join([meicadir,tedanapath]),options.tes,ica_input,options.sourceTEs,options.daw,options.initcost,options.finalcost))
 sl.append("#")
@@ -453,11 +470,11 @@ sl.append("%scp TED/hik_ts_OC.nii TED/%s_medn.nii" % (tedflag,options.prefix))
 sl.append("%scp TED/betas_hik_OC.nii TED/%s_mefc.nii" % (tedflag,options.prefix))
 sl.append("%scp TED/comp_table.txt %s/%s_ctab.txt" % (tedflag,startdir,options.prefix))
 hist_line = "%s" % (" ".join(sys.argv).replace('"',r"\""))
-note_line = "Denoised timeseries, produced by ME-ICA v2.0 (r5)"
+note_line = "Denoised timeseries, produced by ME-ICA v2.5"
 sl.append("%s3dNotes -h \'%s (%s)\' TED/%s_medn.nii" % (tedflag,hist_line,note_line,options.prefix))
-note_line = "Denoised ICA coeff. set for seed-based FC analysis, produced by ME-ICA v2.0 (r1)"
+note_line = "Denoised ICA coeff. set for seed-based FC analysis, produced by ME-ICA v2.5"
 sl.append("%s3dNotes -h \'%s (%s)\' TED/%s_mefc.nii" % (tedflag,hist_line,note_line,options.prefix))
-note_line = "T2* weighted average of ME time series, produced by ME-ICA v2.0 (r5)"
+note_line = "T2* weighted average of ME time series, produced by ME-ICA v2.5"
 sl.append("%s3dNotes -h \'%s (%s)\' TED/%s_tsoc.nii" % (tedflag,hist_line,note_line,options.prefix))
 if options.anat!='' and options.tlrc!=False:
 	sl.append("%snifti_tool -mod_hdr -mod_field sform_code 2 -mod_field qform_code 2 -infiles TED/%s_tsoc.nii -overwrite" % (tedflag,options.prefix))
