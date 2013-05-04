@@ -21,7 +21,7 @@ greeting.lme <- function ()
           ================== Welcome to 3dlme ==================          
    AFNI Group Analysis Program with Linear Mixed-Effcts Modeling Approach
 #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-Version 0.0.5, April 22, 2013
+Version 0.0.6, May 3, 2013
 Author: Gang Chen (gangchen@mail.nih.gov)
 Website - http://afni.nimh.nih.gov/sscc/gangc/LME.html
 SSCC/NIMH, National Institutes of Health, Bethesda MD 20892
@@ -37,7 +37,7 @@ help.LME.opts <- function (params, alpha = TRUE, itspace='   ', adieu=FALSE) {
           ================== Welcome to 3dLME ==================          
     AFNI Group Analysis Program with Multi-Variate Modeling Approach
 #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-Version 0.0.5, April 22, 2013
+Version 0.0.5, May 3, 2013
 Author: Gang Chen (gangchen@mail.nih.gov)
 Website - http://afni.nimh.nih.gov/sscc/gangc/LME.html
 SSCC/NIMH, National Institutes of Health, Bethesda MD 20892
@@ -456,7 +456,7 @@ contraConstr <- function(cStr, dataStr, fixedVars, QV) {
                   for(ii in 1:2) contrList[[ii]][[vv]] <- lvlInv[ii]
 	            } else errex.AFNI(paste("Incorrect level coding in variable", vars[ii],
 	               ": ", lvlInv[which(!lvlOK)], " \n   "))
-            } else contrList[[ii]][[vv]] <- lvl
+            } else for(ii in 1:2) contrList[[ii]][[vv]] <- lvl
          } #if(vv %in% QV)        
       } #for(vv in fixedVars)
    } else errex.AFNI(paste("Incorrect variable name in GLT coding: ", vars[which(!varsOK)], " \n   "))
@@ -872,8 +872,8 @@ while(is.null(fm)) {
       gltDF <- array(data=NA, dim=lop$num_glt)
       while(!is.null(fm) & (n <= lop$num_glt)) {
          gltDF[n] <- tryCatch(contrast(fm, lop$gltList[[n]][[1]], lop$gltList[[n]][[2]], type="average")$df,
-            error=function(e) NULL)
-         if(is.null(gltDF[[n]])) fm <- NULL
+            error=function(e) NA)
+         if(is.na(gltDF[[n]])) fm <- NULL
          n <- n+1
       }      
    }
