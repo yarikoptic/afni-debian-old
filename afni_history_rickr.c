@@ -49,6 +49,16 @@
 
 afni_history_struct rickr_history[] = {
 
+ {  9, May, 2013, RCR, "afni_proc.py", MINOR, TYPE_NEW_OPT,
+   "added options -write_3dD_script and -write_3dD_prefix",
+   NULL
+ } ,
+
+ {  8, May, 2013, RCR, "1d_tool.py", MINOR, TYPE_NEW_OPT,
+   "added options -rank, -rank_style, -reverse_rank",
+   NULL
+ } ,
+
  {  6, May, 2013, RCR, "afni_proc.py", MINOR, TYPE_ENHANCE,
    "added -regress_anaticor example; opt implies -mask_segment_anat/_erode",
    NULL
@@ -59,7 +69,7 @@ afni_history_struct rickr_history[] = {
    NULL
  } ,
 
- {  6, May, 2013, RCR, "1d_tool.py", MINOR, TYPE_NEW_OPT,
+ {  6, May, 2013, RCR, "1d_tool.py", MICRO, TYPE_NEW_OPT,
    "added option -transpose_write",
    NULL
  } ,
