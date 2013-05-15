@@ -264,7 +264,7 @@ int main( int argc , char *argv[] )
    nsar  = argc - iarg ;
    insar = (THD_3dim_dataset **)malloc(sizeof(THD_3dim_dataset *)*nsar) ;
 
-   if( verb ) fprintf(stderr,"Scanning datasets ") ;
+   if( verb ) fprintf(stderr,"Scanning %d datasets ",nsar) ;
 
    ohist = (UINT32 *)calloc(sizeof(UINT32),TWO16) ;
 
@@ -601,9 +601,9 @@ ENTRY("THD_localhistog") ;
  { int qq , ib ; float pfac , val ; byte **bbar ;
 #pragma omp for
      for( qq=0 ; qq < nvox ; qq++ ){
-       pfac = 0.01f ;
+       pfac = 0.0001f ;
        for( ib=0 ; ib < numval ; ib++ ) pfac += outar[ib][qq] ;
-       pfac = 100.0f / pfac ;
+       pfac = 250.0f / pfac ;
        for( ib=0 ; ib < numval ; ib++ ){
          val = outar[ib][qq]*pfac ; outar[ib][qq] = BYTEIZE(val) ;
        }
@@ -616,7 +616,7 @@ ENTRY("THD_localhistog") ;
        bbar[bb] = (byte *)malloc(sizeof(byte)*nvox) ;
        for( pp=0 ; pp < nvox ; pp++ ) bbar[bb][pp] = (byte)outar[bb][pp] ;
        EDIT_substitute_brick(outset,bb,MRI_byte,bbar[bb]) ;
-       EDIT_BRICK_FACTOR(outset,bb,0.01f) ;
+       EDIT_BRICK_FACTOR(outset,bb,0.004f) ;
      }
      free(bbar) ;
 
