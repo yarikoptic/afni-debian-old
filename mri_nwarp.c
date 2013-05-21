@@ -5639,7 +5639,7 @@ ENTRY("IW3D_setup_for_improvement") ;
    }
 
    Hgflags = IW3D_munge_flags(Hnx,Hny,Hnz,warp_flags) ;
-   if( Hflags < 0 )
+   if( Hgflags < 0 )
      ERROR_exit("IW3D_setup_for_improvement: bad warp_flags input") ;
 
    /*-- copy/create initial warp, and warp the source image --*/
@@ -5957,7 +5957,7 @@ ENTRY("IW3D_warpomatic") ;
        (void)IW3D_improve_warp( MRI_CUBIC  , ibbb,ittt,jbbb,jttt,kbbb,kttt );
        Hcostold = Hcost ;
        (void)IW3D_improve_warp( MRI_QUINTIC, ibbb,ittt,jbbb,jttt,kbbb,kttt );
-       if( iii > 0 && iii < nlevr-1 && Hcostold-Hcost < 0.01f ){
+       if( iii > 0 && iii < nlevr-1 && Hcostold-Hcost < 0.005f ){
          if( Hverb > 1 )
            ININFO_message("       --> too little improvement: breaking out of WORKHARD iterates") ;
          break ;
@@ -6550,7 +6550,7 @@ Image_plus_Warp * IW3D_warp_s2bim_duplo( MRI_IMAGE *bim , MRI_IMAGE *wbim , MRI_
 ENTRY("IW3D_warp_s2bim_duplo") ;
 
    ct = NI_clock_time() ;
-   if( Hverb ) INFO_message("=== Duplo down") ;
+   if( Hverb ) INFO_message("=== Duplo down (blurring volumes & resampling)") ;
 
    WO_iwarp = NULL ;               /* can't start with initial warp for duplo */
    nx = bim->nx ; ny = bim->ny ; nz = bim->nz ;
@@ -6583,7 +6583,7 @@ ENTRY("IW3D_warp_s2bim_duplo") ;
    if( Dwarp == NULL ) RETURN(NULL) ;
 
    if( Hverb )
-     INFO_message("=== Duplo up: clock = %s",nice_time_string(NI_clock_time()-ct)) ;
+     INFO_message("=== Duplo up (clock = %s)",nice_time_string(NI_clock_time()-ct)) ;
 
    WO_iwarp = IW3D_duplo_up( Dwarp, nx%2 , ny%2 , nz%2 ) ;
    IW3D_destroy(Dwarp) ;
@@ -7308,7 +7308,7 @@ ENTRY("IW3D_setup_for_improvement_plusminus") ;
    }
 
    Hgflags = IW3D_munge_flags(Hnx,Hny,Hnz,warp_flags) ;
-   if( Hflags < 0 )
+   if( Hgflags < 0 )
      ERROR_exit("IW3D_setup_for_improvement: bad warp_flags input") ;
 
    /*-- copy/create initial warp, and warp the source images --*/
@@ -7330,6 +7330,7 @@ ENTRY("IW3D_setup_for_improvement_plusminus") ;
    EXRETURN ;
 }
 
+#ifdef USE_PLUSMINUS_INITIALWARP
 /*----------------------------------------------------------------------------*/
 /* Create an initial warp to the middle by coarse level warping
    of source to base, then by a quick warp square-root-ization.
@@ -7369,6 +7370,7 @@ ENTRY("IW3D_initialwarp_plusminus") ;
    IW3D_scale(Owarp,0.5f) ;
    RETURN(Owarp) ;
 }
+#endif
 
 /*----------------------------------------------------------------------------*/
 
@@ -7387,11 +7389,13 @@ ENTRY("IW3D_warpomatic_plusminus") ;
 
    if( Hverb ) Hfirsttime = 1 ;
 
+#ifdef USE_PLUSMINUS_INITIALWARP
    if( WO_iwarp == NULL ){
      if( Hverb ) INFO_message("Initializing +- warp") ;
      WO_iwarp = IW3D_initialwarp_plusminus( bim, wbim, sim, meth_code, warp_flags ) ;
      myIwarp  = 1 ;
    }
+#endif
 
    IW3D_setup_for_improvement_plusminus( bim, wbim, sim, WO_iwarp, meth_code, warp_flags ) ;
 
@@ -7418,14 +7422,18 @@ ENTRY("IW3D_warpomatic_plusminus") ;
    }
 
    if( Hlev_start == 0 ){            /* top level = global warps */
+#ifdef USE_PLUSMINUS_INITIALWARP
      nlevr = ( WORKHARD(0) || Hduplo ) ? 4 : 2 ; if( SUPERHARD(0) ) nlevr++ ;
+#else
+     nlevr = 4 ;
+#endif
      Hforce = 1 ; Hfactor = 1.0f ; Hpen_use = 0 ; Hlev_now = 0 ;
      if( Hverb == 1 ) fprintf(stderr,"lev=0 %d..%d %d..%d %d..%d: ",ibbb,ittt,jbbb,jttt,kbbb,kttt) ;
      for( iii=0 ; iii < nlevr ; iii++ ){
        (void)IW3D_improve_warp_plusminus( MRI_CUBIC  , ibbb,ittt,jbbb,jttt,kbbb,kttt );
        Hcostold = Hcost ;
        (void)IW3D_improve_warp_plusminus( MRI_QUINTIC, ibbb,ittt,jbbb,jttt,kbbb,kttt );
-       if( iii > 0 && iii < nlevr-1 && Hcostold-Hcost < 0.01f ){
+       if( iii > 0 && iii < nlevr-1 && Hcostold-Hcost < 0.005f ){
          if( Hverb > 1 )
            ININFO_message("       --> too little improvement: breaking out of WORKHARD iterates") ;
          break ;
@@ -7631,7 +7639,9 @@ DoneDoneDone:  /* breakout */
 
    OutWarp = IW3D_copy( Haawarp , 1.0f ) ;
    IW3D_cleanup_improvement_plusminus() ;
+#ifdef USE_PLUSMINUS_INITIALWARP
    if( myIwarp ){ IW3D_destroy(WO_iwarp) ; WO_iwarp = NULL ; }
+#endif
 
    RETURN(OutWarp) ;
 }
