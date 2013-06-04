@@ -853,7 +853,7 @@ Last-Update: 2010-09-21
 +  DESTINATION ${AFNI_INSTALL_SCRIPT_DIR} COMPONENT Runtime)
 --- /dev/null
 +++ b/SUMA/CMakeLists.txt
-@@ -0,0 +1,239 @@
+@@ -0,0 +1,237 @@
 +PROJECT(SUMA)
 +
 +##
@@ -921,10 +921,10 @@ Last-Update: 2010-09-21
 +
 +SET(SUMA_LIBS
 +  ${AFNI_LIBS}
-+  ${THREEDEDGE_LIBS}
 +  ${RICKR_LIBS}
 +  ${WARP_LIBS}
 +  SUMA
++  ${THREEDEDGE_LIBS}
 +  ${OPENGL_LIBRARIES}
 +  ${GLUT_LIBRARIES}
 +  ${SEGTOOLS_LIBS})
@@ -993,8 +993,6 @@ Last-Update: 2010-09-21
 +LIST(APPEND PROGRAMS CreateIcosahedron)
 +
 +ADD_EXECUTABLE(SUMA_Map_SurfacetoSurface SUMA_SphericalMapping.c)
-+TARGET_LINK_LIBRARIES(SUMA_Map_SurfacetoSurface
-+  ${AFNI_LIBS} ${RICKR_LIBS} ${WARP_LIBS} ${THREEDEDGE_LIBS})
 +LIST(APPEND PROGRAMS SUMA_Map_SurfacetoSurface)
 +
 +ADD_EXECUTABLE(MapIcosahedron SUMA_SphericalMapping.c)

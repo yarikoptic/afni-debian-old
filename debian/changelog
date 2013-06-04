@@ -1,12 +1,18 @@
-afni (0.20121123~dfsg.1-2~pre1) UNRELEASED; urgency=low
+afni (0.20121123~dfsg.1-2~pre2) UNRELEASED; urgency=low
 
   * Add afni-dbg package to provide debug symbols
   * debian/patches:
     - up_3rd_no_RefreshHTML_AtEvent -- to not even mention
       RefreshHTML from the patched XmHTML
     - up_condition_dset_unload -- avoid dereferencing NULL
+    - cmake_sharedlibs:
+      - link against lib3DEdge after libSUMA, since otherwise
+        binaries do not get linked against it on Ubuntu systems
+      - no need to manually extend list of libraries for 
+        SUMA_Map_SurfacetoSurface since it is added to the 
+        PROGRAMS and they are all linked against SUMA_LIBS
 
- -- Yaroslav Halchenko <debian@onerussian.com>  Mon, 03 Dec 2012 14:22:28 -0500
+ -- Yaroslav Halchenko <debian@onerussian.com>  Tue, 04 Jun 2013 10:19:20 -0400
 
 afni (0.20121123~dfsg.1-1) neurodebian; urgency=low
 

@@ -16,11 +16,6 @@ Testing
 
 * Failed to open plugin /usr/lib/afni/plugins/plug_retroicor.so -- /usr/lib/afni/plugins/plug_retroicor.so: undefined symbol: RIC_CalcVoxelMeans
 
-* Link against 3DEdge
->in your case -- what happens if you add LD_PRELOAD like in below:
->LD_PRELOAD=/usr/lib/afni/lib/lib3DEdge.so 3dSkullStrip -input ...
->?
-
 
 Missing installations
 =====================
