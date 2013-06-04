@@ -75,6 +75,15 @@ override_dh_auto_build:
 	dh_auto_build --builddirectory=$(DEB_BUILDDIR)
 	dh_auto_build --builddirectory=$(DEB_BUILDDIR_STATIC)
 
+override_dh_auto_test:
+	: # if any come
+	dh_auto_test --builddirectory=$(DEB_BUILDDIR)
+	dh_auto_test --builddirectory=$(DEB_BUILDDIR_STATIC)
+	: # Just to verify that previous fixes on linking are inplace
+	set -e; for b in 3dSkullStrip SUMA_Map_SurfacetoSurface; do \
+		ldd $(DEB_BUILDDIR)/SUMA/$$b | grep '=>.*lib3DEdge.so'; \
+		ldd $(DEB_BUILDDIR)/SUMA/$$b | grep '=>.*libSUMA.so'; \
+	done
 
 override_dh_auto_install:
 	dh_auto_install --builddirectory=$(DEB_BUILDDIR)
