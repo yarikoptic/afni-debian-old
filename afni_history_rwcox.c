@@ -43,7 +43,25 @@
 
 afni_history_struct rwcox_history[] = {
 /*=====BELOW THIS LINE=====*/
-  { 13 , JUN , 2013 , RWC , "3dLocalHistog" , MICRO , TYPE_BUG_FIX ,
+  { 24 , JUN , 2013 , RWC , "afni" , MICRO , TYPE_MODIFY ,
+   "Add 'Thr=OLay?' to 'Thr=OLay+1?' repertoire" ,
+   "Mostly because I wanted to do this a lot.  This is on the popup menu\n"
+   "over the threshold slider bar in the 'Define OverLay' control panel." } ,
+
+ { 24 , JUN , 2013 , RWC , "AFNI_HISTORY_NAME" , MICRO , TYPE_NEW_ENV ,
+   "Lets user change username@machine in History notes" ,
+   "Because super-heroes need to have a secret identity, right?" } ,
+
+ { 24 , JUN , 2013 , RWC , "distsend (script)" , MICRO , TYPE_GENERAL ,
+   "Modify to recursively mv contents of subdirectories properly" ,
+   NULL } ,
+
+ { 24 , JUN , 2013 , RWC , "all OpenMP progs" , MICRO , TYPE_GENERAL ,
+   "Add AFNI_SETUP_OMP(0) macro at startup" ,
+   "To limit number of threads to 12 if the system has more CPUs.  Will be\n"
+   "over-ridden by OMP_NUM_THREADS, if it is set." } ,
+
+ { 13 , JUN , 2013 , RWC , "3dLocalHistog" , MICRO , TYPE_BUG_FIX ,
    "Fixed bug that caused first value from label table to be lost" ,
    "Or actually, subsumed into the 0=Other histogram.  stupid stupid stupid" } ,
 
