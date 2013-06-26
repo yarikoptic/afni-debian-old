@@ -5371,12 +5371,22 @@ ENTRY("ISQ_show_bar") ;
    if( seq->given_xbar == NULL ) ISQ_make_bar( seq ) ;
 
    if( seq->sized_xbar == NULL ){
-      int nx , ny ;
+      int nx , ny ; char *eee ;
 STATUS("making sized_xbar");
 
       MCW_widget_geom( seq->wbar , &nx , &ny , NULL,NULL ) ;
 
       seq->sized_xbar = resize_XImage( seq->dc, seq->given_xbar, nx, ny ) ;
+
+      eee = getenv("AFNI_PBAR_TICK") ;
+      if( eee == NULL || ( toupper(*eee) != 'N' && *eee != '0' ) ){
+        int jj,kk ;
+        for( kk=1 ; kk <= 9 ; kk++ ){      /* tic marks [25 Jun 2013] */
+          jj = (int)rintf( 0.1f*kk*ny ) ;
+          rectzero_XImage( seq->dc , seq->sized_xbar , 0   ,jj , 2   ,jj ) ;
+          rectzero_XImage( seq->dc , seq->sized_xbar , nx-3,jj , nx-1,jj ) ;
+        }
+      }
    }
 
    if( seq->sized_xbar != NULL ){
