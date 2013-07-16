@@ -49,6 +49,31 @@
 
 afni_history_struct rickr_history[] = {
 
+ { 12,  Jul, 2013, RCR, "afni_system_check.py", MAJOR, TYPE_NEW_PROG,
+   "perform various system checks, maybe to assist in AFNI setup",
+   NULL
+ } ,
+
+ { 12,  Jul, 2013, RCR, "suma", MICRO, TYPE_MODIFY,
+   "return a good status (0) on -help",
+   NULL
+ } ,
+
+ {  9,  Jul, 2013, RCR, "Dimon", MINOR, TYPE_ENHANCE,
+   "if unsigned shorts are detected, add -ushort2float to to3d command",
+   NULL
+ } ,
+
+ {  9,  Jul, 2013, RCR, "to3d", MINOR, TYPE_NEW_OPT,
+   "added -ushort2float, for converting unsinged shorts to floats",
+   "Requested by D Handwerker."
+ } ,
+
+ {  9,  Jul, 2013, RCR, "file_tool", MINOR, TYPE_ENHANCE,
+   "added more info for locating bad chars with -test",
+   NULL
+ } ,
+
  {  7,  Jul, 2013, RCR, "@Install_FATCAT_DEMO", MINOR, TYPE_NEW_PROG,
    "replaces @Install_PTaylor_TractDemo",
    NULL
