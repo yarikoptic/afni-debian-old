@@ -43,7 +43,27 @@
 
 afni_history_struct rwcox_history[] = {
 /*=====BELOW THIS LINE=====*/
-  { 16 , JUL , 2013 , RWC , "3dQwarp" , MAJOR , TYPE_NEW_OPT ,
+  { 18 , JUL , 2013 , RWC , "@toMNI_Awarp _Qwarpar" , MICRO , TYPE_MODIFY ,
+   "Modified to gzip output BRIKs" ,
+   NULL } ,
+
+ { 18 , JUL , 2013 , RWC , "3dQwarp" , MICRO , TYPE_BUG_FIX ,
+   "Yet another indexing error (in argv[], no less)" ,
+   NULL } ,
+
+ { 17 , JUL , 2013 , RWC , "3dAllineate" , MICRO , TYPE_BUG_FIX ,
+   "fixed problem with -zclip in the source volume - indexing error" ,
+   NULL } ,
+
+ { 17 , JUL , 2013 , RWC , "3dQwarp" , MICRO , TYPE_MODIFY ,
+   "clip output image to range of input image when interpolating" ,
+   NULL } ,
+
+ { 17 , JUL , 2013 , RWC , "3dQwarp" , MICRO , TYPE_BUG_FIX ,
+   "fixed indexing error in duplo_up for odd-sized grids" ,
+   NULL } ,
+
+ { 16 , JUL , 2013 , RWC , "3dQwarp" , MAJOR , TYPE_NEW_OPT ,
    "-allineate = run 3dAllineate first" ,
    "With this option, 3dQwarp can align datasets that are not so close, and\n"
    "are not on the same 3D grid (since the substitute source dataset output\n"

@@ -221,9 +221,9 @@ void Qhelp(void)
     "* Input datasets must be on the same 3D grid!\n"
     " ++ If necessary, you can use 3dAllineate or 3dresample to make a\n"
     "    resampled version of one dataset to match the other's 3D grid.\n"
-    " ++ However, you can use the '-allineate' option in 3dQwarp to run\n"
+    " ++ Alternatively, you can use the '-allineate' option in 3dQwarp to do\n"
     "    affine alignment before the nonlinear alignment, which will also\n"
-    "    do the resampling described above.\n"
+    "    do the resampling described above [16 Jul 2013].\n"
     "\n"
     "* Input datasets should be reasonably well aligned already\n"
     "  (e.g., as from an affine warping via 3dAllineate).\n"
@@ -359,6 +359,11 @@ void Qhelp(void)
     " -prefix ppp  = Sets the prefix for the output datasets.\n"
     "               * The source dataset is warped to match the base\n"
     "                 and gets prefix 'ppp'.\n"
+    "               * The final interpolation to this output dataset is\n"
+    "                 done using the 'wsinc5' method.  See the output of\n"
+    "                   3dAllineate -HELP\n"
+    "                 (in the \"Modifying '-final wsinc5'\" section) for\n"
+    "                 the technical details.\n"
     "               * The 3D warp used is saved in a dataset with\n"
     "                 prefix 'ppp_WARP' -- this dataset can be used\n"
     "                 with 3dNwarpApply and 3dNwarpCat, for example.\n"
@@ -384,24 +389,24 @@ void Qhelp(void)
     "                   3dNwarpCat -prefix Z_WARPINV 'INV(Z_WARP+tlrc)'\n"
     "\n"
     " -allineate   = This option will make 3dQwarp run 3dAllineate first, to align\n"
-    "                the source dataset to the base with an affine transformation.\n"
-    "                It will then use that alignment as a starting point for the\n"
+    "   *OR*         the source dataset to the base with an affine transformation.\n"
+    " -allin         It will then use that alignment as a starting point for the\n"
     "                nonlinear warping.\n"
     "               * With -allineate, the source dataset does not have to be on\n"
     "                 the same 3D grid as the base, since the intermediate output\n"
     "                 of 3dAllineate (the substitute source) will be on the grid\n"
     "                 as the base.\n"
-    "               * The final output warp dataset is the warp directly between\n"
+    "          -->>** The final output warp dataset is the warp directly between\n"
     "                 the original source dataset and the base (i.e., the catenation\n"
     "                 of the affine matrix from 3dAllineate and the nonlinear warp\n"
     "                 from the 'warpomatic' procedure in 3dQwarp).\n"
-    "               * The final output warped dataset is warped directly from the\n"
+    "          -->>** The final output warped dataset is warped directly from the\n"
     "                 original source dataset, NOT from the substitute source.\n"
     "               * The intermediate files from 3dAllineate (the substitute source\n"
     "                 dataset and the affine matrix) are deleted from disk after\n"
     "                 being read into 3dQwarp.\n"
-    "             *** The following options CANNOT be used with -allineate:\n"
-    "                   -plusminus -inilev -iniwarp\n"
+    "             *** The following 3dQwarp options CANNOT be used with -allineate:\n"
+    "                   -plusminus  -inilev  -iniwarp\n"
     "               * However, you CAN use -duplo with -allineate.\n"
     "\n"
     " -allineate_opts '-opt ...'\n"
@@ -415,8 +420,8 @@ void Qhelp(void)
     "                 happen, and you won't get any Christmas presents ever again.\n"
     "               * If the datasets overlap well already, but the source needs\n"
     "                 resampling to match the 3D grid of the base, then you could\n"
-    "                 try using the option\n"
-    "                     -allineate_opts '-onepass -conv 0.3'\n"
+    "                 try using the 3dQwarp option\n"
+    "                     -allineate_opts '-onepass -norefinal'\n"
     "                 to make 3dAllineate run more quickly.\n"
     "\n"
     " -nowarp      = Do not save the _WARP file.\n"
@@ -442,7 +447,8 @@ void Qhelp(void)
     "                counts the same.  With '-useweight', each voxel is weighted\n"
     "                by the intensity of the (blurred) base image.  This makes\n"
     "                white matter count more in T1-weighted volumes, for example.\n"
-    "           -->>* This option is generally recommended.\n"
+    "           -->>* This option is generally recommended, and may become the\n"
+    "                 default someday soon.\n"
     "\n"
     " -blur bb     = Gaussian blur the input images by 'bb' (FWHM) voxels before\n"
     "                doing the alignment (the output dataset will not be blurred).\n"
@@ -459,6 +465,9 @@ void Qhelp(void)
     "                 you probably don't want to blur it again, but blurring\n"
     "                 the source volume a little is probably a good idea, to\n"
     "                 help the program avoid trying to match tiny features.\n"
+    "               * Note that -duplo will blur the volumes some extra\n"
+    "                 amount for the initial small-scale warping, to make\n"
+    "                 that phase of the program converge more rapidly.\n"
     "\n"
     " -emask ee    = Here, 'ee' is a dataset to specify a mask of voxels\n"
     "                to EXCLUDE from the analysis -- all voxels in 'ee'\n"
@@ -545,12 +554,13 @@ void Qhelp(void)
     "               * To only do global polynomial warping, use '-maxlev 0'.\n"
     "               * If you use both '-minpatch' and '-maxlev', then you are\n"
     "                 living on the edge of danger.\n"
+    "               * Of course, I know that you LIVE for such thrills.\n"
     "\n"
     " -duplo       = Start off with 1/2 scale versions of the volumes,\n"
     "                for getting a speedy coarse first alignment.\n"
     "               * Then scales back up to register the full volumes.\n"
     "                 The goal is greater speed, and it seems to help this\n"
-    "                 somewhat piggish program to be more expeditious.\n"
+    "                 positively piggish program to be more expeditious.\n"
     "\n"
     " -workhard    = Iterate more times, which can help when the volumes are\n"
     "                hard to align at all, or when you hope to get a more precise\n"
@@ -698,7 +708,7 @@ void Qhelp(void)
 
 /*---------------------------------------------------------------------------*/
 
-char *Qunstr=NULL ;
+static char *Qunstr=NULL ;
 
 void Qallineate( char *basname , char *srcname , char *emkname , char *allopt )
 {
@@ -732,8 +742,43 @@ void Qallineate( char *basname , char *srcname , char *emkname , char *allopt )
      sprintf( cmd+strlen(cmd) , " %s"        , allopt) ;
 
    INFO_message("Starting 3dAllineate command:\n  %s\n ",cmd) ;
+   INFO_message("###########################################################") ;
    ss = system(cmd) ;
    if( ss != 0 ) ERROR_exit("3dQwarp: 3dAllineate command failed :-(") ;
+   free(cmd) ;
+   return ;
+}
+
+/*---------------------------------------------------------------------------*/
+
+void Qallin_resample( char *basname , char *srcname )
+{
+   char *cmd ; int ss ; FILE *fp ;
+
+   ss  = strlen(basname)+strlen(srcname)+2048 ;
+   cmd = (char *)malloc(ss) ;
+
+   Qunstr = UNIQ_idcode() ;
+
+   sprintf( cmd , "3dAllineate"
+                  " -master %s"
+                  " -source %s"
+                  " -prefix %s.nii"
+                  " -final wsinc5 -float -quiet -1Dparam_apply '1D: 12@0'\\'" ,
+            basname , srcname , Qunstr ) ;
+
+   INFO_message("Starting 3dAllineate command:\n  %s\n ",cmd) ;
+   INFO_message("###########################################################") ;
+   ss = system(cmd) ;
+   if( ss != 0 ) ERROR_exit("3dQwarp: 3dAllineate command failed :-(") ;
+
+   /* write out the identity matrix */
+
+   sprintf(cmd,"%s.aff12.1D",Qunstr) ;
+   fp = fopen( cmd , "w" ) ;
+   if( fp == NULL ) ERROR_exit("3dQwarp: Can't write .aff12.1D file from 3dAllineate") ;
+   fprintf(fp,"1 0 0 0   0 1 0 0   0 0 1 0\n") ;
+   fclose(fp) ;
    free(cmd) ;
    return ;
 }
@@ -751,6 +796,7 @@ int main( int argc , char *argv[] )
    int ilev = 0 , nowarp = 0 , nowarpi = 1 , mlev = 666 , nodset = 0 ;
    int duplo=0 , qsave=0 , minpatch=0 , nx,ny,nz , ct , nnn , noneg = 0 ;
    int do_allin=0 ; char *allopt=NULL ; mat44 allin_matrix ;
+   int do_resam=0 ;
    int flags = 0 , nbad = 0 ;
    double cput = 0.0 ;
    int do_plusminus=0; Image_plus_Warp **sbww=NULL, *qiw=NULL; /* 14 May 2013 */
@@ -815,14 +861,20 @@ int main( int argc , char *argv[] )
        noneg =  1 ; nopt++ ; continue ;
      }
 
-     if( strcasecmp(argv[nopt],"-allineate") == 0 ){  /* 15 Jul 2013 */
+     if( strcasecmp(argv[nopt],"-allineate") == 0 ||        /* 15 Jul 2013 */
+         strcasecmp(argv[nopt],"-allin"    ) == 0   ){
        do_allin =  1 ; nopt++ ; continue ;
      }
+
      if( strcasecmp(argv[nopt],"-allineate_opts") == 0 ||   /* 16 Jul 2013 */
          strcasecmp(argv[nopt],"-allopt")         == 0   ){
        if( ++nopt >= argc ) ERROR_exit("need arg after %s",argv[nopt-1]) ;
        allopt = strdup(argv[nopt]) ;
        nopt++ ; continue ;
+     }
+
+     if( strcasecmp(argv[nopt],"-resample") == 0 ){         /* 17 Jul 2013 */
+       do_resam = 1 ; nopt++ ; continue ;
      }
 
      if( strcasecmp(argv[nopt],"-plusminus") == 0 || strcmp(argv[nopt],"+-") == 0 ){
@@ -986,7 +1038,8 @@ int main( int argc , char *argv[] )
        Hpen_fac = 0.0 ; nopt++ ; continue ;
      }
 
-     if( strncasecmp(argv[nopt],"-useweight",10) == 0 ){
+     if( strncasecmp(argv[nopt],"-useweight",10) == 0 ||
+         strcasecmp (argv[nopt],"-use_weight"  ) == 0   ){
        auto_weight = 1 ;
        if( argv[nopt][10] == '*' && argv[nopt][11] == '*' && isnumeric(argv[nopt][12]) )
          auto_wpow = (float)strtod(argv[nopt]+12,NULL) ;
@@ -1035,6 +1088,8 @@ int main( int argc , char *argv[] )
 
    /*----- check for errorororors -----*/
 
+STATUS("check for errors") ;
+
    nbad = 0 ;
 
    if( flags == NWARP_NODISP_FLAG ){
@@ -1047,6 +1102,9 @@ int main( int argc , char *argv[] )
      ERROR_message("need 2 args for base and source") ; nbad++ ;
    }
 
+   if( do_allin && do_resam ){
+     ERROR_message("You cannot use -allineate and -resample together :-(") ; nbad++ ;
+   }
    if( do_allin && do_plusminus ){
      ERROR_message("You cannot use -allineate and -plusminus together :-(") ; nbad++ ;
    }
@@ -1080,10 +1138,13 @@ int main( int argc , char *argv[] )
 
    /*--- get the input datasts, check for errors ---*/
 
+STATUS("read inputs") ;
+
    if( bset == NULL ){
      bset = THD_open_dataset(argv[nopt++]) ;
      if( bset == NULL ) ERROR_exit("Can't open base dataset") ;
-     bsname = strdup(argv[nopt]) ;
+     bsname = strdup(argv[nopt-1]) ;
+STATUS("base dataset opened") ;
    }
    if( DSET_NVALS(bset) > 1 )
      INFO_message("base dataset has more than 1 sub-brick: ignoring all but the first") ;
@@ -1091,18 +1152,35 @@ int main( int argc , char *argv[] )
    if( sset == NULL ){
      sset = THD_open_dataset(argv[nopt++]) ;
      if( sset == NULL ) ERROR_exit("Can't open source dataset") ;
-     ssname = strdup(argv[nopt]) ; sstrue = sset ;
+     ssname = strdup(argv[nopt-1]) ; sstrue = sset ;
+STATUS("source dataset opened") ;
    }
    if( DSET_NVALS(sset) > 1 )
      INFO_message("source dataset has more than 1 sub-brick: ignoring all but the first") ;
 
    /*---- Run 3dAllineate first and replace source dataset [15 Jul 2013] ----*/
 
-   if( do_allin ){
+   if( !do_allin && allopt != NULL )
+     WARNING_message("-allineate_opts is ignored: no -allineate option was used!") ;
+
+   if( do_allin || do_resam ){
      char *qs ;  MRI_IMAGE *qim ; float *qar ; /* temp stuff */
 
+STATUS("3dAllineate coming up") ;
+
+     if( do_allin && noneg ){
+       if( allopt != NULL ) allopt = (char *)realloc(allopt,strlen(allopt)+32) ;
+       else                 allopt = (char *)calloc(32,1) ;
+       strcat(allopt," -zclip") ;
+     }
+
      DSET_unload(sstrue) ;                /* de-allocate orig source dataset */
-     Qallineate( bsname , ssname , esname , allopt ) ;    /* run 3dAllineate */
+
+     if( do_allin )
+       Qallineate( bsname , ssname , esname , allopt ) ;    /* run 3dAllineate */
+     else /* do_resam */
+       Qallin_resam( bsname , ssname ) ;
+
      fprintf(stderr,"\n") ;
 
      INFO_message("3dQwarp: replacing source dataset with %s.nii",Qunstr) ;
@@ -1124,10 +1202,13 @@ int main( int argc , char *argv[] )
                              qar[4],qar[5],qar[ 6],qar[ 7],
                              qar[8],qar[9],qar[10],qar[11] ) ;
      remove(qs) ;             /* erase the 3dAllineate matrix file from disk */
-     if( Hverb ) ININFO_message("3dAllineate output files are deleted") ;
+     if( Hverb ) ININFO_message("3dAllineate output files have been deleted") ;
+     if( Hverb && do_allin ) DUMP_MAT44("3dAllineate matrix",allin_matrix) ;
      free(qs) ; mri_free(qim) ;
 
    } /*--- end of 3dAllineate prolegomenon ----------------------------------*/
+
+STATUS("check dataset for stupid errors") ;
 
    if( !EQUIV_GRIDXYZ(bset,sset) ) ERROR_exit("base-source dataset grid mismatch :-(") ;
    if(  EQUIV_DSETS  (bset,sset) ) ERROR_exit("base & source datasets are identical :-(");
@@ -1135,6 +1216,7 @@ int main( int argc , char *argv[] )
    /* construct the initial warp, if any [altered somewhat: 15 Jul 2013] */
 
    if( iwname != NULL ){
+STATUS("construct initial warp") ;
      if( strstr(iwname,".1D") != NULL && strchr(iwname,' ') == NULL ){
        char *qstr = (char *)malloc(strlen(iwname)+strlen(bsname)+64) ;
        sprintf(qstr,"IDENT(%s) %s",bsname,iwname) ;
@@ -1149,6 +1231,8 @@ int main( int argc , char *argv[] )
 
    if( iwset != NULL && !EQUIV_GRIDXYZ(bset,iwset) )
      ERROR_exit("-iniwarp dataset grid mismatch with base dataset :-(") ;
+
+STATUS("load datasets") ;
 
    DSET_load(bset) ; CHECK_LOAD_ERROR(bset) ;
    bim = THD_extract_float_brick(0,bset) ; DSET_unload(bset) ;
@@ -1243,6 +1327,8 @@ int main( int argc , char *argv[] )
    }
 #endif
 
+STATUS("construct weight/mask volume") ;
+
    wbim = mri_weightize(bim,auto_weight,auto_dilation,auto_wclip,auto_wpow) ;
 
    /* blur base here if so ordered */
@@ -1291,30 +1377,40 @@ int main( int argc , char *argv[] )
 
    /*----- Special case of pre-3dAllineate: adjust warp and image -----*/
 
-   if( do_allin ){
-     mat44 tmat,smat,qmat ;
-     IndexWarp3D *tarp ;
+   if( do_allin || do_resam ){
      THD_3dim_dataset *wset , *iset ;
      MRI_IMAGE *iim ;
 
      /** adjust warp for 3dAllineate matrix **/
 
-     qmat = allin_matrix ;                      /* convert matrix to */
-     tmat = MAT44_MUL(qmat,oww->cmat) ;         /* index space from  */
-     smat = MAT44_MUL(oww->imat,tmat) ;         /* coordinate space  */
-     tarp = IW3D_compose_w1m2(oww,smat,MRI_WSINC5) ;  /* adjust warp */
-     IW3D_destroy(oww) ; oww = tarp ;
+     if( do_allin ){
+       mat44 tmat,smat,qmat ; IndexWarp3D *tarp ;
+STATUS("adjust for 3dAllineate matrix") ;
+       qmat = allin_matrix ;                      /* convert matrix to */
+       tmat = MAT44_MUL(qmat,oww->cmat) ;         /* index space from  */
+       smat = MAT44_MUL(oww->imat,tmat) ;         /* coordinate space  */
+       tarp = IW3D_compose_w1m2(oww,smat,MRI_WSINC5) ;  /* adjust warp */
+       IW3D_destroy(oww) ; oww = tarp ;
+     }
 
      /** directly warp from original source dataset to output image **/
+     /** (and then replace existing oim with this re-warped image)  **/
 
      if( !nodset ){
+       float omin ;
        wset = IW3D_to_dataset( oww , "ZharkTheGlorious" ) ;
        iset = THD_nwarp_dataset( wset , sstrue , bset , "WhoTheHellCares" ,
                                  MRI_WSINC5 , MRI_WSINC5 , 0.0f,1.0f , 1 , NULL ) ;
-       if( iset == NULL )
-         ERROR_exit("Can't warp with 3dAllineate matrix for some reason :-(") ;
+       if( iset == NULL )  /* should be impossible */
+         ERROR_exit("Can't warp from original dataset for some reason :-(") ;
        iim = THD_extract_float_brick(0,iset) ;
        mri_free(oim) ; oim = iim ; DSET_delete(iset) ; DSET_delete(wset) ;
+
+       omin = mri_min(oim) ;
+       if( omin < 0.0f && noneg ){
+         float *oar = MRI_FLOAT_PTR(oim) ; int ii , nneg=0 ;
+         for( ii=0 ; ii < oim->nvox ; ii++ ){ if( oar[ii] < 0.0f ){ oar[ii] = 0.0; nneg++; } }
+       }
      }
    }
 
@@ -1322,6 +1418,7 @@ int main( int argc , char *argv[] )
 
    if( !nodset ){
      char *qprefix = prefix ;
+STATUS("output warped dataset") ;
      if( do_plusminus ){
        sprintf(appendage,"_%s",plusname) ;
        qprefix = modify_afni_prefix(prefix,NULL,appendage) ;
@@ -1366,6 +1463,7 @@ int main( int argc , char *argv[] )
 
    if( !nowarp ){
      char *qprefix ;
+STATUS("output warp") ;
      if( do_plusminus){
        sprintf(appendage,"_%s_WARP",plusname) ;
        qprefix = modify_afni_prefix(prefix,NULL,appendage) ;
@@ -1403,6 +1501,8 @@ int main( int argc , char *argv[] )
    }
 
    /*--- go back to watching Matlock reruns ---*/
+
+STATUS("watch Matlock") ;
 
    cput = COX_cpu_time() ;
    if( cput > 0.05 )
