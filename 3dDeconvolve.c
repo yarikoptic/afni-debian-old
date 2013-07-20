@@ -2069,6 +2069,11 @@ void get_options
 
   if( AFNI_yesenv("AFNI_3dDeconvolve_GOFORIT") ) goforit++ ; /* 07 Mar 2007 */
 
+  if( argc < 2 ) {           /* for us lazy people   18 Jul 2013 [rickr] */
+    display_help_menu(1);
+    exit(0);
+  }
+
   /*----- main loop over input options -----*/
   while (nopt < argc )
     {
@@ -5033,10 +5038,14 @@ void check_for_valid_inputs
   /*----- Check length of censor array -----*/
   if (censor_length < nt)
     {
-      sprintf (message, "Input censor time series file %s is too short",
-             option_data->censor_filename);
+      sprintf (message, "Input censor time series file %s is too short (%d < %d)",
+             option_data->censor_filename,censor_length,nt);
       DC_error (message);
     }
+  else if( censor_length > nt ){  /* 19 Jul 2013 */
+    WARNING_message("Input censor time series file %s is too long (%d > %d)",
+             option_data->censor_filename,censor_length,nt);
+  }
 
 
   /*----- Check validity of concatenated runs list -----*/
