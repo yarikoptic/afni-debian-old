@@ -43,7 +43,15 @@
 
 afni_history_struct rwcox_history[] = {
 /*=====BELOW THIS LINE=====*/
-  { 19 , JUL , 2013 , RWC , "3dDeconvolve" , MICRO , TYPE_MODIFY ,
+  { 26 , JUL , 2013 , RWC , "3dNwarpFuncs" , MINOR , TYPE_NEW_PROG ,
+   "Calculate various functions of a warp (e.g., Jacobian)" ,
+   NULL } ,
+
+ { 23 , JUL , 2013 , RWC , "afni" , MICRO , TYPE_NEW_ENV ,
+   "Make AFNI_RECENTER_VIEWING an editable (in the GUI) variable" ,
+   NULL } ,
+
+ { 19 , JUL , 2013 , RWC , "3dDeconvolve" , MICRO , TYPE_MODIFY ,
    "Added warning if censor array is too long" ,
    NULL } ,
 
