@@ -19,6 +19,8 @@ void usage_SUMA_inspec()
             "    -LRmerge LeftSpec RightSpec:\n"
             "             Merge two spec files in a way that makes\n"
             "             sense for viewing in SUMA\n"
+            "    -remove_state STATE_RM:\n"
+            "             Get rid of state STATE_RM from the specfile\n"
             "    -h or -help: This message here.\n" );
    s = SUMA_New_Additions(0, 1); printf("%s\n", s);SUMA_free(s); s = NULL;
    printf ( "      Ziad S. Saad SSCC/NIMH/NIH saadz@mail.nih.gov \n"
@@ -30,9 +32,10 @@ int main (int argc,char *argv[])
 {/* Main */
    static char FuncName[]={"inspec"};
    int detail, kar;
-   char *spec_name=NULL, *spec_name_right=NULL,*outname=NULL;
+   char *spec_name=NULL, *spec_name_right=NULL,*outname=NULL, *state_rm=NULL;
    SUMA_SurfSpecFile Spec;   
    SUMA_Boolean brk;
+   SUMA_Boolean LocalHead = NOPE;
    
    SUMA_mainENTRY;
    
@@ -84,6 +87,18 @@ int main (int argc,char *argv[])
          }
 			brk = YUP;
 		}
+
+      if (!brk && (strcmp(argv[kar], "-remove_state") == 0)) {
+         kar ++;
+			if (kar >= argc)  {
+		  		fprintf (SUMA_STDERR, "need state after -remove_state ");
+				exit (1);
+			}
+         state_rm = argv[kar];
+			brk = YUP;
+		}
+
+
       if (!brk && (strcmp(argv[kar], "-LRmerge") == 0)) {
          kar ++;
 			if (kar+1 >= argc)  {
@@ -169,6 +184,10 @@ int main (int argc,char *argv[])
       SUMA_FreeSpecFields(&SpecR);
    }
    
+   if (state_rm) {
+      SUMA_RemoveSpecState(&Spec, state_rm, 0, NULL);
+   }
+       
    /* showme the contents */
    if (detail && !SUMA_ShowSpecStruct (&Spec, NULL, detail)) {
       SUMA_SL_Err("Failed in SUMA_ShowSpecStruct\n");

@@ -2,6 +2,7 @@
 
 #ifdef USE_OMP
 #include <omp.h>
+#include "mri_blur3d_variable.c"
 #endif
 
 /*----------------------------------------------------------------------------*/
@@ -10,6 +11,7 @@ typedef struct {
    THD_3dim_dataset         *inset ;
    THD_3dim_dataset        *outset ;
    THD_3dim_dataset       *maskset ;
+   int                    automask ;
    int                      polort ;
    int                  do_despike ;
    int                     do_norm ;
@@ -33,7 +35,7 @@ typedef struct {
 
 /*----------------------------------------------------------------------------*/
 
-static TPR_input tin = { NULL,NULL,NULL ,
+static TPR_input tin = { NULL,NULL,NULL , 0 ,
                          2 , 0 , 0 ,
                          NULL,NULL,
                          NULL,0 , 0.0f ,
@@ -47,11 +49,11 @@ static TPR_input *tinp = &tin ;
 /*----------------------------------------------------------------------------*/
 
 #undef  ADD_STOPBAND
-#define ADD_STOPBAND(bb,tt)                                                       \
- do{ tinp->stopband = (float_pair *)realloc(                                      \
-                        tinp->stopband, sizeof(float_pair)*(tinp->nstopband+1)) ; \
-     tinp->stopband[tinp->nstopband].a = (bb) ;                                   \
-     tinp->stopband[tinp->nstopband].b = (tt) ; tinp->nstopband++ ;               \
+#define ADD_STOPBAND(tp,bb,tt)                                                \
+ do{ tp->stopband = (float_pair *)realloc(                                    \
+                        tp->stopband, sizeof(float_pair)*(tp->nstopband+1)) ; \
+     tp->stopband[tp->nstopband].a = (bb) ;                                   \
+     tp->stopband[tp->nstopband].b = (tt) ; tp->nstopband++ ;                 \
  } while(0)
 
 /*----------------------------------------------------------------------------*/
@@ -94,7 +96,7 @@ void TPR_help_the_pitiful_user(void)
    " -polort pp          = Remove polynomials up to and including degree pp.\n"
    "                       ++ Default value is 2.\n"
    "                       ++ It makes no sense to use a value of pp greater than\n"
-   "                          2, if you are bandpassing out the lower frequences!\n"
+   "                          2, if you are bandpassing out the lower frequencies!\n"
    " -dsort fset         = Remove the 3D+time time series in dataset fset.\n"
    "                       ++ That is, 'fset' contains a different nuisance time\n"
    "                          series for each voxel (e.g., from AnatICOR).\n"
@@ -103,51 +105,91 @@ void TPR_help_the_pitiful_user(void)
    "                       ++ These datasets are NOT despiked or blurred!\n"
 #endif
    "\n"
-   " -passband fbot ftop = Remove all frequences EXCEPT those in the range\n"
-   "                       fbot..ftop.\n"
+   " -passband fbot ftop = Remove all frequencies EXCEPT those in the range\n"
+   "  *OR* -bandpass       fbot..ftop.\n"
    "                       ++ Only one -passband option is allowed.\n"
    " -stopband sbot stop = Remove all frequencies in the range sbot..stop.\n"
    "                       ++ More than one -stopband option is allowed.\n"
    "                       ++ For example, '-passband 0.01 0.10' is equivalent to\n"
    "                          '-stopband 0 0.0099 -stopband 0.1001 9999'\n"
    " -dt dd              = Use time step dd for the frequency calculations,\n"
-   " *OR* -TR dd           rather than the value stored in the dataset header.\n"
+   " *OR* -TR              rather than the value stored in the dataset header.\n"
    "\n"
    " -mask mset          = Only operate on voxels nonzero in the mset dataset.\n"
-   "                       ++ Use '-mask AUTO' to have the program generate the\n"
-   "                          mask automatically.\n"
+   " *OR*                  ++ Use '-mask AUTO' to have the program generate the\n"
+   " -automask                mask automatically (or use '-automask')\n"
    "                       ++ Voxels outside the mask will be filled with zeros.\n"
+   "                       ++ If no masking option is given, then all voxels\n"
+   "                          will be processed.\n"
    "\n"
    " -blur fff           = Blur (inside the mask only) with a filter that has\n"
    "                       width (FWHM) of fff millimeters.\n"
-   "                       ++ Spatial blurring (if done) is the LAST operation,\n"
-   "                          after the time series filtering.\n"
+   "                       ++ Spatial blurring (if done) is after the time\n"
+   "                          series filtering.\n"
    "\n"
    " -norm               = Normalize each output time series to have sum of\n"
-   "                       squares = 1.\n"
+   "                       squares = 1. This is the LAST operation.\n"
    "\n"
    " -quiet              = Hide the super-fun and thrilling progress messages.\n"
    "\n"
    "------\n"
    "NOTES:\n"
    "------\n"
+   "* The output dataset is in floating point format.\n"
+   "\n"
    "* The input file is treated as one continuous imaging 'run'; no time\n"
    "   discontinuities (breaks) are allowed -- that is, you can't use a\n"
    "   '-concat' option.\n"
-   "* All projections are done in one operation.  If you like technical\n"
-   "   math jargon (and who doesn't?), this program performs orthogonal\n"
-   "   projection onto the null space of the set of input vectors\n"
-   "   assembled from the various options.\n"
+   "\n"
+   "* Removal of the various undesired components is via linear regression.\n"
+   "   In particular, this method allows for bandpassing of censored time\n"
+   "   series.\n"
+   "\n"
+   "* If A is a matrix whose column comprise the vectors to be projected\n"
+   "   out, define the projection matrix Q(A) by\n"
+   "    Q(A) = I - A psinv(A)\n"
+   "   where psinv(A) is the pseudo-inverse of A [e.g., inv(A'A)A'].\n"
+   "\n"
+   "* If you like technical math jargon (and who doesn't?), this program\n"
+   "   performs orthogonal projection onto the null space of the set of 'ort'\n"
+   "   vectors assembled from the various options '-polort', '-ort',\n"
+   "   '-passband', '-stopband', and '-dsort'.\n"
+   "\n"
+   "* If A is a matrix whose column comprise the vectors to be projected\n"
+   "   out, define the projection matrix Q(A) by\n"
+   "    Q(A) = I - A psinv(A)\n"
+   "   where psinv(A) is the pseudo-inverse of A [e.g., inv(A'A)A'].\n"
+   "\n"
    "* If option '-dsort' is used, each voxel has a different matrix of\n"
-   "   regressors.  For efficiency, the voxel-independent and voxel-\n"
-   "   -dependent parts of the projection are calculated separately\n"
-   "   and merged using a bordering algorithm.\n"
+   "   regressors -- encode this extra set of regressors in matrix B.\n"
+   "   Then the projection for the compound matrix [A B] is\n"
+   "      Q( Q(A)B ) Q(A) ;\n"
+   "   that is, A is projected out of B, then the projector for that\n"
+   "   reduced B is formed, and applied to the projector for the\n"
+   "   voxel-independent A.  Since the number of columns in B is usually\n"
+   "   many fewer than the number of columns in A, this technique can\n"
+   "   be much faster than constructing the full Q([A B]) for each voxel.\n"
+   "
+   "* A similar regression could be done via the slower 3dTfitter program:
+   "    3dTfitter -RHS inputdataset+orig   \\\n"
+   "              -LHS ort1.1D dsort2+orig \\\n"
+   "              -polort 2 -prefix NULL   \\\n"
+   "              -fitts Tfit\n"
+   "    3dcalc -a inputdataset+orig -b Tfit+orig -expr 'a-b' \\\n"
+   "           -datum float -prefix Tresidual\n"
+   "  3dTproject should be much more efficient, especially when using\n"
+   "  voxel-specific regressors (i.e., '-dsort'), and of course, it also\n"
+   "  offers internal generation of the bandpass/stopband regressors,\n"
+   "  as well as censoring, blurring, and L2-norming.  But 3dTfitter DOES\n"
+   "  provide a way to check if 3dTproject is correct-ish (and vice-versa).\n"
+  "\n"
 #ifdef USE_OMP
    "* This version of the program is compiled using OpenMP for speed.\n"
 #else
    "* This version of the program is not compiled with OpenMP, but OpenMP\n"
    "   binaries DO exist, and using OpenMP will speed the program up.\n\n"
 #endif
+  "\n"
    "* Authored by RWCox in a fit of excessive linear algebra [summer 2013].\n"
   ) ;
 
@@ -212,7 +254,7 @@ static void compute_psinv( int m, int n, float *rmat, float *pmat, double *wsp )
    umat = (double *)calloc( sizeof(double),m*n );   /* left singular vectors */
    sval = (double *)calloc( sizeof(double),n   );   /* singular values */
 #else
-   wpp = wsp ; if( wpp == NULL ) wpp = get_psinv_wsp(m,n,0) ;
+   wpp = wsp ; if( wpp == NULL ) wpp = (double *)get_psinv_wsp(m,n,0) ;
    amat = wpp ;            /* input matrix           (m*n) */
    xfac = amat + m*n ;     /* column norms of amat   (n)   */
    vmat = xfac + n ;       /* right singular vectors (n*n) */
@@ -264,9 +306,9 @@ static void compute_psinv( int m, int n, float *rmat, float *pmat, double *wsp )
 
    if( smax <= 0.0 ){                        /* this is bad */
      static int first=1 ;
-#pragma omp critical (STDERR)
-     { if( first ) ERROR_message("SVD fails in compute_psinv()!\n"); }
-     AAmemset( pmat , 0 , sizeof(float)*m*n ) ; first = 0 ;
+#pragma omp critical
+     { if( first ){ ERROR_message("SVD fails in compute_psinv()!\n"); first=0; }}
+     AAmemset( pmat , 0 , sizeof(float)*m*n ) ;
      if( wpp != wsp ) free(wpp) ;
      return ;
    }
@@ -363,20 +405,32 @@ static void project_out_twice( int nr , int nc , float *aar , float *par  ,
 }
 
 /*----------------------------------------------------------------------------*/
-/* Process all the data */
+
+static void vector_demean( int n , float *v )
+{
+   register int ii ; register float sm ;
+
+   for( sm=0.0f,ii=0 ; ii < n ; ii++ ) sm += v[ii] ;
+   for( sm/=n,  ii=0 ; ii < n ; ii++ ) v[ii] -= sm ;
+   return ;
+}
+
+/*----------------------------------------------------------------------------*/
+/* Process all the data, as pointed to by tp */
 
 void TPR_process_data( TPR_input *tp )
 {
    int nt,nte,ntkeep , nort_fixed=0 , nort_voxel=0 , nbad=0 , qq,jj,qort ;
    int *fmask=NULL , nf=0 ; float df ;
-   byte *vmask=NULL , nvmask=0 , nvox , *vlist=NULL ;
-   float *ort_fixed , *ort_voxel , *ort_fixed_psinv ;
+   byte *vmask=NULL ; int nvmask=0 , nvox , nvout ;
+   float *ort_fixed=NULL , *ort_fixed_psinv=NULL ;
    int *keep=NULL ;
-   MRI_vectim *inset_mrv , **dsort_mrv=NULL ; nort_dsort=0 ;
+   MRI_vectim *inset_mrv , **dsort_mrv=NULL ; int nort_dsort=0 ;
 
-   nt = DSET_NVALS(tp->inset) ; nte = ((nt%2)==0) ;  /* nte = even-ness of nt */
+   /*----- structural constants -----*/
 
    nvox = DSET_NVOX(tp->inset) ;
+   nt   = DSET_NVALS(tp->inset) ; nte = ((nt%2)==0) ;  /* nte = even-ness of nt */
 
    /*----- make censor array -----*/
 
@@ -385,7 +439,7 @@ void TPR_process_data( TPR_input *tp )
        ERROR_message("-censor file is too short (%d) for dataset (%d)",tp->ncensar,nt) ;
        nbad++ ;
      } else if( tp->ncensar > nt ){
-       WARNING_message("-censort file is too long (%d) for dataset (%d)",tp->ncensar,nt) ;
+       WARNING_message("-censor file is too long (%d) for dataset (%d)",tp->ncensar,nt) ;
      }
    } else {
      tp->censar = (float *)malloc(sizeof(float)*nt) ;
@@ -398,7 +452,7 @@ void TPR_process_data( TPR_input *tp )
      int cc , r,a,b ;
      for( cc=0 ; cc < tp->num_CENSOR ; cc++ ){
        r = tp->abc_CENSOR[cc].i; a = tp->abc_CENSOR[cc].j; b = tp->abc_CENSOR[cc].k;
-       if( r > 1 ) contine ; /* should not happen */
+       if( r > 1 ) continue ; /* should not happen */
        if( a < 0   ) a = 0 ;
        if( b >= nt ) b = nt-1 ;
        for( jj=a ; jj <= b ; jj++ ) tp->censar[jj] = 0.0f ;
@@ -430,7 +484,9 @@ void TPR_process_data( TPR_input *tp )
      if( df <= 0.0f ) df = 1.0f ;
      df = 1.0f / (nt*df) ;
 
-     nf = nt/2 ; fmask = (int *)calloc(sizeof(int)*(nf+1)) ;
+     nf = nt/2 ; fmask = (int *)calloc(sizeof(int),(nf+1)) ;
+
+     /* mark the frequencies to regress out */
 
      for( ib=0 ; ib < tp->nstopband ; ib++ ){
        fbot = tp->stopband[ib].a ;
@@ -444,27 +500,32 @@ void TPR_process_data( TPR_input *tp )
        fmask[0] = 0 ;
      }
 
+     /* count the frequency regressors */
+
      for( jj=1 ; jj < nf ; jj++ ) if( fmask[jj] ) nort_fixed += 2 ;
+
+     /* even nt ==> top is Nyquist frequency (cosine only) */
+
      if( fmask[nf] ) nort_fixed += (nte ? 1 : 2) ;
 
      if( nort_fixed >= nt ){
        ERROR_message(
-         "bandpass / stopbands ==> %d frequency regressors -- too many for %d time points!",
+         "bandpass and/or stopbands ==> %d frequency regressors == too many for %d time points!",
          nort_fixed , nt ) ;
        nbad++ ;
      }
    }
 
-   /*----- check for various errors:
-           ortar vectors too short
-           dsortar time series too short
-           just too many orts for the data -----*/
+   /*----- check for various other errors:
+           ortar vectors the wrong length
+           dsortar time series the wrong length
+           just too many orts for the data length -----*/
 
-   /*-- allow for polort (N.B.: freq=0 and const polynomial don't BOTH occur) */
+   /*-- count polort regressors (N.B.: freq=0 and const polynomial don't BOTH occur) */
 
    if( tp->polort >= 0 ) nort_fixed += tp->polort+1 ;
 
-   /*-- check ortar --*/
+   /*-- check ortar for good-ositiness --*/
 
    if( tp->ortar != NULL ){
      MRI_IMAGE *qim ;
@@ -473,7 +534,7 @@ void TPR_process_data( TPR_input *tp )
        nort_fixed += qim->ny ;
        if( qim->nx != nt ){
          ERROR_message("-ort file #%d (%s) is %d long, but dataset is %d",
-                       qq+1 , qim->filename , qim->nx , nt ) ;
+                       qq+1 , qim->fname , qim->nx , nt ) ;
          nbad++ ;
        }
      }
@@ -486,10 +547,10 @@ void TPR_process_data( TPR_input *tp )
      nbad++ ;
    }
 
-   /*-- check dsortar --*/
+   /*-- check dsortar for reasonabilitiness --*/
 
    if( tp->dsortar != NULL ){
-     for( jj=0 ; jj < tp->dsortar->num ){
+     for( jj=0 ; jj < tp->dsortar->num ; jj++ ){
        if( DSET_NVALS(tp->dsortar->ar[jj]) != nt ){
          ERROR_message("-dsort file #%d (%s) is %d long, but dataset is %d",
                        qq+1 , DSET_BRIKNAME(tp->dsortar->ar[jj]) ,
@@ -517,33 +578,45 @@ void TPR_process_data( TPR_input *tp )
 
    /*----- make voxel mask, if present -----*/
 
-   if( tp->maskset != NULL ){
-     vmask = THD_make_mask( tp->maskset , 0 , 1.0f,0.0f ) ;
+   if( tp->maskset != NULL ){  /*** explicit mask ***/
+
+     vmask = THD_makemask( tp->maskset , 0 , 1.0f,0.0f ) ;
      DSET_unload(tp->maskset) ;
      if( vmask == NULL )
-       ERROR_exit("Can't make mask from -mask dataset '%s'",DSET_BRIKNAME(tp->maskset) ;
+       ERROR_exit("Can't make mask from -mask dataset '%s'",DSET_BRIKNAME(tp->maskset)) ;
      nvmask = THD_countmask( DSET_NVOX(tp->inset) , vmask ) ;
      if( tp->verb )
        INFO_message("%d voxels in the spatial mask",nvmask) ;
      if( nvmask == 0 )
-       ERROR_exit("Mask from -mask dataset %s has 0 voxels",DSET_BRIKNAME(tp->maskset) ;
-   } else {
+       ERROR_exit("Mask from -mask dataset %s has 0 voxels",DSET_BRIKNAME(tp->maskset)) ;
+
+   } else if( tp->automask ){  /*** AUTO mask ***/
+
+     vmask = THD_automask( tp->inset ) ;
+     if( vmask == NULL )
+       ERROR_exit("Can't mask automask for some reason :-( !!") ;
+     nvmask = THD_countmask( DSET_NVOX(tp->inset) , vmask ) ;
+     if( tp->verb )
+       INFO_message("%d voxels in the spatial automask",nvmask) ;
+     if( nvmask == 0 )
+       ERROR_exit("autoask from input dataset %s has 0 voxels",DSET_BRIKNAME(tp->inset)) ;
+
+   } else {   /*** all voxels */
+
      vmask = (byte *)malloc(sizeof(byte)*nvox) ; nvmask = nvox ;
      for( jj=0 ; jj < nvox ; jj++ ) vmask[jj] = 1 ;
      if( tp->verb )
        INFO_message("no -mask option ==> processing all %d voxels in dataset",nvox) ;
+
    }
 
-   /*-- make list of voxels to filter --*/
+   /*----- create array to hold all fixed orts -----*/
 
-   vlist = (int *)malloc(sizeof(int)*nvmask) ;
-   for( jj=qq=0 ; jj < nvox ; jj++ ) if( vmask[jj] ) vlist[qq++] = jj ;
+   if( nort_fixed > 0 )
+     ort_fixed = (float *)malloc( sizeof(float) * ntkeep * nort_fixed ) ;
 
-   /*----- create array of all fixed orts -----*/
-
-   ort_fixed = (float *)malloc( sizeof(float) * ntkeep * nort_fixed ) ;
-
-   /*-- polort part of ort_fixed --*/
+   /*-- load the polort part of ort_fixed ;
+        note that the all 1s regressor will be first among equals --*/
 
    qort = 0 ;
    if( tp->polort >= 0 ){
@@ -554,17 +627,17 @@ void TPR_process_data( TPR_input *tp )
          opp[jj] = Plegendre(fac*keep[jj]-1.0,pp) ; sum += fabsf(opp[jj]) ;
        }
        if( sum == 0.0f ){  /* should not happen */
-         WARNING_message("sine -ort #%d is all zero: skipping",pp) ; qort-- ;
+         WARNING_message("polort #%d is all zero: skipping",pp) ; qort-- ;
        }
      }
    }
 
-   /*-- cosine/sine (stopbands) part of ort_fixed --*/
+   /*-- load cosine/sine (stopbands) part of ort_fixed --*/
 
    if( fmask != NULL ){
      int pp ; float *opp , fq , sum ;
      for( pp=1 ; pp <= nf ; pp++ ){
-       if( fmask[pp] == 0 ) continue ;
+       if( fmask[pp] == 0 ) continue ;              /** keep this frequency! **/
        opp = ort_fixed + qort*ntkeep ; qort++ ;
        fq = (2.0f * PI * pp) / (float)nt ;
        for( sum=0.0f,jj=0 ; jj < ntkeep ; jj++ ){
@@ -585,7 +658,7 @@ void TPR_process_data( TPR_input *tp )
      }
    }
 
-   /*-- ortar part of ort_fixed --*/
+   /*-- load ortar part of ort_fixed --*/
 
    if( tp->ortar != NULL ){
      MRI_IMAGE *qim ; float *qar , *opp , *qpp , sum ; int pp ;
@@ -598,18 +671,27 @@ void TPR_process_data( TPR_input *tp )
            opp[jj] = qpp[keep[jj]] ; sum += fabsf(opp[jj]) ;
          }
          if( sum == 0.0f ){
-           WARNING_message("fixed -ort #%d, column #%d is all zero: skipping",
+           WARNING_message("-ort #%d, column #%d is all zero: skipping",
                            qq+1 , pp ) ;
            qort-- ;
          }
        }
      }
-     DESTROY_IMARR(tp->ortar) ; tp->ortar = NULL ;
    }
 
    nort_fixed = qort ;  /* in case it shrank above */
 
-   /*-- pseudo-inverse --*/
+   /*-- de-mean the later regressors, if the all-1s regressor is present
+        (not strictly necessary, but makes the pseudo-inversion be happier) --*/
+
+   if( tp->polort >= 0 && nort_fixed > 1 ){
+     float *opp ;
+     for( qq=1 ; qq < nort_fixed ; qq++ ){
+       opp = ort_fixed + qq*ntkeep ; vector_demean( ntkeep , opp ) ;
+     }
+   }
+
+   /*-- pseudo-inverse of the fixed orts --*/
 
    if( nort_fixed > 0 ){
      ort_fixed_psinv = (float *)malloc(sizeof(float)*ntkeep*nort_fixed) ;
@@ -625,42 +707,105 @@ void TPR_process_data( TPR_input *tp )
 
    if( tp->dsortar != NULL ){
      dsort_mrv = (MRI_vectim **)malloc(sizeof(MRI_vectim *)*nort_dsort) ;
-     for( jj=0 ; jj < nort_dsrot ){
+     for( jj=0 ; jj < nort_dsort ; jj++ ){
        dsort_mrv[jj] = THD_dset_censored_to_vectim( tp->dsortar->ar[jj] ,
                                                     vmask, ntkeep, keep ) ;
        DSET_unload(tp->dsortar->ar[jj]) ;
+       if( tp->polort >= 0 )  /* de_mean the vectors? */
+         THD_vectim_applyfunc( dsort_mrv[jj] , vector_demean ) ;
      }
    }
 
+#if 0
    /*----- despike input dataset -----*/
 
    if( tp->do_despike ) (void)THD_vectim_despike9( inset_mrv ) ;
+#endif
 
-   /*----- filter time series -----*/
+   /*----- do the actual work: filter time series !! -----*/
 
 AFNI_OMP_START ;
 #pragma omp parallel
-{  int vv , nds=nort_dsort+1 ;
-   double *wsp ; float *dsar ;
+{  int vv , kk , nds=nort_dsort+1 ;
+   double *wsp ; float *dsar , *zar , *pdar ;
 
-#pragma omp critical
-   { wsp = get_psinv_wsp( ntkeep , nds , ntkeep*2 ) ;
-     dsar = (float *)malloc(sizeof(float)*nds*ntkeep) ; }
+#if 0
+#ifdef USE_OMP
+    if( tp->verb ) INFO_message("start OpenMP thread %d",omp_get_thread_num());
+#endif
+#endif
+
+   { wsp = (double *)get_psinv_wsp( ntkeep , nds , ntkeep*2 ) ;
+     dsar = (float *)malloc(sizeof(float)*nds*ntkeep) ;
+     pdar = (float *)malloc(sizeof(float)*nds*ntkeep) ;
+   }
 
 #pragma omp for
    for( vv=0 ; vv < nvmask ; vv++ ){
+
+     zar = VECTIM_PTR(inset_mrv,vv) ;   /* input data vector to be filtered */
+
+     if( nort_dsort > 0 ){             /* collect the voxel-wise regressors */
+       float *dar , *ear ;
+       for( kk=0 ; kk < nort_dsort ; kk++ ){
+         dar = VECTIM_PTR(dsort_mrv[kk],vv) ; ear = dsar+kk*ntkeep ;
+         AAmemcpy( ear , dar , sizeof(float)*ntkeep ) ;
+       }
+     }
+
+     project_out_twice( ntkeep ,
+                        nort_fixed , ort_fixed , ort_fixed_psinv ,
+                        nort_dsort , dsar      , pdar            ,
+                                     zar       , (char *)wsp      ) ;
    }
 
-#pragma omp critical
-   { free(wsp) ; free(dsar) ; }
+   { free(wsp) ; free(dsar) ; free(pdar) ; }
 }
 AFNI_OMP_END ;
 
+   /*-- get rid of some no-longer-needed stuff here --*/
+
+   if( nort_dsort > 0 ){
+     for( jj=0 ; jj < nort_dsort ; jj++ ) VECTIM_destroy(dsort_mrv[jj]) ;
+     free(dsort_mrv) ; dsort_mrv = NULL ;
+   }
+   free(fmask) ; fmask = NULL ;
+   free(vmask) ; vmask = NULL ;
+   if( ort_fixed       != NULL ){ free(ort_fixed)       ; ort_fixed = NULL       ; }
+   if( ort_fixed_psinv != NULL ){ free(ort_fixed_psinv) ; ort_fixed_psinv = NULL ; }
+
    /*----- blurring -----*/
+
+   MRILIB_verb = tp->verb ;
+   mri_blur3D_vectim( inset_mrv , tp->blur ) ;
+
+   /*----- norming -----*/
+
+   if( tp->do_norm ) THD_vectim_normalize(inset_mrv) ;
 
    /*----- convert output time series into dataset -----*/
 
+   tp->outset = EDIT_empty_copy( tp->inset ) ;
+   nvout      = (tp->cenmode == CEN_ZERO) ? nt : ntkeep ;
+
+   EDIT_dset_items( tp->outset ,
+                      ADN_prefix    , tp->prefix ,
+                      ADN_nvals     , nvout      ,
+                      ADN_ntt       , nvout      ,
+                      ADN_brick_fac , NULL       ,
+                    ADN_none ) ;
+   for( jj=0 ; jj < nvout ; jj++ )
+     EDIT_substitute_brick( tp->outset , jj , MRI_float , NULL ) ;
+
+   if( tp->cenmode == CEN_ZERO )
+     THD_vectim_to_dset_indexed( inset_mrv , tp->outset , keep ) ;
+   else
+     THD_vectim_to_dset        ( inset_mrv , tp->outset ) ;
+
    /*----- clean up whatever trash is still left -----*/
+
+   free(keep) ; VECTIM_destroy(inset_mrv) ;
+   EXRETURN ;
 }
 
 /*----------------------------------------------------------------------------*/
@@ -701,9 +846,17 @@ int main( int argc , char *argv[] )
      if( strcasecmp(argv[iarg],"-mask") == 0 ){
        if( tinp->maskset != NULL ) ERROR_exit("Can't use option '%s' twice!",argv[iarg]) ;
        if( ++iarg        >= argc ) ERROR_exit("Need value after option '%s'",argv[iarg-1]) ;
-       tinp->maskset = THD_open_dataset(argv[iarg]) ;
-       CHECK_OPEN_ERROR(tinp->maskset,argv[iarg]) ;
+       if( strcasecmp(argv[iarg],"AUTO") == 0 ){
+         tinp->automask = 1 ;
+       } else {
+         tinp->maskset = THD_open_dataset(argv[iarg]) ;
+         CHECK_OPEN_ERROR(tinp->maskset,argv[iarg]) ;
+       }
        iarg++ ; continue ;
+     }
+
+     if( strcasecmp(argv[iarg],"-automask") == 0 ){
+       tinp->automask = 1 ; iarg++ ; continue ;
      }
 
      /*-----*/
@@ -715,11 +868,13 @@ int main( int argc , char *argv[] )
        iarg++ ; continue ;
      }
 
+#if 0
      /*-----*/
 
      if( strcasecmp(argv[iarg],"-despike") == 0 ){
        tinp->do_despike = 1 ; iarg++ ; continue ;
      }
+#endif
 
      if( strcasecmp(argv[iarg],"-norm") == 0 ){
        tinp->do_norm = 1 ; iarg++ ; continue ;
@@ -759,21 +914,22 @@ int main( int argc , char *argv[] )
        stop = (float)strtod(argv[iarg++],NULL) ;
        if( sbot <  0.0f ) sbot = 0.0f ;
        if( stop <= sbot ) ERROR_exit("-stopband: range %.5f %.5f is illegal :-(",sbot,stop) ;
-       ADD_STOPBAND(sbot,stop) ;
+       ADD_STOPBAND(tinp,sbot,stop) ;
        continue ;
      }
 
      /*-----*/
 
-     if( strcasecmp(argv[iarg],"-passband") == 0 ){
+     if( strcasecmp(argv[iarg],"-passband") == 0 ||
+         strcasecmp(argv[iarg],"-bandpass") == 0   ){
        float fbot,ftop ;
        if( ++iarg >= argc-1 ) ERROR_exit("Need 2 values after option '%s'",argv[iarg-1]) ;
        fbot = (float)strtod(argv[iarg++],NULL) ;
        ftop = (float)strtod(argv[iarg++],NULL) ;
        if( fbot <  0.0f ) fbot = 0.0f ;
        if( ftop <= fbot ) ERROR_exit("-stopband: range %.5f %.5f is illegal :-(",fbot,ftop) ;
-       ADD_STOPBAND(0.0f,fbot) ;
-       ADD_STOPBAND(ftop,99999.9f) ;
+       ADD_STOPBAND(tinp,0.0f,fbot-0.0001f) ;
+       ADD_STOPBAND(tinp,ftop+0.0001f,666666.6f) ;
        continue ;
      }
 
@@ -906,9 +1062,9 @@ int main( int argc , char *argv[] )
    if( tinp->maskset != NULL && !EQUIV_GRIDXYZ(tinp->inset,tinp->maskset) )
      ERROR_exit("mask and input datasets are NOT on the same 3D grid?") ;
 
-   DSET_LOAD(tinp->inset) ; CHECK_LOAD_ERROR(tinp->inset) ;
+   DSET_load(tinp->inset) ; CHECK_LOAD_ERROR(tinp->inset) ;
    if( tinp->maskset != NULL ){
-     DSET_LOAD(tinp->maskset) ; CHECK_LOAD_ERROR(tinp->maskset) ;
+     DSET_load(tinp->maskset) ; CHECK_LOAD_ERROR(tinp->maskset) ;
    }
 
    nact = 0 ;
@@ -935,12 +1091,19 @@ int main( int argc , char *argv[] )
 
    TPR_process_data( tinp ) ;
 
+   /* if this program weren't about to end, we'd cleanup the contents of tinp */
+
    if( tinp->outset != NULL ){
      tross_Copy_History( tinp->inset , tinp->outset ) ;
      tross_Make_History( "3dTproject" , argc,argv , tinp->outset ) ;
      DSET_write(tinp->outset) ;
      if( tinp->verb ) WROTE_DSET(tinp->outset) ;
+   } else {
+     ERROR_exit("Processing the data failed for unknown reasons!") ;
    }
+
+   if( tinp->verb )
+     INFO_message("===== clock time =%s" , nice_time_string(NI_clock_time()-ct) ) ;
 
    exit(0) ;
 }
