@@ -5,7 +5,7 @@ Author: Michael Hanke <michael.hanke@gmail.com>
 Last-Update: 2010-09-29
 --- a/afni_func.c
 +++ b/afni_func.c
-@@ -5783,7 +5783,7 @@ ENTRY("AFNI_tips_CB") ;
+@@ -5796,7 +5796,7 @@
       XMapRaised( XtDisplay(tips_hw->wshell) , XtWindow(tips_hw->wshell) ) ;
       EXRETURN ;
     } else if( !AFNI_noenv("AFNI_DONT_USE_HTMLWIN") ){
@@ -14,7 +14,7 @@ Last-Update: 2010-09-29
       if( fpt != NULL && *fpt != '\0' ){
         inf = (char *)malloc(sizeof(char)*(strlen(fpt)+16)) ;
         strcpy(inf,"file:") ; strcat(inf,fpt) ; free(fpt) ;
-@@ -6641,6 +6641,8 @@ ENTRY("AFNI_find_poem_files") ;
+@@ -6684,6 +6684,8 @@
     /*----- get path to search -----*/
  
                         epath = getenv("AFNI_PLUGINPATH") ;
@@ -25,7 +25,7 @@ Last-Update: 2010-09-29
     if( epath == NULL ){ num_poem=-1; EXRETURN ; }
 --- a/afni_splash.c
 +++ b/afni_splash.c
-@@ -666,6 +666,8 @@ ENTRY("AFNI_find_jpegs") ;
+@@ -666,6 +666,8 @@
     /*----- get path to search -----*/
  
                         epath = getenv("AFNI_PLUGINPATH") ;
@@ -36,7 +36,7 @@ Last-Update: 2010-09-29
     if( epath == NULL ) epath = getenv("HOME") ;
 --- a/thd_ttatlas_query.c
 +++ b/thd_ttatlas_query.c
-@@ -596,6 +596,8 @@ char * get_atlas_dirname(void)  /* 31 Ja
+@@ -596,6 +596,8 @@
     if( !first ) return adnam ;
     first = 0 ;
                         epath = getenv("AFNI_PLUGINPATH") ;
@@ -45,7 +45,7 @@ Last-Update: 2010-09-29
     if( epath == NULL ) epath = getenv("AFNI_PLUGIN_PATH") ;
     if( epath == NULL ) epath = getenv("PATH") ;
     if( epath == NULL ) return NULL ;  /* this is bad */
-@@ -680,6 +682,8 @@ THD_3dim_dataset * get_atlas(char *epath
+@@ -680,6 +682,8 @@
        /*----- get path to search -----*/
  
                            epath = getenv("AFNI_PLUGINPATH") ;
@@ -54,7 +54,7 @@ Last-Update: 2010-09-29
        if( epath == NULL ) epath = getenv("AFNI_PLUGIN_PATH") ;
        if( epath == NULL ) epath = getenv("PATH") ;
        if( epath == NULL ) RETURN(dset) ;
-@@ -2131,8 +2135,11 @@ char *find_atlas_niml_file(char * nimlna
+@@ -2131,8 +2135,11 @@
     }
       
     /* okay that didn't work, try the AFNI plugin directory */
@@ -70,7 +70,7 @@ Last-Update: 2010-09-29
        if(wami_verb() > 1) 
 --- a/afni.c
 +++ b/afni.c
-@@ -4922,12 +4922,31 @@ ENTRY("AFNI_read_inputs") ;
+@@ -5027,12 +5027,31 @@
        /*-- 20 Dec 2001: Try to read a "global" session --*/
        /*-- 11 May 2002: Move read global session up here --*/
  
