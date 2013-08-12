@@ -142,6 +142,11 @@
    tross_Copy_History( par , pb ) ; \
 }
 
+#define SET_ALL_BRICK_FACTORS(pb, fac) {\
+   int m_i; \
+   for(m_i=0;m_i<DSET_NVALS(pb);++m_i) EDIT_BRICK_FACTOR(pb, m_i, (fac)); \
+}
+
 #define NEW_FLOATY(par,nsb,nm,pb){  \
    int m_i;   \
    pb = EDIT_empty_copy(par); \
@@ -156,6 +161,23 @@
    for(m_i=0;m_i<nsb;++m_i) EDIT_substitute_brick( pb, m_i, MRI_float, NULL ) ; \
    tross_Copy_History( par , pb ) ; \
 }
+
+#define NEW_FLOATYV(par,nsb,nm,pb,fv){  \
+   int m_i; \
+   pb = EDIT_empty_copy(par); \
+   EDIT_dset_items( pb ,   \
+                    ADN_prefix , nm ,  \
+                    ADN_nvals, nsb, \
+                    ADN_ntt, nsb, \
+                    ADN_malloc_type , DATABLOCK_MEM_MALLOC ,   \
+                    ADN_type        , HEAD_ANAT_TYPE ,   \
+                    ADN_func_type   , ANAT_BUCK_TYPE ,   \
+                    ADN_none ) ; \
+   for(m_i=0;m_i<nsb;++m_i) \
+      EDIT_substitute_brick( pb, m_i, MRI_float, (m_i==0 && (fv))?(fv):NULL); \
+   tross_Copy_History( par , pb ) ; \
+}
+
 
 #define EPS 0.000001
 #define MINP 0.01   /* I tried 0.05, 0.01, and 0.001: See
@@ -249,6 +271,30 @@
    IJK[0] = ((IJK[1]) % (ni));  \
    IJK[1] = ((IJK[1]) / (ni)); \
 }
+
+/*Macros to go from 1D to 4D ubyte indexing. 
+  For SUMA_COLID_N2RGBA, you will need to pass ints for r g b a
+  even though ubyte is needed for final storage */
+#define SUMA_COLID_N2RGBA(n,r,g,b,a) { \
+   (b) = (n) & (16777215); /* x % 2^24 = x & (2^n-1) */ \
+   (a) = (n) >> 24; /* divide by 2^24 (256x256x256) */  \
+   (g) = (b) & (65535); \
+   (b) = (b) >> 16; \
+   (r) = (g) & (255); \
+   (g) = (g) >> 8;   \
+}
+#define SUMA_COLID_N2RGBA_slow(n,r,g,b,a) { \
+   (b) = (n) % (16777216); /* x % 2^24 = x & (2^n-1) */ \
+   (a) = (n) /  16777216; /* divide by 2^24 (256x256x256) */  \
+   (g) = (b) % (65536); \
+   (b) = (b) / 65536; \
+   (r) = (g) % (256); \
+   (g) = (g) / 256;  \
+}
+#define SUMA_COLID_RGBA2N(r,g,b,a,n) { \
+   (n) = ((a) << 24) + ((b) << 16) + ((g) << 8) + (r);  \
+}
+
 
 #define GET_NEIGHBS_IN_MASK(cmask, ijk, ni, nj, nk, nij, ijkn_vec){  \
    static int m_IJK[3];   \
@@ -550,6 +596,9 @@ int SUMA_VolumeInFill(THD_3dim_dataset *aset,
                       THD_3dim_dataset **filledp,
                       int method, int integ, int MxIter,
                       int minhits);
+int SUMA_Volume_RadFill(THD_3dim_dataset *aset, float *ufv, byte *ucmask,
+                      float *ucm, THD_3dim_dataset **filledp,
+                      int nplug, int nlin, int fitord, float smooth, int N_off);
 int SUMA_mri_volume_infill(MRI_IMAGE *imin);
 int SUMA_mri_volume_infill_zoom(MRI_IMAGE *imin, byte thorough, 
                                  int integ, int mxiter);
@@ -633,9 +682,11 @@ SUMA_SurfaceObject *SUMA_ExtractHead_hull(THD_3dim_dataset *iset,
                                      float hullvolthr, SUMA_COMM_STRUCT *cs);
 SUMA_SurfaceObject *SUMA_ExtractHead(THD_3dim_dataset *iset,
                                      float hullvolthr, SUMA_COMM_STRUCT *cs);
+SUMA_SurfaceObject *SUMA_ExtractHead_RS(THD_3dim_dataset *iset,
+                               THD_3dim_dataset **urset, SUMA_COMM_STRUCT *cs);
 SUMA_Boolean SUMA_ShrinkSkullHull(SUMA_SurfaceObject *SO, 
                              THD_3dim_dataset *iset, float thr,
-                             SUMA_COMM_STRUCT *cs);                  
+                             int use_rs, SUMA_COMM_STRUCT *cs);                  
 THD_3dim_dataset *SUMA_Dset_FindVoxelsInSurface(
                      SUMA_SurfaceObject *SO, THD_3dim_dataset *iset, 
                      SUMA_VOLPAR *vp, char *vpname,

@@ -36,9 +36,12 @@ PARSE:
    set acpciate = 0
    set npass = -twopass
    set prexform = ""
+   set cen_opt = ""
    set OneWarp = 0
    set copy_base = ""
    set out_space = ""
+   set delete_pre = 0
+   
    if ("$1" == '') goto HELP
 
    while ($cnt <= $Narg)
@@ -320,6 +323,12 @@ PARSE:
          goto CLEANUP      
          set donext = 0      
       endif
+      
+      if ($donext && "$argv[$cnt]" == "-no_pre") then
+         set delete_pre = 1
+         set donext = 0      
+      endif
+      
       if ($donext && "$argv[$cnt]" == "-verb") then
          set verb = 1;      
          set donext = 0      
@@ -362,6 +371,18 @@ PARSE:
    set anat_path = $prs_in[1]
    
    set isNIFTI = `3dinfo -is_nifti "$anat_in"`
+   set isTLRC = `3dinfo -av_space "$anat_in"`
+   if ("$isTLRC" == "+tlrc") then
+      echo ""
+      echo "Notice:"
+      echo "Input dataset is in +tlrc already, `basename $0` might fail."
+     echo "If the space of $anat_in is incorrectly set (check with next command)"
+      echo "   3dinfo -prefix -av_space $anat_in "
+      echo "you can reset it with something like:"
+      echo "   3drefit -space ORIG $anat_in "
+      echo "then remove all temp files, and try again."
+      echo ""
+   endif
    set delete_this = ()
    if ($isNIFTI == 1) then
       set NIpref = `echo "$prs_in[2]" | sed 's/.nii.gz$//g' | sed 's/.nii$//g'`
@@ -376,6 +397,8 @@ PARSE:
       set delete_this = ($delete_this $prs_in[1]/${NIpref}_${RNS}+????.HEAD  \
                                       $prs_in[1]/${NIpref}_${RNS}+????.BRIK* ) 
       set prs_in = `@parse_afni_name "$anat_in"`
+   else
+      set RNS = ''
    endif 
    
    #Make a copy of anat_in if we are given sub-brick selectors
@@ -392,6 +415,13 @@ PARSE:
    endif 
    
    set preWopt = ''
+   if ($prexform == "AUTO_CENTER_CM") then
+      set cen_opt = '-cm'
+      set prexform = "AUTO_CENTER"
+   else if ($prexform == "CENTER_CM") then
+      set cen_opt = '-cm'
+      set prexform = "CENTER"
+   endif
    if ($prexform == "AUTO_CENTER" || $prexform == "CENTER" ) then
       #Check for center differences and act on it
       set dist_cent = `@Center_Distance -dset ${ref_in} ${anat_in}`
@@ -400,7 +430,7 @@ PARSE:
          echo ""
          echo "Performing center alignment with @Align_Centers"
          echo ""
-         @Align_Centers -base ${ref_in} -1Dmat_only \
+         @Align_Centers -base ${ref_in} ${cen_opt} -1Dmat_only \
                         -dset ${anat_in} 
          set pp = `@GetAfniPrefix ${anat_in}`
          set prexform = (`ls ${pp}_shft.1D`)
@@ -429,7 +459,7 @@ PARSE:
       #            -prefix Horse2 struct+orig.
       # The 3dAllineate is the way users should verify
       # if their init_xform is good.
-      set anat_in = pre.${anat_in}
+      set anat_in = pre.${anat_in:t}
       set prs_in = `@parse_afni_name "$anat_in"`
    endif
 
@@ -1212,12 +1242,25 @@ if ($KeepTmp != 1) then
    set Ret_Clean = END
    echo "Cleanup ..."
    #Don't move this IF into CLEANUP, it is only to
-   #be execute at exit.
+   #be executed at exit.
    if ($#delete_this) then
       foreach ff ($delete_this)
          if ( -f "$ff") \rm -f "$ff" >& /dev/null 
       end
    endif
+   if ("${RNS}" != '') then
+      set kl = (`\ls *_${RNS}+????.HEAD *_${RNS}_shft+????.HEAD`)
+      foreach kk ($kl)
+         set k = `echo $kk | sed "s/_${RNS}//"`
+         3drename $kk $k
+      end
+      set kl = (`\ls *_${RNS}_shft.1D`)
+      foreach kk ($kl)
+         set k = `echo $kk | sed "s/_${RNS}//"`
+         mv $kk $k
+      end
+   endif
+   if ($delete_pre == 1) \rm -f pre.*+????.[HB]??? >& /dev/null
    goto CLEANUP
 else
    goto END
@@ -1241,7 +1284,6 @@ CLEANUP:
 \rm -f ${tmppref}*upad*.????*  >& /dev/null
 \rm -f ${tmppref}*warp_grid*.????*  >& /dev/null
 \rm -f ${tmppref}*_shft*.????*  >& /dev/null
-
 goto $Ret_Clean
 
 SET_REF_PATH:
@@ -1253,7 +1295,7 @@ if ( "$ref_path" == "$ref_in" ) then
       goto END_REF_SEARCH
    endif
    #if not in apar mode, try to set the path
-   if ( `@CheckForAfniDset ${ref_in}` == 2 ) then
+   if ( `@CheckForAfniDset ${ref_in}` == 2  || -f ${ref_in}) then
       if ($verb) echo "Template dset ${ref_in} found."
       goto END_REF_SEARCH
    endif
@@ -1459,8 +1501,14 @@ echo ""
 echo "          Note: You can also use -init_xform AUTO_CENTER to automatically"
 echo "                run @Align_Centers if the centers are off by more than "
 echo "                40 mm. "
+echo "                AUTO_CENTER_CM would do the centering based on the"
+echo "                center of mass rather than the center of the volume grids."
+echo ""
 echo "                You can force centering with -init_xform CENTER"
-echo "                regardless of the center distance between volumes"
+echo "                or with -init_xform CENTER_CM regardless of the center"
+echo "                distance between volumes"
+echo ""
+echo "      -no_pre: Delete temporary dataset created by -init_xform"
 echo ""  
 echo "      -out_space spacename: Set output to a particular space"
 echo "                       Usually, output space is determined by the space"

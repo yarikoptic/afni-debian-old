@@ -61,6 +61,23 @@ def write_text_to_file(fname, text, mode='w', wrap=0, wrapstr='\\\n', exe=0):
 
     return 0
 
+def read_text_file(fname, lines=0):
+   """return the text text from the given file as either one string
+      or as an array of lines"""
+
+   try: fp = open(fname, 'r')
+   except:
+     print "** read_text_file: failed to open '%s'" % fname
+     if lines: return []
+     else:     return ''
+
+   if lines: tdata = fp.readlines()
+   else:     tdata = fp.read()
+
+   fp.close()
+
+   return tdata
+
 def write_to_timing_file(data, fname='', nplaces=-1, verb=1):
    """write the data in stim_times format, over rows
       (this is not for use with married timing, but for simple times)"""
@@ -186,7 +203,7 @@ def show_args_as_command(args, note='command:'):
      )
 
 def exec_tcsh_command(cmd, lines=0, noblank=0):
-    """execute cmd via: tcsh -c "cmd"
+    """execute cmd via: tcsh -cf "cmd"
        return status, output
           if status == 0, output is stdout
           else            output is stderr+stdout
@@ -195,7 +212,8 @@ def exec_tcsh_command(cmd, lines=0, noblank=0):
        if noblank (and lines): omit blank lines
     """
 
-    cstr = 'tcsh -c "%s"' % cmd
+    # do not re-process .cshrc, as some actually output text
+    cstr = 'tcsh -cf "%s"' % cmd
     status, so, se = BASE.simple_shell_exec(cstr, capture=1)
 
     if not status: otext = so
@@ -207,13 +225,209 @@ def exec_tcsh_command(cmd, lines=0, noblank=0):
 
     return status, otext
 
-def get_unique_sublist(inlist):
-    """return a copy of inlist, but where elements are unique"""
+def limited_shell_exec(command, nlines=-1):
+   """run a simple shell command, returning the top nlines"""
+   st, so, se = BASE.shell_exec2(command, capture=1)
+   if nlines >= 0:
+      so = so[0:nlines+1]
+      se = se[0:nlines+1]
+   return st, so, se
 
-    newlist = []
+def write_afni_com_history(fname, length=0, wrap=1):
+   """write the afni_com history to the given file
 
-    for val in inlist:
-        if not val in newlist: newlist.append(val)
+      if length > 0: limit to that number of entries
+   """
+   com = BASE.shell_com('hi there')
+   hist = com.shell_history()
+   script = '\n'.join(hist)+'\n'
+   write_text_to_file(fname, script, wrap=wrap)
+
+# get/show_process_stack(), get/show_login_shell()   28 Jun 2013 [rickr]
+def get_process_stack():
+   """the stack of processes up to init
+
+      return an array of [pid, ppid, user, command] elements
+      --> element 0 should always be init
+  """
+   def get_pid_index(pids, plist, pid):
+      try:
+         pind = pids.index(pid)
+      except:
+         print '** GPS pid %s not in pid list:\n%s' % (pid, plist)
+         sys.exit(1)
+      return pind
+   def get_ancestry_indlist(pids, ppids, plist):
+      pid = os.getpid()
+      pind = get_pid_index(pids, plist, pid)
+      indtree = [pind]
+      while pid > 1:
+         pid = ppids[pind]
+         pind = get_pid_index(pids, plist, pid)
+         indtree.append(pind)
+      return indtree
+
+   cmd = 'ps -eo pid,ppid,user,comm'
+   ac = BASE.shell_com(cmd, capture=1)
+   ac.run()
+   if ac.status:
+      print '** GPS command failure for: %s\n' % cmd
+      print 'error output:\n%s' % '\n'.join(ac.se)
+      return []
+
+   plist = [ll.split() for ll in ac.so]
+   names = plist[0]
+   plist = plist[1:]
+
+   try:
+      pids = [int(psinfo[0]) for psinfo in plist]
+      ppids = [int(psinfo[1]) for psinfo in plist]
+   except:
+      print '** GPS type failure in plist\n%s' % plist
+      return []
+
+   indlist = get_ancestry_indlist(pids, ppids, plist)
+
+   stack = [plist[i] for i in indlist]
+   stack.reverse()
+   return stack
+
+def show_process_stack():
+   """print stack of processes up to init"""
+   pstack = get_process_stack()
+   if len(pstack) == 0:
+      print '** empty process stack'
+      return
+   ulist = [pp[2] for pp in pstack]
+   ml = max_len_in_list(ulist)
+   header = '   PID   PPID  [USER]'
+   dashes = '  ----   ----  ------'
+   form = '%6s %6s  [%s]'
+   ilen = len(form)+4+ml
+
+   print '%-*s : %s' % (ilen, header, 'COMMAND')
+   print '%-*s   %s' % (ilen, dashes, '-------')
+   for row in pstack:
+      ss = form % (row[0], row[1], row[2])
+      print '%-*s : %s' % (ilen, ss, row[3])
+
+def get_login_shell():
+   """return the apparent login shell
+      from get_process_stack(), search down s[3] until a shell is found
+   """
+   shells = ['csh','tcsh','sh','bash','zsh']
+   dshells = ['-%s' % s for s in shells]
+
+   pstack = get_process_stack()
+   if len(pstack) == 0:
+      print '** cannot detect shell: empty process stack'
+      return
+
+   # start from init and work down to find first valid shell
+   for pline in pstack:
+      if pline[3] not in shells and pline[3] not in dshells: continue
+      shell = pline[3]
+      if shell[0] == '-': shell = shell[1:]      # strip any leading '-'
+      return shell
+
+   return 'SHELL_NOT_DETECTED'
+
+def get_current_shell():
+   """return the apparent login shell
+      from get_process_stack(), search down s[3] until a shell is found
+   """
+   shells = ['csh','tcsh','sh','bash','zsh']
+   dshells = ['-%s' % s for s in shells]
+
+   pstack = get_process_stack()
+   if len(pstack) == 0:
+      print '** cannot detect shell: empty process stack'
+      return
+   pstack.reverse()
+
+   # start from init and work down to find first valid shell
+   for pline in pstack:
+      if pline[3] not in shells and pline[3] not in dshells: continue
+      shell = pline[3]
+      if shell[0] == '-': shell = shell[1:]      # strip any leading '-'
+      return shell
+
+   return 'SHELL_NOT_DETECTED'
+
+def show_login_shell(verb=0):
+   """print the apparent login shell
+
+      from get_process_stack(), search down s[3] until a shell is found
+   """
+   shells = ['csh','tcsh','sh','bash','zsh']
+   dshells = ['-%s' % s for s in shells]
+
+   pstack = get_process_stack()
+   if len(pstack) == 0:
+      print '** cannot detect shell: empty process stack'
+      return
+
+   # start from init and work down to find first valid shell
+   shell = ''
+   for pline in pstack:
+      if pline[3] not in shells and pline[3] not in dshells: continue
+      shell = pline[3]
+      if shell[0] == '-': shell = shell[1:]      # strip any leading '-'
+      if verb: print 'apparent login shell: %s' % shell
+      else: print '%s' % shell
+      break
+
+   if shell == '':
+      if verb:
+         print '** failed to determine login shell, see process stack...\n'
+         show_process_stack()
+         return
+
+   # in verbose mode, see if parent shell is different from login
+   if verb:
+      pstack.reverse()
+      for pline in pstack:
+         if pline[3] not in shells and pline[3] not in dshells: continue
+         sh = pline[3]
+         if sh[0] == '-': sh = sh[1:]      # strip any leading '-'
+         if sh != shell: print 'differs from current shell: %s' % sh
+         break
+
+def get_unique_sublist(inlist, keep_order=1):
+    """return a copy of inlist, but where elements are unique
+
+       if keep_order, the order is not altered (first one found is kept)
+          (easy to code, but maybe slow)
+       else, sort (if needed), and do a linear pass
+
+       tested with:
+          llist = [3, 4, 7, 4, 5,5,5, 4, 7, 9]
+          get_unique_sublist()
+          get_unique_sublist(keep_order=0)
+          llist.sort()
+          get_unique_sublist(keep_order=0)
+    """
+
+    if len(inlist) == 0: return []
+
+    # if keep_order, be slow
+    if keep_order:
+       newlist = []
+       for val in inlist:
+           if not val in newlist: newlist.append(val)
+       return newlist
+
+    # else, sort only if needed
+    if vals_are_sorted(inlist):
+       slist = inlist
+    else:
+       slist = inlist[:]
+       slist.sort()
+
+    newlist = slist[0:1]
+    for ind in range(len(slist)-1):
+       # look for new values
+       if slist[ind+1] != slist[ind]: newlist.append(slist[ind+1])
 
     return newlist
 
@@ -251,7 +465,7 @@ def uniq_list_as_dsets(dsets, whine=0):
           "            e.g.  bad use:    ED_r*+orig*\n"                     \
           "            e.g.  good use:   ED_r*+orig.HEAD\n"                 \
           "-----------------------------------------------------------\n"   \
-          % (i1+1, i2+1, anlist[i1].pve(), anlist[i2].pve())
+          % (ind, ind+1, anlist[ind].pve(), anlist[ind+1].pve())
 
     return uniq
 
@@ -1405,7 +1619,7 @@ def vals_are_increasing(vlist, reverse=0):
       
    return rval
 
-def vals_are_unique(vlist):
+def vals_are_unique(vlist, dosort=1):
    """determine whether (possibly unsorted) values are unique
       - use memory to go for N*log(N) speed"""
 
@@ -1414,7 +1628,7 @@ def vals_are_unique(vlist):
 
    # copy and sort
    dupe = vlist[:]
-   dupe.sort()
+   if dosort: dupe.sort()
 
    rval = 1
    try:
@@ -1490,7 +1704,7 @@ def gen_float_list_string(vals, mesg='', nchar=0, left=0):
 
    return istr
 
-def int_list_string(ilist, mesg='', nchar=0):
+def int_list_string(ilist, mesg='', nchar=0, sepstr=' '):
    """like float list string, but use general printing
       (mesg is printed first, if nchar>0, it is min char width)"""
 
@@ -1498,9 +1712,20 @@ def int_list_string(ilist, mesg='', nchar=0):
 
    if nchar > 0: slist = ['%*d' % (nchar, val) for val in ilist]
    else:         slist = ['%d' % val for val in ilist]
-   istr += ' '.join(slist)
+   istr += sepstr.join(slist)
 
    return istr
+
+def invert_int_list(ilist, top=-1, bot=0):
+   """invert the integer list with respect to bot and top
+      i.e. return a list of integers from bot to top that are not in
+           the passed list
+   """
+   if top < bot:
+      print '** invert_int_list requires bot<=top (have %d, %d)' % (bot, top)
+      return []
+
+   return [ind for ind in range(bot, top+1) if not ind in ilist]
 
 def is_valid_int_list(ldata, imin=0, imax=-1, whine=0):
    """check whether:
@@ -1566,6 +1791,71 @@ def section_divider(hname, maxlen=74, hchar='=', endchar=''):
     postlen = maxlen - rmlen - prelen   # other 'half'
 
     return endchar + prelen*hchar + name + postlen*hchar + endchar
+
+def max_len_in_list(vlist):
+    mval = 0
+    try:
+       for v in vlist:
+          if len(v) > mval: mval = len(v)
+    except:
+       print '** max_len_in_list: cannot compute lengths'
+    return mval
+
+def get_rank(data, style='dense', reverse=0, uniq=0):
+   """return the rank order of indices given values,
+      i.e. for each value, show its ordered index
+      e.g. 3.4 -0.3 4.9 2.0   ==>   2 0 3 1
+
+      Sort the data, along with indices, then repeat on the newly
+      sorted indices.  If not uniq, set vals to minimum for repeated set.
+      Note that sorting lists sorts on both elements, so first is smallest.
+
+      styles:  (e.g. given input -3 5 5 6, result is ...)
+
+         competition:  competition ranking (result 1 2 2 4 )
+         dense:        dense ranking (result 1 2 2 3 )
+                       {also default from 3dmerge and 3dRank}
+
+      return status (0=success) and the index order
+   """
+
+   dlen = len(data)
+
+   # maybe reverse the sort order
+   if reverse:
+      maxval = max(data)
+      dd = [maxval-val for val in data]
+   else: dd = data
+
+   # sort data and original position
+   dd = [[dd[ind], ind] for ind in range(dlen)]
+   dd.sort()
+
+   # invert postion list by repeating above, but with index list as data
+   # (bring original data along for non-uniq case)
+   dd = [[dd[ind][1], ind, dd[ind][0]] for ind in range(dlen)]
+
+   # deal with repeats: maybe modify d[1] from ind, depending on style
+   if not uniq:
+      if style == 'dense':
+         cind = dd[0][1] # must be 0
+         for ind in range(dlen-1):      # compare next to current
+            if dd[ind+1][2] == dd[ind][2]:
+               dd[ind+1][1] = cind
+            else:
+               cind += 1
+               dd[ind+1][1] = cind
+      elif style == 'competition':
+         for ind in range(dlen-1):      # compare next to current
+            if dd[ind+1][2] == dd[ind][2]:
+               dd[ind+1][1] = dd[ind][1]
+      else:
+         print "** UTIL.GR: invalid style '%s'" % style
+         return 1, []
+
+   dd.sort()
+
+   return 0, [dd[ind][1] for ind in range(dlen)]
 
 # ----------------------------------------------------------------------
 # wildcard construction functions
@@ -2026,6 +2316,56 @@ def get_ids_from_dsets(dsets, prefix='', suffix='', hpad=0, tpad=0, verb=1):
 
    return slist
 
+def insensitive_word_pattern(word):
+   """replace each alphabetical char with [Ul], an upper/lower search pair
+      use of 'either' suggested by G Irving at stackoverflow.com
+   """
+   def either(c):
+      if c.isalpha: return '[%s%s]'%(c.lower(),c.upper())
+      else:         return c
+   return ''.join(map(either,word))
+   
+def insensitive_glob(pattern):
+   """return glob.glob, but where every alphabetic character is
+      replaced by lower/upper pair tests
+   """
+   return glob.glob(insensitive_word_pattern(pattern))
+
+
+def search_path_dirs(word, exact=0, casematch=1):
+   """return status and list of matching files
+      return number of files found, or -1 on error
+
+      Could be more efficient, esp. with exact and casematch set, but
+      I will strive for simplicity and consistency and see how it goes.
+   """
+   try:
+      plist = os.environ['PATH'].split(':')
+   except:
+      print '** search_path_dirs: no PATH var'
+      return -1, []
+
+   # if no casematch, look for upper/lower pairs
+   if casematch: wpat = word
+   else:         wpat = insensitive_word_pattern(word)
+
+   # if not exact, surround with wildcard pattern
+   if exact:     form = '%s/%s'
+   else:         form = '%s/*%s*'
+
+   # now just search for matches
+   rlist = []
+   for pdir in plist:
+      glist = glob.glob(form % (pdir, wpat))
+      if len(glist) > 0: rlist.extend(glist)
+
+   return 0, get_unique_sublist(rlist)
+
+def show_found_in_path(word, exact=0, casematch=1, indent='\n   '):
+   """a simple wrapper to print search_path_dirs results"""
+   rv, rlist = search_path_dirs(word, exact=exact, casematch=casematch)
+   if not rv: print indent+indent.join(rlist)
+
 # ----------------------------------------------------------------------
 # mathematical functions:
 #    vector routines: sum, sum squares, mean, demean
@@ -2186,6 +2526,12 @@ def proj_out_vec(v1, v2, unit_v2=0):
       unit_v2: flag denoting whether v2 is a unit vector
 
       return v1 - (v1 projected onto v2)
+
+      Note: y - proj(y,p)
+          = y - <y,p>/<p,p> * pT        = y - yTp/pTp * pT
+          = y - <y,p>/|p|^2 * pT
+          = y - <y,p>*(pTp)^-1 * pT     (where (pTp)^-1*pT = pseudo-inverse)
+          = (I - p (pTp)^-1 * pT) * y
    """
 
    return lin_vec_sum(1, v1, -1, proj_onto_vec(v1, v2, unit_v2))
@@ -2310,14 +2656,17 @@ def variance(data):
     if val < 0.0 : return 0.0
     return val
 
-def r(vA, vB):
+def r(vA, vB, unbiased=0):
     """return Pearson's correlation coefficient
 
        for demeaned and unit vectors, r = dot product
+       for unbiased correlation, return r*(1 + (1-r^2)/2N)
 
        note: correlation_p should be faster
     """
-    if len(vB) != len(vA):
+    la = len(vA)
+
+    if len(vB) != la:
         print '** r (correlation): vectors have different lengths'
         return 0.0
     ma = mean(vA)
@@ -2329,7 +2678,10 @@ def r(vA, vB):
     dA = [v/sA for v in dA]
     dB = [v/sB for v in dB]
 
-    return dotprod(dA,dB)
+    r = dotprod(dA,dB)
+
+    if unbiased: return r * (1 + (1-r*r)/2*la)
+    return r
 
 def eta2(vA, vB):
     """return eta^2 (eta squared - Cohen, NeuroImage 2008
@@ -2369,17 +2721,17 @@ def eta2(vA, vB):
         return 0.0
     return 1.0 - num/denom
 
-def correlation_p(vA, vB, demean=1):
+def correlation_p(vA, vB, demean=1, unbiased=0):
     """return the Pearson correlation between the 2 vectors
        (allow no demean for speed)
     """
 
-    length = len(vA)
-    if len(vB) != length:
+    la = len(vA)
+    if len(vB) != la:
         print '** correlation_pearson: vectors have different lengths'
         return 0.0
 
-    if length < 2: return 0.0
+    if la < 2: return 0.0
 
     if demean:
        ma = mean(vA)
@@ -2397,7 +2749,10 @@ def correlation_p(vA, vB, demean=1):
     if demean: del(dA); del(dB)
 
     if ssA <= 0.0 or ssB <= 0.0: return 0.0
-    else:                        return sAB/math.sqrt(ssA*ssB)
+    else:
+       r = sAB/math.sqrt(ssA*ssB)
+       if unbiased: return r * (1 + (1-r*r)/(2*la))
+       return r
 
 def ttest(data0, data1=None):
     """just a top-level function"""
@@ -2517,6 +2872,34 @@ def p2q(plist, do_min=1, verb=1):
     q.reverse()
 
     return q
+
+def argmax(vlist, absval=0):
+   if len(vlist) < 2: return 0
+   if absval: vcopy = [abs(val) for val in vlist]
+   else:      vcopy = vlist
+
+   mval = vcopy[0]
+   mind = 0
+   for ind, val in enumerate(vlist):
+      if val > mval:
+         mval = val
+         mind = ind
+
+   return mind
+
+def argmin(vlist, absval=0):
+   if len(vlist) < 2: return 0
+   if absval: vcopy = [abs(val) for val in vlist]
+   else:      vcopy = vlist
+
+   mval = vcopy[0]
+   mind = 0
+   for ind, val in enumerate(vlist):
+      if val < mval:
+         mval = val
+         mind = ind
+
+   return mind
 
 # ----------------------------------------------------------------------
 # random list routines: shuffle, merge, swap, extreme checking
@@ -2706,6 +3089,9 @@ def main():
    argv = sys.argv
    if len(argv) > 2:
       if argv[1] == '-eval':
+         eval(' '.join(argv[2:]))
+         return 0
+      elif argv[1] == '-print':
          print eval(' '.join(argv[2:]))
          return 0
       elif argv[1] == '-listfunc':

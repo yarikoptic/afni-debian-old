@@ -125,8 +125,6 @@
 #define SUMA_TESSCON_TO_MM       319.7 /*!< The mysterious Tesscon units */
 #define SUMA_TESSCON_DIFF_FLAG    1000   /*!< If aMaxDim - aMinDim > SUMA_TESSCON_DIFF_FLAG in a .iv file, scaling by SUMA_TESSCON_TO_MM is applied */
 
-#define SUMA_WriteCheckWait 400 /*!< Milliseconds to wait for each stream_writecheck call */ 
-#define SUMA_WRITECHECKWAITMAX 2000 /*!< Milliseconds to try and establish a good WriteCheck */
 
 #define SUMA_MAX_N_SURFACE_SPEC 500/*!< Maximum number of surfaces allowed in a spec file */
 
@@ -155,6 +153,7 @@ SUMA_INSIDE_SURFACE } SUMA_SURF_GRID_INTERSECT_OPTIONS;
 typedef enum { SUMA_GEOM_NOT_SET=-1, SUMA_GEOM_IRREGULAR = 0,    
                SUMA_GEOM_SPHERE = 1, SUMA_GEOM_ICOSAHEDRON, 
                SUMA_N_GEOM } SUMA_GEOM_TYPE;
+
 #define SUMA_IS_GEOM_SYMM(gt) ( ( (gt) == SUMA_GEOM_SPHERE || (gt) == SUMA_GEOM_ICOSAHEDRON ) ? 1:0 ) 
 
 typedef enum  { SUMA_NO_ANSWER, SUMA_YES, SUMA_NO, SUMA_HELP, SUMA_CANCEL, SUMA_YES_ALL, SUMA_NO_ALL, SUMA_WHAT_THE_HELL } SUMA_QUESTION_DIALOG_ANSWER; /* DO NOT CHANGE THE ORDER OF THE FIRST 4 */
@@ -167,33 +166,8 @@ typedef enum  { SUMA_FT_ERROR = -1, SUMA_FT_NOT_SPECIFIED,
                SUMA_PREDEFINED,
                   SUMA_N_SO_FILE_TYPE} SUMA_SO_File_Type; /* add types always between SUMA_FT_NOT_SPECIFIED AND SUMA_N_SO_FILE_TYPE */
 typedef enum { SUMA_FF_ERROR = -1, SUMA_FF_NOT_SPECIFIED, SUMA_ASCII, SUMA_BINARY, SUMA_BINARY_BE, SUMA_BINARY_LE, SUMA_XML_SURF, SUMA_XML_ASCII_SURF,  SUMA_XML_B64_SURF, SUMA_XML_B64GZ_SURF } SUMA_SO_File_Format;
-typedef enum { type_not_set = -1,
-               no_type, SO_type, AO_type, ROIdO_type, ROIO_type, 
-               GO_type, LS_type, NBLS_type, OLS_type, NBOLS_type,
-               NBV_type, ONBV_type, SP_type,
-               NBSP_type, PL_type, VO_type,
-               NBT_type, SBT_type, DBT_type, /*!< Those three will 
-                                                   likely not be used */
-               NIDO_type, SDSET_type, TRACT_type,
-               N_DO_TYPES } SUMA_DO_Types;   
 
-/*!< Displayable Object Types 
-                                                                                    S: surface, A: axis, G: grid, 
-                                                                                    ROId: Region of interest drawn type,
-                                                                                    LS_type: line segment
-                                                                                    NBLS_type: Node-based line segment
-                 
-  OLS_type: oriented line segment
-                                                                                    NBOLS_type: Node-based oriented line segment
-                                                                                    NBV_type: Node-Based vector (displayed as a line from node)
-                                                                                    ONBV_type: NBV with a ball on the bottom (slower to render)
-                                                                                    SP_type: spherical markers
-                                                                                    NBSP_type: Node-Based spherical markers
-                                                                                    PL_type: planes
-                                                                                    NBT_type: Node-based text
-                                                                                    SBT_type: Screen-based text
-                                                                                    DBT_type: Dicom-based text
-                                                                                    */
+
 typedef enum { SUMA_COORD_TYPE_ERROR=0, 
                   SUMA_SCREEN, 
                   SUMA_WORLD} SUMA_DO_CoordType; /*!< Coordinate system that 
@@ -244,7 +218,7 @@ typedef enum { SE_Empty,
                SE_ToggleLockView, SE_ToggleLockAllViews, 
                SE_Load_Group, SE_Home_AllVisible, SE_Help, SE_Help_Cmap, 
                SE_Help_Plot, SE_Help_Xform, SE_Whereami, SE_Log,
-               SE_UpdateLog, SE_SetRenderMode, SE_OpenDrawROI,
+               SE_UpdateLog, SE_SetRenderMode, SE_SetTransMode, SE_OpenDrawROI,
                SE_RedisplayNow_AllVisible, SE_RedisplayNow_AllOtherVisible,  
                SE_SetLight0Pos, SE_OpenColFileSelection,
                SE_SaveDrawnROIFileSelection, SE_OpenDrawnROIFileSelection, 
@@ -336,6 +310,17 @@ typedef enum { SW_SurfCont_Render,
                SW_N_SurfCont_Render } SUMA_WIDGET_INDEX_SURFCONT_RENDER; 
                               /*!< Indices to widgets in SurfaceController under
                                    RenderMode */
+typedef enum { SW_SurfCont_Trans,
+               SW_SurfCont_TransViewerDefault, 
+               SW_SurfCont_Trans0, SW_SurfCont_Trans1, 
+               SW_SurfCont_Trans2, SW_SurfCont_Trans3, SW_SurfCont_Trans4, 
+               SW_SurfCont_Trans5, SW_SurfCont_Trans6, SW_SurfCont_Trans7,
+               SW_SurfCont_Trans8, SW_SurfCont_Trans9, SW_SurfCont_Trans10,
+               SW_SurfCont_Trans11, SW_SurfCont_Trans12, SW_SurfCont_Trans13,
+               SW_SurfCont_Trans14,SW_SurfCont_Trans15, SW_SurfCont_Trans16,
+               SW_N_SurfCont_Trans } SUMA_WIDGET_INDEX_SURFCONT_TRANS; 
+                              /*!< Indices to widgets in SurfaceController under
+                                   TransMode */
 typedef enum { SW_SurfCont_DsetView,
                SW_SurfCont_DsetViewCol,
                SW_SurfCont_DsetViewCon,
@@ -443,7 +428,14 @@ typedef enum { SUMA_ROI_Undefined,
 
 typedef enum { SXR_default, SXR_Euro, SXR_Afni , SXR_Bonaire} SUMA_XRESOURCES;   /* flags for different X resources */
 
-typedef enum { SRM_ViewerDefault, SRM_Fill, SRM_Line, SRM_Points , SRM_Hide, SRM_N_RenderModes} SUMA_RENDER_MODES; /*!< flags for various rendering modes */
+typedef enum { SRM_ViewerDefault, SRM_Fill, SRM_Line, SRM_Points , SRM_Hide, 
+               SRM_N_RenderModes} SUMA_RENDER_MODES; /*!< flags for various 
+                                                            rendering modes */
+
+typedef enum { STM_ViewerDefault, STM_0, STM_1, STM_2,STM_3,STM_4,STM_5,
+               STM_6, STM_7, STM_8, STM_9, STM_10, STM_11, STM_12, STM_13,
+               STM_14, STM_15, STM_16, STM_N_TransModes} SUMA_TRANS_MODES; 
+                                 /*!< flags for various transparency values */
 
 
 typedef enum { 
@@ -456,13 +448,15 @@ typedef enum {
 
    /*!< number of useful views enumerated in SUMA_STANDARD_VIEWS */
 typedef enum {    SUMA_2D_Z0, SUMA_2D_Z0L, 
-                  SUMA_3D, SUMA_N_STANDARD_VIEWS } SUMA_STANDARD_VIEWS; 
+                  SUMA_3D, SUMA_3D_Z0,
+                  SUMA_N_STANDARD_VIEWS } SUMA_STANDARD_VIEWS; 
                      /*!< Standard viewing modes. These are used to decide what 
                      viewing parameters to carry on when switching states 
                      SUMA_2D_Z0 2D views, with Z = 0 good for flat surfaces
                      SUMA_2D_Z0L 2D views, with Z = 0 
                                           good for left hemi flat surfaces
                      SUMA_3D standard 3D view
+                     SUMA_3D_Z0 straight down the Z, good for balls
                      SUMA_N_STANDARD_VIEWS used to flag errors leave  at the end 
                      */
 typedef enum {   SUMA_No_Lock, SUMA_I_Lock, SUMA_XYZ_Lock, SUMA_N_Lock_Types}  SUMA_LINK_TYPES; /*!< types of viewer linking. Keep SUMA_N_Lock_Types at the end, it is used to keep track of the number of types*/
@@ -585,10 +579,14 @@ typedef struct {
    char *Parent_idcode_str; /*!< idcode of parent surface */
    char *Label; /*!< ascii label for ROI */
 
-   int *ElInd; /*!< pointer to vector containing indices into the parent surface (SO has Parent_idcode_str) of ROI elements.
-                           If Type is SUMA_ROI_NodeGroup then ElementIndex contains indices to SO->NodeList .
-                           If Type is SUMA_ROI_FaceGroup then ElementIndex contains indices to SO->FaceList.
-                           If Type is SUMA_ROI_EdgeGroup then ElementIndex contains indices to SO->EL->EL. */
+   int *ElInd; /*!< Pointer to vector containing indices into the parent 
+                     surface (SO has Parent_idcode_str) of ROI elements.
+                    If Type is SUMA_ROI_NodeGroup then ElementIndex contains 
+                     indices to SO->NodeList .
+                    If Type is SUMA_ROI_FaceGroup then ElementIndex contains 
+                     indices to SO->FaceList.
+                    If Type is SUMA_ROI_EdgeGroup then ElementIndex contains 
+                     indices to SO->EL->EL. */
    int N_ElInd; /*!< Number of elements in ElementIndex */ 
 } SUMA_ROI; 
 
@@ -624,9 +622,12 @@ typedef struct {
 
 /*! structure to hold the drawing of an ROI */
 typedef struct {   
+      /* FIRST VARIABLES MUST RETAIN THEIR ORDER and follow SUMA_ALL_DO */
+   SUMA_DO_Types do_type; 
    char *idcode_str;    /*!< unique idcode for ROI */
    char *Label; /*!< ascii label for ROI */ 
 
+      /* Begin specific fields */
    SUMA_ROI_DRAWING_TYPE Type;   /*!< The type of ROI drawn, 
                               that would be closed path, etc, etc, */
 
@@ -766,6 +767,7 @@ typedef struct {
 
 /*! Structure containing one color overlay */
 typedef struct {
+   SUMA_DO_Types do_type;  /*!< To check if this is a displayable object */
    int LinkedPtrType; /*!< Indicates the type of linked pointer */
    int N_links;   /*!< Number of links to this pointer */
    char owner_id[SUMA_IDCODE_LENGTH];   /*!< The id of whoever created 
@@ -912,6 +914,7 @@ typedef struct {
 
 /*! structure that containing node's first order neighbors */
 typedef struct {
+   SUMA_DO_Types do_type;  /*!< To check if this is a displayable object */
    int LinkedPtrType; /*!< Indicates the type of linked pointer */
    int N_links;   /*!< Number of links to this pointer */
    char owner_id[SUMA_IDCODE_LENGTH];   /*!< The id of whoever created that 
@@ -968,9 +971,11 @@ typedef struct {
 
 */
 typedef struct {
+   SUMA_DO_Types do_type;  /*!< To check if this is a displayable object */
    int LinkedPtrType; /*!< Indicates the type of linked pointer */
    int N_links;   /*!< Number of links to this pointer */
-   char owner_id[SUMA_IDCODE_LENGTH];   /*!< The id of whoever created that pointer. Might never get used.... */
+   char owner_id[SUMA_IDCODE_LENGTH];   /*!< The id of whoever created 
+                                 that pointer. Might never get used.... */
 
    
    char *idcode_str; /*!< ID of this particular edge list */
@@ -1034,17 +1039,31 @@ typedef struct {
 typedef struct {
    int *IsIn;  /*!< Indices of nodes inside the sphere */
    int nIsIn; /*!< Number of nodes inside the sphere */
-   float *d;  /*!< Not implemented Distance of each node to the center of the shpere */
+   float *d;  /*!< Not implemented Distance of each node to the center 
+                   of the shpere */
    float **dXYZ; /*!< Not implemented */
 } SUMA_ISINSPHERE;
 
-typedef struct {
-   char *idcode_str;
-   char *Label;
-   SUMA_DO_Types do_type;
+typedef struct {  /* Any changes in this structure must be mirrored 
+                     in other DO structures. As a general rule,
+                     don't mess with the order, append to the
+                     bottom.
+                     Fields prepended with private_ should not be
+                     accessed outside of the accessor functions even
+                     if they have the same offsets as their mirrors in 
+                     other DOs.
+                     */
+   SUMA_DO_Types do_type;  /* This should always remain on top. 
+                              Sync with SUMA_DSET struct */
+   char *private_idcode_str; /* DO NOT ACCESS THIS POINTER directly from 
+                        any SUMA_ALL_DO pointer. Use SUMA_ADO_idcode()
+                        instead */
+   char *private_Label;      /* DO NOT ACCESS THIS POINTER directly from 
+                        any SUMA_ALL_DO pointer. Use SUMA_ADO_Label()
+                        instead */
+} SUMA_ALL_DO; /* See SUMA_ADO_* functions and iDO_ macros for a variety
+                  of utility functions */
    
-} SUMA_ALL_DO;
-
 /*! Displayable Object Type */
 typedef struct {
    void *OP;   /*!< Object Pointer */
@@ -1213,7 +1232,7 @@ typedef struct {
    
    XtIntervalId arrow_timer_id; /*!< time out process id */
    
-   void (*NewValueCallback)(void *data); /*!< callback to make when a new value is set */
+   void (*NewValueCallback)(void *data); /*!< callback when a new value is set */
    void *NewValueCallbackData; 
    SUMA_Boolean modified; /*!< set to YUP when user edits the value field */
    SUMA_Boolean arrow_action; /*!< set to YUP when user clicks one of the arrows */
@@ -1276,6 +1295,7 @@ typedef struct {
           ANY CHANGES HERE SHOULD BE REFLECTED IN 
           SUMA_LinkedPtr structure 
    */
+   SUMA_DO_Types do_type;  /*!< To check if this is a displayable object */
    int LinkedPtrType; /*!< Indicates the type of linked pointer */
    int N_links;   /*!< Number of links to this pointer */
    char owner_id[SUMA_IDCODE_LENGTH];   /*!< The id of whoever created that 
@@ -1286,18 +1306,25 @@ typedef struct {
                   OS X 10.5 and 10.6*/
    Widget TLS;/*!< Top level shell for a Surface's controller */
    Widget PosRef; /*!< reference position widget */
-   Widget Mainform; /*!< main form, child of TopLevelShell */
+   Widget Page; /*!< parent of Mainform, child of Notebook 
+                         if using one controller */
+   Widget Mainform; /*!< main form, child of TopLevelShell, or NoteBook*/
    Widget SurfInfo_pb; /*!< More info push button */
    Widget SurfInfo_label; /*!< Le label */
    SUMA_CREATE_TEXT_SHELL_STRUCT * SurfInfo_TextShell; /*!< structure containing 
                         widgets and options of the surface info text shell */
    SUMA_MENU_WIDGET *RenderModeMenu; /*!<[SW_N_SurfCont_Render] widgets 
                                        controlling the rendering mode menu */
+   SUMA_MENU_WIDGET *TransModeMenu; /*!<[SW_N_SurfCont_Trans] widgets 
+                                       controlling the transparency menu */
    SUMA_MENU_WIDGET *DsetViewModeMenu; /*!<[SW_N_SurfCont_DsetView]  widgets 
                                        controlling the dataset view mode menu */
    Widget ColPlane_fr; /*!< the frame controlling the colorplanes */
    Widget DsetMap_fr; /*!< the frame for mapping Dset to colormap */
    Widget Xhair_fr; /*!< The frame for cross hair Info and controls */ 
+   Widget SurfContPage_label; /*!< Le label */
+   SUMA_ARROW_TEXT_FIELD *SurfContPage; /*!< arrow/text field  
+                                              controlling color plane order */
    SUMA_ARROW_TEXT_FIELD *ColPlaneOrder; /*!< arrow/text field  
                                               controlling color plane order */
    SUMA_ARROW_TEXT_FIELD *ColPlaneOpacity; /*!< arrow/text field 
@@ -1328,8 +1355,19 @@ typedef struct {
    SUMA_Boolean ShowCurForeOnly; /*!< Show current plane only out of the entire 
                                     stack */
    SUMA_Boolean GraphHidden; /*!< Graph update even in ShowCurForeOnly */
-   void **curSOp; /*!< a copy of the pointer to the surface object for which the 
-                     controller is open */
+   void **prv_curDOp; /*!< copy of the pointer to the displayable object 
+                       for which the controller is open. Private field
+                       only access with SUMA_SurfCont_GetcurDOp() and
+                       SUMA_SurfCont_SetcurDOp() 
+                       This pointer should have some permanence, like a 
+                       surface object or a graph dataset - Note that
+                       I don't handle replacement of graph dataset pointers
+                       yet. This field would need attention when I reload
+                       a graph dataset. */
+   char *prv_variant; /*!< Rendering variant for pointer in prv_curDOp
+                       This is needed because the same DO pointer can be
+                       rendered in multiple ways. This field is also private
+                       and is set at the same time as prv_curDOp */
    SUMA_CMAP_RENDER_AREA *cmp_ren;   /* data for cmap rendering zone */
    Widget thr_sc;   /*! scale for threshold data */
    Widget brt_sc;   /*! scale for brightness data */
@@ -1531,7 +1569,8 @@ typedef struct {
    SUMA_Boolean SameSurfContOpen;
    Widget CommonSurfContTLW; /* If not null, then surface controller will
                                    all be sharing this top level widget */
-   Widget TopSurfContWidget;
+   Widget SC_Notebook;  /* Surface Controllers Notebook */
+   int ButtonDown; /* Is mouse button pressed? */
 }SUMA_X_AllView;
 
 /*! structure defining a cross hair */
@@ -1544,6 +1583,7 @@ typedef struct {
    SUMA_STIPPLE Stipple; /*!< dashed or solid line */
 
    GLfloat c[3]; /*!< Cross Hair center */
+   float c_noVisX[3]; /*!< Cross Hair center without VisX transforms */
    GLfloat r; /*!< Cross Hair radius */
    GLfloat g; /*!< 1/2 of gap between center and ray 
                   (should be less than radius/2) */
@@ -1555,10 +1595,10 @@ typedef struct {
    GLint slices; /*!< think pizza */
    GLint stacks; /*!< think lattitudes */
    
-   int SurfaceID; /*!<  If the cross hair is tied to a surface, SurfaceID 
+   int adoID; /*!<  If the cross hair is tied to a surface/DO, adoID 
                         contains the index into SUMAg_DOv of that surface. 
                         -1 if that cross hair is wild and loose */
-   int NodeID; /*!< a node from SurfaceID can be associated with the cross 
+   int datumID; /*!< a node/datum from adoID can be associated with the cross 
                      hair (-1 for nothing) */   
    GLUquadricObj *sphobjCmax; /*!< quadric object, representing Max cluster */
    GLfloat sphcolCmax[4]; /*!< Sphere color */
@@ -1583,32 +1623,27 @@ typedef struct {
 }SUMA_FaceSetMarker;
 
 
-/*!
-   Structure containing NIML formatted displayable objects
-*/
-typedef struct {
-   char *idcode_str;    /*!< unique idcode for DO */
-   char *Label; /*!< ascii label for DO */ 
-   SUMA_DO_Types do_type;
-   
-   NI_group *ngr;
-} SUMA_NIDO;
 
 /*!
    Structure containg a bunch of segments defined between n0 and n1
 */
 typedef struct {
+      /* FIRST VARIABLES MUST RETAIN THEIR ORDER and follow SUMA_ALL_DO */
+   SUMA_DO_Types do_type; 
    char *idcode_str;    /*!< unique idcode for DO */
    char *Label; /*!< ascii label for DO */ 
-   SUMA_DO_Types do_type;
    
+      /* These next three are to follow their equivalent is in SUMA_NB_DO */
    int NodeBased; /*!< flag: 1 if segments are formed by vectors at surface 
                              nodes */
    char *Parent_idcode_str; /*!< Parent surface's id 
-                                 (only used if NodeBased = 1
-                                 NULL if NodeBased)*/
+                                 (only used if NodeBased = 1)*/
    int *NodeID; /*!< ID of the node at which the vector is represented
                      NULL if NodeBased = 0 */
+                     
+      /* Begin specific fields */               
+   SUMA_DO_Types Parent_do_type;
+   char *DrawnDO_variant;
    int *NodeID1; /*!< Used to define the 2 node of vectors that are fully
                       nodebased */
    
@@ -1628,6 +1663,9 @@ typedef struct {
    GLfloat *thickv; /*!< Vector of segment thincknesses, 
                          1 elements per segment. NULL if using LineWidth */
    SUMA_STIPPLE Stipple; /*!< dashed or solid line */
+   GLushort *stipv;  /* stippling pattern for each seg. */
+   int Mstip;
+   GLushort stip;    /* common stippling pattern */
 }SUMA_SegmentDO;
 
 typedef struct {
@@ -1642,16 +1680,21 @@ typedef struct {
    Structure containg a bunch of spheres 
 */
 typedef struct {
+      /* FIRST VARIABLES MUST RETAIN THEIR ORDER and follow SUMA_ALL_DO */
+   SUMA_DO_Types do_type;
    char *idcode_str;    /*!< unique idcode for DO */
    char *Label; /*!< ascii label for DO */ 
-   SUMA_DO_Types do_type;
    
+      /* These next three are to follow their equivalent is in SUMA_NB_DO */
    int NodeBased; /*!< flag: 1 if segments are formed by vectors at nodes */
    char *Parent_idcode_str; /*!< Parent surface's id 
                                  (only used if NodeBased = 1
                                  NULL if NodeBased)*/
    int *NodeID; /*!< ID of the node at which the vector is represented
                      NULL if NodeBased = 0 */
+                     
+                     
+       /* Begin specific fields */              
    GLfloat *cxyz; /*!< vector containing XYZ of centers (3*N_n elements long)*/
    GLUquadricObj *sphobj; /*!< quadric object, representing central sphere */
    int N_n; /*!< Number of spheres */
@@ -1671,10 +1714,12 @@ typedef struct {
 }SUMA_SphereDO;
 
 typedef struct {
+      /* FIRST VARIABLES MUST RETAIN THEIR ORDER and follow SUMA_ALL_DO */
+   SUMA_DO_Types do_type; 
    char *idcode_str;
    char *Label;
-   SUMA_DO_Types do_type;
-   
+      
+      /* Begin specific fields */
    char *Parent_idcode_str;
    
    TAYLOR_BUNDLE *tb; 
@@ -1689,10 +1734,24 @@ typedef struct {
 } SUMA_TractDO;
 
 typedef struct {
+      /* FIRST VARIABLES MUST RETAIN THEIR ORDER and follow SUMA_ALL_DO */
+   SUMA_DO_Types do_type;
+   char *idcode_str;
+   char *Label;
+      
+      /* Begin specific fields */
+   char *Parent_idcode_str;
+   char *variant;
+} SUMA_GraphLinkDO;
+
+typedef struct {
+      /* FIRST VARIABLES MUST RETAIN THEIR ORDER and follow SUMA_ALL_DO */
+   SUMA_DO_Types do_type; 
    char *idcode_str;    /*!< unique idcode for DO */
    char *Label; /*!< ascii label for DO */ 
-   SUMA_DO_Types do_type;
-   
+      
+      /* Any change below should be reflected in all stucts that
+         can get typecast to SUMA_NB_DO */
    int NodeBased; /*!< flag: 1 if segments are formed by 
                         vectors at surface nodes */
    char *Parent_idcode_str; /*!< Parent surface's id 
@@ -1707,26 +1766,34 @@ typedef struct {
    Structure containg a bunch of planes 
 */
 typedef struct {
+      /* FIRST VARIABLES MUST RETAIN THEIR ORDER and follow SUMA_ALL_DO */
+   SUMA_DO_Types do_type; 
    char *idcode_str;    /*!< unique idcode for DO */
    char *Label; /*!< ascii label for DO */ 
-   SUMA_DO_Types do_type;
    
+      /* Begin specific fields */
    GLfloat *cxyz; /*!< vector containing XYZ of centers (3*N_n elements long)*/
    GLfloat *pleq; /*!< plane equations 4*N_n elements long */
    int N_n; /*!< Number of planes */
    GLfloat LineWidth; /*!< LineWidth*/
-   GLfloat CommonBoxDims[3] ; /*!< common dimensions of box containing plane (centered on cxyz) */
+   GLfloat CommonBoxDims[3] ; /*!< common dimensions of box containing 
+                                    plane (centered on cxyz) */
    GLfloat CommonCol[4]; /*!< common colors */
-   GLfloat *boxdimv; /*!< Vector of box dimensions radii, 3 elements per plane. NULL if using CommonBoxDims */
-   GLfloat *colv; /*!< Vector of plane colors, 4 elements per plane. NULL if using CommonCol */
+   GLfloat *boxdimv; /*!< Vector of box dimensions radii, 
+                          3 elements per plane. NULL if using CommonBoxDims */
+   GLfloat *colv; /*!< Vector of plane colors, 4 elements per plane. 
+                        NULL if using CommonCol */
    GLfloat *NodeList;
    GLint *FaceSetList;
    GLfloat *nodecol;
    GLfloat *NodeNormList;
    int N_Node;
    int N_FaceSet;
-   SUMA_RENDER_MODES PolyMode; /*!< polygon viewing mode, SRM_Fill, SRM_Line, SRM_Points */
+   SUMA_RENDER_MODES PolyMode; /*!< polygon viewing mode, SRM_Fill, 
+                                    SRM_Line, SRM_Points */
+   SUMA_TRANS_MODES TransMode; /*!< polygon transparency  */
 }SUMA_PlaneDO;
+
 
 /*! Structure containing the communication info and status with AFNI */
 typedef struct {
@@ -1737,8 +1804,12 @@ typedef struct {
 
 /* structure defining the former state of a surface viewer window */
 typedef struct {
-   int N_DO;      /*!< Total number of surface objects registered with the viewer */
-   int *RegisteredDO;    /*!< ShowSO[i] (i=0..N_DO) contains Object indices into DOv for DOs visible in the surface viewer*/
+   #if 0 /* not being used May 2013*/
+   int N_DO_sh;      /*!< Total number of surface objects registered with 
+                       the viewer */
+   int *RegisteredDO_sh;  /*!< ShowSO[i] (i=0..N_DO) contains Object indices 
+                             into DOv for DOs visible in the surface viewer*/
+   #endif
    float ViewFrom[3]; /*!< Location of observer's eyes */
    float ViewFromOrig[3]; /*!< Original Location of observer's eyes */
    float ViewCenter[3];   /*!< Center of observer's gaze */
@@ -1753,11 +1824,16 @@ typedef struct {
 /*! structure defining the viewing state of the viewer window */
 typedef struct {
    char *Name; /*!< The name of the viewing state, fiducial, inflated, etc .. */
+   SUMA_Boolean AnatCorrect; /* is this state anatomically correct? */
    char *Group; /*!< The group to which the viewing state belongs. */
-   int *MembSOs; /*!< Indices into DOv of SOs that are members of the viewing state */
-   int N_MembSOs; /*!< Number of members in MembSOs. Only SOs that are in MembSOs can
-                     be placed into RegisteredDO of the viewer in a particular viewing state.*/                  
-   SUMA_ViewState_Hist *Hist; /*!< Pointer to structure containing various parameter settings for that viewing state */            
+   int *MembDOs; /*!< Indices into DOv of SOs that are members of the 
+                      viewing state */
+   int N_MembDOs; /*!< Number of members in MembSOs. 
+                     Only SOs that are in MembSOs can
+                     be placed into RegisteredDO of the viewer in a particular 
+                     viewing state.*/                  
+   SUMA_ViewState_Hist *Hist; /*!< Pointer to structure containing various 
+                                   parameter settings for that viewing state */
 } SUMA_ViewState;
 
 /*! structure containing the geometric settings for viewing the surface */
@@ -1770,32 +1846,58 @@ typedef struct {
    float ViewCamUp[3];   /*!< Camera Up direction vector */
    float ViewDistance; /*!< Viewing distance */
    
-   float translateBeginX; /*!< User Input (mouse) X axis current position for translation */
-   float translateBeginY; /*!< User Input (mouse) Y axis current position for translation */
-   float translateDeltaX;   /*!< User Input (mouse) X axis position increment for translation */
-   float translateDeltaY;   /*!< User Input (mouse) Y axis position increment for translation */
+   float translateBeginX; /*!< User Input (mouse) X axis current position 
+                               for translation */
+   float translateBeginY; /*!< User Input (mouse) Y axis current position 
+                               for translation */
+   float translateDeltaX;   /*!< User Input (mouse) X axis position increment 
+                                 for translation */
+   float translateDeltaY;   /*!< User Input (mouse) Y axis position increment 
+                                 for translation */
    float TranslateGain;   /*!< gain applied to mouse movement */
-   float ArrowtranslateDeltaX;   /*!< User Input (Keyboard) X axis position increment for translation */
-   float ArrowtranslateDeltaY;   /*!< User Input (Keyboard) X axis position increment for translation */
-   GLfloat translateVec[3];      /*!< translation vector, in screen coordinates, equal to [translateDeltaX translateDeltaY]. The third translation (Z dimension) is 0.0*/
+   float ArrowtranslateDeltaX;   /*!< User Input (Keyboard) X axis position 
+                                      increment for translation */
+   float ArrowtranslateDeltaY;   /*!< User Input (Keyboard) X axis position 
+                                      increment for translation */
+   GLfloat translateVec[3];      /*!< translation vector, in screen coordinates, 
+                                 equal to [translateDeltaX translateDeltaY]. 
+                                 The third translation (Z dimension) is 0.0*/
    GLfloat RotaCenter[3];   /*!<Center of Rotation */
    float zoomDelta;       /*!< Zoom increment */
    float zoomBegin;    /*!< Current zoom level*/
-   float spinDeltaX;            /*!< User Input (mouse) X axis position increment for spinning*/
-   float spinDeltaY;            /*!< User Input (mouse) Y axis position increment for spinning*/
-   float spinBeginX;            /*!< User Input (mouse) X axis current position for spinning */
-   float spinBeginY;            /*!< User Input (mouse) Y axis current position for spinning */
-   int MinIdleDelta;       /*!< minimum spinDeltaX or spinDeltaY to initiate momentum rotation */
+   float spinDeltaX;   /*!< User Input (mouse) X axis position increment 
+                            for spinning*/
+   float spinDeltaY;   /*!< User Input (mouse) Y axis position increment 
+                            for spinning*/
+   float spinBeginX;  /*!< User Input (mouse) X axis current position 
+                           for spinning */
+   float spinBeginY;  /*!< User Input (mouse) Y axis current position for 
+                           spinning */
+   int MinIdleDelta;  /*!< minimum spinDeltaX or spinDeltaY to initiate momentum 
+                           rotation */
    float deltaQuat[4];   /*!< Quaternion increment */
    float currentQuat[4]; /*!< Current quaternion */
+   float lastQuat[4]; /*!< Quaternion last time we displayed*/
    Boolean ApplyMomentum;   /*!< Turn momentum ON/OFF */
-} SUMA_GEOMVIEW_STRUCT;
+   
+   float LHpry;
+   float LHpry0;
+   int LHlol;           /*!< if 1 then the left hemi starts up displayed
+                             on the left side of the screen.
+                             if -1 then left starts on the right.
+                             This flag is only set when both left and 
+                             right surfaces are present */
+} SUMA_GEOMVIEW_STRUCT; /* DO NOT ADD POINTERS TO THIS STRUCT, otherwise you
+                           need to change SUMA_CopyGeomViewStruct() and maybe
+                           SUMA_DiffGeomViewStruct() */
 
 /*! structure holding the pointer the node color assignment and a bit more */
 typedef struct {
    GLfloat *glar_ColorList; /*!< pointer to the 1D ColorList array */
-   int N_glar_ColorList; /*!< Number of elements in glar_ColorList 4xNumber of nodes in the surface */
-   char *idcode_str; /*!< string containing the idcode of the surface to which glar_ColorList belongs*/
+   int N_glar_ColorList; /*!< Number of elements in glar_ColorList 4xNumber 
+                              of nodes in the surface or edges in a graph */
+   char *idcode_str; /*!< string containing the idcode of the surface/object to 
+                         which glar_ColorList belongs*/
    SUMA_Boolean Remix; /*!< flag indicating that colors need to be remixed */ 
 } SUMA_COLORLIST_STRUCT;
 
@@ -1803,10 +1905,12 @@ typedef enum { SUMA_STD_ZERO_CENTERED, SUMA_SCALE_BOX } SUMA_AxisType;
 
 /*! structure defining an axis object */
 typedef struct {
+      /* FIRST VARIABLES MUST RETAIN THEIR ORDER and follow SUMA_ALL_DO */
+   SUMA_DO_Types do_type; 
    char *idcode_str; /*! idcode of axis */
    char *Label;
-   SUMA_DO_Types do_type; 
-   
+      
+      /* Begin specific fields */
    SUMA_AxisType atype;
    GLfloat XaxisColor[4] ;
    GLfloat YaxisColor[4] ;
@@ -1815,14 +1919,16 @@ typedef struct {
    GLfloat LineWidth;
    SUMA_STIPPLE Stipple; /*!< dashed or solid line */
    
-   GLfloat XYZspan[3]; /*!< the axis will span +/- span[i] in the three dimensions */
+   GLfloat XYZspan[3]; /*!< the axis will span +/- span[i] 
+                            in the three dimensions */
    GLfloat Center[3]; /*!< origin of axis */
    GLfloat BR[3][2]; /*!< Box Range values */
    double MTspace;   /*!< Major tick spacing */
    double MTsize;    /*!< Major tick size */
    double mTspace;   /*!< Minor tick spacing */
    double mTsize;    /*!< Minor tick size */
-   int DoCross;      /*!< if 1 then ticks are centered on line. (total length is same as *Tsize value)*/
+   int DoCross;      /*!< if 1 then ticks are centered on line. 
+                         (total length is same as *Tsize value)*/
 }SUMA_Axis;
 
 typedef struct {
@@ -1883,7 +1989,34 @@ typedef struct {
    int LIGHT1;
    int LIGHT2;
    int BLEND;
+   int LINE_SMOOTH;
 } SUMA_EnablingRecord;
+
+/* a structure for the list of pickable objects (excluding surfaces) */
+typedef struct {
+   SUMA_DO_Types ref_do_type;
+   char *ref_idcode_str;
+   char *idcode_str;
+   
+   char *primitive;
+   char *variant;
+   char *Label;
+   long int i0;
+   long int i1;
+   long int idatum;
+} SUMA_COLID_OFFSET_DATUM;
+
+typedef struct {
+   char *ado_idcode_str;   /* id of ado that was picked */
+   char *primitive;        /* Type of object selected, for graphs, for 
+                              example, it could be an edge, or a node 
+                              Not all primitives carry data*/
+   long int primitive_index; 
+   long int datum_index;   /* If primitve is one that carries data
+                              then this value is set */
+   float PickXYZ[3]; /* Location of index */
+   long int selectedEnode; /* Selected edge node */
+} SUMA_PICK_RESULT; /* Structure holding results of pointer selection*/
 
 
 typedef struct {
@@ -1903,11 +2036,16 @@ typedef struct {
    SUMA_GEOMVIEW_STRUCT *GVS; /*! pointer to structures containing 
                                   geometric viewing settings */
    int N_GVS; /*!< Number of different geometric viewing structures */
-   
+   SUMA_GEOMVIEW_STRUCT *GVS_last_PickMode; 
+               /*! A snapshot of GVS the last time display was done 
+                   in DO_PickMode */
    short verbose;   /*!< Verbosity of viewer */
 
    SUMA_X *X; /*!< structure containing X widget midgets */
 
+   int ShowSelectedDatum;
+   int ShowSelectedFaceSet;
+   int ShowSelectedEdge;
    int ortho; /*!< Orthographic (1) or perspective (0, default) projection */
    int ShowLabelAtXhair; /*!< Show label at location of cross hair */
    float Aspect;   /*!< Aspect ratio of the viewer*/
@@ -1916,6 +2054,7 @@ typedef struct {
    float ZoomCompensate; /*!< Compensate mouse movements by zoom factor */
    float *FOV; /*!< Field of View (affects zoom level, there is a 
                     separate FOV for each ViewState)*/
+   float *FOV_last_PickMode; /*!< FOV last time we picked a DO */
    float FOV_original; /*!< Original field of view of viewer */
    float ArrowRotationAngle; /*!< Angle to rotate surface by when arrows 
                                  are used.
@@ -1931,6 +2070,7 @@ typedef struct {
             allow independent control for each surface. If the rendering mode
             is specified for a certain surface, it takes precedence over the
             one specified here*/
+   SUMA_TRANS_MODES TransMode; 
    SUMA_DO_DRAW_MASK DO_DrawMask; /*!< What to draw of displayable objects */
    float Back_Modfact; /*!< Factor to apply when modulating foreground 
                color with background intensity
@@ -1940,9 +2080,13 @@ typedef struct {
       SUMA_BACKGROUND_ATTENUATION_FACTOR * SUMA_DIM_AFNI_COLOR_FACTOR = 1
                Watch for saturation effects!  */
 
-   int lit_for;   /*! 1 = lit for surfaces of normdir = 1, -1 for normdir = -1, 0 for not set. */
-   GLfloat light0_position[4]; /*!< Light 0 position: 1st 3 vals --> direction of light . Last value is 0 -->  directional light*/
-   GLfloat light1_position[4]; /*!< Light 1 position: 1st 3 vals --> direction of light. Last value is 0 -->  directional light*/
+   float ContThick;  /*!< Thickness of contours drawn on datasets */
+   int lit_for;   /*! 1 = lit for surfaces of normdir = 1, -1 for normdir = -1, 
+                      0 for not set. */
+   GLfloat light0_position[4]; /*!< Light 0 position: 
+                                    1st 3 vals --> direction of light . 
+                                    Last value is 0 -->  directional light*/
+   GLfloat light1_position[4]; /*!< Light 1 position */
    GLfloat light0_color[4];   /*!< Light 0 color */
    GLfloat lmodel_ambient[4]; /*!< ambient light model */
    
@@ -1959,15 +2103,21 @@ typedef struct {
    int ShowWorldAxis; /*!< ShowWorldAxis */
    SUMA_Axis *WorldAxis;   /*!< pointer to world coordinate axis  */
    int ShowCrossHair; /*!< ShowCrossHair */
-   SUMA_Boolean ShowForeground;    /*!< Flag for showing/not showing foreground colors */
-   SUMA_Boolean ShowBackground; /*!< Flag for showing/not showing background colors */   
-   SUMA_Boolean UsePatchDims; /*!< Flag for using patch based dimensions (rather than entire nodelist) */
+   SUMA_Boolean ShowForeground;    /*!< Flag for showing/not showing 
+                                        foreground colors */
+   SUMA_Boolean ShowBackground; /*!< Flag for showing/not showing 
+                                     background colors */   
+   SUMA_Boolean UsePatchDims; /*!< Flag for using patch based dimensions 
+                                   (rather than entire nodelist) */
    
+   #if 0 /* considering rendering this obsolete */
    int Focus_SO_ID; /*!< index into SUMAg_DOv of the surface currently in focus, 
                         -1 for nothing*/
+   #endif
    int Focus_DO_ID; /*!< index into SUMAg_DOv of the Displayable Object 
                            currently in focus -1 for nothing*/
    
+   int PickPix[2]; /*!< Location of click in pixel buffer */
    GLdouble Pick0[3];   /*!< Click location in World coordinates, at z = 0 
                            (near clip plane)*/
    GLdouble Pick1[3];   /*!< Click location in World coordinates, 
@@ -2015,6 +2165,9 @@ typedef struct {
    int Do_3Drender;
    SUMA_EnablingRecord SER;
    
+   int DO_PickMode; /*! Picking mode for selecting non-surface objects */
+   DList *pick_colid_list;
+   GLubyte *pickrenpix4; /*! An array holding the RGBA rendering buffer */
 } SUMA_SurfaceViewer;
 
 /*! structure defining an EngineData structure */
@@ -2120,23 +2273,31 @@ typedef struct {
 typedef struct {
    int N_Node; /*!< Number of nodes, 1st dim of NodeNormList*/
    int N_Face;/*!< Number of facesets, 1st dim of FaceNormList*/
-   float *FaceNormList ; /*!< N_Face x 3 vector (was matrix prior to SUMA 1.2) containing normalized normal vectors for each triangular faceset*/ 
-   float *NodeNormList ; /*!< N_Node x 3 vector (was matrix prior to SUMA 1.2) containing normalized normal vectors for each node*/
+   float *FaceNormList ; /*!< N_Face x 3 vector (was matrix prior to SUMA 1.2) 
+            containing normalized normal vectors for each triangular faceset*/ 
+   float *NodeNormList ; /*!< N_Node x 3 vector (was matrix prior to SUMA 1.2) 
+            containing normalized normal vectors for each node*/
 } SUMA_SURF_NORM; /*!< structure that contains the output of SurfNorm function */
 
 /*! structure that contains the output of SUMA_MemberFaceSets function */
 #define SUMA_MemberFaceSets_struct
 typedef struct {
+   SUMA_DO_Types do_type;  /*!< To check if this is a displayable object */
    int LinkedPtrType; /*!< Indicates the type of linked pointer */
    int N_links;   /*!< Number of links to this pointer */
-   char owner_id[SUMA_IDCODE_LENGTH];   /*!< The id of whoever created that pointer. Might never get used.... */
+   char owner_id[SUMA_IDCODE_LENGTH];   /*!< The id of whoever created 
+                                 that pointer. Might never get used.... */
 
    char *idcode_str;
    int N_Memb_max;/*!< Maximum number of Facesets any node belonged to*/
    int Nnode; /*! Total number of nodes examined (0..Nnode-1) */
-   int **NodeMemberOfFaceSet ; /*!< Nnode x N_Memb_max matrix containing for each row i, the indices of the facesets containing node i*/ 
-   int *N_Memb ; /*!< Nnode x 1 vetor containing for each node i, the number of facesets that contain it*/
-} SUMA_MEMBER_FACE_SETS; /*!< structure that contains the output of SurfNorm function */
+   int **NodeMemberOfFaceSet ; /*!< Nnode x N_Memb_max matrix containing 
+                                    for each row i, the indices of the 
+                                    facesets containing node i*/ 
+   int *N_Memb ; /*!< Nnode x 1 vetor containing for each node i, 
+                      the number of facesets that contain it*/
+} SUMA_MEMBER_FACE_SETS; /*!< structure that contains the output of 
+                              SurfNorm function */
 
 
 /*! structure containing results of intersection of a ray with triangles */
@@ -2177,17 +2338,24 @@ typedef struct {
    char *vol_idcode_str; /*!< idcode string OF parent volume*/
    char *vol_idcode_date; /*!< idcode date */
    int xxorient, yyorient, zzorient; /*!< orientation of three dimensions*/ 
-   double *CENTER_OLD; /*!< pointer to the named attribute (3x1) in the .HEAD file of the experiment-aligned Parent Volume */
-   double *CENTER_BASE; /*!< pointer to the named attribute (3x1) in the .HEAD file of the experiment-aligned Parent Volume */
+   double *CENTER_OLD; /*!< pointer to the named attribute (3x1) in the 
+                           .HEAD file of the experiment-aligned Parent Volume */
+   double *CENTER_BASE; /*!< pointer to the named attribute (3x1) in the 
+                           .HEAD file of the experiment-aligned Parent Volume */
    double *MATVEC; /*!< pointer to the warp attribute (12x1) in the .HEAD file 
                         of the experiment-aligned Parent Volume */
    SUMA_WARP_TYPES MATVEC_source;
 #if 0
-   float *VOLREG_MATVEC; /*!< pointer to the named attribute (12x1) in the .HEAD file of the experiment-aligned Parent Volume */
-   float *TAGALIGN_MATVEC; /*!< pointer to the named attribute (12x1) in the .HEAD file of the tag aligned Parent Volume */
-   float *WARPDRIVE_MATVEC; /*!< pointer to the named attribute (12x1) in the .HEAD file of the warpdrive aligned Parent Volume */
-   float *ALLINEATE_MATVEC; /*!< pointer to the named attribute (12x1) in the .HEAD file of the warpdrive aligned Parent Volume */
-   float *ROTATE_MATVEC; /*!< pointer to the named attribute (12x1) in the .HEAD file of the rotate aligned Parent Volume */
+   float *VOLREG_MATVEC; /*!< pointer to the named attribute (12x1) in the 
+                           .HEAD file of the experiment-aligned Parent Volume */
+   float *TAGALIGN_MATVEC; /*!< pointer to the named attribute (12x1) in the 
+                           .HEAD file of the tag aligned Parent Volume */
+   float *WARPDRIVE_MATVEC; /*!< pointer to the named attribute (12x1) in the 
+                           .HEAD file of the warpdrive aligned Parent Volume */
+   float *ALLINEATE_MATVEC; /*!< pointer to the named attribute (12x1) in the 
+                           .HEAD file of the warpdrive aligned Parent Volume */
+   float *ROTATE_MATVEC; /*!< pointer to the named attribute (12x1) in the 
+                           .HEAD file of the rotate aligned Parent Volume */
 #endif
    int Hand; /*!< Handedness of axis 1 RH, -1 LH*/
 } SUMA_VOLPAR;
@@ -2197,13 +2365,35 @@ typedef struct {
 } SUMA_OVERLAY_LIST_DATUM;   /*!< a structure used to create linked lists 
                                   of SO->Overlays and co */ 
 
+typedef enum {  ADD_BEFORE=-1, ADD_NOT=0, ADD_AFTER=1 } SUMA_VISX_ADD_POSITIONS;
+typedef enum {  UNDO_XFORM=0, FORWARD_XFORM=1 } SUMA_VISX_XFORM_DIRECTIONS;
+typedef enum {  ID=0, SHIFT=1, AFFINE=2, DISP=3 } SUMA_VISX_XFORM_TYPE;
+
+typedef struct {
+   SUMA_VISX_XFORM_TYPE XformType; 
+                     /*!< Is it identity (0), shift (1), or affine (2), 
+                        (3) displacement field*/
+   double Xform[4][4]; /*!< The augmented affine transform */
+   float *dxyz;   /* displacement field, only set with XformType == 4 */
+   char label[64]; /* some string identifier */
+} SUMA_VIS_XFORM_DATUM;
+
+/*! Structure for defining spatial transformations for visualization purposes */
+typedef struct {
+   DList *Xchain;
+   int Applied; /*!< Xform has been applied to coords */
+   float *XformedCoords; /*!< Tranformed coords. If NULL and XformApplied, 
+                              it means the results of the transform have
+                              been stored in the surface's NodeList */   
+} SUMA_VIS_XFORM;
+
 /*! structure defining a Surface Object */
 typedef struct {
-   /* THE FIRST THREE FIELDS CANNOT BE MOVED FROM HERE */
+      /* FIRST VARIABLES MUST RETAIN THEIR ORDER and follow SUMA_ALL_DO */
+   SUMA_DO_Types do_type; 
    char *idcode_str; /*!< string containing the idcode of the surface */
    char *Label; /*!< string containing a label for the surface. 
                      Used for window titles and saved image names */
-   SUMA_DO_Types do_type;  /* displayable type identifier */
                
    
    /* Begin by fields that are generic    
@@ -2317,6 +2507,7 @@ typedef struct {
                            Used in conjunction with PolyMode*/
    SUMA_RENDER_MODES PolyMode; /*!< polygon viewing mode, SRM_Fill, 
                                     SRM_Line, SRM_Points */
+   SUMA_TRANS_MODES TransMode; /*!< transprency */
       
    float *NodeNormList ; /*!< N_Node x 3 vector (used to be matrix prior 
                               to SUMA 1.2) containing normalized normal 
@@ -2397,12 +2588,10 @@ typedef struct {
    
    
    /* selection stuff */
-   SUMA_Boolean ShowSelectedNode; /*!< flag for an obvious reason */
    int SelectedNode; /*!< index of one selected node, 
                            -1 if no node is selected */
    SUMA_SphereMarker *NodeMarker; /*!< Node Marker object structure*/
    
-   SUMA_Boolean ShowSelectedFaceSet; /*!< you know what I mean */
    int SelectedFaceSet; /*!< index of one selected faceset, 
                               -1 if no faceset is selected */
    SUMA_FaceSetMarker *FaceSetMarker; /*!< Aha, I hear ya */
@@ -2428,11 +2617,36 @@ typedef struct {
                            CommonNodeObject where */
                            
    float *NodeAreas; /*!< A way to keep node areas around */
+   
+   SUMA_VIS_XFORM VisX0; /*!< a coordinate transform applied at the moment
+                              the surface is loaded and the resultant 
+                              coordinates are to be stored in the the
+                              surface's NodeList */
+   SUMA_VIS_XFORM VisX; /*!< a coordinate transform generated from interactive
+                              vicissitudes */
+   
+   float *NodeList_swp; /*!< A temporary pointer copy for swapping NodeList with
+                             VisX's transformed coordinates. Use sparingly */
 }SUMA_SurfaceObject; /*!< \sa Alloc_SurfObject_Struct in SUMA_DOmanip.c
                      \sa SUMA_Free_Surface_Object in SUMA_Load_Surface_Object.c
                      \sa SUMA_Print_Surface_Object in SUMA_Load_Surface_Object.c
                      \sa SUMA_Load_Surface_Object in SUMA_Load_Surface_Object.c
                */  
+
+typedef struct {
+   /* *** DO NOT ADD ANYTHING BEFORE THESE FIELDS
+          DO NOT CHANGE THE ORDER OF THESE FIELDS
+          ANY CHANGES HERE SHOULD BE REFLECTED IN 
+          SUMA_LinkedPtr structure 
+   */
+   SUMA_DO_Types do_type;  /*!< To check if this is a displayable object */
+   int LinkedPtrType; /*!< Indicates the type of linked pointer */
+   int N_links;   /*!< Number of links to this pointer */
+   char owner_id[SUMA_IDCODE_LENGTH];   /*!< The id of whoever created 
+                                 that pointer. Might never get used.... */
+   SUMA_GRAPH *gr;
+} SUMA_GRAPH_DO;     /* A graph displayable object */
+
 
 #define SUMA_MAX_N_VE 5
 typedef struct {
@@ -2447,11 +2661,12 @@ typedef struct {
 } SUMA_VolumeElement;
 
 typedef struct {
-      /* THE FIRST THREE VARIABLES MUST RETAIN THEIR ORDER HERE */
+      /* FIRST VARIABLES MUST RETAIN THEIR ORDER and follow SUMA_ALL_DO */
+   SUMA_DO_Types do_type; 
    char *idcode_str;    
    char *Label; 
-   SUMA_DO_Types do_type; 
    
+      /* Begin specific fields */
    SUMA_VolumeElement **VE;
    
    GLfloat TexEnvMode;
@@ -2597,47 +2812,6 @@ typedef struct {
    char *Source;  /*!< source of message, usually calling function */
 }  SUMA_MessageData;
 
-
-/* *** Niml defines */
-
-#if 0 /*ZSS June 2011. Delete useless code after dust has settled.*/
-#define SUMA_TCP_PORT 53211      /*!< AFNI listens to SUMA on this port */
-#define SUMA_MATLAB_LISTEN_PORT 53230  /* MATLAB listens to SUMA on this port */
-#define SUMA_TCP_LISTEN_PORT0 53220 /*!< SUMA's 1st listening port */
-   /* Replace                    With
-      SUMA_TCP_PORT              get_port_named("AFNI_SUMA_NIML")
-      SUMA_MATLAB_LISTEN_PORT    get_port_named("SUMA_MATLAB_NIML")
-      SUMA_TCP_LISTEN_PORT0      get_port_named("SUMA_DEFAULT_LISTEN_NIML")
-   */
-#endif
-#define SUMA_FLAG_WAITING    1   /*!< Waiting for connection flag */
-#define SUMA_FLAG_CONNECTED  2   /*!< Connected flag */
-#define SUMA_FLAG_SKIP       4   /*!< Skip flag */
-
-typedef enum { SUMA_AFNI_STREAM_INDEX = 0, 
-                     /*!< Index of SUMA<-->AFNI stream , afni listen line 1*/ 
-               SUMA_AFNI_STREAM_INDEX2 ,  
-                     /*!< Index of SUMA<-->AFNI 2nd stream, afni listen line 2 */
-               SUMA_TO_MATLAB_STREAM_INDEX, 
-                     /*!< Index of SUMA<-->MATLAB 2nd stream, matlab listen */
-               SUMA_GENERIC_LISTEN_LINE, 
-                     /*!< Using socket  SUMA_TCP_LISTEN_PORT0, 
-                           generic suma listen line*/
-               SUMA_GEOMCOMP_LINE, 
-                     /*!<  Using socket  SUMA_TCP_LISTEN_PORT0 + 1*/
-               SUMA_BRAINWRAP_LINE, 
-                     /*!<  Using socket SUMA_TCP_LISTEN_PORT0 + 2*/
-               SUMA_DRIVESUMA_LINE, 
-                     /*!<  Using socket SUMA_TCP_LISTEN_PORT0 + 3*/
-               SUMA_GICORR_LINE,
-                     /*!<  Using socket SUMA_TCP_LISTEN_PORT0 + 4*/
-               SUMA_MAX_STREAMS 
-                     /*!< Maximum number of streams, KEEP AT END */
-            } SUMA_STREAM_INDICES; /* If you add a new stream,
-                  create a new port number for it in afni_ports.c's 
-                  init_ports_list function */
-            
-/* *** Niml defines end */
 
               
 /*! structure containing a surface patch */

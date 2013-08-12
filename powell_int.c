@@ -64,7 +64,12 @@ int calfun_(integer *n, doublereal *x, doublereal *fun)
 
    if( scalx ){            /* in this case, inputs x[] are in range 0..1,  */
      int ii ;              /* and need to be scaled to their 'true' values */
-     for( ii=0 ; ii < *n ; ii++ ) sx[ii] = sxmin[ii] + sxsiz[ii]*PRED01(x[ii]);
+     for( ii=0 ; ii < *n ; ii++ ){
+       if( !isfinite(x[ii]) || x[ii] < -999.9f || x[ii] > 999.9f ){
+         fprintf(stderr,"** ERROR: calfun[%d]=%g --> 0\n",ii,x[ii]) ; x[ii] = 0.0f ;
+       }
+       sx[ii] = sxmin[ii] + sxsiz[ii]*PRED01(x[ii]);
+     }
 
      val = userfun( (int)(*n) , sx ) ;           /* input = scaled x[] */
 
@@ -250,6 +255,12 @@ int powell_newuoa_con( int ndim , double *x , double *xbot , double *xtop ,
 
    for( ii=0 ; ii < ndim ; ii++ )
      x[ii] = sxmin[ii] + PRED01(x01[ii]) * sxsiz[ii] ;
+
+   if( verb ){
+     fprintf(stderr," +   param:") ;
+     for( ii=0 ; ii < ndim ; ii++ ) fprintf(stderr," %.3f",PRED01(x01[ii])) ;
+     fprintf(stderr,"\n") ;
+   }
 
    free((void *)x01); free((void *)sx); free((void *)sxsiz); free((void *)sxmin);
    sx = sxmin = sxsiz = NULL ; scalx = 0 ;

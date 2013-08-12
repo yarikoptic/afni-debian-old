@@ -3,33 +3,34 @@
 set stat = 0
 set sdir = $PWD
 
+set demo = FATCAT_DEMO
 
 goto PARSE
 RET_PARSE:
 
-if ( -d ./PTaylor_TractDemo) then
+if ( -d ./$demo) then
 echo ""
 echo "ERROR:"
-echo "   Directory ./PTaylor_TractDemo exists already"
+echo "   Directory ./$demo exists already"
 echo "   If you want to recreate it, remove it with:"
-echo "\rm -rf ./PTaylor_TractDemo"
+echo "\rm -rf ./$demo"
 echo "   then run `basename $0` $argv[*] again."
 echo ""
-echo "Otherwise to run demos, see content of ./PTaylor_TractDemo/README.txt"
+echo "Otherwise to run demos, see content of ./$demo/README.txt"
 echo ""
 goto END
    endif
 
 which curl
 if ($status) then
-   wget http://afni.nimh.nih.gov/pub/dist/tgz/PTaylor_TractDemo.tgz
+   wget http://afni.nimh.nih.gov/pub/dist/tgz/$demo.tgz
 else
-   curl -O http://afni.nimh.nih.gov/pub/dist/tgz/PTaylor_TractDemo.tgz
+   curl -O http://afni.nimh.nih.gov/pub/dist/tgz/$demo.tgz
 endif
-tar xvzf PTaylor_TractDemo.tgz
-cd PTaylor_TractDemo
+tar xvzf $demo.tgz
+cd $demo
    echo "********************************************************"
-   echo "Follow examples in ./PTaylor_TractDemo/README.txt "
+   echo "Follow examples in ./$demo/README.txt "
    #echo "---------------------------------------------------------"
    #PT: Normally here you can consider running one or all of the"
    #scripts and quide the users to look at the results.

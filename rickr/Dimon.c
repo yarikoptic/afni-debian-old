@@ -94,10 +94,17 @@ static char * g_history[] =
     " 3.12 Aug  8, 2012 [rickr]\n",
     "      - added -use_slice_loc\n"
     "      - fixed application of use_last_elem in library\n"
+    " 3.13 Jan 22, 2013 [rickr]\n",
+    "      - replaced -use_imon with -file_type\n"
+    "      - made many changes in prep for adding AFNI file type\n"
+    " 3.14 Jan 24, 2013 [rickr]\n",
+    "      - now handles -file_type AFNI\n"
+    " 3.15 Jul 10, 2013 [rickr]\n",
+    "      - if unsigned short is detected, pass -ushort2float to to3d\n"
     "----------------------------------------------------------------------\n"
 };
 
-#define DIMON_VERSION "version 3.11 (March 14, 2012)"
+#define DIMON_VERSION "version 3.15 (July 10, 2013)"
 
 /*----------------------------------------------------------------------
  * Dimon - monitor real-time aquisition of Dicom or I-files
@@ -132,6 +139,14 @@ static char * g_history[] =
  *----------------------------------------------------------------------
 */
 
+/* rcr - todo:
+ *
+ * AFNI dset:
+ *    - no way to know run (effect of -nt?)
+ *    - how to pass slice pattern?
+ *    - oblique info
+ */
+
 #include <stdio.h>
 #include <ctype.h>
 #include <dirent.h>
@@ -151,6 +166,71 @@ static char * g_history[] =
 #include "mrilib.h"
 #include "realtime.h"
 
+/***********************************************************************/
+/* globals */
+
+IFM_debug gD;           /* debug information         */
+param_t   gP;           /* main parameter struct     */
+stats_t   gS;           /* general run information   */
+ART_comm  gAC;          /* afni communication struct */
+
+float     gD_epsilon       = IFM_EPSILON;
+int       g_dicom_sort_dir = 1;  /* can use to swap sort direction          */
+int       g_sort_by_atime  = 0;  /* choose to sort by acquisition time      */
+int       g_sort_type      = 0;  /* bitmask: note fields applied in sorting */
+
+/***********************************************************************/
+
+/* ---------------------------------------------------------------------------
+ * file type macros/functions: GEMS, DICOM, AFNI/NIFTI     22 Jan 2013 [rickr]
+ */
+
+#ifdef IM_IS_GEMS
+#undef IM_IS_GEMS
+#endif
+#ifdef IM_IS_DICOM
+#undef IM_IS_DICOM
+#endif
+#ifdef IM_IS_AFNI
+#undef IM_IS_AFNI
+#endif
+
+#define IM_IS_GEMS(ftype)  (ftype == IFM_IM_FTYPE_GEMS5 )
+#define IM_IS_DICOM(ftype) (ftype == IFM_IM_FTYPE_DICOM )
+#define IM_IS_AFNI(ftype)  (ftype == IFM_IM_FTYPE_AFNI )
+
+static char * get_ftype_str(int ftype)
+{
+   if      ( ftype == IFM_IM_FTYPE_DICOM ) return "DICOM";
+   else if ( ftype == IFM_IM_FTYPE_GEMS5 ) return "GEMS5";
+   else if ( ftype == IFM_IM_FTYPE_AFNI  ) return "AFNI";
+
+   return "UNKNOWN";
+}
+
+static int show_ftype(int ftype)
+{
+   fprintf(stderr,"-- image file type considered as '%s'\n",
+           get_ftype_str(ftype));
+   return 0;
+}
+
+/* set p->ftype based on name, default is DICOM */
+static int set_ftype(param_t * p, char * name)
+{
+   if ( !name || !strcmp(name, "DICOM")) p->ftype = IFM_IM_FTYPE_DICOM;
+   else if ( ! strcmp( name, "GEMS" )  ) p->ftype = IFM_IM_FTYPE_GEMS5;
+   else if ( ! strcmp( name, "AFNI" )  ) p->ftype = IFM_IM_FTYPE_AFNI;
+   else {
+      fprintf(stderr,"** illegal file_type '%s'\n", name);
+      p->ftype = IFM_IM_FTYPE_NONE;
+      return 1;
+   }
+
+   if ( gD.level > 1 ) show_ftype(p->ftype);
+
+   return 0;
+}
 
 /* ---------------------------------------------------------------------------
  * link to libmri for consistent DICOM processing           4 Jan 2010 [rickr]
@@ -176,14 +256,17 @@ extern float        g_image_posn[3];
 extern int          g_image_ori_ind[3];
 
 static int          read_obl_info = 1;  /* only process obl_info once */
+static int          want_ushort2float = 0;  /* 9 Jul 2013 */
 
 static int         clear_float_zeros( char * str );
 int                compare_finfo( const void * v0, const void * v1 );
 int                compare_by_num_suff( const void * v0, const void * v1 );
+static int         copy_dset_data(finfo_t * fp, THD_3dim_dataset * dset);
 static int         copy_image_data(finfo_t * fp, MRI_IMARR * imarr);
 static int         dicom_order_files( param_t * p );
 static int         get_num_suffix( char * str );
 extern MRI_IMAGE * r_mri_read_dicom( char *fname, int debug, void ** data );
+static int         read_afni_image( char *pathname, finfo_t *fp, int get_data);
 static int         read_dicom_image( char *pathname, finfo_t *fp, int get_data);
 static int         sort_by_num_suff( char ** names, int nnames);
 
@@ -211,6 +294,7 @@ static int create_gert_reco    ( stats_t * s, opts_t * opts );
 static int create_gert_dicom   ( stats_t * s, param_t * p );
 static int dir_expansion_form  ( char * sin, char ** sexp );
 static int disp_ftype          ( char * info, int ftype );
+static char * ftype_string     ( int ftype );
 static int empty_string_list   ( string_list * list, int free_mem );
 static int find_first_volume   ( vol_t * v, param_t * p, ART_comm * ac );
 static int find_fl_file_index  ( param_t * p );
@@ -259,19 +343,6 @@ unsigned long l_THD_filesize( char * pathname );
 static   char * l_strdup(char * text);
 
 /*----------------------------------------------------------------------*/
-
-/***********************************************************************/
-/* globals */
-
-IFM_debug gD;           /* debug information         */
-param_t   gP;           /* main parameter struct     */
-stats_t   gS;           /* general run information   */
-ART_comm  gAC;          /* afni communication struct */
-
-float     gD_epsilon       = IFM_EPSILON;
-int       g_dicom_sort_dir = 1;  /* can use to swap sort direction          */
-int       g_sort_by_atime  = 0;  /* choose to sort by acquisition time      */
-int       g_sort_type      = 0;  /* bitmask: note fields applied in sorting */
 
 /***********************************************************************/
 int main( int argc, char * argv[] )
@@ -561,7 +632,8 @@ static int find_more_volumes( vol_t * v0, param_t * p, ART_comm * ac )
                 fl_index += vn.nim;             /* note the new position   */
                 next_im   = vn.fn_n + 1;        /* for read_ge_files()     */
 
-                if ( vn.run != run )            /* new run?                */
+                if ( vn.run != run ||            /* new run?                */
+                     (p->opts.nt > 1 && seq_num >= p->opts.nt) )
                 {
                     /* pass run and seq_num before they are updated */
                     if ( ac->state == ART_STATE_IN_USE )
@@ -570,9 +642,9 @@ static int find_more_volumes( vol_t * v0, param_t * p, ART_comm * ac )
                     run = vn.run;               /* reset                   */
                     seq_num = 1;
 
+                    if ( gD.level > 2 ) disp_obl_info("+d new run obl info: ");
                     if ( gD.level > 0 )
                         fprintf( stderr, "\n-- run %d: %d ", run, seq_num );
-                    if ( gD.level > 2 ) disp_obl_info("+d new run obl info: ");
                 }
                 else
                 {
@@ -724,7 +796,7 @@ static int volume_search(
         bound = first + maxsl;
 
     if ( ( bound-first < 1) ||      /* from 3              8 Jul 2005 */
-         ((bound-first < 4) && !p->opts.use_dicom) )
+         ((bound-first < 4) && IM_IS_GEMS(p->ftype)) )
         return 0;                   /* not enough data to work with   */
 
     /* maintain the state */
@@ -888,14 +960,14 @@ int check_one_volume(param_t *p, int start, int *fl_start, int bound, int state,
     if ( (fabs(delta) < gD_epsilon) || (run1 != run0) )
     {
         /* consider this a single slice volume */
-        if ( p->opts.use_dicom )
+        if ( ! IM_IS_GEMS(p->ftype) )
         {
             if( gD.level > 1 ) fprintf(stderr,"+d found single slice volume\n");
             *r_first = *r_last = first;
             *r_delta = 1.0;   /* make one up, zero may be bad */
 
             /* if we have a mosaic, try to set dz properly */
-            if( p->flist[first].minfo.is_mosaic )
+            if( p->flist[first].minfo.im_is_volume )
                 *r_delta = p->flist[first].geh.dz;
 
             return 1;         /* success */
@@ -1210,13 +1282,13 @@ static int volume_match( vol_t * vin, vol_t * vout, param_t * p, int start )
     }
 
     /* check mosaic case */
-    if( fp->minfo.is_mosaic ) {
+    if( fp->minfo.im_is_volume ) {
         if( fp->minfo.nslices != vin->minfo.nslices ||
             fp->minfo.mos_nx  != vin->minfo.mos_nx  ||
             fp->minfo.mos_ny  != vin->minfo.mos_ny  ) {
-            fprintf(stderr, "** mosaic mis-match, not sure how to proceed!\n");
-            fprintf(stderr, "   is_mosaic = %d, %d\n",
-                    fp->minfo.is_mosaic, vin->minfo.is_mosaic);
+            fprintf(stderr, "** volume mis-match, not sure how to proceed!\n");
+            fprintf(stderr, "   im_is_volume = %d, %d\n",
+                    fp->minfo.im_is_volume, vin->minfo.im_is_volume);
             fprintf(stderr, "   nslices   = %d, %d\n",
                     fp->minfo.nslices, vin->minfo.nslices);
             fprintf(stderr, "   (nx, ny)  = (%d, %d), (%d, %d)\n",
@@ -1342,7 +1414,9 @@ static int read_ge_files(
     }
 
     /* get files (check for dicom) */
-    if ( p->opts.use_dicom )
+    if ( IM_IS_GEMS(p->ftype) )
+        MCW_file_expand( 1, &p->glob_dir, &p->nfiles, &p->fnames );
+    else
     {
         if ( p->opts.infile_list )
         {
@@ -1372,8 +1446,6 @@ static int read_ge_files(
                     return -1;
         }
     }
-    else
-        MCW_file_expand( 1, &p->glob_dir, &p->nfiles, &p->fnames );
 
     /* if next is 0, search for any first_file */
     if ( (next == 0 ) && (p->opts.start_file || p->opts.start_dir) )
@@ -1588,8 +1660,10 @@ static int scan_ge_files (
             need_M    = 1;
         }
 
-        if ( p->opts.use_dicom )
+        if ( IM_IS_DICOM(p->ftype) )
             rv = read_dicom_image( p->fnames[fnum], fp, 1 );
+        else if ( IM_IS_AFNI(p->ftype) )
+            rv = read_afni_image( p->fnames[fnum], fp, 1 );
         else 
             rv = read_ge_image( p->fnames[fnum], fp, 1, need_M );
 
@@ -1692,6 +1766,12 @@ static int dicom_order_files( param_t * p )
     } else if( p->nfiles < 2 ) {
         fprintf(stderr,"** but ordering only 1 file is easy...\n");
         return 0;
+    } 
+
+    if ( ! IM_IS_DICOM(p->ftype) ) {
+        fprintf(stderr,"** Dimon: needs update to sort '%s' files\n",
+                ftype_string(p->ftype));
+        return -1;
     }
 
     if( gD.level > 0 )
@@ -2007,7 +2087,6 @@ static int init_options( param_t * p, ART_comm * A, int argc, char * argv[] )
     p->opts.ep = IFM_EPSILON;           /* allow user to override     */
     p->opts.max_images = IFM_MAX_VOL_SLICES;   /* allow user override */
     p->opts.sleep_frac = 1.1;           /* fraction of TR to sleep    */
-    p->opts.use_dicom = 1;              /* will delete this later...  */
 
     empty_string_list( &p->opts.drive_list, 0 );
     empty_string_list( &p->opts.wait_list, 0 );
@@ -2455,10 +2534,19 @@ static int init_options( param_t * p, ART_comm * A, int argc, char * argv[] )
             A->swap = 1;                /* do byte swapping before sending  */
             p->opts.swap = 1;           /* just note the user option        */
         }
+        else if ( ! strncmp( argv[ac], "-file_type", 7 ) )
+        {
+            if ( ++ac >= argc )
+            {
+                fputs( "option usage: -file_type TYPE\n", stderr );
+                return 1;
+            }
+            p->opts.file_type = argv[ac];
+        }
         else if ( ! strncmp( argv[ac], "-use_imon", 7 ) )
         {
             /* still run as Imon */
-            p->opts.use_dicom = 0;
+            p->opts.file_type = "GEMS";
         }
         else if ( ! strncmp( argv[ac], "-use_last_elem", 11 ) )
         {
@@ -2486,22 +2574,26 @@ static int init_options( param_t * p, ART_comm * A, int argc, char * argv[] )
         }
     }
 
-    gD_epsilon = p->opts.ep;    /* store new epsilon globally, for dimon_afni */
-
     if ( errors > 0 )          /* check for all minor errors before exiting */
     {
         usage( IFM_PROG_NAME, IFM_USE_SHORT );
         return 1;
     }
 
-    if ( p->opts.start_dir == NULL && !p->opts.use_dicom )
+    gD_epsilon = p->opts.ep;    /* store new epsilon globally, for dimon_afni */
+
+    /* set the p->ftype parameter, based on any file_type option  22 Jan 2013 */
+    if ( set_ftype( p, p->opts.file_type ) ) return 1;
+
+    if ( IM_IS_GEMS(p->ftype) && p->opts.start_dir == NULL )
     {
         fputs( "error: missing '-start_dir DIR' option\n", stderr );
         usage( IFM_PROG_NAME, IFM_USE_SHORT );
         return 1;
     }
 
-    if ( p->opts.use_dicom && p->opts.show_sorted_list && !p->opts.dicom_org )
+    if ( ! IM_IS_GEMS(p->ftype) &&   p->opts.show_sorted_list &&
+                                   ! p->opts.dicom_org )
     {
         fputs( "error: -dicom_org is required with -show_sorted_list", stderr );
         usage( IFM_PROG_NAME, IFM_USE_SHORT );
@@ -2526,7 +2618,7 @@ static int init_options( param_t * p, ART_comm * A, int argc, char * argv[] )
         }
     }
 
-    if ( p->opts.use_dicom )
+    if ( ! IM_IS_GEMS(p->ftype) )
     {   
         if( ! p->opts.dicom_glob && ! p->opts.infile_list )
         {
@@ -2547,15 +2639,13 @@ static int init_options( param_t * p, ART_comm * A, int argc, char * argv[] )
     /* done processing argument list */
 
     /* if dicom, start_dir is not used for globbing */
-    if ( p->opts.use_dicom )
+    if ( ! IM_IS_GEMS(p->ftype) )
     {
         p->glob_dir = p->opts.dicom_glob;
-        p->ftype    = IFM_IM_FTYPE_DICOM;
     }
     else
     {
         if ( dir_expansion_form(p->opts.start_dir, &p->glob_dir) ) return 2;
-        p->ftype = IFM_IM_FTYPE_GEMS5;
     }
 
     /* save command arguments to add as a NOTE to any AFNI datasets */
@@ -2742,6 +2832,77 @@ int dir_expansion_form( char * sin, char ** sexp )
 
 
 /*----------------------------------------------------------------------
+ *  read_afni_image
+ *---------------------------------------------------------------------- */
+static int read_afni_image( char * pathname, finfo_t * fp, int get_data )
+{
+    THD_3dim_dataset * dset;
+    int                rv = 0;
+
+    dset = THD_open_dataset(pathname);
+    if ( ! dset ) {
+        fprintf(stderr,"** failed to read file '%s' as AFNI dset\n", pathname);
+        return 1;
+    }
+
+    /* process oblique info only once */
+    if( obl_info_set == 2 && read_obl_info ) { /* rcr - todo */ }
+
+    /* fill the finfo_t struct (always based on first image) */
+
+    fp->geh.good  = ISVALID_DSET(dset);
+    fp->geh.nx    = DSET_NX(dset);
+    fp->geh.ny    = DSET_NY(dset);
+    fp->geh.uv17  = 1;    /* no way to know */
+    fp->geh.index = 1;    /* no way to know */
+    fp->geh.im_index = 1; /* no way to know */
+    fp->geh.atime = 0.0;  /* no way to know */
+    fp->geh.dx    = DSET_DX(dset);
+    fp->geh.dy    = DSET_DY(dset);
+    fp->geh.dz    = DSET_DZ(dset);
+    fp->geh.zoff  = DSET_ZORG(dset);
+    fp->geh.slice_loc = DSET_ZORG(dset); /* rcr - same? what about mosaic? */
+    if ( gP.opts.use_slice_loc ) { }
+
+    /* get some stuff from mrilib */
+    fp->geh.tr = DSET_TR(dset);
+    fp->geh.te = 0; /* no way to know */
+
+    /* orients, go backwards from daxes->xxorient values to LRPAIS, say */
+    THD_fill_orient_str_6(dset->daxes, fp->geh.orients);
+
+    /* ge_extras */
+    fp->gex.bpp    = DSET_BRICK(dset, 0)->pixel_size;
+    fp->gex.cflag  = 0;
+    fp->gex.hdroff = -1;
+    fp->gex.skip   = -1;
+    fp->gex.swap   = 0; /* rcr, should I bother? */
+    fp->gex.kk     = 0;
+    fp->gex.xorg   = DSET_XORG(dset);
+    fp->gex.yorg   = DSET_YORG(dset);
+    memset(fp->gex.xyz, 0, 9*sizeof(float)); /* skip xyz[9] */
+
+    /* mosaic/volume info (volume in this case) */
+    memset(&fp->minfo, 0, sizeof(mosaic_info));
+    fp->minfo.nslices      = DSET_NZ(dset);
+    fp->minfo.im_is_volume = fp->minfo.nslices > 1 ? 1 : 0;
+    fp->minfo.mos_nx       = fp->geh.nx;
+    fp->minfo.mos_ny       = fp->geh.ny;
+
+    if( gD.level > 3 ) idisp_mosaic_info( "AFNI volume", &fp->minfo );
+
+    if( get_data ) {
+        DSET_load(dset);
+        rv = copy_dset_data(fp, dset); /* fill fp->bytes and fp->image */
+    }
+
+    DSET_delete(dset);  /* image data has been copied */
+
+    return rv;
+}
+
+
+/*----------------------------------------------------------------------
  *  read_dicom_image
  *---------------------------------------------------------------------- */
 static int read_dicom_image( char * pathname, finfo_t * fp, int get_data )
@@ -2777,6 +2938,9 @@ static int read_dicom_image( char * pathname, finfo_t * fp, int get_data )
     }
 
     im = imarr->imarr[0];       /* for convenience */
+
+    /* check whether short overflow to unsigned */
+    if( MRILIB_dicom_s16_overflow ) want_ushort2float = 1;
 
     /* process oblique info only once */
     if( obl_info_set == 2 && read_obl_info ) {
@@ -2827,8 +2991,8 @@ static int read_dicom_image( char * pathname, finfo_t * fp, int get_data )
         fprintf(stderr,"   ior, jor, kor (%d, %d, %d)\n",
                 g_image_ori_ind[0], g_image_ori_ind[1], g_image_ori_ind[2]);
         fprintf(stderr,"   g_is_oblique = %d\n", g_is_oblique);
-    } else if ( gD.level > 1 && (g_image_info.is_obl||g_image_info.is_mosaic))
-        fprintf(stderr,"-- is_oblique = %d, is_mosaic = %d\n",
+    } else if ( gD.level>1 && (g_image_info.is_obl||g_image_info.is_mosaic))
+        fprintf(stderr,"-- is_oblique = %d, im_is_volume = %d\n",
                 g_image_info.is_obl, g_image_info.is_mosaic);
 
     /* fill the finfo_t struct (always based on first image) */
@@ -2886,10 +3050,10 @@ static int read_dicom_image( char * pathname, finfo_t * fp, int get_data )
            fprintf(stderr,"-- setting origin from Tr_dicom: %f, %f, %f\n",
                    fp->gex.xorg, fp->gex.yorg, fp->geh.zoff);
 
-        fp->minfo.is_mosaic = g_image_info.is_mosaic;
-        fp->minfo.nslices   = g_image_info.mos_nslice;
-        fp->minfo.mos_nx    = g_image_info.mos_nx;
-        fp->minfo.mos_ny    = g_image_info.mos_ny;
+        fp->minfo.im_is_volume = g_image_info.is_mosaic;
+        fp->minfo.nslices      = g_image_info.mos_nslice;
+        fp->minfo.mos_nx       = g_image_info.mos_nx;
+        fp->minfo.mos_ny       = g_image_info.mos_ny;
     }
 
     if( get_data )
@@ -2898,6 +3062,69 @@ static int read_dicom_image( char * pathname, finfo_t * fp, int get_data )
     DESTROY_IMARR(imarr);  /* image data has been copied */
 
     return rv;
+}
+
+
+/*----------------------------------------------------------------------
+ *  copy_dset_data     (set fp->bytes and image, or just fill image)
+ *
+ *  copy first volume of an AFNI dataset
+ *
+ *  If image is already allocated, just check that bytes is correct.
+ *  Else, allocate it.
+ *
+ *  return: 0 on success
+ *          1 on failure
+ *----------------------------------------------------------------------
+*/
+static int copy_dset_data(finfo_t * fp, THD_3dim_dataset * dset)
+{
+    int    nz, nvox, pix_size, arrbytes;
+
+    if( !dset || !fp ) {
+       fprintf(stderr,"** CDD: missing finfo or dset: %p, %p\n", fp, dset);
+       return 1;
+    }
+
+    if( DSET_NVALS(dset) > 1 ) {
+       fprintf(stderr,"** warning, dset has %d sub-bricks (using #0)\n",
+               DSET_NVALS(dset));
+       return 1;
+    }
+
+    nz = DSET_NZ(dset);
+    nvox = DSET_NVOX(dset);
+    pix_size = DSET_BRICK(dset, 0)->pixel_size;
+    arrbytes = nvox * pix_size;
+
+    if( gD.level > 3)
+        fprintf(stderr,
+                "-- CID: dset nz, nvox, pixbytes = %d, %d, %d (prod %d)\n",
+                nz, nvox, pix_size, arrbytes);
+
+    /* first verify or allocate space */
+    if( fp->image ) {
+        /* no allocation, but verify num bytes */
+        if( arrbytes != fp->bytes ) {
+            fprintf(stderr,"** CID: bytes mismatch, %d != %d\n",
+                    arrbytes,fp->bytes);
+            return 1;
+        }
+    } else {
+        /* allocate image space */
+        fp->bytes = arrbytes;
+        fp->image = malloc( fp->bytes );
+        if( ! fp->image ) {
+            fprintf(stderr,"** CID: failed to alloc %d bytes for image\n",
+                    fp->bytes);
+            return 1;
+        }
+    }
+
+    /* now copy data */
+    memcpy(fp->image, DBLK_ARRAY(dset->dblk, 0), arrbytes);
+
+    return 0;
 }
 
 
@@ -2931,7 +3158,7 @@ static int copy_image_data(finfo_t * fp, MRI_IMARR * imarr)
     }
 
     /* verify num images against mosaic */
-    if( imarr->num > 1 && ! fp->minfo.is_mosaic )
+    if( imarr->num > 1 && ! fp->minfo.im_is_volume )
         fprintf(stderr,"** CID: have non-mosaic with %d images\n", imarr->num);
 
     /* first verify or allocate space */
@@ -3226,11 +3453,11 @@ static int idisp_im_store_t( char * info, im_store_t * is )
         return -1;
     }
 
-    printf( "im_store_t struct at %p :\n"
+    printf( "im_store_t struct at :\n"
             "   (nalloc, nused)    = (%d, %d)\n"
             "   (ary_len, im_size) = (%d, %d)\n"
             "   (im_ary, x_im)     = (%p, %p)\n",
-            is, is->nalloc, is->nused,
+            is->nalloc, is->nused,
             is->ary_len, is->im_size, is->im_ary, is->x_im );
 
     return 0;
@@ -3252,14 +3479,14 @@ static int idisp_param_t( char * info, param_t * p )
         return -1;
     }
 
-    printf( "param_t struct at %p :\n"
+    printf( "param_t struct :\n"
             "   ftype             = %d\n"
             "   (nused, nalloc)   = (%d, %d)\n"
             "   flist             = %p\n"
             "   glob_dir          = %s\n"
             "   nfiles            = %d\n"
             "   fnames            = %p\n",
-            p, p->ftype, p->nused, p->nalloc, p->flist,
+            p->ftype, p->nused, p->nalloc, p->flist,
             CHECK_NULL_STR(p->glob_dir),
             p->nfiles, p->fnames );
 
@@ -3282,13 +3509,14 @@ static int idisp_opts_t( char * info, opts_t * opt )
         return -1;
     }
 
-    printf( "opts_t struct at %p :\n"
+    printf( "opts_t struct :\n"
             "   start_file         = %s\n"
             "   start_dir          = %s\n"
             "   dicom_glob         = %s\n"
             "   infile_list        = %s\n"
             "   sp                 = %s\n"
             "   gert_outdir        = %s\n"
+            "   file_type          = %s\n"
             "   (argv, argc)       = (%p, %d)\n"
             "   tr, ep             = %g, %g\n"
             "   nt, num_slices     = %d, %d\n"
@@ -3300,7 +3528,6 @@ static int idisp_opts_t( char * info, opts_t * opt )
             "   sleep_vol          = %d\n"
             "   debug              = %d\n"
             "   quit, no_wait      = %d, %d\n"
-            "   use_dicom          = %d\n"
             "   use_last_elem      = %d\n"
             "   use_slice_loc      = %d\n"
             "   show_sorted_list   = %d\n"
@@ -3323,18 +3550,18 @@ static int idisp_opts_t( char * info, opts_t * opt )
             "   drive_list(u,a,p)  = %d, %d, %p\n"
             "   wait_list (u,a,p)  = %d, %d, %p\n"
             "   rt_list   (u,a,p)  = %d, %d, %p\n",
-            opt,
             CHECK_NULL_STR(opt->start_file),
             CHECK_NULL_STR(opt->start_dir),
             CHECK_NULL_STR(opt->dicom_glob),
             CHECK_NULL_STR(opt->infile_list),
             CHECK_NULL_STR(opt->sp),
             CHECK_NULL_STR(opt->gert_outdir),
+            CHECK_NULL_STR(opt->file_type),
             opt->argv, opt->argc,
             opt->tr, opt->ep, opt->nt, opt->num_slices, opt->max_images,
             opt->max_quiet_trs, opt->nice, opt->pause,
             opt->sleep_frac, opt->sleep_init, opt->sleep_vol,
-            opt->debug, opt->quit, opt->no_wait, opt->use_dicom,
+            opt->debug, opt->quit, opt->no_wait,
             opt->use_last_elem, opt->use_slice_loc,
             opt->show_sorted_list, opt->gert_reco,
             CHECK_NULL_STR(opt->gert_filename),
@@ -3358,25 +3585,25 @@ static int idisp_opts_t( char * info, opts_t * opt )
  * print out a string corresponding to the file type
  *------------------------------------------------------------
 */
+static char * ftype_string( int ftype )
+{
+    if( ftype == IFM_IM_FTYPE_GEMS5 )           return "GEMS";
+    else if ( ftype == IFM_IM_FTYPE_DICOM )     return "DICOM";
+    else if ( ftype == IFM_IM_FTYPE_AFNI )      return "AFNI";
+
+    return "UNKNOWN";
+}
+
+/*------------------------------------------------------------
+ * print out a string corresponding to the file type
+ *------------------------------------------------------------
+*/
 static int disp_ftype( char * info, int ftype )
 {
     if ( info ) fputs(info, stdout);
 
-    switch( ftype )
-    {
-        case IFM_IM_FTYPE_GEMS5:
-            printf("GEMS 5.x\n");
-            break;
-
-        case IFM_IM_FTYPE_DICOM:
-            printf("DICOM\n");
-            break;
-
-        default:
-            printf("UNKNOWN (%d)\n", ftype);
-            break;
-    }
-
+    printf("%s (%d)\n", ftype_string(ftype), ftype);
+    
     fflush(stdout);
 
     return 0;
@@ -3397,7 +3624,7 @@ static int idisp_vol_t( char * info, vol_t * v )
         return -1;
     }
 
-    printf( "vol_t struct at %p :\n"
+    printf( "vol_t struct at :\n"
             "   nim                 = %d\n"
             "   (fl_1, fn_1, fn_n)  = (%d, %d, %d)\n"
             "   first_file          = %s\n"
@@ -3406,7 +3633,7 @@ static int idisp_vol_t( char * info, vol_t * v )
             "   z_delta, image_dz   = (%g, %g)\n"
             "   oblique             = %d\n"
             "   (seq_num, run)      = (%d, %d)\n",
-            v, v->nim, v->fl_1, v->fn_1, v->fn_n,
+            v->nim, v->fl_1, v->fn_1, v->fn_n,
             v->first_file, v->last_file,
             v->z_first, v->z_last, v->z_delta, v->image_dz, v->oblique,
             v->seq_num, v->run );
@@ -3435,7 +3662,7 @@ static int idisp_ge_extras( char * info, ge_extras * E )
         return -1;
     }
 
-    printf( "ge_extras at %p :\n"
+    printf( "ge_extras :\n"
             "    bpp              = %d\n"
             "    cflag            = %d\n"
             "    hdroff           = %d\n"
@@ -3447,7 +3674,7 @@ static int idisp_ge_extras( char * info, ge_extras * E )
             "    (xyz0,xyz1,xyz2) = (%g,%g,%g)\n"
             "    (xyz3,xyz4,xyz5) = (%g,%g,%g)\n"
             "    (xyz6,xyz7,xyz8) = (%g,%g,%g)\n",
-            E, E->bpp, E->cflag, E->hdroff, E->skip, E->swap, E->kk,
+            E->bpp, E->cflag, E->hdroff, E->skip, E->swap, E->kk,
             E->xorg,   E->yorg,
             E->xyz[0], E->xyz[1], E->xyz[2],
             E->xyz[3], E->xyz[4], E->xyz[5],
@@ -3472,7 +3699,7 @@ static int idisp_ge_header_info( char * info, ge_header_info * I )
         return -1;
     }
 
-    printf( "ge_header_info at %p :\n"
+    printf( "ge_header_info at :\n"
             "    good        = %d\n"
             "    (nx,ny)     = (%d,%d)\n"
             "    uv17        = %d\n"
@@ -3484,7 +3711,7 @@ static int idisp_ge_header_info( char * info, ge_header_info * I )
             "    zoff        = %g\n"
             "    (tr,te)     = (%g,%g)\n"
             "    orients     = %-8s\n",
-            I, I->good, I->nx, I->ny, I->uv17, I->index, I->im_index,
+            I->good, I->nx, I->ny, I->uv17, I->index, I->im_index,
             I->atime, I->slice_loc,
             I->dx, I->dy, I->dz, I->zoff, I->tr, I->te,
             CHECK_NULL_STR(I->orients)
@@ -3509,11 +3736,11 @@ static int idisp_mosaic_info( char * info, mosaic_info * I )
         return -1;
     }
 
-    printf( "mosaic_info at %p :\n"
-            "    is_mosaic   = %d\n"
-            "    nslices     = %d\n"
-            "    mos_nx, ny  = %d, %d\n",
-            I, I->is_mosaic, I->nslices, I->mos_nx, I->mos_ny);
+    printf( "mosaic_info :\n"
+            "    im_is_volume  = %d\n"
+            "    nslices       = %d\n"
+            "    mos_nx, ny    = %d, %d\n",
+            I->im_is_volume, I->nslices, I->mos_nx, I->mos_ny);
 
     return 0;
 }
@@ -3566,6 +3793,21 @@ static int usage ( char * prog, int level )
       "    to the input file pattern.\n"
       "\n"
       "    Dimon can be terminated using <ctrl-c>.\n"
+      "\n"
+      "  ---------------------------------------------------------------\n"
+      "  comments for using Dimon with various image file types\n"
+      "\n"
+      "     DICOM : this is the intended and default use\n"
+      "             - provide at least -infile_prefix\n"
+      "\n"
+      "     GEMS 5x. : GE Medical Systems I-files\n"
+      "             - requires -start_dir and -file_type GEMS\n"
+      "             - works as the original Imon program\n"
+      "\n"
+      "     AFNI : AFNI/NIfTI volume datasets\n"
+      "             - requires -file_type AFNI\n"
+      "             - use -sp to specify slice timing pattern\n"
+      "             - if datasets are 4D, please use rtfeedme\n"
       "\n"
       "  ---------------------------------------------------------------\n"
       "  realtime notes for running afni remotely:\n"
@@ -3749,10 +3991,12 @@ static int usage ( char * prog, int level )
       "  -------------------------------------------\n"
       "  example F (for testing complete real-time system):\n"
       "\n"
+      "    ** consider AFNI_data6/realtime.demos/demo.2.fback.*\n"
+      "\n"
       "    Use Dimon to send volumes to afni's real-time plugin, simulating\n"
       "    TR timing with Dimon's -pause option.  Motion parameters and ROI\n"
-      "    averages are then sent on to serial_helper (for subject feedback),\n"
-      "    run in test mode (so no actual serial communication).\n"
+      "    averages are then sent on to realtime_receiver.py (for subject\n"
+      "    feedback).\n"
       "    \n"
       "    a. Start afni in real-time mode, but first set some environment\n"
       "       variables to make it explicit what might be set in the plugin.\n"
@@ -3774,10 +4018,9 @@ static int usage ( char * prog, int level )
       "       Note: in order to send ROI averages per TR, the user must\n"
       "             choose a mask in the real-time plugin.\n"
       "    \n"
-      "    b. Start serial_helper in testing mode (i.e. get debug output\n"
-      "       and block serial output).\n"
+      "    b. Start realtime_receiver.py to show received data.\n"
       "    \n"
-      "           serial_helper -no_serial -debug 3\n"
+      "           realtime_receiver.py -show_data yes\n"
       "    \n"
       "    c. Run Dimon from the AFNI_data3 directory, in real-time mode,\n"
       "       using a 2 second pause to simulate the TR.  Dicom images are\n"
@@ -3787,7 +4030,7 @@ static int usage ( char * prog, int level )
       "    \n"
       "       Note that Dimon can be run many times at this point.\n"
       "\n"
-      "    ------------------------------\n"
+      "    --------------------\n"
       "\n"
       "    c2. alternately, set some env vars via Dimon\n"
       "\n"
@@ -3799,11 +4042,24 @@ static int usage ( char * prog, int level )
       "       Note that plugout_drive can also be used to set vars at\n"
       "       run-time, though plugouts must be enabled to use it.\n"
       "\n"
+      "\n"
+      "  -------------------------------------------\n"
+      "  example G: when reading AFNI datasets\n"
+      "\n"
+      "    Note that single-volume AFNI datasets might not contain the.\n"
+      "    TR and slice timing information (since they are not considered\n"
+      "    to be time series).  So it may be necessary to specify such\n"
+      "    information on the command line.\n"
+      "\n"
+      "    %s -rt                                                  \\\n"
+      "       -infile_pattern EPI_run1/vol.*.HEAD                     \\\n"
+      "       -file_type AFNI -sleep_vol 1000 -sp alt+z -tr 2.0 -quit\n"
+      "\n"
       "  ---------------------------------------------------------------\n",
       prog, prog, prog, prog, prog, prog, prog, prog, prog, prog, prog, prog,
       prog, prog, prog, prog, prog, prog, prog, prog, prog,
       prog, prog, prog, prog, prog, prog, prog,
-      prog, prog, prog, prog, prog, prog, prog );
+      prog, prog, prog, prog, prog, prog, prog, prog );
           
       printf(
           "  notes:\n"
@@ -4130,6 +4386,20 @@ static int usage ( char * prog, int level )
           "        for 'equality', a check of (difference < EPSILON) is used.\n"
           "        This option lets the user specify that cutoff value.\n"
           "\n"
+          "    -file_type TYPE    : specify type of image files to be read\n"
+          "\n"
+          "        e.g.  -file_type AFNI\n"
+          "        the default is DICOM\n"
+          "\n"
+          "        Dimon will currently process GEMS 5.x or DICOM files\n"
+          "        (single slice or Siemens mosaic).\n"
+          "\n"
+          "        possible values for TYPE:\n"
+          "\n"
+          "           GEMS      : GE Medical Systems GEMS 5.x format\n"
+          "           DICOM     : DICOM format, possibly Siemens mosaic\n"
+          "           AFNI      : AFNI or NIfTI formatted datasets\n"
+          "\n"
           "    -help              : show this help information\n"
           "\n"
           "    -hist              : display a history of program changes\n"
@@ -4303,6 +4573,9 @@ static int usage ( char * prog, int level )
           "        Here, TR is in seconds.\n"
           "\n"
           "    -use_imon          : revert to Imon functionality\n"
+          "\n"
+          "        ** This option is deprecated.\n"
+          "           Use -file_type GEMS, instead.\n"
           "\n"
           "    -use_last_elem     : use the last elements when reading DICOM\n"
           "\n"
@@ -4574,9 +4847,14 @@ static int set_volume_stats( param_t * p, stats_t * s, vol_t * v )
  * ---------------------------------------------------------------------- */
 static int create_gert_script( stats_t * s, param_t * p )
 {
+    if( IM_IS_AFNI(p->ftype) ) {
+        fprintf(stderr,"** create AFNI GERT script not currently allowed\n");
+        return 1;
+    }
+
     /* for either GEMS I-files or DICOM files */
-    if( p->opts.use_dicom ) return create_gert_dicom(s, p);
-    else                    return create_gert_reco (s, &p->opts);
+    if( IM_IS_DICOM(p->ftype) ) return create_gert_dicom(s, p);
+    else                        return create_gert_reco (s, &p->opts);
 }
 
 
@@ -4726,6 +5004,10 @@ static int create_gert_dicom( stats_t * s, param_t * p )
             if( opts->use_last_elem )
                 fprintf(fp, "     -use_last_elem                \\\n");
 
+            /* have short overflow, convert to floats   9 Jul 2013 */
+            if( want_ushort2float )
+                fprintf(fp, "     -ushort2float                 \\\n");
+
             fprintf(fp, "     -@ < %s\n\n", outfile);
 
             /* and possibly move output datasets there */
@@ -4735,6 +5017,11 @@ static int create_gert_dicom( stats_t * s, param_t * p )
         }
 
     fclose( fp );
+
+    /* warn user about conversion to floats */
+    if( want_ushort2float )
+        fprintf(stderr,"** warning, have signed short overflow to unsigned,\n"
+                "   applying -ushort2float in GERT_Reco to3d command\n\n");
 
     /* now make it an executable */
     sprintf(command, "chmod u+x %s", sfile );
@@ -4898,6 +5185,7 @@ static int create_gert_reco( stats_t * s, opts_t * opts )
 */
 static int show_run_stats( stats_t * s )
 {
+    char * ftypestr, * tstr;
     int c;
 
     if ( s == NULL )
@@ -4905,6 +5193,15 @@ static int show_run_stats( stats_t * s )
         fprintf( stderr, "failure, SRS - no stats struct!\n" );
         return -1;
     }
+
+    /* note image file type and set type string */
+    ftypestr = get_ftype_str(gP.ftype);
+    
+    if ( s->mos_nslices > 1 ) {
+       if      ( IM_IS_AFNI(gP.ftype)  ) tstr = "(AFNI volume)";
+       else if ( IM_IS_DICOM(gP.ftype) ) tstr = "(DICOM mosaic)";
+       else                              tstr = "(unknown volume)";
+    } else tstr = "";
 
     if ( s->nalloc <= 0 || s->nused <= 0 )
         return 0;
@@ -4921,7 +5218,7 @@ static int show_run_stats( stats_t * s )
             s->slices, s->z_first, s->z_last,
             s->oblique ? s->image_dz : s->z_delta,
             s->oblique ? "yes" : "no",
-            s->mos_nslices, (s->mos_nslices > 1) ? "(mosaic)" : "" );
+            s->mos_nslices, tstr);
 
     for ( c = 0; c < s->nused; c++ )
     {
@@ -5243,7 +5540,13 @@ static int complete_orients_str( vol_t * v, param_t * p )
         return -1;
     }
 
-    if ( v->minfo.is_mosaic ) {
+    if ( IM_IS_AFNI(p->ftype) ) {
+        if ( gD.level > 2 )
+            fprintf(stderr,"-- have AFNI orient string %s\n", v->geh.orients);
+        return 0;
+    }
+
+    if ( v->minfo.im_is_volume ) {
         /* orients string should already be complete */
         if ( gD.level > 2 )
             fprintf(stderr,"-- mosaic orients string: %s", v->geh.orients);
@@ -5253,9 +5556,9 @@ static int complete_orients_str( vol_t * v, param_t * p )
     if ( gD.level > 2 )
         fprintf(stderr,"completing orients from '%s' to", v->geh.orients);
 
-    if ( p->ftype == IFM_IM_FTYPE_DICOM )
+    if ( IM_IS_DICOM(p->ftype) )
         strncpy(v->geh.orients + 4, MRILIB_orients + 4, 2 );
-    else
+    else if ( IM_IS_GEMS(p->ftype) )
     {
         kk = p->flist[v->fl_1].gex.kk;
 

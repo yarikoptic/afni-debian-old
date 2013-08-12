@@ -16,6 +16,7 @@ ENTRY("THD_extract_float_brick") ;
 
    if( iv < 0 || !ISVALID_DSET(dset) || iv >= DSET_NVALS(dset) ) RETURN(NULL);
 
+STATUS("make new image") ;
    im   = mri_new_conforming( DSET_BRICK(dset,iv) , MRI_float ) ;
    var  = MRI_FLOAT_PTR(im) ;
    nvox = DSET_NVOX(dset) ;
@@ -32,24 +33,28 @@ ENTRY("THD_extract_float_brick") ;
 
       case MRI_short:{
         register short *dar = DSET_ARRAY(dset,iv) ;
+        if( dar == NULL ){ ERROR_message("NULL ptr in THD_extract_float_brick(%d)",iv); RETURN(im); }
         for( ii=0 ; ii < nvox ; ii++ ) var[ii] = dar[ii] ;
       }
       break ;
 
       case MRI_byte:{
         register byte  *dar = DSET_ARRAY(dset,iv) ;
+        if( dar == NULL ){ ERROR_message("NULL ptr in THD_extract_float_brick(%d)",iv); RETURN(im); }
         for( ii=0 ; ii < nvox ; ii++ ) var[ii] = dar[ii] ;
       }
       break ;
 
       case MRI_float:{
         register float *dar = DSET_ARRAY(dset,iv) ;
+        if( dar == NULL ){ ERROR_message("NULL ptr in THD_extract_float_brick(%d)",iv); RETURN(im); }
         for( ii=0 ; ii < nvox ; ii++ ) var[ii] = dar[ii] ;
       }
       break ;
 
       case MRI_complex:{
         register complex *dar = DSET_ARRAY(dset,iv) ;
+        if( dar == NULL ){ ERROR_message("NULL ptr in THD_extract_float_brick(%d)",iv); RETURN(im); }
         for( ii=0 ; ii < nvox ; ii++ ) var[ii] = CABS(dar[ii]) ;
       }
       break ;
@@ -57,12 +62,14 @@ ENTRY("THD_extract_float_brick") ;
 #if 0
       case MRI_int:{
         register int   *dar = DSET_ARRAY(dset,iv) ;
+        if( dar == NULL ){ ERROR_message("NULL ptr in THD_extract_float_brick(%d)",iv); RETURN(im); }
         for( ii=0 ; ii < nvox ; ii++ ) var[ii] = dar[ii] ;
       }
       break ;
 
       case MRI_double:{
         register double *dar = DSET_ARRAY(dset,iv) ;
+        if( dar == NULL ){ ERROR_message("NULL ptr in THD_extract_float_brick(%d)",iv); RETURN(im); }
         for( ii=0 ; ii < nvox ; ii++ ) var[ii] = dar[ii] ;
       }
       break ;
@@ -70,6 +77,7 @@ ENTRY("THD_extract_float_brick") ;
 
       case MRI_rgb:{
         register byte *dar = DSET_ARRAY(dset,iv) ;
+        if( dar == NULL ){ ERROR_message("NULL ptr in THD_extract_float_brick(%d)",iv); RETURN(im); }
         for( ii=0 ; ii < nvox ; ii++ )
           var[ii] = 0.299*dar[3*ii] + 0.587*dar[3*ii+1] + 0.114*dar[3*ii+2] ;
       }
@@ -81,6 +89,8 @@ ENTRY("THD_extract_float_brick") ;
 
    RETURN(im) ;
 }
+
+/*----------------------------------------------------------------------------*/
 
 MRI_IMAGE * THD_extract_double_brick( int iv , THD_3dim_dataset *dset )
 {
@@ -159,6 +169,7 @@ ENTRY("THD_extract_double_brick") ;
    RETURN(im) ;
 }
 
+/*----------------------------------------------------------------------------*/
 
 MRI_IMAGE * THD_extract_int_brick( int iv , THD_3dim_dataset *dset )
 {
@@ -212,7 +223,7 @@ ENTRY("THD_extract_int_brick") ;
          for( ii=0 ; ii < nvox ; ii++ ) var[ii] = (int)dar[ii] ;
         } else {
          for( ii=0 ; ii < nvox ; ii++ ) var[ii] = (int)(fac*dar[ii]) ;
-        } 
+        }
       }
       break ;
 
@@ -222,7 +233,7 @@ ENTRY("THD_extract_int_brick") ;
          for( ii=0 ; ii < nvox ; ii++ ) var[ii] = (int)CABS(dar[ii]) ;
         } else {
          for( ii=0 ; ii < nvox ; ii++ ) var[ii] = (int)(fac*CABS(dar[ii])) ;
-        } 
+        }
       }
       break ;
 
@@ -252,12 +263,12 @@ ENTRY("THD_extract_int_brick") ;
         register byte *dar = DSET_ARRAY(dset,iv) ;
         if (fac == 1.0f) {
          for( ii=0 ; ii < nvox ; ii++ )
-            var[ii] = (int)(0.299*dar[3*ii] + 
+            var[ii] = (int)(0.299*dar[3*ii] +
                             0.587*dar[3*ii+1] + 0.114*dar[3*ii+2] );
         } else { /* this should not happen... */
-         for( ii=0 ; ii < nvox ; ii++ ) 
-            var[ii] = (int)((0.299*dar[3*ii] + 
-                             0.587*dar[3*ii+1] + 0.114*dar[3*ii+2] )*fac);                }      
+         for( ii=0 ; ii < nvox ; ii++ )
+            var[ii] = (int)((0.299*dar[3*ii] +
+                             0.587*dar[3*ii+1] + 0.114*dar[3*ii+2] )*fac);  }
       }
       break ;
    }
@@ -266,9 +277,11 @@ ENTRY("THD_extract_int_brick") ;
    RETURN(im) ;
 }
 
-/* 
+/*----------------------------------------------------------------------------*/
+
+/*
    Get copy contents of sub-brick iv into an integer array.
-   if iv == -1, get the entire dset 
+   if iv == -1, get the entire dset
    NO ROUNDING is done. Only type casting.
 */
 int *THD_extract_to_int( int iv , THD_3dim_dataset *dset )
@@ -276,14 +289,14 @@ int *THD_extract_to_int( int iv , THD_3dim_dataset *dset )
    MRI_IMAGE *im ;
    int *var=NULL, *vv=NULL;
    register int ii , nvox ;
-   
+
 
    ENTRY("THD_extract_to_int") ;
 
    if (!dset) RETURN(var);
    if (iv >= 0) {
       if (!(im = THD_extract_int_brick(iv, dset))) RETURN(var);
-      var = MRI_INT_PTR(im);mri_fix_data_pointer(NULL, im); 
+      var = MRI_INT_PTR(im);mri_fix_data_pointer(NULL, im);
                             mri_free(im);im=NULL;
    } else if (iv == -1) {
       if (!(var = (int *)calloc(DSET_NVOX(dset)*DSET_NVALS(dset),sizeof(int)))){
@@ -297,18 +310,20 @@ int *THD_extract_to_int( int iv , THD_3dim_dataset *dset )
             RETURN(NULL);
          }
          vv = MRI_INT_PTR(im);
-         memcpy(var+ii*DSET_NVOX(dset),vv, sizeof(int)*DSET_NVOX(dset)); 
+         memcpy(var+ii*DSET_NVOX(dset),vv, sizeof(int)*DSET_NVOX(dset));
          mri_free(im);im=NULL;
-      } 
+      }
    } else {
       ERROR_message("Bad value of %d\n", iv);
    }
    RETURN(var);
 }
 
-/* 
+/*----------------------------------------------------------------------------*/
+
+/*
    Get copy contents of sub-brick iv into a float array.
-   if iv == -1, get the entire dset 
+   if iv == -1, get the entire dset
 */
 float *THD_extract_to_float( int iv , THD_3dim_dataset *dset )
 {
@@ -321,7 +336,7 @@ float *THD_extract_to_float( int iv , THD_3dim_dataset *dset )
    if (!dset) RETURN(var);
    if (iv >= 0) {
       if (!(im = THD_extract_float_brick(iv, dset))) RETURN(var);
-      var = MRI_FLOAT_PTR(im);mri_fix_data_pointer(NULL, im); 
+      var = MRI_FLOAT_PTR(im);mri_fix_data_pointer(NULL, im);
                               mri_free(im);im=NULL;
    } else if (iv == -1) {
       if (!(var = (float *)calloc(DSET_NVOX(dset)*DSET_NVALS(dset),
@@ -336,19 +351,21 @@ float *THD_extract_to_float( int iv , THD_3dim_dataset *dset )
             RETURN(NULL);
          }
          vv = MRI_FLOAT_PTR(im);
-         memcpy(var+ii*DSET_NVOX(dset),vv, sizeof(float)*DSET_NVOX(dset)); 
+         memcpy(var+ii*DSET_NVOX(dset),vv, sizeof(float)*DSET_NVOX(dset));
          mri_free(im);im=NULL;
       }
    } else {
       ERROR_message("Bad value of %d\n", iv);
    }
-   
+
    RETURN(var);
 }
 
-/* 
+/*----------------------------------------------------------------------------*/
+
+/*
    Get copy contents of sub-brick iv into an double array.
-   if iv == -1, get the entire dset 
+   if iv == -1, get the entire dset
 */
 double *THD_extract_to_double( int iv , THD_3dim_dataset *dset )
 {
@@ -361,7 +378,7 @@ double *THD_extract_to_double( int iv , THD_3dim_dataset *dset )
    if (!dset) RETURN(var);
    if (iv >= 0) {
       if (!(im = THD_extract_double_brick(iv, dset))) RETURN(var);
-      var = MRI_DOUBLE_PTR(im);mri_fix_data_pointer(NULL, im); 
+      var = MRI_DOUBLE_PTR(im);mri_fix_data_pointer(NULL, im);
                               mri_free(im);im=NULL;
    } else if (iv == -1) {
       if (!(var = (double *)calloc(DSET_NVOX(dset)*DSET_NVALS(dset),
@@ -376,15 +393,12 @@ double *THD_extract_to_double( int iv , THD_3dim_dataset *dset )
             RETURN(NULL);
          }
          vv = MRI_DOUBLE_PTR(im);
-         memcpy(var+ii*DSET_NVOX(dset),vv, sizeof(double)*DSET_NVOX(dset)); 
+         memcpy(var+ii*DSET_NVOX(dset),vv, sizeof(double)*DSET_NVOX(dset));
          mri_free(im);im=NULL;
       }
    } else {
       ERROR_message("Bad value of %d\n", iv);
    }
-   
+
    RETURN(var);
 }
-
-
-

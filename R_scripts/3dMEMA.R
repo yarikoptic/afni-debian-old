@@ -506,7 +506,7 @@ greeting.MEMA <- function ()
           ================== Welcome to 3dMEMA.R ==================          
              AFNI Mixed-Effects Meta-Analysis Modeling Package!
 #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-Version 0.2.0, Nov 9, 2012
+Version 0.2.1, Feb 28, 2013
 Author: Gang Chen (gangchen@mail.nih.gov)
 Website - http://afni.nimh.nih.gov/sscc/gangc/MEMA.html
 SSCC/NIMH, National Institutes of Health, Bethesda MD 20892
@@ -539,7 +539,7 @@ Usage:
  both regression coefficients, or general linear contrasts among them, and the 
  corresponding t-statistics from each subject as input. It\'s required to install 
  R (http://www.r-project.org/), plus \'snow\' package if parallel computing is
- desirable. Version 0.2.0 (Nov 9, 2012). If you want to cite the analysis
+ desirable. Version 0.2.1 (Feb 28, 2013). If you want to cite the analysis
  approach, use the following at this moment:
 
  Chen et al., 2012. FMRI Group Analysis Combining Effect Estimates
@@ -2455,12 +2455,14 @@ tTop <- 100   # upper bound for t-statistic
       for(i in 1:lop$myDim[1]) for(j in 1:lop$myDim[2]) for(k in 1:lop$myDim[3])
          outArr[i,j,k,m] <- tConvert(outArr[i,j,k,m], grpDFList[[1]][i,j,k,1], nDF) else {    
       # no covariate is involved with type 4
+      for(i in 1:lop$myDim[1]) for(j in 1:lop$myDim[2]) for(k in 1:lop$myDim[3]) {
       for(m in 1:2) # two individual group t
          #outArr[,,,2*ii] <- tConvert(outArr[,,,2*ii], grpDFList[[ii]][,,,1], lop$nSubj[ii] - 1)
          outArr[i,j,k,2*m] <- tConvert(outArr[i,j,k,2*m], grpDFList[[1]][i,j,k,1], lop$nSubj[m] - 1)
       # group diff t has a different situation about DFs
       #outArr[,,,6] <- tConvert(outArr[,,,6], sum(grpDFList[[1]], grpDFList[[2]])[,,,1]+1, nDF)
-      outArr[i,j,k,6] <- tConvert(outArr[i,j,k,6], sum(grpDFList[[1]], grpDFList[[2]])[i,j,k,1]+1, nDF)
+      outArr[i,j,k,6] <- tConvert(outArr[i,j,k,6], sum(grpDFList[[1]][i,j,k,1], grpDFList[[2]][i,j,k,1])+1, nDF)
+      }
       }
    }
    
@@ -2531,7 +2533,7 @@ tTop <- 100   # upper bound for t-statistic
    #write.AFNI(lop$outFN, outArr[,,,1:nBrick0],
    write.AFNI(lop$outFN, subBRKarray(brk=outArr, sel=1:nBrick0), 
                   outLabel, note=lop$myNote, origin=lop$myOrig, 
-                  delta=lop$myDelta, idcode="whatever", addFDR=1,
+                  delta=lop$myDelta, idcode=newid.AFNI(), addFDR=1,
                   verb=lop$verb, meth=lop$iometh, statsym=statsym,
                   view=dataView, orient=dataOrient, com_hist=lop$com_history)
    if (lop$iometh == 'Rlib') {
@@ -2547,14 +2549,14 @@ tTop <- 100   # upper bound for t-statistic
       write.AFNI(lop$icc_FN, 
                  subBRKarray(outArr, seq((nBrick0+1), nBrick, by=2)), iccLabel,
                  note=lop$myNote, origin=lop$myOrig, delta=lop$myDelta, 
-                 idcode="whatever",
+                 idcode=newid.AFNI(),
                  verb=lop$verb, meth=lop$iometh, view=dataView,
                  orient=dataOrient, com_hist=lop$com_history)
       #write.AFNI(lop$resZ_FN, outArr[,,,seq((nBrick0+2), nBrick, by=2)],
       write.AFNI(lop$resZ_FN, 
                  subBRKarray(outArr, seq((nBrick0+2), nBrick, by=2)), 
                  resZLabel, note=lop$myNote, origin=lop$myOrig, 
-                 delta=lop$myDelta, idcode="whatever",
+                 delta=lop$myDelta, idcode=newid.AFNI(),
                  verb=lop$verb, meth=lop$iometh, statsym=statsymResZ,
                  view=dataView, orient=dataOrient, com_hist=lop$com_history)
       if (lop$iometh == 'Rlib') {

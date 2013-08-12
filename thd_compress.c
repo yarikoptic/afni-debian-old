@@ -3,9 +3,71 @@
    of Wisconsin, 1994-2000, and are released under the Gnu General Public
    License, Version 2.  See the file README.Copyright for details.
 ******************************************************************************/
+
+#include "mrilib.h"
+
+/*---- editable configuration variables [moved here 10 May 2013 -- RWcox] ----*/
+
+static char *COMPRESS_program[]    = { "gzip -1c > '%s'"  ,
+                                       "bzip2 -1c > '%s'" ,
+                                       "compress > '%s'"  ,
+                                       "pigz -1c > '%s'"  ,
+                                       "cat > '%s'"} ;         /* shouldn't be called */
+
+static int   COMPRESS_program_ok[] = { 1 , 1 , 1 , 1 , 0 } ;     /* RWCox 03 Aug 1998 */
+
+static char *COMPRESS_unprogram[]  = { "gzip -dc '%s'"  ,
+                                       "bzip2 -dc '%s'" ,
+                                       "uncompress -c '%s'",
+                                       "pigz -dc '%s'"  ,
+                                       "brikcomp -c '%s'" } ;
+
+/*----------------------------------------------------------------------------*/
+/* Check if pigz can be used in place of gzip for compression,
+   and if pbzip2 can be used in place of bzip2.
+*//*--------------------------------------------------------------------------*/
+
+static void COMPRESS_setup_programs(void)  /* 03 May 2013 */
+{
+   char *pgname=NULL ;
+   static char *cprog_gzip=NULL , *cprog_bzip2=NULL ;
+   static char *uprog_gzip=NULL , *uprog_bzip2=NULL ;
+   static int first=1 ;
+
+   if( !first ) return ;
+   first = 0 ;
+   if( getenv("SKIP_COMPRESS_SETUP") ) return; /* Temp. fix. Strange R crash. 
+                                                   ZSS  09 May 2013           */ 
    
-#include "thd_compress.h"
-#include "Amalloc.h"
+                        pgname = THD_find_executable("pigz") ;
+   if( pgname == NULL ) pgname = THD_find_executable("gzip") ;
+   if( pgname == NULL ){
+     COMPRESS_program_ok[0] = COMPRESS_program_ok[3] = 0 ;
+   } else {
+     cprog_gzip = (char *)malloc(sizeof(char)*(strlen(pgname)+32)) ;
+     sprintf(cprog_gzip,"%s -1c > '%%s'",pgname) ;
+     COMPRESS_program[0] = COMPRESS_program[3] = cprog_gzip ;
+     uprog_gzip = (char *)malloc(sizeof(char)*(strlen(pgname)+32)) ;
+     sprintf(uprog_gzip,"%s -dc '%%s'",pgname) ;
+     COMPRESS_unprogram[0] = COMPRESS_unprogram[3] = uprog_gzip ;
+   }
+                        pgname = THD_find_executable("pbzip2") ;
+   if( pgname == NULL ) pgname = THD_find_executable("bzip2") ;
+   if( pgname == NULL ){
+     COMPRESS_program_ok[1] = 0 ;
+   } else {
+     cprog_bzip2 = (char *)malloc(sizeof(char)*(strlen(pgname)+32)) ;
+     sprintf(cprog_bzip2,"%s -1c > '%%s'",pgname) ;
+     COMPRESS_program[1] = cprog_bzip2 ;
+     uprog_bzip2 = (char *)malloc(sizeof(char)*(strlen(pgname)+32)) ;
+     sprintf(uprog_bzip2,"%s -dc '%%s'",pgname) ;
+     COMPRESS_unprogram[1] = uprog_bzip2 ;
+   }
+
+   return ;
+}
+
+/*--------------------------------------------------------------*/
 
 /*** check if the file exists on disk
      -- returns 1 if it does, 0 if it does not ***/
@@ -194,6 +256,8 @@ FILE * COMPRESS_fopen_read( char * fname )
 
    if( fname == NULL || fname[0] == '\0' ) return NULL ;
 
+   COMPRESS_setup_programs() ;  /* 03 May 2013 */
+
    mm = COMPRESS_filecode( fname ) ;  /* find compression mode */
 
    if( mm == COMPRESS_NOFILE ) return NULL ;  /* can't do nothin */
@@ -237,6 +301,8 @@ FILE * COMPRESS_fopen_write( char * fname , int mm )
    char * buf , * cmd ;
 
    if( fname == NULL || fname[0] == '\0' ) return NULL ;
+
+   COMPRESS_setup_programs() ;  /* 03 May 2013 */
 
    /* Don't compress if the compression program isn't marked as OK   */
    /* [For modes that can only be compressed offline, like BRIKCOMP] */

@@ -297,6 +297,7 @@ int *z_rand_order(int bot, int top, long int seed);
 int *z_iqsort (float *x , int nx );
 int *z_idoubleqsort (double *x , int nx );
 int *z_idqsort (int *x , int nx );
+int *z_dqsort (int *x , int nx );
 int *z_istrqsort (char **x , int nx );
 void Show_Atlas_Region (AFNI_ATLAS_REGION *aar);
 AFNI_ATLAS_REGION * Free_Atlas_Region (AFNI_ATLAS_REGION *aar);
@@ -320,28 +321,29 @@ char **approx_str_sort(char **words, int N_words, char *str, byte ci,
 char **approx_str_sort_text(char *text, int *N_ws, char *str, 
                             byte ci, float **sorted_score,
                             APPROX_STR_DIFF_WEIGHTS *Dwi,
-                            APPROX_STR_DIFF **Dout);                    
+                            APPROX_STR_DIFF **Dout, char join_breaks);      
 char **approx_str_sort_tfile(char *fname, int *N_ws, char *str, 
                             byte ci, float **sorted_score,
                             APPROX_STR_DIFF_WEIGHTS *Dwi,
-                            APPROX_STR_DIFF **Dout, int verb);
+                            APPROX_STR_DIFF **Dout, int verb, char join_breaks);
 THD_string_array *approx_str_sort_Ntfile(
                       char **fnames, int N_names, char *str, 
                       byte ci, float **sorted_score,
                       APPROX_STR_DIFF_WEIGHTS *Dwi,
-                      APPROX_STR_DIFF **Doutp, int verb);
+                      APPROX_STR_DIFF **Doutp, int verb, char join_breaks);
 #define APSEARCH_TMP_PREF "__apsearch"
 char **approx_str_sort_phelp(char *prog, int *N_ws, char *str, 
                             byte ci, float **sorted_score,
                             APPROX_STR_DIFF_WEIGHTS *Dwi,
-                            APPROX_STR_DIFF **Dout, int verb);
+                            APPROX_STR_DIFF **Dout, int verb, char join_breaks);
 char **approx_str_sort_all_popts(char *prog, int *N_ws, 
                             byte ci, float **sorted_score,
                             APPROX_STR_DIFF_WEIGHTS *Dwi,
                             APPROX_STR_DIFF **Dout,
-                            int uopts, int verb);
-char *get_updated_help_file(int force_recreate, byte verb, char *progname);
-int prog_complete_command (char *prog, char *ofile);
+                            int uopts, int verb, char join_breaks);
+char *get_updated_help_file(int force_recreate, byte verb, char *progname, 
+                            int shtp);
+int prog_complete_command (char *prog, char *ofile, int shtp);
 char **approx_str_sort_readmes(char *str, int *N_r);
 char *find_readme_file(char *str);
 int view_text_file(char *progname);

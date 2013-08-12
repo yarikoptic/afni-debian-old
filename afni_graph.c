@@ -22,6 +22,8 @@ static void fd_line( MCW_grapher *, int,int,int,int ) ;
 static byte PLOT_FORCE_AUTOSCALE = 0;
 static Widget wtemp ;
 
+static int fade_color = 19 ;
+
 /*------------------------------------------------------------*/
 /*! Macro to call the getser function with correct prototype. */
 
@@ -76,6 +78,8 @@ ENTRY("new_MCW_grapher") ;
    grapher->mirror          = 0 ;  /* Jul 2000 */
 
    grapher->tschosen        = 0 ;  /* 31 Mar 2004 */
+   grapher->detrend         = -1;  /* 05 Dec 2012 */
+   grapher->thresh_fade     = AFNI_yesenv("AFNI_GRAPH_FADE") ;  /* Mar 2013 */
 
    grapher->gx_max = 0 ;
    grapher->gy_max = 0 ;
@@ -219,6 +223,7 @@ ENTRY("new_MCW_grapher") ;
                        "1      = move to 1st time point\n"
                        "l      = move to last time point\n"
                        "L      = turn AFNI logo on/off\n"
+                       "F      = turn threshold 'Fading' on/off\n"
                        "v/V    = Video up/down in time\n"
                        "r/R    = Video ricochet up/down in time\n"
                        "F5     = Meltdown!\n"
@@ -732,7 +737,7 @@ ENTRY("new_MCW_grapher") ;
        grapher->common_base = BASELINE_INDIVIDUAL ;
      }
 
-     /* now create menu items */
+     /*- now create menu items -*/
 
      OPT_MENU_PULLRIGHT(opt_baseline_menu,opt_baseline_cbut,
                         "Baseline","Change sub-graphs baseline");
@@ -767,9 +772,9 @@ ENTRY("new_MCW_grapher") ;
      XmStringFree( xstr ) ; LABELIZE(grapher->opt_baseline_global_label) ;
    }
 
-   /* 22 Sep 2000: Text toggle */
+   /*----- 22 Sep 2000: Text toggle -----*/
 
-   { static char * bbox_label[1] = { "Show Text? [t]" } ;
+   { static char *bbox_label[1] = { "Show Text?   [t]" } ;
 
     grapher->opt_textgraph_bbox =
          new_MCW_bbox( grapher->opt_menu ,
@@ -780,6 +785,21 @@ ENTRY("new_MCW_grapher") ;
                           "Display text, not graphs" ) ;
 
     grapher->textgraph = 0 ;
+   }
+
+   /*----- Mar 2013: thresh fade toggle -----*/
+
+   { static char *bbox_label[1] = { "Thresh Fade? [F]" } ;
+
+    grapher->opt_tfade_bbox =
+         new_MCW_bbox( grapher->opt_menu ,
+                       1 , bbox_label , MCW_BB_check , MCW_BB_noframe ,
+                       GRA_tfade_CB , (XtPointer)grapher ) ;
+
+    MCW_set_bbox( grapher->opt_tfade_bbox , grapher->thresh_fade ) ;
+
+    MCW_reghint_children( grapher->opt_tfade_bbox->wrowcol ,
+                          "Fade out below-threshold voxel sub-graphs" ) ;
    }
 
    MENU_SLINE(opt_menu) ;
@@ -872,6 +892,20 @@ ENTRY("new_MCW_grapher") ;
    grapher->transform1D_func  = NULL ;  /* no function to start with */
    grapher->transform1D_index = 0 ;
 
+   /*------ optmenu for Polort [05 Dec 2012] ------*/
+
+   MENU_DLINE(opt_menu) ;
+
+   grapher->detrend_av =
+         new_MCW_optmenu( grapher->opt_menu ,
+                          "Detrend" ,
+                          -1 , 7 , -1 , 0 ,
+                          GRA_detrend_CB , (XtPointer)grapher ,
+                          NULL , NULL ) ;
+
+   MCW_reghint_children( grapher->detrend_av->wrowcol ,
+                         "Order of time series detrending / baseline removal" ) ;
+
    /*------ menu to control the x-axis drawing (09 Jan 1998) ------*/
 
    MENU_DLINE(opt_menu) ;
@@ -923,6 +957,7 @@ if(PRINT_TRACING)
    grapher->time_index  =  0 ;
    grapher->pin_top     =  0 ;  /* 27 Apr 1997 */
    grapher->pin_bot     =  0 ;  /* 17 Mar 2004 */
+   grapher->pin_stride  =  1 ;  /* 19 Jul 2013 */
    grapher->ggap        =  INIT_GR_ggap ;    /* 12 Jan 1998 + 27 May 1999 */
    grapher->gthick      =  INIT_GR_gthick ;  /* 06 Oct 2004 */
 
@@ -1035,11 +1070,11 @@ MRI_IMAGE * GRA_getseries( MCW_grapher *grapher , int index )
        case 'i':
        case 'I':  qim = mri_complex_imag(tsim) ; break ;
      }
-     mri_free(tsim) ; tsim = qim ;
+     qim->flags = tsim->flags ; mri_free(tsim) ; tsim = qim ;
 
    } else if( tsim->kind != MRI_float ){
      MRI_IMAGE *qim = mri_to_float(tsim) ;
-     mri_free(tsim) ; tsim = qim ;
+     qim->flags = tsim->flags ; mri_free(tsim) ; tsim = qim ;
    }
 
    return tsim ;
@@ -1105,6 +1140,7 @@ STATUS("destroying bboxes") ;
 
    myXtFree( grapher->opt_baseline_bbox ) ;      /* 07 Aug 2001 */
    myXtFree( grapher->opt_textgraph_bbox ) ;
+   myXtFree( grapher->opt_tfade_bbox ) ;
 
 STATUS("freeing cen_tsim") ;
    mri_free( grapher->cen_tsim ) ;
@@ -1178,14 +1214,36 @@ ENTRY("erase_fdw") ;
 }
 
 /*-----------------------------------------------------*/
+
+void rectangle_fdX( MCW_grapher *grapher, int xb,int yb, int xw,int yw, int clr )
+{
+ENTRY("rectangle_fdX") ;
+
+   if( grapher->dont_redraw ) EXRETURN ;
+
+   if( xw <= 0 || yw <= 0 ) EXRETURN ;
+
+   if( xb < 0 ) xb = 0 ;
+   if( yb < 0 ) yb = 0 ;
+   yb = grapher->fHIGH - yb - yw ;
+
+   DC_fg_color ( grapher->dc , clr ) ;
+
+   XFillRectangle( grapher->dc->display ,
+                   grapher->fd_pxWind , grapher->dc->myGC , xb,yb , xw,yw ) ;
+
+   EXRETURN ;
+}
+
+/*-----------------------------------------------------*/
    /* It plots line to point (x,y) for mod = 1 */
    /* or moves to this point for mod = 0.      */
    /* All into the fd_pxWind.                  */
 /*-----------------------------------------------------*/
 
-void plot_fdX( MCW_grapher * grapher , int x , int y , int mod )
+void plot_fdX( MCW_grapher *grapher , int x , int y , int mod )
 {
-   int iy = grapher->fHIGH - y;
+   int iy = grapher->fHIGH - y ;
 
    if( mod > 0 )
      XDrawLine( grapher->dc->display ,
@@ -1416,7 +1474,8 @@ ENTRY("GRA_redraw_overlay") ;
       xxx = MAX( grapher->xx_text_2 ,
                  grapher->xorigin[grapher->xc][grapher->yc]-39 ) ;
 
-      if( grapher->init_ignore > 0 ) xxx = MAX( xxx , grapher->xx_text_2p ) ;
+      if( grapher->init_ignore > 0 || grapher->thresh_fade )
+        xxx = MAX( xxx , grapher->xx_text_2p ) ;
 
       DC_fg_color( grapher->dc , IDEAL_COLOR(grapher) ) ;
       overlay_txt( grapher, xxx , GB_DLY-15 , strp ) ;
@@ -1533,6 +1592,10 @@ ENTRY("redraw_graph") ;
 
    if( grapher->init_ignore > 0 ){                    /* 23 May 2005 */
      sprintf(strp,"Ignore%4d",grapher->init_ignore) ;
+     if( grapher->thresh_fade ) sprintf(strp+strlen(strp)," Fading") ;
+     fd_txt( grapher , xxx , 35, strp) ;
+   } else if( grapher->thresh_fade ){
+     sprintf(strp,"Fading") ;
      fd_txt( grapher , xxx , 35, strp) ;
    }
 
@@ -1562,7 +1625,8 @@ ENTRY("redraw_graph") ;
        sprintf(strp,"Num%3d:%-3d" , bb,tt ) ;
    }
    fd_line( grapher ,
-            grapher->xx_text_2+rrr+3 , (grapher->init_ignore > 0) ? 41 : 31 ,
+            grapher->xx_text_2+rrr+3 ,
+            (grapher->init_ignore > 0 || grapher->thresh_fade) ? 41 : 31 ,
             grapher->xx_text_2+rrr+3 , 5 ) ;
 
    grapher->xx_text_2p = grapher->xx_text_2+rrr+7 ;  /* 23 May 2005 */
@@ -1801,6 +1865,15 @@ ENTRY("text_graphs") ;
            grapher->cen_tsim = mri_to_float( tsim ) ;
          }
 
+         if( grapher->thresh_fade && tsim->flags == 0 ){ /* Mar 2013 */
+           rectangle_fdX( grapher ,
+                          grapher->xorigin[ix][iy]+1 , grapher->yorigin[ix][iy]+1 ,
+                          grapher->gx-2              , grapher->gy-2 ,
+                          fade_color ) ;
+           DC_fg_color ( grapher->dc , DATA_COLOR(grapher) ) ;  /* must reset */
+           DC_linewidth( grapher->dc , DATA_THICK(grapher) ) ;
+         }
+
 #if 0
          if( grapher->transform0D_func != NULL )
 # if 0
@@ -1826,6 +1899,52 @@ ENTRY("text_graphs") ;
    EXRETURN ;
 }
 
+/*-----------------------------------------------------------------------------*/
+/*! From the 'Detrend' menu */
+
+void GRA_detrend_CB( MCW_arrowval *av , XtPointer cd ) /* 05 Dec 2012 */
+{
+   MCW_grapher *grapher = (MCW_grapher *)cd ; int avd ;
+
+ENTRY("GRA_detrend_CB") ;
+
+   if( ! GRA_VALID(grapher) ) EXRETURN ;
+   avd = av->ival ; if( avd == grapher->detrend ) EXRETURN ;
+   grapher->detrend = avd ;
+   redraw_graph( grapher , 0 ) ;
+   EXRETURN ;
+}
+
+/*----------------------------------------------------------------------------*/
+/* Detrend each column of an image */
+
+static void GRA_detrend_im( int dord , MRI_IMAGE *im ) /* 05 Dec 2012 */
+{
+   int jy , nx,ny ; float *iar ;
+
+   if( dord < 0 || im == NULL || im->kind != MRI_float ) return ;
+   iar = MRI_FLOAT_PTR(im) ; if( iar == NULL ) return ;
+   nx = im->nx ; ny = im->ny ;
+   for( jy=0 ; jy < ny ; jy++ )
+     THD_generic_detrend_L1( nx , iar+(jy*nx) , dord , 0,0,NULL ) ;
+
+   return ;
+}
+
+/*-----------------------------------------------------------------------------*/
+/* Detrend each column of each image */
+
+static void GRA_detrend_imarr( int dord , MRI_IMARR *imar ) /* 05 Dec 2012 */
+{
+   int ii ;
+
+   if( imar == NULL ) return ;
+   for( ii=0 ; ii < IMARR_COUNT(imar) ; ii++ )
+     GRA_detrend_im( dord , IMARR_SUBIM(imar,ii) ) ;
+
+   return ;
+}
+
 /*-----------------------------------------------------------
     Plot real graphs to pixmap
 -------------------------------------------------------------*/
@@ -1838,6 +1957,7 @@ void plot_graphs( MCW_grapher *grapher , int code )
    float       tsbot=0.0 , ftemp,fwid,foff , tstop ;
    int i, m, index, ix, iy, xtemp,ytemp,ztemp, xoff=0,yoff=0, its,ibot,itop;
    int ptop,pbot,pnum,qnum , tbot,ttop,tnum , ntmax ;  /* 17 Mar 2004 */
+   int pstep=1 ;
 
    static int      *plot = NULL ;  /* arrays to hold plotting coordinates */
    static XPoint *a_line = NULL ;
@@ -1881,10 +2001,11 @@ ENTRY("plot_graphs") ;
 
    /* 17 Mar 2004: we will plot from pbot..ptop-1, with data from tbot..ttop-1 */
 
-   ptop = NTOP(grapher) ; pbot = NBOT(grapher) ;
+   ptop = NTOP(grapher) ; pbot = NBOT(grapher) ; pstep = NSTRIDE(grapher) ;
    if( pbot >= ptop ){
      pbot = 0 ; ptop = grapher->status->num_series ;
    }
+   if( pstep > 1 && NPTS(grapher) < 2 ){ grapher->pin_stride = pstep = 1 ; }
    ttop = TTOP(grapher) ; ttop = MIN(ttop,ptop) ; tbot = pbot ;
    if( ttop <= tbot || ttop > grapher->status->num_series ){
      ttop = MIN(ptop,grapher->status->num_series) ;
@@ -2081,6 +2202,11 @@ STATUS("about to perform 1D transformation") ;
       }
    }
 
+   /* 05 Dec 2012: detrend? */
+
+   GRA_detrend_imarr( grapher->detrend , tsimar ) ;
+   GRA_detrend_imarr( grapher->detrend , dplot_imar ) ;
+
    /** find the average time series [27 Jan 2004] **/
 
    if( ntmax > 1 && IMARR_COUNT(tsimar) > 0 ){
@@ -2242,6 +2368,24 @@ STATUS("finding common base") ;
      }
    } else if( grapher->common_base == BASELINE_GLOBAL ){ /* 07 Aug 2001 */
      tsbot = grapher->global_base ;
+   }
+
+   /* do something to mark infra-threshold voxels [Mar 2013] */
+
+   if( grapher->thresh_fade ){
+     for( ix=0,its=0 ; ix < grapher->mat ; ix++ ){
+       for( iy=0 ; iy < grapher->mat ; iy++,its++ ){
+         tsim = IMARR_SUBIMAGE(tsimar,its) ;
+         if( tsim == NULL || tsim->flags == 0 ){
+           rectangle_fdX( grapher ,
+                          grapher->xorigin[ix][iy]+1 , grapher->yorigin[ix][iy]+1 ,
+                          grapher->gx-2              , grapher->gy-2 ,
+                          fade_color ) ;
+         }
+       }
+     }
+     DC_fg_color ( grapher->dc , DATA_COLOR(grapher) ) ;  /* must reset */
+     DC_linewidth( grapher->dc , DATA_THICK(grapher) ) ;
    }
 
    /**** loop over matrix of graphs and plot them all to the pixmap ****/
@@ -3627,6 +3771,12 @@ STATUS(str); }
         } else {
           BEEPIT ; WARNING_message("Can't video current graph window") ;
         }
+      break ;
+
+      case 'F':
+        grapher->thresh_fade = !grapher->thresh_fade ;
+        MCW_set_bbox( grapher->opt_tfade_bbox , grapher->thresh_fade ) ;
+        redraw_graph( grapher , 0 ) ;
       break ;
 
       case 'z':  /* change slice */
@@ -5897,6 +6047,27 @@ ENTRY("GRA_textgraph_CB") ;
    bbb = MCW_val_bbox( grapher->opt_textgraph_bbox ) ;
    if( bbb != grapher->textgraph ){
      grapher->textgraph = bbb ;
+     redraw_graph( grapher , 0 ) ;
+   }
+   EXRETURN ;
+}
+
+/*----------------------------------------------------------------------------
+   Mar 2013: thresh fade toggle
+------------------------------------------------------------------------------*/
+
+void GRA_tfade_CB( Widget w , XtPointer client_data , XtPointer call_data )
+{
+   MCW_grapher *grapher = (MCW_grapher *)client_data ;
+   int bbb ;
+
+ENTRY("GRA_tfade_CB") ;
+
+   if( ! GRA_VALID(grapher) ) EXRETURN ;
+
+   bbb = MCW_val_bbox( grapher->opt_tfade_bbox ) ;
+   if( bbb != grapher->thresh_fade ){
+     grapher->thresh_fade = bbb ;
      redraw_graph( grapher , 0 ) ;
    }
    EXRETURN ;

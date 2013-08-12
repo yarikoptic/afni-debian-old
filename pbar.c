@@ -893,9 +893,23 @@ ENTRY("PBAR_bigexpose_CB") ;
        MCW_kill_XImage(xim) ;
      }
 #else
-     { MRI_IMAGE *dim = mri_resize( cim , ww,hh ) ;
+     { char *eee ;
+       MRI_IMAGE *dim = mri_resize( cim , ww,hh ) ;
        pbar->bigxim = mri_to_XImage( pbar->dc , dim ) ;
        mri_free(dim) ;
+       eee = getenv("AFNI_PBAR_TICK") ;          /* tick marks [25 Jun 2013] */
+       if( eee == NULL || toupper(*eee) != 'N' ){
+         int jj,kk , ntic=9 ; float ftic ;
+         if( eee != NULL && isdigit(*eee) ){
+           ntic = (int)strtod(eee,NULL) ; if( ntic > 63 ) ntic = 63 ;
+         }
+         ftic = 1.0f/(ntic+1) ; 
+         for( kk=1 ; kk <= ntic ; kk++ ){
+           jj = (int)rintf( ftic*kk*hh ) ;
+           rectzero_XImage( pbar->dc , pbar->bigxim , 0   ,jj , 2   , jj ) ;
+           rectzero_XImage( pbar->dc , pbar->bigxim , ww-3,jj , ww-1, jj ) ;
+         }
+       }
      }
 #endif
      mri_free(cim) ;

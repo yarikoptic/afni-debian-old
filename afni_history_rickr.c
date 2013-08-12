@@ -49,9 +49,438 @@
 
 afni_history_struct rickr_history[] = {
 
- { 16, Nov, 2012, RCR, "@update.afni.binaries", MINOR, TYPE_BUG_FIX,
-   "status after 'which afni' should be set if no afni, so do not use in set",
+ {  2,  Aug, 2013, RCR, "afni_system_check.py", MINOR, TYPE_ENHANCE,
+   "check for multiple R and python programs in PATH",
    NULL
+ } ,
+
+ {  2,  Aug, 2013, RCR, "3dANOVA", MINOR, TYPE_BUG_FIX,
+   "if AFNI_COMPRESSOR and input nii.gz, 'remove()' would not remove BRIK.gz",
+   "Thanks to P Molfese for noting the problem."
+ } ,
+
+ {  1,  Aug, 2013, RCR, "3dmask_tool", MINOR, TYPE_BUG_FIX,
+   "fixed apparent pointer step issue, which happens on only some systems",
+   "Same binary would work on one system but fail on another, so apparent\n"
+   "shared library difference (libc?).\n"
+   "Thanks to W Gaggl for pointing out the problem."
+ } ,
+
+ {  1,  Aug, 2013, RCR, "suma-general", MINOR, TYPE_BUG_FIX,
+   "in suma_gifti.c, convert GIFTI's LPI to and from AFNI's RAI",
+   "Done with Ziad.  Thanks to N Oosterhof for bringing this up."
+ } ,
+
+ { 31,  Jul, 2013, RCR, "3dmask_tool", MINOR, TYPE_BUG_FIX,
+   "fixed failure to apply a negative dilation in non-convert case",
+   "Thanks to W Gaggl for noting the problematic scenario."
+ } ,
+
+ { 22,  Jul, 2013, RCR, "nifti_tool", MICRO, TYPE_GENERAL,
+   "re-applied 2012 change of originator to shorts (lost with ITK update)",
+   NULL
+ } ,
+
+ { 19,  Jul, 2013, RCR, "afni-general", MAJOR, TYPE_ENHANCE,
+   "applied ITK compatibility updates from 11/2010 by H Johnson",
+   NULL
+ } ,
+
+ { 19,  Jul, 2013, RCR, "3dDeconvolve", MICRO, TYPE_ENHANCE,
+   "no options implies -h",
+   NULL
+ } ,
+
+ { 18,  Jul, 2013, RCR, "@move.to.series.dirs", MINOR, TYPE_ENHANCE,
+   "added -dprefix option, for output directory prefix",
+   NULL
+ } ,
+
+ { 16,  Jul, 2013, RCR, "afni_system_check.py", MINOR, TYPE_ENHANCE,
+   "added checks for early python versions; added a little help",
+   NULL
+ } ,
+
+ { 12,  Jul, 2013, RCR, "suma", MICRO, TYPE_MODIFY,
+   "return a good status (0) on -help",
+   NULL
+ } ,
+
+ {  9,  Jul, 2013, RCR, "Dimon", MINOR, TYPE_ENHANCE,
+   "if unsigned shorts are detected, add -ushort2float to to3d command",
+   NULL
+ } ,
+
+ {  9,  Jul, 2013, RCR, "to3d", MINOR, TYPE_NEW_OPT,
+   "added -ushort2float, for converting unsinged shorts to floats",
+   "Requested by D Handwerker."
+ } ,
+
+ {  9,  Jul, 2013, RCR, "file_tool", MINOR, TYPE_ENHANCE,
+   "added more info for locating bad chars with -test",
+   NULL
+ } ,
+
+ {  7,  Jul, 2013, RCR, "@Install_FATCAT_DEMO", MINOR, TYPE_NEW_PROG,
+   "replaces @Install_PTaylor_TractDemo",
+   NULL
+ } ,
+
+ {  6,  Jul, 2013, RCR, "afni-general", MICRO, TYPE_BUG_FIX,
+   "use NIFTI_INTENT_NONE for case of intent_code = FUNC_BUCK_TYPE",
+   "3dbucket's FUNC_BUCK_TYPE went to intent_code for 1 vol dset"
+ } ,
+
+ {  1,  Jul, 2013, RCR, "afni-general", MICRO, TYPE_NEW_OPT,
+   "added AFNI_INCLUDE_HISTORY: set to No to omit history from output",
+   NULL
+ } ,
+
+ { 28,  Jun, 2013, RCR, "afni_util.py", MINOR, TYPE_NEW_OPT,
+   "added get/show_process_stack(), get/show_login_shell()",
+   "Can use these from command line, e.g. :\n"
+   "   afni_util.py -eval 'show_login_shell()'\n"
+   "   afni_util.py -eval 'show_login_shell(verb=1)'\n"
+   "   afni_util.py -eval 'show_process_stack()'"
+ } ,
+
+ { 27,  Jun, 2013, RCR, "afni_proc.py", MINOR, TYPE_NEW_OPT,
+   "added -regress_mot_as_ort",
+   "Applies motion regressors via -ortvec, a potential future change."
+ } ,
+
+ { 25,  Jun, 2013, RCR, "afni_proc.py", MINOR, TYPE_NEW_OPT,
+   "added -volreg_motsim and -volreg_opts_ms",
+   NULL
+ } ,
+
+ { 14,  Jun, 2013, RCR, "Makefile.NIH.openSUSE.11.4_64", MICRO, TYPE_ENHANCE,
+   "added -fPIC to CCMIN (-fPIC is all over now, basically for R_io.so)",
+   NULL
+ } ,
+
+ { 10,  Jun, 2013, RCR, "1d_tool.py", MINOR, TYPE_ENHANCE,
+   "added -select_groups, -show_cormat, -volreg2allineate",
+   NULL
+ } ,
+
+ { 10,  Jun, 2013, RCR, "@simulate_motion", MINOR, TYPE_ENHANCE,
+   "added warp_methods, etc.",
+   NULL
+ } ,
+
+ { 31, May, 2013, RCR, "@simulate_motion", MAJOR, TYPE_NEW_PROG,
+   "program to create time series simulated by motion parameters",
+   NULL
+ } ,
+
+ { 17, May, 2013, RCR, "@update.afni.binaries", MICRO, TYPE_ENHANCE,
+   "added -f to curl, so that failures propagate to $status",
+   NULL
+ } ,
+
+ { 14, May, 2013, RCR, "1d_tool.py", MINOR, TYPE_NEW_OPT,
+   "added options -show_argmin/max",
+   NULL
+ } ,
+
+ { 13, May, 2013, RCR, "@RenamePanga", MINOR, TYPE_BUG_FIX,
+   "added -column to count commands writing listfile",
+   "There is a 4096 byte limit in addto_args(), which could be made dynamic."
+ } ,
+
+ { 10, May, 2013, RCR, "afni-general", MINOR, TYPE_BUG_FIX,
+   "named glob functions as afni_*; R was using sys funcs, rather than local",
+   NULL
+ } ,
+
+ {  9, May, 2013, RCR, "afni_proc.py", MINOR, TYPE_NEW_OPT,
+   "added options -write_3dD_script and -write_3dD_prefix",
+   NULL
+ } ,
+
+ {  8, May, 2013, RCR, "1d_tool.py", MINOR, TYPE_NEW_OPT,
+   "added options -rank, -rank_style, -reverse_rank",
+   NULL
+ } ,
+
+ {  6, May, 2013, RCR, "afni_proc.py", MINOR, TYPE_ENHANCE,
+   "added -regress_anaticor example; opt implies -mask_segment_anat/_erode",
+   NULL
+ } ,
+
+ {  6, May, 2013, RCR, "3dinfo", MINOR, TYPE_NEW_OPT,
+   "added option -slice_timing",
+   NULL
+ } ,
+
+ {  6, May, 2013, RCR, "1d_tool.py", MICRO, TYPE_NEW_OPT,
+   "added option -transpose_write",
+   NULL
+ } ,
+
+ {  3, May, 2013, RCR, "afni_proc.py", MINOR, TYPE_NEW_OPT,
+   "added options -regress_anaticor and -mask_segment_erode",
+   "Use the -regress_anaticor option to regress the WMeLocal time series.\n"
+   "This is the ANATICOR method of HJ Jo."
+ } ,
+
+ {  1, May, 2013, RCR, "1d_tool.py", MICRO, TYPE_ENHANCE,
+   "added -help example for -show_trs_uncensored",
+   NULL
+ } ,
+
+ { 29, Apr, 2013, RCR, "gen_ss_review_scripts.py", MICRO, TYPE_ENHANCE,
+   "set AFNI_NO_OBLIQUE_WARNING in scripts",
+   NULL
+ } ,
+
+ { 26, Apr, 2013, RCR, "1d_tool.py", MINOR, TYPE_NEW_OPT,
+   "added -show_trs_censored/_uncensored (mostly for X-matrix datasets)",
+   NULL
+ } ,
+
+ { 24, Apr, 2013, RCR, "@move.to.series.dirs", MINOR, TYPE_NEW_PROG,
+   "partition a list of DICOM files by series number",
+   "Done for I Shapira."
+ } ,
+
+ { 24, Apr, 2013, RCR, "3dinfo", MINOR, TYPE_BUG_FIX,
+   "allow -space for nifti; actually exit if -view and result exists",
+   "Thanks to I Schwabacher for noting the problem and fix."
+ } ,
+
+ { 24, Apr, 2013, RCR, "@2dwarper.Allin", MINOR, TYPE_BUG_FIX,
+   "did not set 'ver' before goto START",
+   "Thanks to I Schwabacher for noting the problem and fix."
+ } ,
+
+ { 24, Apr, 2013, RCR, "1d_tool.py", MICRO, TYPE_NEW_OPT,
+   "added -censor_next_TR",
+   "Sticking with backward diff for deriv, as it makes sense for censoring."
+ } ,
+
+ { 23, Apr, 2013, RCR, "afni_proc.py", MINOR, TYPE_ENHANCE,
+   "added eroded ROIs for -regress_ROI: WMe, GMe, CSFe",
+   NULL
+ } ,
+
+ { 22, Apr, 2013, RCR, "auto_warp.py", MINOR, TYPE_GENERAL,
+   "modified afni_base.afni_name.new() with 2 cases of parse_pref=1",
+   "This is currently the only application of that parameter."
+ } ,
+
+ { 17, Apr, 2013, RCR, "3dAFNItoNIFTI", MINOR, TYPE_BUG_FIX,
+   "fixed old use of use of strcat() after strdup()",
+   "Thanks to B Benson and J Stoddard for noting the problem."
+ } ,
+
+ { 16, Apr, 2013, RCR, "3dmaskave", MINOR, TYPE_NEW_OPT,
+   "added -sumsq (sum squares) and -enorm (Euclidean norm) options",
+   NULL
+ } ,
+
+ { 16, Apr, 2013, RCR, "3dmaxima", MINOR, TYPE_BUG_FIX,
+   "modernize dataset coordinate reporting, using proper signs",
+   "Thanks to G Pagnoni for reporting the issue."
+ } ,
+
+ { 15, Apr, 2013, RCR, "afni_proc.py", MICRO, TYPE_ENHANCE,
+   "added RESTING STATE NOTE to help",
+   NULL
+ } ,
+
+ { 15, Apr, 2013, RCR, "3dSurf2Vol", MICRO, TYPE_BUG_FIX,
+   "fixed crash when a surface was not found (struct init)",
+   "Thanks to H Yang for noting the problem."
+ } ,
+
+ {  9, Apr, 2013, RCR, "afni_proc.py", MINOR, TYPE_BUG_FIX,
+   "fixed computed fitts for REML case (was from 3dDeconvolve)",
+   "Thanks to G Pagnoni for noting the problem."
+ } ,
+
+ {  5, Apr, 2013, RCR, "uber_subject.py", MINOR, TYPE_ENHANCE,
+   "added Help web link to class handouts",
+   NULL
+ } ,
+
+ {  5, Apr, 2013, RCR, "afni_proc.py", MINOR, TYPE_MODIFY,
+   "revert -save_orig_skullstrip to -save_skullstrip",
+   "This should have no effect on results, except for rename of anat_strip\n"
+   "to anat_ns.  It also gets around a temporary name change from AEA.py."
+ } ,
+
+ { 27, Mar, 2013, RCR, "1d_tool.py", MINOR, TYPE_NEW_OPT,
+   "added -show_group_labels, -label_prefix_keep/_drop",
+   "Option -label_prefix_drop can be used to remove bandpass regs for 3dRSFC."
+ } ,
+
+ {  8, Mar, 2013, RCR, "3dTcat", MINOR, TYPE_NEW_OPT,
+   "added -TR and -tpattern options",
+   NULL
+ } ,
+
+ {  7, Mar, 2013, RCR, "file_tool", MINOR, TYPE_ENHANCE,
+   "handle -prefix and -overwrite for -show_bad_backslash",
+   "The combination can be used to 'fix' bad files."
+ } ,
+
+ { 27, Feb, 2013, RCR, "python-general", MICRO, TYPE_NEW_OPT,
+   "added Ziad's apsearch global options: -all_opts, -h_find, -h_view",
+   NULL
+ } ,
+
+ { 21, Feb, 2013, RCR, "afni_proc.py", MICRO, TYPE_MODIFY,
+   "small help update to include tshift block in example 5c",
+   "Thanks to J Gonzalez bringing it up."
+ } ,
+
+ { 14, Feb, 2013, RCR, "afni_proc.py", MICRO, TYPE_BUG_FIX,
+   "handle surface data in -move_preproc_files",
+   "Thanks to P Molfese for reporting the error."
+ } ,
+
+ { 13, Feb, 2013, RCR, "uber_subject.py", MICRO, TYPE_ENHANCE,
+   "inform user of subj_dir when writing AP command",
+   NULL
+ } ,
+
+ { 13, Feb, 2013, RCR, "unix_tutorial", MAJOR, TYPE_NEW_PROG,
+   "added tutorial to CVS tree, with processed files under AFNI_data6",
+   NULL
+ } ,
+
+ { 12, Feb, 2013, RCR, "afni_util.py", MICRO, TYPE_BUG_FIX,
+   "updated duplicate dataset error message to match older code updates",
+   "Thanks to HJ Jo for reporting the error."
+ } ,
+
+ { 12, Feb, 2013, RCR, "@update.afni.binaries", MICRO, TYPE_BUG_FIX,
+   "if 'afni -ver' fails from libraries and $status not set, check $package",
+   NULL
+ } ,
+
+ { 11, Feb, 2013, RCR, "file_tool", MICRO, TYPE_ENHANCE,
+   "help updates",
+   NULL
+ } ,
+
+ {  5, Feb, 2013, RCR, "afni_proc.py", MICRO, TYPE_MODIFY,
+   "updates to the help introduction",
+   NULL
+ } ,
+
+ {  5, Feb, 2013, RCR, "python-general", MICRO, TYPE_BUG_FIX,
+   "fixed (unused) cols_by_label_list functions",
+   "Fix by I Schwabacher, who is actually using the function."
+ } ,
+
+ { 31, Jan, 2013, RCR, "uber_proc.py", MICRO, TYPE_BUG_FIX,
+   "fixed blist error that had not been converted to bdict",
+   "Thanks to Piero C. for reporting the error."
+ } ,
+
+ { 30, Jan, 2013, RCR, "python-general", MINOR, TYPE_ENHANCE,
+   "added less biased correlations and various gcor utility functions",
+   NULL
+ } ,
+
+ { 24, Jan, 2013, RCR, "Dimon", MINOR, TYPE_ENHANCE,
+   "be able to process a run of AFNI volumes (-file_type AFNI)",
+   "added for Der-Yow Chen and Cecil Yen"
+ } ,
+
+ { 24, Jan, 2013, RCR, "3dinfo", MICRO, TYPE_MODIFY,
+   "get -orient output via new THD_fill_orient_str_3",
+   NULL
+ } ,
+
+ { 22, Jan, 2013, RCR, "Dimon", MINOR, TYPE_NEW_OPT,
+   "added -file_type, in prep for reading AFNI/NIfTI images",
+   NULL
+ } ,
+
+ { 18, Jan, 2013, RCR, "@compute_gcor", MINOR, TYPE_NEW_PROG,
+   "compute GCOR = global correlation of a dataset",
+   NULL
+ } ,
+
+ { 18, Jan, 2013, RCR, "3dDeconvolve", MICRO, TYPE_BUG_FIX,
+   "when jobs=1, only warn for -virtvec if the option was used",
+   "The result was just a warning which did not affect processing.\n"
+   "Thanks to J Britton and E Ronkin for reporting the warning."
+ } ,
+
+ { 16, Jan, 2013, RCR, "1d_tool.py", MINOR, TYPE_NEW_OPT,
+   "added option -show_gcor (and _all and _doc)",
+   "compute GCOR (average correlation) on 1D files"
+ } ,
+
+ { 16, Jan, 2013, RCR, "realtime_receiver.py", MINOR, TYPE_NEW_OPT,
+   "added option -dc_params",
+   "To go with new scripts AFNI_data6/realtime.demos/demo.2.fback.*."
+ } ,
+
+ { 9, Jan, 2013, RCR, "afni_proc.py", MINOR, TYPE_NEW_OPT,
+   "added option -regress_compute_gcor",
+   "If errts and EPI mask exist, GCOR is computed by default."
+ } ,
+
+ { 7, Jan, 2013, RCR, "3dTstat", MINOR, TYPE_NEW_OPT,
+   "added option -l2norm, to compute L2 norm",
+   NULL
+ } ,
+
+ { 2, Jan, 2013, RCR, "3dCM", MICRO, TYPE_BUG_FIX,
+   "in THD_cmass(), if mask is NOT set, clear data value",
+   "Found with dglen.  This is an old bug, ick."
+ } ,
+
+ { 31, Dec, 2012, RCR, "afni-general", MICRO, TYPE_BUG_FIX,
+   "is_in_labels(): search for longest match",
+   "To fix failure in the case of both label and labelSUFFIX existing."
+ } ,
+
+ { 28, Dec, 2012, RCR, "suma-general", MICRO, TYPE_BUG_FIX,
+   "mri_polyfit() now takes exar paramter, pass NULL",
+   NULL
+ } ,
+
+ { 21, Dec, 2012, RCR, "@update.afni.binaries", MINOR, TYPE_BUG_FIX,
+   "change check for recur download by looking for known string in script",
+   "Thanks to S Lowell for reporting the error."
+ } ,
+
+ { 20, Dec, 2012, RCR, "uber_subject.py", MINOR, TYPE_BUG_FIX,
+   "remove -volreg_tlrc_warp in case of no tlrc block",
+   "Thanks to P Taylor for reporting the error."
+ } ,
+
+ { 19, Dec, 2012, RCR, "afni_restproc.py", MINOR, TYPE_GENERAL,
+   "Update from Rayus for handling .nii files.",
+   NULL
+ } ,
+
+ { 18, Dec, 2012, RCR, "afni-general", MINOR, TYPE_BUG_FIX,
+   "have THD_subbrick_minmax fall back to THD_slow_minmax_dset if no STAT",
+   "This is a fix for 3dSkullStrip on NIfTI dsets.\n"
+   "Thanks to kelvin for reporting the error."
+ } ,
+
+ { 5, Dec, 2012, RCR, "serial_helper", MICRO, TYPE_GENERAL,
+   "added useless string specifier in snprintf to block compier warnings",
+   "Requested by Y Halchenko."
+ } ,
+
+ { 29, Nov, 2012, RCR, "afni-general", MINOR, TYPE_MODIFY,
+   "add -f to 'tcsh -c' for getting output from commands",
+   "Thanks to P Molfese for the suggestion to avoid .cshrc text output."
+ } ,
+
+ { 26, Nov, 2012, RCR, "align_epi_anat.py", MINOR, TYPE_NEW_OPT,
+   "added -save_script option",
+   "added script history in afni_com class"
  } ,
 
  { 15, Nov, 2012, RCR, "3dTqual", MINOR, TYPE_NEW_OPT,
@@ -61,18 +490,18 @@ afni_history_struct rickr_history[] = {
 
  { 14, Nov, 2012, RCR, "make_random_timing.py", MINOR, TYPE_BUG_FIX,
    "fixed check for random space in -max_consec case",
-   "Thanks to Kristina for noting the problem."
+   "Thanks to Kristina for reporting the error."
  } ,
 
  { 13, Nov, 2012, RCR, "afni-general", MINOR, TYPE_BUG_FIX,
    "fixed fopen_maybe to check for .1D suffix on file streams",
    "Suffix might get added by EDIT_dset_items.\n"
-   "Thanks to I Schwabacher for noting the problem."
+   "Thanks to I Schwabacher for reporting the error."
  } ,
 
  { 23, OCT, 2012, RCR, "to3d", MINOR, TYPE_BUG_FIX,
    "forgot to leave show_size_n_offset set",
-   "Thanks to J Jarcho for noticing the to3d failure."
+   "Thanks to J Jarcho for reporting the to3d failure."
  } ,
 
  { 19, OCT, 2012, RCR, "file_tool", MINOR, TYPE_ENHANCE,
@@ -107,7 +536,7 @@ afni_history_struct rickr_history[] = {
 
  { 12, OCT, 2012, RCR, "afni_proc.py", MICRO, TYPE_ENHANCE,
    "included tshift block in example #9 - resting state analysis",
-   "Thanks to D Drake for reminding me."
+   "Thanks to D Drake for reminding me to add it."
  } ,
 
  { 12, OCT, 2012, RCR, "afni-general", MINOR, TYPE_ENHANCE,
@@ -164,7 +593,7 @@ afni_history_struct rickr_history[] = {
 
  { 25, SEP, 2012, RCR, "afni_proc.py", MINOR, TYPE_BUG_FIX,
    "use errts_REML to compute blur if 3dD_stop; apply compute_fitts if no reml",
-   "Thanks to P Molfese for noting the problem."
+   "Thanks to P Molfese for reporting the problem."
  } ,
 
  { 21, SEP, 2012, RCR, "3dNLfim", MICRO, TYPE_GENERAL,
@@ -296,12 +725,12 @@ afni_history_struct rickr_history[] = {
 
  { 31, JUL, 2012, RCR, "afni-general", MINOR, TYPE_ENHANCE,
    "speed up reading NIfTI files with long histories (THD_dblkatr_from_niml)",
-   "Thanks to J Gonzalez for noting the problem."
+   "Thanks to J Gonzalez for reporting the problem."
  } ,
 
  { 31, JUL, 2012, RCR, "3dresample", MINOR, TYPE_BUG_FIX,
    "update IJK_TO_DICOM and _REAL at end of resample library function",
-   "Thanks to I Schwabacher for noting the IJK_TO_DICOM discrepancy."
+   "Thanks to I Schwabacher for reporting the IJK_TO_DICOM discrepancy."
  } ,
 
  { 30, JUL, 2012, RCR, "afni_proc.py", MINOR, TYPE_ENHANCE,
@@ -321,7 +750,7 @@ afni_history_struct rickr_history[] = {
 
  { 26, JUL, 2012, RCR, "3dttest++", MINOR, TYPE_BUG_FIX,
    "K text columns (after label) would result in K lost float columns",
-   "Thanks to Phoebe of Harvard for noting the problem."
+   "Thanks to Phoebe of Harvard for reporting the problem."
  } ,
 
  { 26, JUL, 2012, RCR, "realtime_receiver.py", MINOR, TYPE_NEW_OPT,
@@ -388,7 +817,7 @@ afni_history_struct rickr_history[] = {
 
  { 28, JUN, 2012, RCR, "afni_proc.py", MICRO, TYPE_BUG_FIX,
    "fixed help error regarding IM",
-   "Thanks to I Blair for noting it."
+   "Thanks to I Blair for reporting it."
  } ,
 
  { 27, JUN, 2012, RCR, "3dTstat", MICRO, TYPE_NEW_OPT,
@@ -414,7 +843,7 @@ afni_history_struct rickr_history[] = {
  { 20, JUN, 2012, RCR, "plug_realtime", MICRO, TYPE_BUG_FIX,
    "comment out plot_ts_setthik() type calls for now",
    "When registering, finalize_dset() will result in white image window.\n"
-   "Thanks to V Roopchansingh for noting the problem."
+   "Thanks to V Roopchansingh for reporting the problem."
  } ,
 
  { 15, JUN, 2012, RCR, "GIFTI", MINOR, TYPE_MODIFY,
@@ -429,7 +858,7 @@ afni_history_struct rickr_history[] = {
 
  { 14, JUN, 2012, RCR, "gen_ss_review_scripts.py", MICRO, TYPE_BUG_FIX,
    "use afni -com instead of plugout_drive (for case of multiple users)",
-   "Thanks to V Razdan and N Adleman for noting the issue."
+   "Thanks to V Razdan and N Adleman for reporting the issue."
  } ,
 
  { 6, JUN, 2012, RCR, "afni_proc.py", MICRO, TYPE_BUG_FIX,
@@ -587,7 +1016,7 @@ afni_history_struct rickr_history[] = {
  { 12, APR, 2012, RCR, "afni_proc.py", MINOR, TYPE_BUG_FIX,
    "backport to python 2.2",
    "For files that should work on 2.2, avoid sum() and enumerate().\n"
-   "Thanks to L Broster for noting problems on python 2.2."
+   "Thanks to L Broster for reporting problems on python 2.2."
  } ,
 
  { 8, APR, 2012, RCR, "make_random_timing.py", MINOR, TYPE_ENHANCE,
@@ -653,7 +1082,7 @@ afni_history_struct rickr_history[] = {
 
  { 14, MAR, 2012, RCR, "afni_proc.py", MICRO, TYPE_BUG_FIX,
    "test for global timing before local, as it looks like bad local",
-   "Thanks to P Pallett for noting the problem."
+   "Thanks to P Pallett for reporting the problem."
  } ,
 
  { 13, MAR, 2012, RCR, "lib_qt_gui.py", MICRO, TYPE_MODIFY,
@@ -701,12 +1130,12 @@ afni_history_struct rickr_history[] = {
  {  5, MAR, 2012, RCR, "afni-general", MINOR, TYPE_BUG_FIX,
    "EDIT_empty: only propagate writable storage_modes",
    "Added is_writable_storage_mode and DSET_STORAGE_MODE.\n"
-   "Thanks to Eli for noting the problem."
+   "Thanks to Eli for reporting the problem."
  } ,
 
  {  2, MAR, 2012, RCR, "afni_proc.py", MINOR, TYPE_MODIFY,
    "fixed $runs in multi-run ricor",
-   "Thanks to I Mukai for noting the problem."
+   "Thanks to I Mukai for reporting the problem."
  } ,
 
  { 27, FEB, 2012, RCR, "@update.afni.binaries", MINOR, TYPE_ENHANCE,
@@ -717,7 +1146,7 @@ afni_history_struct rickr_history[] = {
 
  { 24, FEB, 2012, RCR, "1d_tool.py", MINOR, TYPE_MODIFY,
    "added -moderate_mask, fixed -extreme_mask help",
-   "Thanks to R Kuplicki for noting help inconsistency."
+   "Thanks to R Kuplicki for reporting the help inconsistency."
  } ,
 
  { 22, FEB, 2012, RCR, "afni-general", MINOR, TYPE_MODIFY,
@@ -1050,7 +1479,7 @@ afni_history_struct rickr_history[] = {
 
  {  6, OCT, 2011, RCR, "3dMean", MICRO, TYPE_BUG_FIX,
    "linux_xorg7_64 had optimizer error (and crashed), so altered loop method",
-   "Thanks to P Kim for noting the problem."
+   "Thanks to P Kim for reporting the problem."
  } ,
 
  {  5, OCT, 2011, RCR, "uber_subject.py", MICRO, TYPE_BUG_FIX,
@@ -1146,7 +1575,7 @@ afni_history_struct rickr_history[] = {
    "update volume delta to mean dz",
    "From text in DICOM files, initial dz values may not be sufficiently\n"
    "accurate, leaing to 'volume toasted' errors.\n"
-   "Thanks to B Benson for noting the problem."
+   "Thanks to B Benson for reporting the problem."
  } ,
 
  { 19, AUG, 2011, RCR, "3dDeconvolve", MINOR, TYPE_MODIFY,
@@ -1161,7 +1590,7 @@ afni_history_struct rickr_history[] = {
 
  { 15, AUG, 2011, RCR, "afni-general", MICRO, TYPE_BUG_FIX,
    "altered SUMA_ParseFname for parsing of relative pathnames",
-   "Thanks to Ryan of Princeton for noting the problem."
+   "Thanks to Ryan of Princeton for reporting the problem."
  } ,
 
  { 12, AUG, 2011, RCR, "gen_ss_review_scripts.py", MICRO, TYPE_MODIFY,
@@ -1184,7 +1613,7 @@ afni_history_struct rickr_history[] = {
    "The -save_skullstrip dataset might have an oblique transformation\n"
    "applied (which would throw off EPI if it is then sent to standard\n"
    "space).  Apply the new option to grab a simple skull-stripped anat.\n"
-   "Thanks to A Ellenstein for noting it and Z Saad for help understanding."
+   "Thanks to A Ellenstein for reporting it and Z Saad for help understanding."
  } ,
 
  {  2, AUG, 2011, RCR, "gen_ss_review_scripts.py", MICRO, TYPE_MODIFY,
@@ -1204,7 +1633,7 @@ afni_history_struct rickr_history[] = {
 
  { 29, JUL, 2011, RCR, "3dUniformize", MINOR, TYPE_BUG_FIX,
    "fixed checks against lower_limit in option processing (since -1 init)",
-   "Thanks to A Waite for noting the problem and cause in the code."
+   "Thanks to A Waite for reporting the problem and cause in the code."
  } ,
 
  { 29, JUL, 2011, RCR, "make_pq_script.py", MINOR, TYPE_MODIFY,
@@ -1244,7 +1673,7 @@ afni_history_struct rickr_history[] = {
 
  { 20, JUL, 2011, RCR, "afni_proc.py", MICRO, TYPE_BUG_FIX,
    "fixed aea.py -epi_base when: aea.py, -volreg_a2 last, variable run lens",
-   "thanks to S Brislin and S White for noting the problem"
+   "thanks to S Brislin and S White for reporting the problem"
  } ,
 
  { 20, JUL, 2011, RCR, "make_pq_script.py", MINOR, TYPE_NEW_PROG,

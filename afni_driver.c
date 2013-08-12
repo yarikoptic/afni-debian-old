@@ -526,6 +526,7 @@ void AFNI_set_fim_index( Three_D_View *im3d , int nfun )
        nfun != im3d->vinfo->fim_index       ){
      MCW_arrowval *aav = im3d->vwid->func->fim_buck_av ;
      AV_assign_ival( aav, nfun ) ;
+     IM3D_CLEAR_TMASK(im3d) ;
      AFNI_bucket_CB( aav, im3d ) ;
    }
 }
@@ -542,6 +543,7 @@ void AFNI_set_thr_index( Three_D_View *im3d , int nthr )
        nthr != im3d->vinfo->thr_index       ){
      MCW_arrowval *aav = im3d->vwid->func->thr_buck_av ;
      AV_assign_ival( aav, nthr ) ;
+     IM3D_CLEAR_TMASK(im3d) ;
      AFNI_bucket_CB( aav, im3d ) ;
    }
 }
@@ -563,6 +565,7 @@ static int AFNI_drive_set_subbricks( char *cmd )
    if( nanat >= 0 ) AFNI_set_anat_index( im3d , nanat ) ;
    if( nfun  >= 0 ) AFNI_set_fim_index ( im3d , nfun  ) ;
    if( nthr  >= 0 ) AFNI_set_thr_index ( im3d , nthr  ) ;
+   IM3D_CLEAR_TMASK(im3d) ;
    RETURN(0) ;
 }
 
@@ -583,7 +586,7 @@ ENTRY("AFNI_switch_anatomy") ;
 
    if( cmd == NULL ) RETURN(-1) ; /* No need to die if strlen(cmd) < 3!
                                      I get in trouble for short names and
-                                     I get in trouble for long names! 
+                                     I get in trouble for long names!
                                      Sheesh.    ZSS Dec 2011 */
 
    ic = AFNI_controller_code_to_index( cmd ) ;
@@ -601,9 +604,9 @@ ENTRY("AFNI_switch_anatomy") ;
 
    if( strlen(dname) == 0 ) RETURN(-1) ;
 
-   if( nuse > 0 &&
-       *(cmd+dadd+nuse)!= '\0' &&
-       *(cmd+dadd+nuse+1) != '\0')
+   if( nuse > 0                   &&
+       *(cmd+dadd+nuse)   != '\0' &&
+       *(cmd+dadd+nuse+1) != '\0'    )
       sscanf( cmd+dadd+nuse+1 , "%d" , &sb ) ;  /* 30 Nov 2005 */
                /* not checking for early string termination
                   before sscanf was causing corruption in some cases.
@@ -688,6 +691,7 @@ ENTRY("AFNI_switch_function") ;
 
    /* same callback as Switch Function */
 
+   IM3D_CLEAR_TMASK(im3d) ;
    AFNI_finalize_dataset_CB( im3d->vwid->view->choose_func_pb ,
                              (XtPointer)im3d ,  &cbs          ) ;
 
@@ -1164,7 +1168,7 @@ static int AFNI_drive_quit( char *cmd )
   fprintf(stderr,"\n******* AFNI is commanded to quit! ") ; fflush(stderr) ;
   for( ii=0 ; ii < 7 ; ii++ ){ RWC_sleep(123); fprintf(stderr,"*"); fflush(stderr); }
   fprintf(stderr,"\n\n") ;
-  AFexit(0) ;
+  AFexit(0) ; return 0 ;
 }
 
 /*===============================================================
@@ -1844,6 +1848,7 @@ ENTRY("AFNI_drive_set_threshold") ;
 
    sscanf(cpt,"%d",&dec) ;
 
+   IM3D_CLEAR_TMASK(im3d) ;
    if( dec >= 0 && dec <= THR_top_expon )
      AFNI_set_thresh_top( im3d , tval[dec] ) ;
 
@@ -1915,6 +1920,7 @@ ENTRY("AFNI_drive_set_threshnew") ;
      else if( newdec > THR_top_expon ) newdec = THR_top_expon ;
    }
 
+   IM3D_CLEAR_TMASK(im3d) ;
    if( newdec != olddec )
      AFNI_set_thresh_top( im3d , tval[newdec] ) ;
 
@@ -1958,6 +1964,7 @@ ENTRY("AFNI_drive_set_pbar_number") ;
    if( num > NPANE_MAX ) num = NPANE_MAX+1 ;
    AV_assign_ival( im3d->vwid->func->inten_av , num ) ;
 
+   IM3D_CLEAR_TMASK(im3d) ;
    HIDE_SCALE(im3d) ;
    if( num <= NPANE_MAX ){
      pbar->bigmode = 0 ;
@@ -2008,6 +2015,7 @@ ENTRY("AFNI_drive_set_pbar_sign") ;
      case '-': val = 0 ; break ;
    }
 
+   IM3D_CLEAR_TMASK(im3d) ;
    MCW_set_bbox( im3d->vwid->func->inten_bbox , val ) ;
 
    AFNI_inten_bbox_CB( im3d->vwid->func->inten_bbox->wbut[PBAR_MODEBUT] ,
@@ -2106,6 +2114,7 @@ ENTRY("AFNI_drive_set_pbar_all") ;
 
    /* now set pbar values (and other widgets) */
 
+   IM3D_CLEAR_TMASK(im3d) ;
    im3d->vinfo->use_posfunc = pbar->mode = pos ;
    MCW_set_bbox( im3d->vwid->func->inten_bbox , pos ) ;
    AV_assign_ival( im3d->vwid->func->inten_av , npan ) ;
@@ -2167,6 +2176,7 @@ ENTRY("AFNI_drive_pbar_rotate") ;
      case '-': nn = -1 ; break ;
    }
 
+   IM3D_CLEAR_TMASK(im3d) ;
    rotate_MCW_pbar( im3d->vwid->func->inten_pbar , nn ) ;
    RETURN(0) ;
 }
@@ -2342,6 +2352,7 @@ ENTRY("AFNI_set_func_resam") ;
      else                                              RETURN(-1);
    }
 
+   IM3D_CLEAR_TMASK(im3d) ;
    AV_assign_ival( im3d->vwid->dmode->func_resam_av , fr ) ;
    im3d->vinfo->func_resam_mode = fr ;
    if( im3d->b123_fim != NULL )
@@ -2816,6 +2827,7 @@ static int AFNI_drive_set_view( char *cmd )
    if( vv == im3d->vinfo->view_type ) return 0 ;  /* nothing to do */
    if( !XtIsSensitive(im3d->vwid->view->view_bbox->wbut[vv]) ) return -1 ;
 
+   IM3D_CLEAR_TMASK(im3d) ;
    MCW_set_bbox( im3d->vwid->view->view_bbox , 1 << vv ) ;
    AFNI_switchview_CB( NULL , (XtPointer)im3d , NULL ) ;
    return 0 ;
@@ -3022,6 +3034,7 @@ static int AFNI_drive_instacorr( char *cmd )
    if( strncasecmp(cmd+dadd,"SET",3) == 0 ){
      float x,y,z ; int good=0 ; char cj='N' ;
 
+     IM3D_CLEAR_TMASK(im3d) ;
      if( cmd[dadd+3] != '\0' ) good = sscanf(cmd+dadd+3,"%f %f %f %c",&x,&y,&z,&cj) ;
      if( good < 3 ){
         AFNI_icor_setref(im3d) ;  /* no x,y,z ==> use current xhair point */
@@ -3032,6 +3045,28 @@ static int AFNI_drive_instacorr( char *cmd )
           if( cj == 'J' || cj == 'Y' ) AFNI_jumpto_dicom( im3d , x,y,z ) ;
           AFNI_icor_setref_locked(im3d) ;
         }
+     }
+     return 0 ;
+
+   /** APSET (for 3dGroupInCorr) */
+
+   } else if( strncasecmp(cmd+dadd,"APSET",5) == 0 ){  /* Apr 2013 */
+     float x,y,z ; int good=0 ; char cj='N' ;
+
+     if( im3d->giset == NULL                ||
+        !im3d->giset->ready                 ||
+        !GICOR_apair_allow_bit(im3d->giset) ||
+         GICOR_apair_mirror_bit(im3d->giset)  ) return -1 ;  /* bad choice */
+
+     IM3D_CLEAR_TMASK(im3d) ;
+     if( cmd[dadd+5] != '\0' ) good = sscanf(cmd+dadd+5,"%f %f %f %c",&x,&y,&z,&cj) ;
+     if( good < 3 ){
+        AFNI_gicor_setapair_xyz(im3d,
+                                im3d->vinfo->xi, im3d->vinfo->yj, im3d->vinfo->zk) ;
+     } else {
+        AFNI_gicor_setapair_xyz(im3d,x,y,z) ; /* have x,y,z */
+        cj = toupper(cj) ;
+        if( cj == 'J' || cj == 'Y' ) AFNI_jumpto_dicom( im3d , x,y,z ) ;
      }
      return 0 ;
 
@@ -3099,6 +3134,20 @@ static int AFNI_drive_instacorr( char *cmd )
          ff = PLUTO_dset_finder(dpt) ; iset->dset = ff.dset ; mm++ ;
          if( iset->dset == NULL )
            ERROR_message("INSTACORR INIT: failed to find Dataset %s",dpt) ;
+
+       } else if( strcasecmp(cpt,"mask") == 0 ){        /* mask [07 Feb 2013] */
+         if( strcasecmp(dpt,"AUTO") == 0 || strcasecmp(dpt,"AUTOMASK") == 0 ){
+           iset->automask = 1 ; iset->mset = NULL ; mm++ ;
+         } else if( strcasecmp(dpt,"NULL") == 0 || strcasecmp(dpt,"NONE") == 0 ){
+           iset->automask = 0 ; iset->mset = NULL ; mm++ ;
+         } else {
+           THD_slist_find ff ; char *ppt ;
+           iset->automask = 0 ;
+           ppt = strchr(dpt,'+') ; if( ppt != NULL ) *ppt = '\0' ;
+           ff = PLUTO_dset_finder(dpt) ; iset->mset = ff.dset ; mm++ ;
+           if( iset->mset == NULL )
+             ERROR_message("INSTACORR INIT: failed to find Mask %s",dpt) ;
+         }
 
        } else if( strcasecmp(cpt,"eset")     == 0 ||
                   strcasecmp(cpt,"extraset") == 0   ){
@@ -3187,7 +3236,7 @@ static int AFNI_drive_instacorr( char *cmd )
        return 0 ;
      }
 
-	  /* major changes made ==> re-do complete initialization */
+     /* major changes made ==> re-do complete initialization */
 
      SHOW_AFNI_PAUSE ;
      ii = THD_instacorr_prepare( iset ) ;      /* all the real work is herein */

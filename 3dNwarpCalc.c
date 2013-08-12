@@ -3,10 +3,11 @@
 
 #ifdef USE_OMP
 #include <omp.h>
+#endif
+
 #include "mri_genalign.c"
 #include "mri_genalign_util.c"
 #include "mri_nwarp.c"
-#endif
 
 /*----------------------------------------------------------------------------*/
 
@@ -164,6 +165,10 @@ void NWC_help(void)
     "\n"
     "&swap          == Interchange the top two elements of the stack:\n"
     "                   [ A B C ... ] goes to [ B A C ... ]    after &swap\n"
+    "                  ++ You can swap other elements of the stack by using\n"
+    "                     indexes in the form '&swap(p,q)' where 'p' and 'q'\n"
+    "                     are distinct non-negative integers indicating depth\n"
+    "                     into the stack; '&swap' is equivalent to '&swap(0,1)'.\n"
     "\n"
     "&pop           == Remove (and delete) the top element from the stack:\n"
     "                   [ A B C ... ] goes to [ B C ... ]      after &pop\n"
@@ -198,19 +203,38 @@ void NWC_help(void)
     "                   the warp Q(x) such that Q(Q(x)) = A(x).\n"
     "                  ++ NOTE: not all warps have square roots, so this operation\n"
     "                     is not guaranteed to work.  Be careful out there.\n"
+    "                  ++ Nor is the square root of a nonlinear operator guaranteed\n"
+    "                     to be unique!\n"
+#ifndef USE_SQRTPAIR
     "                  ++ The basic algorithm used computes the inverse of Q(x),\n"
     "                     as in &invsqrt, so an extra warp inversion is required\n"
     "                     at the end here, so this operation is slower than &invsqrt.\n"
+#endif
     "\n"
     "&invsqrt       == Replace the top element of the stack with the inverse of\n"
     "                   its square root: the warp R(x) such that A(R(R(x)) = x.\n"
     "                  ++ '&sqrtinv' is a synonym for this operation, since I always\n"
     "                     have trouble remembering which one is correct-imundo-ific.\n"
+#ifndef USE_SQRTPAIR
     "                  ++ This operation is based on the functional iteration\n"
     "                       Rnew(x) = Rold( 1.5*x - 0.5*A(Rold(Rold(x))) )\n"
     "                     which is adapted from the Schulz iteration for matrix\n"
     "                     square roots, and requires 2 warp compositions and 1 warp\n"
     "                     interpolation for each step.\n"
+#else
+    "                  ++ This operation is based on a functional iteration\n"
+    "                     adapted from the Denman-Beavers method for computing\n"
+    "                     the square root of a matrix:\n"
+    "                       initialize Y(x) = A(x) and Z(x) = x; then iterate\n"
+    "                         Ynew(x) = 0.5*(Yold(x)+inv(Zold(x)))\n"
+    "                         Znew(x) = 0.5*(Zold(x)+inv(Yold(x)))\n"
+    "                       which converges to Y=sqrt(A) and Z=invsqrt(A).\n"
+    "                  ++ For speed, these square root iterations are always done\n"
+    "                     with linear interpolation, no matter what '-interp' is.\n"
+#endif
+    "\n"
+    "&sqrtpair      == Compute both &sqrtinv and &sqrt, and leave both of them\n"
+    "                  on the stack -- &sqrt on top, &sqrtinv 'below' it.\n"
     "\n"
     "&sqr           == Replace the top element of the stack with its 'square':\n"
     "                   the warp S(x) = A(A(x)).  Equivalent to '&dup &compose'.\n"
@@ -230,7 +254,7 @@ void NWC_help(void)
     "&sum           == Add the displacements of the two warps on the stack,\n"
     "                   then replace BOTH of them with the result.\n"
     "                  ++ You can do something like '&sum(0.5,0.5)' to average\n"
-    "                     the displacements, of '&sum(1,-1)' to difference them.\n"
+    "                     the displacements, or '&sum(1,-1)' to difference them.\n"
     "                     In this case, the first value scales the displacements\n"
     "                     of the stack's top warp, and the second value scales the\n"
     "                     displacements of the stack's second warp.\n"
@@ -287,6 +311,8 @@ int main( int argc , char *argv[] )
    int iarg=1 , verb=0 , interp_code=MRI_QUINTIC , ainterp_code=-666 ;
    char *expr ; int nexpr , narg ;
    THD_3dim_dataset *oset ;
+
+   AFNI_SETUP_OMP(0) ;  /* 24 Jun 2013 */
 
    if( argc < 2 || strcasecmp(argv[1],"-help") == 0 ) NWC_help() ;
 

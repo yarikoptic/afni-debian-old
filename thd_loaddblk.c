@@ -17,7 +17,10 @@ static int floatscan    = -1 ;  /* 30 Jul 1999 */
 static int verbose = 0 ;
 
 void THD_load_datablock_verbose( int v ){ verbose = v; }
-int THD_alloc_datablock( THD_datablock *blk ) ;
+
+void THD_load_no_mmap(void){ no_mmap = 2 ; }
+
+int THD_alloc_datablock( THD_datablock *blk ) ;       /* prototype */
 
 /*-----------------------------------------------------------------*/
 /*! Check if all sub-bricks have the same datum type. [14 Mar 2002]
@@ -122,11 +125,10 @@ void THD_set_freeup( generic_func *ff ){ freeup = ff; }
 Boolean THD_load_datablock( THD_datablock *blk )
 {
    THD_diskptr *dkptr ;
-   int id , offset ;
    int nx,ny,nz , nxy,nxyz , nv , ii , ibr ;
    char *ptr ;
    int verb=verbose ;
-   int64_t idone , print_size=PRINT_SIZE ;
+   int64_t idone , print_size=PRINT_SIZE , id ;
 
 ENTRY("THD_load_datablock") ; /* 29 Aug 2001 */
 
@@ -134,8 +136,10 @@ ENTRY("THD_load_datablock") ; /* 29 Aug 2001 */
 
    floatscan = AFNI_yesenv("AFNI_FLOATSCAN") ;  /* check float bricks? */
 
-   if( floatscan ) no_mmap = 1 ;                          /* perhaps disable */
-   else            no_mmap = AFNI_yesenv("AFNI_NOMMAP") ; /* use of mmap()  */
+   if( no_mmap < 2 ){
+     if( floatscan ) no_mmap = 1 ;                          /* perhaps disable */
+     else            no_mmap = AFNI_yesenv("AFNI_NOMMAP") ; /* use of mmap()  */
+   }
 
    /*-- sanity checks --*/
 
@@ -169,7 +173,7 @@ ENTRY("THD_load_datablock") ; /* 29 Aug 2001 */
      fprintf(stderr,"\n*** Cannot read non 3D datablocks ***\n"); RETURN(False);
    }
 
-   if( dkptr->storage_mode == STORAGE_BY_VOLUMES ) no_mmap = 1 ;  /* 20 Jun 2002 */
+   if( !no_mmap && dkptr->storage_mode == STORAGE_BY_VOLUMES ) no_mmap = 1 ;  /* 20 Jun 2002 */
 
    /*-- 29 Oct 2001: MINC input (etc.) --*/
 
@@ -445,7 +449,6 @@ ENTRY("THD_load_datablock") ; /* 29 Aug 2001 */
 
       /* (re)create pointers to all sub-bricks */
 
-      offset = 0 ;
       for( ibr=0 ; ibr < nv ; ibr++ ){
          mri_fix_data_pointer( ptr , DBLK_BRICK(blk,ibr) ) ;
          ptr += DBLK_BRICK_BYTES(blk,ibr) ;
@@ -523,7 +526,7 @@ ENTRY("THD_load_datablock") ; /* 29 Aug 2001 */
 
          } else {  /* 11 Jan 1999: read brick from master, put into place(s) */
 
-            int nfilled = 0 , nbuf=0 , jbr, nbr ;
+            int nfilled = 0 , jbr ; int64_t nbuf=0 , nbr ;
             char *buf=NULL ;  /* temp buffer for master sub-brick */
 
             /* loop over master sub-bricks until dataset is filled */
@@ -941,8 +944,7 @@ ENTRY("THD_alloc_datablock") ;
 
      case DATABLOCK_MEM_SHARED:
 #if !defined(DONT_USE_SHM) && !defined(CYGWIN)
-     { unsigned int offset ;
-       if( blk->shm_idcode[0] == '\0' ){   /* new segment */
+     { if( blk->shm_idcode[0] == '\0' ){   /* new segment */
          UNIQ_idcode_fill( blk->shm_idcode ) ;
          blk->shm_idint = shm_create( blk->shm_idcode , (int)blk->total_bytes ) ;
          if( blk->shm_idint < 0 ){ blk->shm_idcode[0] = '\0'; RETURN(0); }
@@ -951,7 +953,6 @@ ENTRY("THD_alloc_datablock") ;
            shmctl( blk->shm_idint , IPC_RMID , NULL ) ;
            blk->shm_idint = -1; blk->shm_idcode[0] = '\0'; RETURN(0);
          }
-         offset = 0 ;
          for( ibr=0 ; ibr < nv ; ibr++ ){
            mri_fix_data_pointer( ptr , DBLK_BRICK(blk,ibr) ) ;
            ptr += DBLK_BRICK_BYTES(blk,ibr) ;

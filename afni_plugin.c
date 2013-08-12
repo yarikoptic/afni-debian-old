@@ -3856,6 +3856,7 @@ ENTRY("PLUTO_dset_redisplay_mode") ;
    for( ii=0 ; ii < MAX_CONTROLLERS ; ii++ ){
       im3d = GLOBAL_library.controllers[ii] ;
       if( ! IM3D_OPEN(im3d) ) continue ;
+      IM3D_CLEAR_TMASK(im3d) ;
 
       if( ! ISVALID_DSET(dset) ){
          im3d->anat_voxwarp->type = ILLEGAL_TYPE ;
@@ -4967,8 +4968,10 @@ void PLUTO_histoplot_f( int nbin, float bot, float top, float *hist ,
    int ii , nx , ny,jj ;
    float *xar , *yar , *zar=NULL , **yzar ;
    float dx ;
+   int cumu = AFNI_yesenv("AFNI_HISTOG_CUMULATIVE")   ||
+              AFNI_yesenv("AFNI_HISTOPLOT_CUMULATIVE")  ;
 
-ENTRY("PLUTO_histoplot") ;
+ENTRY("PLUTO_histoplot_f") ;
 
    if( nbin < 2 || hist == NULL ) EXRETURN ;
    if( bot >= top ){ bot = 0.0f ; top = nbin ; }
@@ -4981,10 +4984,10 @@ ENTRY("PLUTO_histoplot") ;
    if( jist == NULL || njist < 0 ) njist = 0 ;
    ny = njist + 1 ;
 
-   yzar = (float **) malloc(sizeof(float *)*ny) ;
+   yzar = (float **) calloc(sizeof(float *),ny) ;
    yzar[0] = yar ;
    for( jj=0 ; jj < njist ; jj++ )
-     yzar[jj+1] = (float *) malloc(sizeof(float)*nx) ;
+     yzar[jj+1] = (float *) calloc(sizeof(float),nx) ;
 
    xar[0] = bot ; yar[0] = 0.0f ;
    for( ii=0 ; ii < nbin ; ii++ ){
@@ -4998,13 +5001,35 @@ ENTRY("PLUTO_histoplot") ;
    for( jj=0 ; jj < njist ; jj++ )
      yzar[jj+1][0] = yzar[jj+1][2*nbin+1] = 0.0f ;
 
+   if( cumu ){
+     int nyy=2*ny ; float sum , ytop=0.0f , yfac ;
+     for( jj=0 ; jj < ny ; jj++ ){
+       for( ii=0 ; ii < nx ; ii++ ) if( yzar[jj][ii] > ytop ) ytop = yzar[jj][ii] ;
+     }
+     yzar = (float **)realloc(yzar,sizeof(float *)*nyy) ;
+     for( jj=0 ; jj < ny ; jj++ ){
+       yzar[ny+jj] = (float *)calloc(sizeof(float),nx) ;
+       yzar[ny+jj][0] = sum = 0.0f ;
+       for( ii=0 ; ii < nbin ;  ii++ ){
+         sum += yzar[jj][2*ii+1] ;
+         yzar[ny+jj][2*ii+1] = yzar[ny+jj][2*ii+2] = sum ;
+       }
+       yzar[ny+jj][2*nbin+1] = sum ;
+       yfac = ytop / sum ;
+       for( ii=0 ; ii < nx ; ii++ ) yzar[ny+jj][ii] *= yfac ;
+     }
+     plot_ts_setthik_12( ny , nyy , 0.002f ) ;
+     ny = nyy ;
+   }
+
    X11_SET_NEW_PLOT ;
    plot_ts_lab( GLOBAL_library.dc->display ,
                 nx , xar , ny , yzar ,
                 xlab,ylab,tlab , NULL , NULL ) ;
 
-   for( jj=0 ; jj < njist ; jj++ ) free(yzar[jj+1]) ;
-   free(yzar) ; free(xar) ; free(yar) ;
+   for( jj=0 ; jj < ny ; jj++ ) free(yzar[jj]) ;
+   free(yzar) ; free(xar) ;
+   plot_ts_setthik_12( -555,-666,0.0f ) ;
    EXRETURN ;
 }
 
@@ -5265,6 +5290,7 @@ ENTRY("PLUTO_force_redisplay") ;
       if( IM3D_OPEN(im3d) ){
          im3d->anat_voxwarp->type =                       /* 11 Jul 1997 */
             im3d->fim_voxwarp->type = ILLEGAL_TYPE ;
+         IM3D_CLEAR_TMASK(im3d) ;
          AFNI_set_viewpoint( im3d , -1,-1,-1 , REDISPLAY_ALL ) ;
       }
    }

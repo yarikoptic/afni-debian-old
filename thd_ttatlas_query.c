@@ -2748,6 +2748,48 @@ int *z_idqsort (int *x , int nx )
 
 }/*z_idqsort*/
 
+/* sort ints */
+int *z_dqsort (int *x , int nx )
+{/*z_dqsort*/
+   int *I, k;
+   Z_QSORT_INT *Z_Q_fStrct;
+
+   ENTRY("z_idqsort");
+
+   /* allocate for the structure */
+   Z_Q_fStrct = (Z_QSORT_INT *) calloc(nx, sizeof (Z_QSORT_INT));
+   I = (int *) calloc (nx, sizeof(int));
+
+   if (!Z_Q_fStrct || !I)
+      {
+         ERROR_message("Allocation problem");
+         RETURN (NULL);
+      }
+
+   for (k=0; k < nx; ++k) /* copy the data into a structure */
+      {
+         Z_Q_fStrct[k].x = x[k];
+         Z_Q_fStrct[k].Index = k;
+      }
+
+   /* sort the structure by it's field value */
+   qsort(Z_Q_fStrct, nx, sizeof(Z_QSORT_INT), 
+         (int(*) (const void *, const void *)) compare_Z_QSORT_INT);
+
+   /* recover the index table */
+   for (k=0; k < nx; ++k) /* copy the data into a structure */
+      {
+         x[k] = Z_Q_fStrct[k].x;
+         I[k] = Z_Q_fStrct[k].Index;
+      }
+
+   /* free the structure */
+   free(Z_Q_fStrct);
+
+   /* return */
+   RETURN (I);
+}/*z_dqsort*/
+
 /*
   give a shuffled series between bot and top inclusive
 
@@ -4131,13 +4173,15 @@ AFNI_TEXT_SORT *free_text_sort(AFNI_TEXT_SORT *ats)
    return(NULL);
 }
 
+
 char **approx_str_sort_text(char *text, int *N_ws, char *str, 
                             byte ci, float **sorted_score,
                             APPROX_STR_DIFF_WEIGHTS *Dwi,
-                            APPROX_STR_DIFF **Dout)
+                            APPROX_STR_DIFF **Dout, 
+                            char join_breaks)
 {
    char **ws=NULL;
-   int N_lines=0, N_alloc=0; 
+   int N_lines=0, N_alloc=0, line_continue=0; 
    char *brk=NULL, lsep[] = "\n\r", *line=NULL;
    APPROX_STR_DIFF_WEIGHTS *Dw = Dwi;
    
@@ -4155,18 +4199,33 @@ char **approx_str_sort_text(char *text, int *N_ws, char *str,
       RETURN(ws);
    }
    if (!Dw) Dw = init_str_diff_weights(Dw);
-   /* turn text into multi lines */
+   /* turn text into multi lines. Combine at '\' ? */
    N_lines = 0;
+   line_continue=0;
    for (line=strtok_r(text,lsep, &brk); line; line = strtok_r(NULL, lsep, &brk))
    {
-      ++N_lines;
-      if (N_lines > N_alloc) {
-         N_alloc += 50;
-         ws = (char **)realloc(ws, N_alloc*sizeof(char *));
+      if (!line_continue || !N_lines) {
+         ++N_lines;
+         if (N_lines > N_alloc) {
+            N_alloc += 50;
+            ws = (char **)realloc(ws, N_alloc*sizeof(char *));
+         }
+         ws[N_lines-1] = strdup(line);
+      } else {
+         /* fprintf(stderr,"ZSS:       Appending -->%s<-->%s<--\n"
+                        , ws[N_lines-1], line); */
+         ws[N_lines-1] = (char *)realloc(ws[N_lines-1], 
+                            sizeof(char)*(strlen(ws[N_lines-1])+strlen(line)+1));
+         strcat(ws[N_lines-1], line);
       }
-      ws[N_lines-1] = strdup(line);
       deblank_name(ws[N_lines-1]);
-      /* fprintf(stderr,"ZSS: %d -->%s<--\n", N_lines, ws[N_lines-1]); */
+      if (*(ws[N_lines-1]+strlen(ws[N_lines-1])-1) == join_breaks) {
+         line_continue = 1;
+      } else {
+         line_continue = 0;
+      }
+      /* fprintf(stderr,"ZSS: %d -->%s<-- (join_breaks=%c, continue=%d)\n", 
+                     N_lines, ws[N_lines-1], join_breaks, line_continue); */
    }
       
    *N_ws=N_lines;
@@ -4188,7 +4247,7 @@ THD_string_array *approx_str_sort_Ntfile(
                   char **fnames, int N_names, char *str, 
                             byte ci, float **sorted_score,
                             APPROX_STR_DIFF_WEIGHTS *Dwi,
-                            APPROX_STR_DIFF **Doutp, int verb)
+                            APPROX_STR_DIFF **Doutp, int verb, char join_breaks)
 {
    char **ws=NULL, *text=NULL, *fname=NULL;
    APPROX_STR_DIFF_WEIGHTS *Dw = Dwi;
@@ -4214,7 +4273,7 @@ THD_string_array *approx_str_sort_Ntfile(
    for (inm=0; inm < N_names; ++inm) {
       fname = fnames[inm];
       if (!(ws = approx_str_sort_tfile(fname, &N_ws, str, ci, 
-                                NULL, Dw, &Dout, verb))) {
+                                NULL, Dw, &Dout, verb, join_breaks))) {
          if (verb) WARNING_message("Failed to process %s\n", fname);
          continue;
       }
@@ -4254,7 +4313,7 @@ THD_string_array *approx_str_sort_Ntfile(
 char **approx_str_sort_tfile(char *fname, int *N_ws, char *str, 
                             byte ci, float **sorted_score,
                             APPROX_STR_DIFF_WEIGHTS *Dwi,
-                            APPROX_STR_DIFF **Dout, int verb)
+                            APPROX_STR_DIFF **Dout, int verb, char join_breaks)
 {
    char **ws=NULL, *text=NULL;
    APPROX_STR_DIFF_WEIGHTS *Dw = Dwi;
@@ -4279,7 +4338,8 @@ char **approx_str_sort_tfile(char *fname, int *N_ws, char *str,
    }
    
    if (!Dw) Dw = init_str_diff_weights(Dw);
-   ws = approx_str_sort_text(text, N_ws, str, ci, sorted_score, Dw, Dout);
+   ws = approx_str_sort_text(text, N_ws, str, ci, 
+                             sorted_score, Dw, Dout, join_breaks);
    if (Dout && *Dout) {   
       ddout = *Dout;
       for (ii=0; ii<*N_ws; ++ii) {
@@ -4297,7 +4357,7 @@ char **approx_str_sort_all_popts(char *prog, int *N_ws,
                             byte ci, float **sorted_score,
                             APPROX_STR_DIFF_WEIGHTS *Dwi,
                             APPROX_STR_DIFF **Dout,
-                            int uopts, int verb)
+                            int uopts, int verb, char join_breaks)
 {
    int i, inn, c, *isrt=NULL;
    char **ws=NULL, *dpun=NULL, *blnk, *wild;
@@ -4311,7 +4371,7 @@ char **approx_str_sort_all_popts(char *prog, int *N_ws,
    Dwi->w[MWI]=1000; /* give a lot of weight to the order in the sentence */
    if (!(ws = approx_str_sort_phelp(prog, N_ws, str, 
                       ci, sorted_score,
-                      Dwi, Dout, verb))) {
+                      Dwi, Dout, verb, join_breaks))) {
       if (verb) {
          if (THD_filesize(prog)) {
             ERROR_message("Failed to get phelp for '%s', word '%s'", prog,str);
@@ -4410,7 +4470,7 @@ char **approx_str_sort_all_popts(char *prog, int *N_ws,
 char **approx_str_sort_phelp(char *prog, int *N_ws, char *str, 
                             byte ci, float **sorted_score,
                             APPROX_STR_DIFF_WEIGHTS *Dwi,
-                            APPROX_STR_DIFF **Dout, int verb)
+                            APPROX_STR_DIFF **Dout, int verb, char join_breaks)
 {
    char **ws=NULL;
    APPROX_STR_DIFF_WEIGHTS *Dw = Dwi;
@@ -4434,7 +4494,8 @@ char **approx_str_sort_phelp(char *prog, int *N_ws, char *str,
          return 0;
       }
    }
-   ws = approx_str_sort_tfile(tout, N_ws, str, ci, sorted_score, Dw, Dout, verb);
+   ws = approx_str_sort_tfile(tout, N_ws, str, ci, 
+                              sorted_score, Dw, Dout, verb,  join_breaks);
                                  
    snprintf(cmd,500*sizeof(char),"\\rm -f %s", tout);
    system(cmd);
@@ -4508,7 +4569,7 @@ void suggest_best_prog_option(char *prog, char *str)
    }
    ws = approx_str_sort_phelp(prog, &N_ws, str, 
                    1, &ws_score,
-                   NULL, &D, 0);
+                   NULL, &D, 0, '\\');
    isug = 0; isuglog = 6;
    for (i=0; i<N_ws && (isug < 3 || isuglog < 6); ++i) {
       skip=0;
@@ -4569,53 +4630,146 @@ void suggest_best_prog_option(char *prog, char *str)
    }
    
    if (logfout) fclose(logfout);
+   if (ws_score) free(ws_score); ws_score=NULL;
    return;
 }
 
-int prog_complete_command (char *prog, char *ofile) {
-   char **ws=NULL, *pvar=NULL;
-   int N_ws=0, i;
+char *form_complete_command_string(char *prog, char **ws, int N_ws, int shtp) {
+   char *sout=NULL, sbuf[128];
+   int maxch=0, i, jj;
+   NI_str_array *nisa=NULL;
+   
+   if (!prog || !ws || shtp < 0) {
+      return(NULL);
+   }
+   
+   maxch = 256;
+   for (i=0; i<N_ws; ++i) {
+      if (ws[i]) {
+         maxch+=strlen(ws[i])+10;
+         if (strlen(ws[i]) > 127) {
+            WARNING_message("Truncating atrocious option %s\n", ws[i]);
+            ws[127] = '\0';
+         }
+      }
+   }
+   if (!(sout = (char *)calloc((maxch+1), sizeof(char)))) {
+      ERROR_message("Failed to allocate for %d chars!", maxch+1);
+      return(NULL);
+   }
+   sout[0]='\0';
+   switch (shtp) {
+      default:
+      case 0: /* csh/tcsh */
+         strncat(sout,"set ARGS=(",maxch-1);
+         break;
+      case 1: /* bash */
+         strncat(sout,"ARGS=(",maxch-1);
+         break;
+   }
+   
+   for (i=0; i<N_ws; ++i) {
+      if (ws[i] && (nisa = NI_strict_decode_string_list(ws[i] ,"/"))) {
+         for (jj=0; jj<nisa->num; ++jj) {
+            if (ws[i][0]=='-' && nisa->str[jj][0] != '-') {
+               snprintf(sbuf,127,"'-%s' ", nisa->str[jj]);
+            } else { 
+               snprintf(sbuf,127,"'%s' ", nisa->str[jj]);
+            }
+            strncat(sout,sbuf, maxch-1);
+            NI_free(nisa->str[jj]);
+         }
+         if (nisa->str) NI_free(nisa->str); 
+         NI_free(nisa); nisa=NULL;
+      }
+   }
+   
+   switch (shtp) {
+      default:
+      case 0: /* csh/tcsh */
+         snprintf(sbuf,127,") ; "
+               "complete %s \"C/-/($ARGS)/\" \"p/*/f:/\" ; ##%s##\n",prog, prog);
+         break;
+      case 1: /* bash */
+         snprintf(sbuf,127,") ; "
+               "complete -W \"${ARGS[*]}\" -o bashdefault -o default %s ; "
+               "##%s##\n",prog, prog);
+         break;
+   }
+   if (strlen(sbuf) >= 127) {
+      ERROR_message("Too short a buffer for complete command %s\n");
+      free(sout); sout=NULL;
+      return(sout);
+   }
+   strncat(sout,sbuf, maxch-1);
+   if (strlen(sout)>=maxch) {
+      ERROR_message("Truncated complete string possible");
+      free(sout); sout=NULL;
+      return(sout);
+   }
+
+   return(sout);
+}
+
+int prog_complete_command (char *prog, char *ofileu, int shtp) {
+   char **ws=NULL, *sout=NULL, *ofile=NULL;
    float *ws_score=NULL;
+   int N_ws=0, ishtp=0, shtpmax = 0, i;
    FILE *fout=NULL;
    
    if (!prog || !(ws = approx_str_sort_all_popts(prog, &N_ws,  
                    1, &ws_score,
-                   NULL, NULL, 1, 0))) {
+                   NULL, NULL, 1, 0, '\\'))) {
       return 0;
    }
 
-   if (ofile) {
-       if (!(fout = fopen(ofile,"w"))) {
-         ERROR_message("Failed to open %s for writing\n", ofile);
-         return(0);
-       }
+   if (shtp < 0) { shtp=0; shtpmax = 2;}
+   else { shtpmax = shtp+1; }
    
-   } else {
-      fout = stdout;
-   }
-   
-   pvar = strdup(prog);
-   for (i=0; i<strlen(pvar); ++i) {
-      if (pvar[i] == '.' || pvar[i] == '@' || 
-          pvar[i] == '-' || pvar[i] == '+' ||
-          IS_PUNCT(pvar[i])) pvar[i]='_';
-   }
-   fprintf(fout,"set ARGS=(");
-   for (i=0; i<N_ws; ++i) {
-      if (ws[i]) {
-         fprintf(fout,"'%s' ", ws[i]);
-         free(ws[i]); ws[i]=NULL;
-      }
-   }
-   fprintf(fout,") ; "
-         "complete %s \"C/-/($ARGS)/\" \"p/*/f:/\" ; ##%s##\n",prog, prog);
+   for (ishtp=shtp; ishtp<shtpmax; ++ishtp) {
+      if (ofileu) {
+          if (shtpmax != shtp+1) { /* autoname */
+            switch (ishtp) {
+               default:
+               case 0:
+                  ofile = strdup(ofileu);
+                  break;
+               case 1:
+                  ofile = (char*)calloc((strlen(ofileu)+20), sizeof(char));
+                  strcat(ofile, ofileu);
+                  strcat(ofile, ".bash");
+                  break;
+            }
+          } else {
+            ofile = strdup(ofileu);
+          }
+            
+          if (!(fout = fopen(ofile,"w"))) {
+            ERROR_message("Failed to open %s for writing\n", ofile);
+            return(0);
+          }
 
-   if (ofile) fclose(fout); fout=NULL;
-   free(ws); ws = NULL; free(pvar); return 0;
+      } else {
+         fout = stdout;
+      }
+
+      if ((sout = form_complete_command_string(prog, ws, N_ws, ishtp))){
+         fprintf(fout, "%s", sout);
+         free(sout); sout = NULL;
+      }
+      if (ofileu) fclose(fout); fout=NULL;
+      if (ofile) free(ofile); ofile=NULL;
+   }
+   
+   for (i=0; i<N_ws; ++i) if (ws[i]) free(ws[i]);
+   free(ws); ws = NULL;
+   if (ws_score) free(ws_score); ws_score=NULL;
+   return 0;
 }
 
 
-char *get_updated_help_file(int force_recreate, byte verb, char *progname) 
+char *get_updated_help_file(int force_recreate, byte verb, char *progname, 
+                            int shtp) 
 {
       static char hout[512]={""};
       char scomm[1024], *etr=NULL, *hdir=NULL, *etm=NULL, houtc[128];
@@ -4643,8 +4797,9 @@ char *get_updated_help_file(int force_recreate, byte verb, char *progname)
                "%s/%s.complete", hdir, etr);
       if (!force_recreate && THD_is_file(hout)) {
          if (verb) fprintf(stderr,"Reusing %s \n", hout); 
-         if (!THD_is_file(houtc)) {
-            prog_complete_command(etr, houtc);
+         if (!THD_is_file(houtc)) { /* this check will fail for bash completion,
+                                       but that's not important */
+            prog_complete_command(etr, houtc, shtp);
          }      
       } else {
          if (verb) fprintf(stderr,"Creating %s \n", hout); 
@@ -4674,7 +4829,7 @@ char *get_updated_help_file(int force_recreate, byte verb, char *progname)
          snprintf(scomm, 1000*sizeof(char),
                "chmod a-w %s > /dev/null 2>&1", hout);
          system(scomm); 
-         prog_complete_command(etr, houtc);
+         prog_complete_command(etr, houtc, shtp);
       }
       return(hout);
 }
@@ -4697,7 +4852,7 @@ void view_prog_help(char *prog)
       return;
    }
    
-   hname = get_updated_help_file(0, 0, progname);
+   hname = get_updated_help_file(0, 0, progname, -1);
    if (hname[0]=='\0') { /* failed, no help file ... */
       ERROR_message("No help file for %s\n", progname);
       return;
@@ -4891,7 +5046,7 @@ void print_prog_options(char *prog)
 
    if (!(ws = approx_str_sort_all_popts(prog, &N_ws,  
                    1, &ws_score,
-                   NULL, NULL, 0, 1))) {
+                   NULL, NULL, 0, 1, '\\'))) {
       return;
    }
    for (i=0; i<N_ws; ++i) {
@@ -4900,6 +5055,8 @@ void print_prog_options(char *prog)
          free(ws[i]); ws[i]=NULL;
       }
    } free(ws); ws = NULL;
+   
+   if (ws_score) free(ws_score); ws_score=NULL;
    return;
 }
 
@@ -4986,7 +5143,8 @@ void test_approx_str_match(void)
    
    /* Sort multi-line text string */
    sprintf(key,"dib");
-   slot = approx_str_sort_text(text, &n_lot, key, 1, &slot_score, NULL, &Dv);
+   slot = approx_str_sort_text(text, &n_lot, key, 1, 
+                               &slot_score, NULL, &Dv, '\0');
    for (i=0; i<n_lot; ++i) {
       fprintf(stdout,"%02f- %s\n", slot_score[i], slot[i]);
       free(slot[i]);
@@ -9160,4 +9318,5 @@ float get_wami_minprob()
    wami_min_prob = (float) AFNI_numenv_def("AFNI_WHEREAMI_PROB_MIN", TINY_NUMBER);
    if(wami_min_prob<=0)
       wami_min_prob = TINY_NUMBER;
+   return(wami_min_prob);
 }

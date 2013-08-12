@@ -79,9 +79,13 @@ ENTRY("THD_open_nifti") ;
    if( !finite(nim->scl_slope) || !finite(nim->scl_inter) ){
       fprintf(stderr,"** bad scl_slope and inter = %f, %f, ignoring...\n",
               nim->scl_slope, nim->scl_inter);
-   } else
+   } else {
        scale_data = nim->scl_slope != 0.0 &&
                         (nim->scl_slope != 1.0 || nim->scl_inter != 0.0) ;
+   }
+   { char *eee = getenv("AFNI_NIFTI_SCALE") ;
+     if( eee != NULL && toupper(*eee) == 'N' ) scale_data = 0 ;
+   }
 
    switch( nim->datatype ){
      default:
@@ -117,7 +121,7 @@ ENTRY("THD_open_nifti") ;
 #endif
    }
 
-   if( xform_data ) {
+   if( xform_data && !AFNI_noenv("AFNI_NIFTI_TYPE_WARN")) {
       if (!n_xform_warn || AFNI_yesenv("AFNI_NIFTI_TYPE_WARN")) {/* ZSS 04/11 */
          fprintf(stderr,
              "** AFNI converts NIFTI_datatype=%d (%s) in file %s to FLOAT32\n",
@@ -125,7 +129,7 @@ ENTRY("THD_open_nifti") ;
          if (!AFNI_yesenv("AFNI_NIFTI_TYPE_WARN")) {
             fprintf(stderr,
                "     Warnings of this type will be muted for this session.\n"
-               "     Set AFNI_NIFTI_TYPE_WARN to YES to see them all.\n");
+      "     Set AFNI_NIFTI_TYPE_WARN to YES to see them all, NO to see none.\n");
          }
       }
       ++n_xform_warn;
@@ -819,6 +823,7 @@ ENTRY("THD_load_nifti") ;
 
        if( DBLK_ARRAY(dblk,ibr) == NULL ){                     /* make space */
          ptr = AFMALL(void, DBLK_BRICK_BYTES(dblk,ibr) ) ;     /* for this   */
+         if( ptr == NULL ) ERROR_message("malloc fails for NIfTI sub-brick #%d",ibr) ;
          mri_fix_data_pointer( ptr ,  DBLK_BRICK(dblk,ibr) ) ; /* sub-brick! */
        }
        ptr = DBLK_ARRAY(dblk,ibr) ; if( ptr == NULL ) break ;  /* bad news!! */
@@ -834,6 +839,8 @@ ENTRY("THD_load_nifti") ;
 
        /* load from nbuf into brick array (will be float or complex) */
 
+       STATUS(" converting sub-brick") ;
+
        switch( nim->datatype ){
          case DT_UINT8:    CPF(unsigned char)  ; break ;
          case DT_INT8:     CPF(signed char)    ; break ;
@@ -847,9 +854,13 @@ ENTRY("THD_load_nifti") ;
 #endif
        }
 
+       STATUS(" free-ing NIfTI volume") ;
+
        free(NBL.bricks[ibr]) ; NBL.bricks[ibr] = NULL ;
      }
    }
+
+   STATUS("free-ing NBL") ;
 
    nifti_free_NBL( &NBL ) ;  /* done with this */
 

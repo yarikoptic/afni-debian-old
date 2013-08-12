@@ -18,6 +18,8 @@
 # 07 Mar 2012 : existing package and install dir no longer required for -d
 # 13 Sep 2012 : download and run the current version on the website
 #             - added option -no_recur
+# 21 Dec 2012 : do rehash before apsearch
+#             - check download by looking for string in this file
 # ----------------------------------------------------------------------
 
 
@@ -159,7 +161,7 @@ endif
 if ( $package == "" ) then
    if ( $cur_afni != "" ) then
       set package = `afni -ver | grep binary | awk '{print $3}' | sed 's/://g'`
-      if ( $status ) then
+      if ( $status || $package == "" ) then
           echo "** failed setting package from 'afni -ver'"
           exit 1
       endif
@@ -222,7 +224,7 @@ endif
 
 # default to wget, else use curl
 set get_prog = ( "wget" )
-if ( $use_curl || $missing_wget ) set get_prog = ( "curl" "-O" )
+if ( $use_curl || $missing_wget ) set get_prog = ( curl -O -f )
 
 # make sure package is set to the base name
 if ( $package =~ *.tgz ) set package = $package:r
@@ -310,8 +312,9 @@ if ( $do_recur ) then
    if ( $status ) then
       set retry = 1
    else
-      grep 'not found on this server' $prog > /dev/null
-      if ( ! $status ) then
+      # see if we have this text (and therefore the actual program)
+      grep 'upgrade the AFNI binaries' $prog > /dev/null
+      if ( $status ) then
          set retry = 1
          \rm -f $prog
       endif
@@ -325,8 +328,9 @@ if ( $do_recur ) then
       if ( $status ) then
          set retry = 1
       else
-         grep 'not found on this server' $prog > /dev/null
-         if ( ! $status ) then
+         # see if we have this text (and therefore the actual program)
+         grep 'upgrade the AFNI binaries' $prog > /dev/null
+         if ( $status ) then
             set retry = 1
             \rm -f $prog
          endif
@@ -467,6 +471,7 @@ endif
 
 # and possibly run apsearch
 if ( $do_apsearch && $cur_afni == $abin ) then
+   rehash
    set cmd = "apsearch -update_all_afni_help"
    echo "++ running $cmd ..."
    $cmd

@@ -388,7 +388,7 @@ STATUS("WANT_LOGO_BITMAP") ;
       if( logo_pixmap == XmUNSPECIFIED_PIXMAP ){
 
 #ifndef NO_FRIVOLITIES
-#include "lll.h"  /* contains the colorized image logos */
+#include "lll.h"  /* contains the colorized image logos used below */
 
 #define RGB_TO_PIXMAP(data,pnam)                                           \
  do{ mri_fix_data_pointer( data , bim ) ;                                  \
@@ -406,14 +406,26 @@ STATUS("WANT_LOGO_BITMAP") ;
           MRI_IMAGE *bim ; XImage *xim ;
           bim = mri_new_vol_empty( lll_width,lll_height,1 , MRI_rgb ) ;
 
-          RGB_TO_PIXMAP(lll_rgb  ,logo_pixmap   ) ;
-          RGB_TO_PIXMAP(vvv_rgb  ,vers_pixmap   ) ;  /* 08 Aug 2005 */
-          RGB_TO_PIXMAP(rhdda_rgb,pict_pixmap[0]) ;  /* 19 Oct 2007 */
-          RGB_TO_PIXMAP(sbuck_rgb,pict_pixmap[1]) ;  /* 18 Oct 2007 */
-          RGB_TO_PIXMAP(sscc_rgb ,pict_pixmap[2]) ;  /* 22 Oct 2007 */
-          RGB_TO_PIXMAP(earth_rgb,pict_pixmap[3]) ;  /* 22 Oct 2007 */
-          RGB_TO_PIXMAP(nih_rgb  ,pict_pixmap[4]) ;  /* 25 Oct 2007 */
-          RGB_TO_PIXMAP(burst_rgb,pict_pixmap[5]) ;  /* 18 Oct 2007 */
+          /*** to find places where these logos are used, try this:
+                 grep PICTUR af*.[ch]                               ***/
+
+          /* AFNI sunburst logo */
+
+          RGB_TO_PIXMAP(lll_rgb    ,logo_pixmap   ) ;
+
+          /* version warning logo */
+
+          RGB_TO_PIXMAP(vvv_rgb    ,vers_pixmap   ) ;  /* 08 Aug 2005 */
+
+          /* these logos are what vary by controller index */
+
+          RGB_TO_PIXMAP(rhdda_rgb  ,pict_pixmap[0]) ;  /* 19 Oct 2007 */
+          RGB_TO_PIXMAP(sbuck_rgb  ,pict_pixmap[1]) ;  /* 18 Oct 2007 */
+          RGB_TO_PIXMAP(sscc_rgb   ,pict_pixmap[2]) ;  /* 22 Oct 2007 */
+          RGB_TO_PIXMAP(earth_rgb  ,pict_pixmap[3]) ;  /* 22 Oct 2007 */
+          RGB_TO_PIXMAP(nih_rgb    ,pict_pixmap[4]) ;  /* 25 Oct 2007 */
+          RGB_TO_PIXMAP(burst_rgb  ,pict_pixmap[5]) ;  /* 18 Oct 2007 */
+          RGB_TO_PIXMAP(nih2012_rgb,pict_pixmap[6]) ;  /* 07 Dec 2012 */
 
           mri_clear_data_pointer(bim); mri_free(bim);
         }
@@ -777,6 +789,8 @@ STATUS("making imag->rowcol") ;
    /*--- instacorr set button in menu [06 May 2009] ---*/
 
    if( im3d->type == AFNI_3DDATA_VIEW ){
+      static char *bbox_label[1] = { "GIC: Apair MirrorLR" } ;
+
       imag->pop_instacorr_pb =
          XtVaCreateManagedWidget(
             "dialog" , xmPushButtonWidgetClass , imag->popmenu ,
@@ -789,6 +803,28 @@ STATUS("making imag->rowcol") ;
                      AFNI_imag_pop_CB , im3d ) ;
       XtSetSensitive( imag->pop_instacorr_pb , False ) ;
 
+      imag->pop_icorrapair_pb =  /* Apr 2013: for 3dGroupInCorr */
+         XtVaCreateWidget(
+            "dialog" , xmPushButtonWidgetClass , imag->popmenu ,
+               LABEL_ARG("GIC: Apair Set") ,
+               XmNmarginHeight , 0 ,
+               XmNtraversalOn , True  ,
+               XmNinitialResourcesPersistent , False ,
+            NULL ) ;
+      XtAddCallback( imag->pop_icorrapair_pb , XmNactivateCallback ,
+                     AFNI_imag_pop_CB , im3d ) ;
+
+      imag->pop_icorramirr_pb =
+         XtVaCreateWidget(
+            "dialog" , xmPushButtonWidgetClass , imag->popmenu ,
+               LABEL_ARG("GIC: Apair MirrorOFF") ,
+               XmNmarginHeight , 0 ,
+               XmNtraversalOn , True  ,
+               XmNinitialResourcesPersistent , False ,
+            NULL ) ;
+      XtAddCallback( imag->pop_icorramirr_pb , XmNactivateCallback ,
+                     AFNI_imag_pop_CB , im3d ) ;
+
       imag->pop_icorrjump_pb =
          XtVaCreateManagedWidget(
             "dialog" , xmPushButtonWidgetClass , imag->popmenu ,
@@ -800,9 +836,16 @@ STATUS("making imag->rowcol") ;
       XtAddCallback( imag->pop_icorrjump_pb , XmNactivateCallback ,
                      AFNI_imag_pop_CB , im3d ) ;
       XtSetSensitive( imag->pop_icorrjump_pb , False ) ;
+
+      (void) XtVaCreateManagedWidget(  /* Apr 2013 */
+               "dialog" , xmSeparatorWidgetClass , imag->popmenu ,
+                          XmNseparatorType , XmSINGLE_LINE ,
+               NULL ) ;
    } else {
-      imag->pop_instacorr_pb = NULL ;
-      imag->pop_icorrjump_pb = NULL ;
+      imag->pop_instacorr_pb   = NULL ;
+      imag->pop_icorrjump_pb   = NULL ;
+      imag->pop_icorrapair_pb  = NULL ;  /* Apr 2013 */
+      imag->pop_icorramirr_pb  = NULL ;
    }
 
    /*--- jumpback button in menu ---*/
@@ -957,6 +1000,13 @@ STATUS("making imag->rowcol") ;
       imag->pop_whereami_twin = NULL ;
       imag->pop_whereami_htmlwin = NULL;
    }
+
+   /*-- separator --*/
+
+   (void) XtVaCreateManagedWidget(  /* Apr 2013 */
+            "dialog" , xmSeparatorWidgetClass , imag->popmenu ,
+                       XmNseparatorType , XmSINGLE_LINE ,
+            NULL ) ;
 
    /*--- imageonly button in menu ---*/
 
@@ -2751,7 +2801,7 @@ STATUS("making func->rowcol") ;
 
 #if 1
    { static char *onofflabel[]    = { "Use Threshold?" } ;
-     static char *throlay1label[] = { "Thr = OLay+1 ?" } ;
+     static char *throlayxlabel[] = { "Thr = OLay ?" , "Thr = Olay+1 ?" } ;
 
 #ifdef BAD_BUTTON3_POPUPS
    func->thr_menu = XmCreatePopupMenu( func->thr_rowcol, "menu", NULL, 0 ) ;
@@ -2802,17 +2852,25 @@ STATUS("making func->rowcol") ;
    MCW_reghint_children( func->thr_onoff_bbox->wrowcol ,
                          "Temporarily ignore threshold?" ) ;
 
-   /*-- Thr=OLay+1? button [13 Aug 2010] --*/
+   /*-- Thr=OLay+1? button [13 Aug 2010] -- modified 24 Jun 2013 --*/
 
-   func->thr_olay1_bbox = new_MCW_bbox( func->thr_menu ,
-                                        1 , throlay1label ,
-                                        MCW_BB_check , MCW_BB_noframe ,
-                                        AFNI_throlay1_change_CB ,
+   (void) XtVaCreateManagedWidget(
+            "dialog" , xmSeparatorWidgetClass , func->thr_menu ,
+             XmNseparatorType , XmSINGLE_LINE , NULL ) ;
+
+   func->thr_olayx_bbox = new_MCW_bbox( func->thr_menu ,
+                                        2 , throlayxlabel ,
+                                        MCW_BB_radio_zero , MCW_BB_noframe ,
+                                        AFNI_throlayx_change_CB ,
                                         (XtPointer)im3d ) ;
-   im3d->vinfo->thr_olay1 = 0 ;
-   MCW_set_bbox( func->thr_olay1_bbox , 0 ) ;
-   MCW_reghint_children( func->thr_olay1_bbox->wrowcol ,
-                         "Lock Thr to be sub-brick after OLay?" ) ;
+   im3d->vinfo->thr_olayx = 0 ;
+   MCW_set_bbox( func->thr_olayx_bbox , 0 ) ;
+   MCW_reghint_children( func->thr_olayx_bbox->wrowcol ,
+                         "Lock Thr to depend on OLay sub-brick?" ) ;
+
+   (void) XtVaCreateManagedWidget(
+            "dialog" , xmSeparatorWidgetClass , func->thr_menu ,
+             XmNseparatorType , XmSINGLE_LINE , NULL ) ;
 
    /*-- AutoThreshold button --*/
 
@@ -2825,7 +2883,8 @@ STATUS("making func->rowcol") ;
          NULL ) ;
    XtAddCallback( func->thr_autothresh_pb , XmNactivateCallback ,
                   AFNI_func_autothresh_CB , im3d ) ;
-   MCW_register_hint( func->thr_autothresh_pb , "Compute threshold automatically NOW" ) ;
+   MCW_register_hint( func->thr_autothresh_pb ,
+                      "Compute ad hoc threshold automatically NOW" ) ;
 
    /* Threshold sign arrowval [08 Aug 2007] */
 
@@ -5348,6 +5407,19 @@ STATUS("making prog->rowcol") ;
                   XmNinitialResourcesPersistent , False ,
                NULL ) ;
       XtAddCallback( prog->hidden_gamberi_pb , XmNactivateCallback ,
+                     AFNI_hidden_CB , im3d ) ;
+
+      /*----------*/
+
+      prog->hidden_hbmjust_pb =
+            XtVaCreateManagedWidget(
+               "dialog" , xmPushButtonWidgetClass , prog->hidden_menu ,
+                  LABEL_ARG("HBM Justification") ,
+                  XmNmarginHeight , 0 ,
+                  XmNtraversalOn , True  ,
+                  XmNinitialResourcesPersistent , False ,
+               NULL ) ;
+      XtAddCallback( prog->hidden_hbmjust_pb , XmNactivateCallback ,
                      AFNI_hidden_CB , im3d ) ;
 
       /*----------*/

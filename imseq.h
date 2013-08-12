@@ -746,6 +746,8 @@ extern void ISQ_draw_winfo( MCW_imseq * ) ;
 extern MRI_IMAGE * ISQ_overlay( MCW_DC *, MRI_IMAGE *, MRI_IMAGE *, float ) ;
 #define ISQ_GOOD_OVERLAY_TYPE(dt) ( (dt)==MRI_short || (dt)==MRI_rgb )
 
+extern MRI_IMAGE * ISQ_binarize_overlay( MRI_IMAGE * ) ; /* Mar 2013 */
+
  /* 07 Mar 2001 */
 extern void ISQ_opacity_CB( MCW_arrowval * , XtPointer ) ;
 extern char * ISQ_opacity_label( int ) ;
@@ -868,6 +870,7 @@ extern void ISQ_cropper( MCW_imseq *, XButtonEvent *) ; /* 17 Jun 2002 */
 extern void ISQ_snapshot( Widget w ) ;                 /* 18 Jun 2003 */
 extern void ISQ_snapsave( int,int, byte *, Widget ) ;  /* 03 Jul 2003 */
 extern MRI_IMAGE * ISQ_snap_to_mri_image( int  , int  , byte *); /* Dec 2011 */
+extern MRI_IMAGE * ISQ_snap4_to_mri_image( int  , int  , byte *); /* May 2013 */
 extern void ISQ_snap_agif( char * ) ;                  /* 06 Dec 2006 */
 extern void ISQ_snap_mpeg( char * ) ;
 extern void ISQ_snap_jpeg( char * ) ;

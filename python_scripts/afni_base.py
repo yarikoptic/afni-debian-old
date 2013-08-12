@@ -1,7 +1,11 @@
 #!/usr/bin/env python
-import os, sys, glob, operator, string, afni_base
+import os, sys, glob, operator, string, re, afni_base
 
 valid_afni_views = ['+orig', '+acpc', '+tlrc']
+
+# limits for shell_com history
+SAVE_SHELL_HISTORY = 400
+MAX_SHELL_HISTORY  = 600
 
 class afni_name:
    def __init__(self, name=""):
@@ -25,11 +29,26 @@ class afni_name:
          return pp
       else:
          return "%s/" % os.path.abspath(self.path)
+   def realp(self):   #Full path following symbolic links 
+      """show path only, no dataset name"""
+      pp = "%s/" % os.path.realpath('./')  #full path at this location
+      fn = string.find(pp,self.path)      #is path at end of abspath?
+      if (fn > 0 and fn+len(self.path) == len(pp)): #path is at end of abs path
+         return pp
+      else:
+         return "%s/" % os.path.realpath(self.path)
    def ppve(self):
       """show path, prefix, view and extension"""
       s = "%s%s%s%s" % (self.p(), self.prefix, \
                          self.view, self.extension)
       return s
+      
+   def rppve(self):
+      """show path, prefix, view and extension"""
+      s = "%s%s%s%s" % (self.realp(), self.prefix, \
+                         self.view, self.extension)
+      return s
+
    def ppves(self):
       """show path, prefix, view, extension and all selectors
          (colsel, rowsel, nodesel, rangesel)"""
@@ -47,6 +66,16 @@ class afni_name:
          return self.ppv()
       else:
          return self.ppve() 
+
+   def real_input(self):
+      """full path to dataset in 'input' format
+         follow symbolic links!!!!
+         e.g. +orig, but no .HEAD
+         e.g. would include .nii"""
+      if self.type == 'BRIK':
+         return self.rppv()
+      else:
+         return self.rppve() 
 
    def rel_input(self):
       """relative path to dataset in 'input' format
@@ -77,6 +106,10 @@ class afni_name:
    def ppv(self):
       """return path, prefix, view formatted name"""
       s = "%s%s%s" % (self.p(), self.prefix, self.view)
+      return s
+   def rppv(self):
+      """return path, prefix, view formatted name resolving symbolic links"""
+      s = "%s%s%s" % (self.realp(), self.prefix, self.view)
       return s
    def rpv(self):
       """return relative path, prefix, view formatted name
@@ -114,6 +147,7 @@ class afni_name:
             return 1
          else: return 0
       elif (self.type == 'BRIK'):
+         #  print "dataset ppv is %s" % self.ppv()
          if (     os.path.isfile("%s.HEAD" % self.ppv()) \
                and  \
                (  os.path.isfile("%s.BRIK" % self.ppv()) or \
@@ -132,6 +166,31 @@ class afni_name:
          if (     os.path.isfile(self.ppve()) ):
             return 1
          else: return 0
+   
+   def locate(self, oexec=""):
+      """Attempt to locate the file and if found, update its info"""
+      if (self.exist()):
+         return 1
+      else:
+         #could it be in abin, etc.
+         cmd = '@FindAfniDsetPath %s' % self.pv()
+         com=shell_com(cmd,oexec, capture=1)
+         com.run()
+
+         if com.status or not com.so or len(com.so[0]) < 2:
+           # call this a non-fatal error for now
+           if 0:
+              print '   status = %s' % com.status
+              print '   stdout = %s' % com.so
+              print '   stderr = %s' % com.se
+           return 0
+
+         self.path = com.so[0]
+         # nuke any newline character
+         newline = self.path.find('\n')
+         if newline > 1: self.path = self.path[0:newline]
+      return 0
+      
    def delete(self, oexec=""): #delete files on disk!
       """delete the files via a shell command"""
       if (self.type == 'BRIK'):
@@ -231,12 +290,18 @@ class afni_name:
       print "   Node Sel: %s" % self.nodesel
       print "   RangeSel: %s" % self.rangesel
       
-   def new(self,new_pref='', new_view=''):  
-      """return a copy with optional new_prefix and new_view"""
+   def new(self, new_pref='', new_view='', parse_pref=0):  
+      """return a copy with optional new_prefix and new_view
+         if parse_pref, parse prefix as afni_name
+      """
       an = afni_name()
       an.path = self.path
       if len(new_pref):
-         an.prefix = new_pref
+         # maybe parse prefix as afni_name
+         if parse_pref:
+            ant = parse_afni_name(new_pref)
+            an.prefix = ant['prefix']
+         else: an.prefix = new_pref
       else:
          an.prefix = self.prefix
       if len(new_view):
@@ -326,7 +391,18 @@ class comopt:
       return 1
 
 class shell_com:
-   def __init__(self, com, eo="", capture=0):
+   history = []         # shell_com history
+   save_hist = 1        # whether to record as we go
+
+   def __init__(self, com, eo="", capture=0, save_hist=1):
+      """create instance of shell command class
+
+            com         command to execute (or echo, etc)
+            eo          echo mode string: echo/dry_run/script/""
+            capture     flag: store output from command?
+            save_hist   flag: store history of commands across class instances?
+      """
+
       self.com = com    # command string to be executed
       self.eo = eo      # echo mode (echo/dry_run/script/"")
       self.dir = os.getcwd()
@@ -337,6 +413,8 @@ class shell_com:
          self.capture = 1
       else:
          self.capture = capture; #Want stdout and stderr captured?
+      self.save_hist = save_hist
+
       #If command line is long, trim it, if possible
       l1 = len(self.com)
       if (l1 > 80):
@@ -344,13 +422,14 @@ class shell_com:
          #if (len(self.com) < l1):
          #print "Command trimmed to: %s" % (self.com)
       else:
-         self.trimcom = self.com
+         self.trimcom = re.sub(r"[ ]{2,}", ' ', self.com)
+         #  string.join(string.split(self.com)) is bad for commands like 3dNotes
    def trim(self):
-      #try to remove absolute path
+      #try to remove absolute path and numerous blanks
       if self.dir[-1] != '/':
-         tcom = string.replace(self.com, "%s/" % (self.dir), './')
+         tcom = string.replace(re.sub(r"[ ]{2,}", ' ', self.com), "%s/" % (self.dir), './')
       else:
-         tcom = string.replace(self.com, self.dir, './')
+         tcom = string.replace(re.sub(r"[ ]{2,}", ' ', self.com), self.dir, './')
       return tcom
    def echo(self): 
       if (len(self.trimcom) < len(self.com)):
@@ -372,6 +451,8 @@ class shell_com:
       if self.exc==1:
          print "#    WARNING: that command has been executed already! "
          sys.stdout.flush()
+      else: self.add_to_history()
+
       return
 
    def run(self):
@@ -389,6 +470,18 @@ class shell_com:
    def run_echo(self,eo=""):
       self.eo = eo;
       self.run()
+
+   def add_to_history(self):
+      """append the current command (trimcom) to the history, truncating
+         if it is too long"""
+      if not self.save_hist: return
+      if len(self.history) >= MAX_SHELL_HISTORY:
+         self.history = self.history[-SAVE_SHELL_HISTORY:]
+      self.history.append(self.trimcom)
+
+   def shell_history(self, nhist=0):
+      if nhist == 0 or nhist > len(self.history): return self.history
+      else:                                  return self.history[-nhist]
 
    def stdout(self):
       if (len(self.so)):
@@ -435,7 +528,6 @@ class shell_com:
             return l[j]
       else:
          return self.so[i]
-
 
 # return the attribute list for the given dataset and attribute
 def read_attribute(dset, atr, verb=1):
@@ -763,7 +855,8 @@ def shell_exec2(s, capture=0):
    else:
       import subprocess as SP
       if(not capture):
-         pipe = SP.Popen(s,shell=True, executable='/bin/tcsh', stdout=None, stderr=None, close_fds=True)
+         pipe = SP.Popen(s,shell=True, stdout=None, stderr=None, close_fds=True)
+#         pipe = SP.Popen(s,shell=True, executable='/bin/tcsh', stdout=None, stderr=None, close_fds=True)
          status = pipe.wait() #Wait till it is over and store returncode
          so = ""
          se = ""
@@ -793,7 +886,8 @@ def simple_shell_exec(command, capture=0):
       so, se = pipe.communicate() # returns after command is done
       status = pipe.returncode
    else:
-      pipe = SP.Popen(command,shell=True, executable='/bin/tcsh',
+#      pipe = SP.Popen(command,shell=True, executable='/bin/tcsh',
+      pipe = SP.Popen(command,shell=True,
                       stdout=None, stderr=None, close_fds=True)
       status = pipe.wait() #Wait till it is over and store returncode
       so, se = "", ""

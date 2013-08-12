@@ -114,56 +114,13 @@ int SUMA_ClosestNodeToVoxels(SUMA_SurfaceObject *SO, SUMA_VOLPAR *vp,
 }
 
 
-/*! a copy of THD_handedness from ../thd_rotangles.c
-Dunno why the original was giving me pain linking ... */
 int SUMA_THD_handedness( THD_3dim_dataset * dset )
 {
    static char FuncName[]={"SUMA_THD_handedness"};
-   THD_dataxes * dax ;
-   THD_mat33 q ;
-   int col ;
-   float val ;
 
    SUMA_ENTRY;
 
-   if( !ISVALID_DSET(dset) ) SUMA_RETURN(1) ;
-
-   LOAD_ZERO_MAT(q) ;
-   dax = dset->daxes ;
-
-   col = 0 ;
-   switch( dax->xxorient ){
-      case 0: q.mat[0][col] =  1.0 ; break ;
-      case 1: q.mat[0][col] = -1.0 ; break ;
-      case 2: q.mat[1][col] = -1.0 ; break ;
-      case 3: q.mat[1][col] =  1.0 ; break ;
-      case 4: q.mat[2][col] =  1.0 ; break ;
-      case 5: q.mat[2][col] = -1.0 ; break ;
-   }
-
-   col = 1 ;
-   switch( dax->yyorient ){
-      case 0: q.mat[0][col] =  1.0 ; break ;
-      case 1: q.mat[0][col] = -1.0 ; break ;
-      case 2: q.mat[1][col] = -1.0 ; break ;
-      case 3: q.mat[1][col] =  1.0 ; break ;
-      case 4: q.mat[2][col] =  1.0 ; break ;
-      case 5: q.mat[2][col] = -1.0 ; break ;
-   }
-
-   col = 2 ;
-   switch( dax->zzorient ){
-      case 0: q.mat[0][col] =  1.0 ; break ;
-      case 1: q.mat[0][col] = -1.0 ; break ;
-      case 2: q.mat[1][col] = -1.0 ; break ;
-      case 3: q.mat[1][col] =  1.0 ; break ;
-      case 4: q.mat[2][col] =  1.0 ; break ;
-      case 5: q.mat[2][col] = -1.0 ; break ;
-   }
-
-   val = MAT_DET(q) ;
-   if( val > 0.0 ) SUMA_RETURN( 1) ;  /* right handed */
-   else            SUMA_RETURN(-1) ;  /* left handed */
+   SUMA_RETURN(THD_handedness(dset));
 }
 
 /*!
@@ -899,7 +856,13 @@ SUMA_Boolean SUMA_Align_to_VolPar (SUMA_SurfaceObject *SO, void * S_Struct)
       /* you can also use the more generic :
          SUMA_is_Flat_Surf_Coords_PCA(SO->NodeList, SO->N_Node, 0.001, 0.01)
          but that one's slower */
-      SUMA_LH("This one's flat\n");
+      SUMA_LH("This one is flat\n");
+      SO->APPLIED_A2Exp_XFORM = NO_WARP;
+      SUMA_RETURN(YUP);
+   }
+   if (SO->isSphere == SUMA_GEOM_NOT_SET) SUMA_SetSphereParams(SO, -0.1); 
+   if (SUMA_IS_GEOM_SYMM(SO->isSphere)) { /* March 2013 */
+      SUMA_LH("This one is a ball\n");
       SO->APPLIED_A2Exp_XFORM = NO_WARP;
       SUMA_RETURN(YUP);
    }
@@ -1069,6 +1032,9 @@ SUMA_Boolean SUMA_Align_to_VolPar (SUMA_SurfaceObject *SO, void * S_Struct)
       SUMA_RETURN (NOPE);
    }
 
+   SUMA_nixSODim(SO); /* Dims need recomputing, this might be overkill if
+                         nothing was done above */
+   SUMA_SetSODims(SO);
    SUMA_RETURN (YUP);
 }
 
@@ -1209,13 +1175,16 @@ SUMA_Boolean SUMA_Delign_to_VolPar (SUMA_SurfaceObject *SO, void * S_Struct)
    }
    
    #if 0
-   /* I don't thin the inverse of that step will be needed .... */
+   /* I don't think the inverse of that step will be needed .... */
    if (!SUMA_Apply_VolReg_Trans (SO)) {
       fprintf(SUMA_STDERR,"Error %s: Failed in SUMA_Apply_VolReg_Trans.\n", FuncName);
       SUMA_RETURN (NOPE);
    }
    #endif
 
+   SUMA_nixSODim(SO); /* Dims need recomputing, this might be overkill if
+                         nothing was done above */
+   SUMA_SetSODims(SO);
    SUMA_RETURN (YUP);
 }
 
@@ -1242,13 +1211,14 @@ SUMA_Boolean SUMA_Apply_Coord_xform(float *NodeList,
       SUMA_LH("Indentity, nothing to do.");
       SUMA_RETURN(YUP);      
    }
-   
+
    if (!doinv) {
       LOAD_MAT44( A, \
                   Xform[0][0], Xform[0][1], Xform[0][2], Xform[0][3],    \
                   Xform[1][0], Xform[1][1], Xform[1][2], Xform[1][3],    \
                   Xform[2][0], Xform[2][1], Xform[2][2], Xform[2][3]   );
    } else {
+      SUMA_LH("Inverting xform");
       LOAD_MAT44( A0, \
                   Xform[0][0], Xform[0][1], Xform[0][2], Xform[0][3],    \
                   Xform[1][0], Xform[1][1], Xform[1][2], Xform[1][3],    \
@@ -1256,6 +1226,8 @@ SUMA_Boolean SUMA_Apply_Coord_xform(float *NodeList,
       A = nifti_mat44_inverse(A0);
    }            
    
+   SUMA_LHv("Node 0, Pre: %f %f %f\n",
+            NodeList[0] , NodeList[1], NodeList[2]);
    for (i=0; i < N_Node; ++i) {
       id = NodeDim * i;
       x = (double)NodeList[id] ;
@@ -1285,7 +1257,9 @@ SUMA_Boolean SUMA_Apply_Coord_xform(float *NodeList,
          NodeList[id+1] -= ppshift[1];
          NodeList[id+2] -= ppshift[2];
       }
-    }
+   }
+   SUMA_LHv("Node 0, Post: %f %f %f\n",
+            NodeList[0] , NodeList[1], NodeList[2]);
 
    SUMA_RETURN(YUP);
 }
@@ -2338,6 +2312,56 @@ SUMA_Boolean SUMA_vec_dicomm_to_3dmm (float *NodeList, int N_Node,
    SUMA_RETURN(YUP);
 }
 
+SUMA_Boolean SUMA_THD_3dfind_to_dicomm(THD_3dim_dataset *dset, 
+                                       float ii, float jj, float kk,
+                                       float *xyz) 
+{
+   THD_fvec3 fv0, fv;
+   fv0.xyz[0]=ii;
+   fv0.xyz[1]=jj;
+   fv0.xyz[2]=kk;
+   fv = THD_3dfind_to_3dmm(dset, fv0);
+   fv0 = THD_3dmm_to_dicomm(dset, fv);
+   xyz[0] = fv0.xyz[0]; 
+   xyz[1] = fv0.xyz[1]; 
+   xyz[2] = fv0.xyz[2];
+   return(1); 
+}
+
+SUMA_Boolean SUMA_THD_dicomm_to_3dfind(THD_3dim_dataset *dset, 
+                                       float RR, float AA, float II,
+                                       float *ijk) 
+{
+   THD_fvec3 fv0, fv;
+   fv0.xyz[0]=RR;
+   fv0.xyz[1]=AA;
+   fv0.xyz[2]=II;
+   fv = THD_dicomm_to_3dmm(dset, fv0);
+   fv0 = THD_3dmm_to_3dfind(dset, fv);
+   ijk[0] = fv0.xyz[0]; 
+   ijk[1] = fv0.xyz[1]; 
+   ijk[2] = fv0.xyz[2];
+   return(1); 
+}
+
+int SUMA_THD_dicomm_to_1dind(THD_3dim_dataset *dset, 
+                              float RR, float AA, float II,
+                              int *ijk) 
+{
+   THD_fvec3 fv0, fv;
+   fv0.xyz[0]=RR;
+   fv0.xyz[1]=AA;
+   fv0.xyz[2]=II;
+   fv = THD_dicomm_to_3dmm(dset, fv0);
+   fv0 = THD_3dmm_to_3dfind(dset, fv);
+   if (ijk) {
+      ijk[0] = fv0.xyz[0]; 
+      ijk[1] = fv0.xyz[1]; 
+      ijk[2] = fv0.xyz[2];
+   }
+   return((int)fv0.xyz[0]+(int)fv0.xyz[1]*DSET_NX(dset)+
+                          (int)fv0.xyz[2]*DSET_NX(dset)*DSET_NY(dset));
+}
 
 /*!
    \brief transforms XYZ coordinates from  AFNI'S RAI 

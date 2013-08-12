@@ -26,10 +26,19 @@ static char * g_history[] =
   "       (now dilations and erosions should be symmetric)\n"
   "0.2   5 Jun 2012\n"
   "     - explicit set of DSET_BRICK_TYPE() needed on F8 system?\n"
-  "     - make empty copy for grid test\n"
+  "     - make empty copy for grid test\n",
+  "0.3   30 Jul 2013\n"
+  "     - in apply_dilations: split out count/apply_affected_voxels\n"
+  "     - fixes a failure to apply a negative dilation in non-convert case\n"
+  "       (thanks to W Gaggl for noting the problematic scenario)\n",
+  "0.4   1 Aug 2013\n"
+  "     - Fixed actual problem W Gaggl was seeing, apparent pointer step\n"
+  "       issue that might work on one system but fail on another (with the.\n"
+  "       identical binary, ick).\n"
+  "       So re-wrote the troubling part.\n"
 };
 
-static char g_version[] = "3dmask_tool version 0.2, 5 June 2012";
+static char g_version[] = "3dmask_tool version 0.4, 1 August 2013";
 
 #include "mrilib.h"
 
@@ -57,6 +66,8 @@ param_t g_params;
 
 /*--------------- prototypes ---------------*/
 THD_3dim_dataset * apply_dilations (THD_3dim_dataset *, int_list *, int, int);
+int apply_affected_voxels(void *, void *, int, byte *, int);
+int count_affected_voxels(void *, int, byte *, int, int);
 int convert_to_bytemask (THD_3dim_dataset * dset, int verb);
 int count_masks         (THD_3dim_dataset *[], int, int,
                          THD_3dim_dataset **, int *);
@@ -127,7 +138,10 @@ int main( int argc, char *argv[] )
 
    /* maybe apply dilations to output */
    if( params->RESD.num > 0 ) {
+      THD_3dim_dataset * crm = countset;
       countset = apply_dilations(countset, &params->RESD, 0, params->verb);
+      DSET_delete(crm);
+ 
       if( !countset ) RETURN(1);
    }
 
@@ -153,20 +167,19 @@ int main( int argc, char *argv[] )
  * 3. dilate (using binary mask)
  * 4. if not converting, modify original data
  * 5. undo any zeropad
- * 6. return new dataset (might be same as old)
+ * 6. return new dataset
  * 
  * dilations are passed as a list of +/- integers (- means erode)
  *
  * convert: flag specifying whether dset should be converted to MRI_byte
  *
- * note: the dilations list should not be long (does more than 2 even
- *       make any sense?), but here they will be treated generically
- *    - foreach dilation: dilate or erode, as specified by sign
+ * note: dilations list should be short, but treat generically
+ *       - foreach dilation: dilate or erode, as specified by sign
  */
 THD_3dim_dataset * apply_dilations(THD_3dim_dataset * dset, int_list * D,
                                    int convert, int verb)
 {
-   THD_3dim_dataset * dnew = NULL;
+   THD_3dim_dataset * dnew = NULL, * inset = NULL;
    byte             * bdata = NULL;
    int                index, ivol, id, dsize, datum, pad;
    int                nx, ny, nz, nvox;
@@ -178,8 +191,19 @@ THD_3dim_dataset * apply_dilations(THD_3dim_dataset * dset, int_list * D,
    /* note and apply any needed zeropadding */
    pad = needed_padding(D);
    if(verb > 3 && pad) INFO_message("padding by %d (for dilations)", pad);
-   if( pad ) dnew = THD_zeropad(dset, pad, pad, pad, pad, pad, pad, "pad", 0);
-   else      dnew = dset;
+   if( pad ) inset = THD_zeropad(dset, pad, pad, pad, pad, pad, pad, "pad", 0);
+   else      inset = dset;
+
+   /* ---- make sure to start with a new dataset, possibly to return ---- */
+   /*      inset: original data, padded or not, input for calculations    */
+   /*      dnew:  dataset to edit or assign to, output from calculations  */
+
+   /* make a byte output dataset, use padded dset, or make new copy */
+   if( convert ) {
+      dnew = EDIT_empty_copy(inset);
+      EDIT_dset_items(dnew, ADN_datum_all, MRI_byte, ADN_none);
+   } else if ( pad ) dnew = inset;
+   else              dnew = EDIT_full_copy(inset, "salmon");
 
    /* note geometry */
    nx = DSET_NX(dnew);  ny = DSET_NY(dnew);  nz = DSET_NZ(dnew);
@@ -188,22 +212,19 @@ THD_3dim_dataset * apply_dilations(THD_3dim_dataset * dset, int_list * D,
    /* now apply the actual dilations */
    if(verb>1) INFO_message("applying dilation list to dataset");
 
-   for( ivol=0; ivol < DSET_NVALS(dnew); ivol++ ) {
-      datum = DSET_BRICK_TYPE(dnew, ivol);
+   for( ivol=0; ivol < DSET_NVALS(inset); ivol++ ) {
+      datum = DSET_BRICK_TYPE(inset, ivol);
       /* if non-byte data (short/float), make byte mask of volume */
-      if( datum == MRI_byte )
-         bdata = DBLK_ARRAY(dnew->dblk, ivol);
-      else if ( datum == MRI_float || datum == MRI_short )
-         bdata = THD_makemask(dnew, ivol, 1, 0);
-      else {
-         ERROR_message("invalid datum for result: %d", datum);
-         RETURN(NULL);
-      }
-      if( !bdata ) {
-         ERROR_message("failed to make as mask");
+      if( datum != MRI_byte && datum != MRI_float && datum != MRI_short ) {
+         ERROR_message("invalid datum for mask input: %d", datum);
          RETURN(NULL);
       }
 
+      /* start with a clean mask */
+      bdata = THD_makemask(inset, ivol, 1, 0);
+      if( !bdata ) { ERROR_message("failed to make as mask"); RETURN(NULL); }
+
+      /* apply dilations to mask */
       for( index=0; index < D->num; index++ ) {
          dsize = D->list[index];
          if(verb>2) INFO_message("... dilating vol %d by %d\n", ivol, dsize);
@@ -216,43 +237,106 @@ THD_3dim_dataset * apply_dilations(THD_3dim_dataset * dset, int_list * D,
          }
       }
 
+      /* split out count/apply_affected_voxels    30 Jul 2013 [rickr] */
+      /* -- this also fixes a failure to apply a negative dilation in */
+      /*    the non-convert case */
+
+      /* count affected voxels */
+      if( count_affected_voxels(DBLK_ARRAY(inset->dblk, ivol), datum, bdata,
+                                nvox, verb) ) RETURN(NULL);
+
       /* if we are converting, just replace the old data */
-      if( convert && (datum == MRI_short || datum == MRI_float) ) {
+      if( convert ) {
          if( verb > 2 ) INFO_message("applying byte result from dilate");
          EDIT_substitute_brick(dnew, ivol, MRI_byte, bdata);
-         /* explicit set needed on an Fedora 8 system?   5 Jun 2012 */
-         DSET_BRICK_TYPE(dnew, ivol) = MRI_byte; 
-         continue;  /* so nothing more to do */
-      }
-
-      /* if short or float data, apply mask changes to data */
-      if( datum == MRI_short ) {
-         short * dptr = DBLK_ARRAY(dnew->dblk, ivol);
-         int     nfill=0;
-         if( verb > 2 ) INFO_message("applying dilate result to short data");
-         for( index = 0; index < nvox; index++ )
-            if( ! dptr[index] && bdata[index] ){ dptr[index] = 1; nfill++; }
-         if( verb > 1 ) INFO_message("AD: filled %d voxels", nfill);
-         free(bdata);
-      }
-      else if( datum == MRI_float ) {
-         float * dptr = DBLK_ARRAY(dnew->dblk, ivol);
-         if( verb > 2 ) INFO_message("applying dilate result to float data");
-         for( index = 0; index < nvox; index++ )
-            if( ! dptr[index] && bdata[index] ) dptr[index] = 1.0;
+      } else { /* apply mask changes, and nuke mask */
+         if( apply_affected_voxels(DBLK_ARRAY(dnew->dblk,ivol),
+                                   DBLK_ARRAY(inset->dblk,ivol),
+                                   datum, bdata, nvox) ) RETURN(NULL);
          free(bdata);
       }
    }
 
    /* undo any zeropadding (delete original and temporary datasets) */
    if( pad ) {
-      DSET_delete(dset);
-      dset = THD_zeropad(dnew, -pad, -pad, -pad, -pad, -pad, -pad, "pad", 0);
+      DSET_delete(inset);
+      inset = THD_zeropad(dnew, -pad, -pad, -pad, -pad, -pad, -pad, "pad", 0);
       DSET_delete(dnew);
-      dnew = dset;
+      dnew = inset;
    }
 
    RETURN(dnew);
+}
+
+
+/*--------------- apply voxels affected by mask operation ---------------*/
+/* note: indata and outdata point to same values, but may or may not be  */
+/* the same pointers, so assume outdata is new, and edit as if indata    */
+int apply_affected_voxels(void * outdata, void * indata,
+                          int datum, byte * mask, int nvox)
+{
+   int index, fill=0, rm=0;
+
+   ENTRY("apply_affected_voxels");
+
+   if( datum == MRI_byte ) {
+      byte * iptr = (byte *)indata;
+      byte * optr = (byte *)outdata;
+      for( index = 0; index < nvox; index++ )
+         if     ( mask[index] && ! iptr[index] ) optr[index] = 1;
+         else if( ! mask[index] && iptr[index] ) optr[index] = 0;
+   } else if( datum == MRI_short ) {
+      short * iptr = (short *)indata;
+      short * optr = (short *)outdata;
+      for( index = 0; index < nvox; index++ )
+         if     ( mask[index] && ! iptr[index] ) optr[index] = 1;
+         else if( ! mask[index] && iptr[index] ) optr[index] = 0;
+   } else if( datum == MRI_float ) {
+      float * iptr = (float *)indata;
+      float * optr = (float *)outdata;
+      for( index = 0; index < nvox; index++ )
+         if     ( mask[index] && ! iptr[index] ) optr[index] = 1.0;
+         else if( ! mask[index] && iptr[index] ) optr[index] = 0.0;
+   } else {
+      fprintf(stderr,"** apply_affected_voxels: bad datum %d\n", datum);
+      RETURN(1);
+   }
+
+   RETURN(0);
+}
+
+
+/*--------------- count voxels affected by mask operation ---------------*/
+int count_affected_voxels(void * data, int datum, byte * mask, int nvox,
+                          int verb)
+{
+   int index, fill=0, rm=0;
+
+   ENTRY("count_affected_voxels");
+
+   if( datum == MRI_byte ) {
+      byte * dptr = (byte *)data;
+      for( index = 0; index < nvox; index++ )
+         if     ( mask[index] && ! dptr[index] ) fill++;
+         else if( ! mask[index] && dptr[index] ) rm++;
+   } else if( datum == MRI_short ) {
+      short * dptr = (short *)data;
+      for( index = 0; index < nvox; index++ )
+         if     ( mask[index] && ! dptr[index] ) fill++;
+         else if( ! mask[index] && dptr[index] ) rm++;
+   } else if( datum == MRI_float ) {
+      float * dptr = (float *)data;
+      for( index = 0; index < nvox; index++ )
+         if     ( mask[index] && ! dptr[index] ) fill++;
+         else if( ! mask[index] && dptr[index] ) rm++;
+   } else {
+      fprintf(stderr,"** count_affected_voxels: bad datum %d\n", datum);
+      RETURN(1);
+   }
+
+   if(verb>1) INFO_message("AD: filled %d voxels, cleared %d", fill, rm);
+
+   RETURN(0);
 }
 
 
@@ -704,7 +788,7 @@ int show_help(void)
    "    -verb LEVEL             : specify verbosity level\n"
    "\n"
    "        The default level is 1, while 0 is considered 'quiet'.\n"
-   "        The maximum level is currently 3, but most poeple don't care.\n"
+   "        The maximum level is currently 3, but most people don't care.\n"
    "\n"
    "-------------------------------\n"
    "R. Reynolds         April, 2012\n"

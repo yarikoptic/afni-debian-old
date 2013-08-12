@@ -111,7 +111,7 @@ class Afni1D:
          return 0 on success"""
 
       if not self.ready:
-         print '** copy vec: Afni1D is not ready'
+         print '** reduce_by_vec_list: Afni1D is not ready'
          return 1
       if not UTIL.is_valid_int_list(vlist, 0, self.nvec-1, whine=1): return 1
       if len(vlist) < 1: return 1
@@ -126,6 +126,114 @@ class Afni1D:
       if self.groups: self.groups = [self.groups[i] for i in vlist]
 
       return 0
+
+   def reduce_by_group_list(self, glist):
+      """reduce the dataset according to the list of groups
+         return 0 on success"""
+
+      if not self.ready:
+         print '** reduce_by_group_list: Afni1D is not ready'
+         return 1
+
+      glen = len(glist)
+      if glen < 1: return 0
+
+      if len(self.groups) < 1:
+         print '** no groups to select in %s' % self.name
+         return 1
+
+      # do not all repeats in group list
+      groups = UTIL.get_unique_sublist(self.groups)
+
+      gnew = glist[:]
+
+      # convert to an integral group list
+      for ind in range(glen-1,-1,-1):
+         if gnew[ind] == 'POS':
+            gnew[ind:ind+1] = [g for g in groups if g > 0]
+         elif gnew[ind] == 'NEG':
+            gnew[ind:ind+1] = [g for g in groups if g < 0]
+         else:
+            try: gnew[ind] = int(gnew[ind])
+            except:
+                print "** invalid selection group '%s'" % gnew[ind]
+                return 1
+
+      if self.verb > 2: print '-- red. by glist: groups %s' % gnew
+      cols = self.ordered_cols_by_group_list(gnew)
+      if self.verb > 1: print '-- red. by glist: cols %s' % cols
+      return self.reduce_by_vec_list(cols)
+
+   def show_group_labels(self):
+      show_groups = (len(self.groups) == self.nvec)
+      show_labs = (len(self.labels) == self.nvec)
+      if not show_groups and not show_labs:
+         print '** no label info to show'
+         return
+
+      for ind in range(self.nvec):
+         if self.verb:
+            if show_groups: gstr = ', group %-3s' % self.groups[ind]
+            else:           gstr = ''
+            if show_labs:   lstr = ', label %s' % self.labels[ind]
+            else:           lstr = ''
+            print 'index %3d%s%s' % (ind, gstr, lstr)
+         elif show_labs: print '%s' % self.labels[ind]
+
+   def reduce_by_label_prefix(self, keep_pre=[], drop_pre=[]):
+
+      rv, newlist = self.label_prefix_to_ints(keep_pre, drop_pre)
+      if rv: return 1
+
+      self.reduce_by_vec_list(newlist)
+
+      if self.verb>1: print '-- reduce_by_label_prefix, labels: %s'%self.labels
+
+      return 0
+
+   def label_prefix_to_ints(self, keep_pre=[], drop_pre=[]):
+      """return a list of label indices, based on what is kept or dropped
+            keep labels in their original order
+
+            if keep_pre and one of keep_pre matches, keep
+            if drop_pre and one of drop_pre matches, remove
+
+         return 0 on success, along with the int list"""
+
+      if not self.ready:
+         print '** reduce_by_label_prefix: Afni1D is not ready'
+         return 1, []
+
+      if len(self.labels) == 0:
+         print '** no dataset labels to reduce by...'
+         return 0, range(self.nvec)
+
+      # make a list of label indices to keep, first, before removing
+      if len(keep_pre) > 0:
+         newlist = []
+         for ind, lab in enumerate(self.labels):
+            for pre in keep_pre:
+               if UTIL.starts_with(lab, pre):
+                  newlist.append(ind)
+                  break
+         newlist = UTIL.get_unique_sublist(newlist)
+         if self.verb > 2: print '++ applied keep_pre to produce: %s' % newlist
+      else:
+         newlist = range(len(self.labels))
+
+      if len(drop_pre) > 0:
+         new2 = []
+         for ind in newlist:
+            keep = 1
+            for pre in drop_pre:
+               if UTIL.starts_with(self.labels[ind], pre):
+                  keep = 0
+                  break
+            if keep: new2.append(ind)
+         newlist = new2
+         if self.verb > 2: print '++ applied drop_pre to produce %s' % newlist
+
+      return 0, newlist
 
    def run_info_is_consistent(self, whine=1):
       """verify consistency of nruns/run_len/nt"""
@@ -154,6 +262,7 @@ class Afni1D:
       newnt     = self.nvec
       self.nvec = self.nt
       self.nt   = newnt
+      self.run_len = [self.nt]  # init to 1 run
 
    def demean(self):
       """demean each vector per run (mean of each run will be zero)
@@ -263,6 +372,42 @@ class Afni1D:
 
       return 0
 
+   def volreg_2_allineate(self):
+      """convert a 6-parameter time series from 3dvolreg to a 12-parameter
+         time series for 3dAllineate
+
+         params (3dvolreg -1Dfile):    roll, pitch, yaw,    dS,     dL,   dP
+                (3dAllineate 1Dapply):
+           
+         3dvolreg params:    v0  v1  v2   v3  v4  v5
+         3dAllieate params: -v4 -v5 -v3   v0  v1  v2
+         
+         Permute and negate vectors, and append [0] vectors.
+
+         return 0 on success
+      """
+      if self.verb > 3: print '-- volreg_2_allineate...'
+      if not self.ready:
+         print "** matrix '%s' is not ready for volreg2allin" % self.name
+         return 1
+      if self.nvec != 6:
+         print "** matrix '%s' does not have 6 columns" % self.name
+         return 1
+
+      mm = self.mat     # for convenience
+
+      # negate second triplet of vectors
+      for col in range(3,6):
+         mm[col] = [-val for val in mm[col]]
+
+      # permute and append 6 [0] vectors
+      zvec = [0] * self.nt
+      self.mat  = [mm[4], mm[5], mm[3], mm[0], mm[1], mm[2],
+                   zvec,  zvec,  zvec,  zvec,  zvec,  zvec ]
+      self.nvec = 12
+
+      return 0
+
    def collapse_cols(self, method, weight=None):
       """collapsed the matrix to a single array of length nt (nvec will = 1)
 
@@ -273,6 +418,7 @@ class Afni1D:
              method = 'max'             : max across nvec
              method = 'maxabs'          : max abs across nvec
              method = 'euclidean_norm'  : sqrt(sum squares)
+                 or = 'enorm'
              method = 'weighted_enorm'  : sqrt(sum weighted squares)
 
          Note: the result will still be a trivial 2-D array, where element 0
@@ -301,7 +447,7 @@ class Afni1D:
       elif method == 'maxabs':  # take abs and recur
          if self.abs(): return 1
          return self.collapse_cols('max')
-      elif method == 'euclidean_norm':
+      elif method == 'enorm' or method == 'euclidean_norm':
          mat = [UTIL.euclidean_norm([self.mat[v][t] for v in range(self.nvec)])\
                                                     for t in range(self.nt)]
       elif method == 'weighted_enorm':
@@ -340,20 +486,27 @@ class Afni1D:
             mvec[ind] *= val
 
    def unitize(self):
-      """make every vector unit length"""
+      """make every vector unit length, use existing memory"""
 
       for ind, vec in enumerate(self.mat):
          vlen = UTIL.L2_norm(vec)
-         self.mat[ind] = UTIL.lin_vec_sum(1.0/vlen, vec, 0, None)
+         if vlen == 0.0:
+            for ind in range(self.nt): vec[ind] = 0
+         else:
+            for ind in range(self.nt): vec[ind] /= vlen
 
-   def project_out_vec(self, vec=None):
+   def project_out_vec(self, vec=None, unit=0):
       """project a vector out of the matrix vectors, if None, use mean
 
          for each vector y, subtract <vT,y>/<vT.v> * v
 
+         if unit: subtract mean of unit vectors
+
          return 0 on success, else 1
       """
-      if vec == None: vec = self.get_mean_vec()
+      if vec == None:
+          if unit: vec = self.get_mean_unit_vec()
+          else:    vec = self.get_mean_vec()
       if len(vec) != self.nt:
          print '** project_out_vec: bad length %d != %d' % (len(vec), self.nt)
          return 1
@@ -376,7 +529,164 @@ class Afni1D:
       if self.nt == 0: return []
       for ind in range(self.nt):
          v[ind] = UTIL.loc_sum([self.mat[i][ind] for i in range(self.nvec)])
-      return UTIL.lin_vec_sum(1.0/self.nt, v, 0, None)
+      return UTIL.lin_vec_sum(1.0/self.nvec, v, 0, None)
+
+   def get_mean_unit_vec(self, demean=1):
+      """return a single vector as the mean of all matrix vectors
+         AFTER the vectors have been (demeaned? and) scaled to unit lengths
+      """
+      adcopy = self.copy()
+      if demean: adcopy.demean()
+      adcopy.unitize()
+      gu = adcopy.get_mean_vec()
+      del(adcopy)
+      return gu
+
+   def show_gcor_all(self):
+      for ind in range(1,6):
+         print '----------------- GCOR test %d --------------------' % ind
+         exec('val = self.gcor%d()' % ind)
+         print "GCOR rv = %s" % val
+
+   def show_gcor_doc_all(self):
+      for ind in range(1,6):
+         print '----------------- GCOR doc %d --------------------' % ind
+         exec('val = self.gcor%d.__doc__' % ind)
+         print "%s" % val
+
+   # basically, a link to the one we really want to call
+   def gcor(self): return self.gcor2()
+
+   def show_gcor(self, verb=-1):
+      gc = self.gcor()
+      nv = self.nvec
+      nt = self.nt
+      if verb < 0: verb = self.verb
+      if verb: print "GCOR for %d time series of length %d = %g" % (nv, nt, gc)
+      else:    print "%g" % gc
+
+   def gcor1(self):
+      """GOLD STANDARD
+
+         compute GCOR via:
+           - fill cormat (correlation matrix)
+           - return average
+      """
+      self.set_cormat()
+      if not self.cormat_ready: return 0
+
+      ss = 0.0
+      for r in range(self.nvec):
+         for c in range(self.nvec):
+            ss += self.cormat[r][c]
+
+      return ss/(self.nvec*self.nvec)
+
+   def gcor2(self):
+      """PLATNUM STANDARD (method applied in afni_proc.py)
+
+         compute GCOR via:
+           - demean
+           - unitize
+           - get average unit time series gu
+           - return sum_of_squares(gu) = length(gu)^2
+      """
+      adcopy = self.copy()
+      adcopy.demean()
+      adcopy.unitize()
+      gu = adcopy.get_mean_vec()
+      
+      en = UTIL.dotprod(gu,gu)
+
+      return en
+
+   def gcor3(self):
+      """compute GCOR via:
+           - demean
+           - unitize
+           - get average unit time series gu
+           - compute average correlation of gu and each unit vector
+           - return |gu| times ave corr with gu
+      """
+
+      adcopy = self.copy()
+      adcopy.demean()
+      adcopy.unitize()
+
+      gu = copy.deepcopy(adcopy.mat[0])
+      for ind in range(1, adcopy.nvec):
+         gu = UTIL.lin_vec_sum(1, gu, 1, adcopy.mat[ind])
+      gu = [val/adcopy.nvec for val in gu]
+
+      ss = 0
+      for r in range(adcopy.nvec):
+         ss += UTIL.correlation_p(gu, adcopy.mat[r])
+
+      ss /= adcopy.nvec
+
+      return UTIL.euclidean_norm(gu)*ss
+
+   def gcor4(self):
+      """compute GMEAN via:
+           - get average time series gmean
+           - get average correlation of gmean and each unit vector
+           - return square (akin to above, but with gmean, not gu)
+      """
+
+      ss = self.get_ave_correlation_w_vec(self.get_mean_vec())
+
+      print "ave corr = %s, square = %s" % (ss, ss*ss)
+
+      return ss*ss
+
+   def gcor5(self):
+      """compute GCOR via:
+           - get average time series mean, gmean
+           - get average unit time series mean, gu
+           - return (gu.gmean/|gmean|)^2
+      """
+
+      adcopy = self.copy()
+      adcopy.demean()
+
+      m0 = adcopy.get_mean_vec()
+
+      adcopy.unitize()
+      m1 = adcopy.get_mean_vec()
+
+      dd = UTIL.dotprod(m0, m1)
+      l0 = UTIL.euclidean_norm(m0)
+      l1 = UTIL.euclidean_norm(m1)
+      c  = UTIL.correlation_p(m0, m1)
+
+      print "len(gmean) = %s, square = %s" % (l0, l0*l0)
+      print "len(gunit) = %s, square = %s" % (l1, l1*l1)
+      print "corr(gm, gu)            = %s" % (c)
+      print "corr(gm, gu)*len(gu)    = %s" % (c*l1)
+      print "squared                 = %s" % (c*c*l1*l1)
+
+      return dd*dd/(l0*l0)
+
+   def get_ave_correlation_w_vec(self, vec):
+      """return the average correlation of each vector with vec"""
+      gu = self.get_mean_vec()
+      ss = 0
+      for r in range(self.nvec):
+         ss += UTIL.correlation_p(vec, self.mat[r])
+      ss /= self.nvec
+
+      return ss
+
+   def get_gcor_wout_gmean(self, unitize=0):
+      """project out global mean, then compute gcor
+         unitize: unitize before projection
+      """
+      adcopy = self.copy()
+      if unitize: adcopy.unitize()
+      adcopy.project_out_vec()
+      gc = adcopy.gcor()
+      del(adcopy)
+      return gc
 
    # --- end: functions returning some aspect of the matrix ---
 
@@ -454,7 +764,7 @@ class Afni1D:
          print '** set_first_TRs: Afni1D is not ready'
          return 1
 
-      # apply derivative to each vector as one run, then clear run breaks
+      # apply 'newval' to first 'nfirst' in each run
       for ind in range(self.nvec):
          offset = 0
          for run, rlen in enumerate(self.run_len):
@@ -480,6 +790,21 @@ class Afni1D:
       for v in range(self.nvec):
          for t in range(self.nt-1):
             if self.mat[v][t+1] and not self.mat[v][t]: self.mat[v][t] = 1
+
+      return 0
+
+   def clear_next_TRs(self):
+      """if one TR is clear, also clear the next one"""
+
+      if self.verb > 3: print '-- clearing next TRs...'
+
+      if not self.ready:
+         print '** clear_next_TRs: Afni1D is not ready'
+         return 1
+
+      for v in range(self.nvec):
+         for t in range(self.nt-2, -1, -1):
+            if not self.mat[v][t] and self.mat[v][t+1]: self.mat[v][t+1] = 0
 
       return 0
 
@@ -601,6 +926,42 @@ class Afni1D:
 
       return 0
 
+   def get_censored_trs(self):
+      """return a list of TRs that were censored
+         (basically, return an inverted goodlist)
+
+         return status (0=success) and the TR index list
+      """
+
+      rv, ilist = self.get_uncensored_trs()
+      if rv: return 1, []
+
+      return 0, UTIL.invert_int_list(ilist, top=self.nt-1)
+
+   def get_uncensored_trs(self):
+      """return a list of TRs that were used, i.e. we not censored
+         (basically, return goodlist)
+
+         there are 2 valid types of inputs:
+
+           1. X-matrix format
+                len(goodlist) > 0 and nrowfull >= len(goodlist)
+           2. binary format
+                nvec == 1 and UTIL.vals_are_0_1(mat[0])
+
+         return status (0=success) and the TR index list
+      """
+
+      if not self.ready:
+         print "** Afni1D not ready for get_uncensored_trs"
+         return 1, []
+
+      # handle xmat case separately
+      if len(self.goodlist) > 0: return 0, self.goodlist
+
+      # otherwise, return indices from mat[0] as mask
+      return 0, [i for i,v in enumerate(self.mat[0]) if v]
+
    def show_censor_count(self, invert=0, column=0):
       """display the total number of TRs censored (clear) in the given column
 
@@ -618,11 +979,11 @@ class Afni1D:
          print "** Afni1D not ready for write_timing to '%s'" % fname
          return 1
 
-      total = self.mat[0].count(0)              # start with censor count
-      if invert: total = self.nt - total
+      ccount = self.mat[0].count(0)             # start with censor count
+      if invert: ccount = self.nt - ccount
 
-      if self.verb: print 'total number of censored TRs = %d' % total
-      else:         print total
+      if self.verb: print 'total number of censored TRs = %d' % ccount
+      else:         print ccount
 
       return 0
 
@@ -845,6 +1206,22 @@ class Afni1D:
    def simplecopy(self):
       return Afni1D(from_mat=1, matrix=self.mat, verb=self.verb)
 
+   def show_group_labels(self):
+      show_groups = (len(self.groups) == self.nvec)
+      show_labs = (len(self.labels) == self.nvec)
+      if not show_groups and not show_labs:
+         print '** no label info to show'
+         return
+
+      for ind in range(self.nvec):
+         if self.verb:
+            if show_groups: gstr = ', group %-3s' % self.groups[ind]
+            else:           gstr = ''
+            if show_labs:   lstr = ', label %s' % self.labels[ind]
+            else:           lstr = ''
+            print 'index %3d%s%s' % (ind, gstr, lstr)
+         elif show_labs: print '%s' % self.labels[ind]
+
    def show_labels(self):
       print '++ labels are:', self.labels
 
@@ -913,6 +1290,7 @@ class Afni1D:
       for v in range(cmat.nvec):
          lmin = min(cmat.mat[v])
          lmax = max(cmat.mat[v])
+         # rcr - why avoid this and leave constant terms?
          if lmin != lmax:
             for ind in range(cmat.nt):
                cmat.mat[v][ind] -= means[v]
@@ -942,6 +1320,46 @@ class Afni1D:
       del(means)
       del(norms)
       del(cnorm)
+
+   def show_cormat_diff_wout_gmean(self, unit=0, dp=3, spaces=2):
+      ccopy = self.get_cormat_diff_wout_gmean(unit=unit, dp=dp, spaces=spaces)
+      ccopy.show_cormat(dp=dp, spaces=spaces)
+      del(ccopy)
+
+   def get_cormat_diff_wout_gmean(self, unit=0, dp=3, spaces=2):
+      adcopy = self.copy()
+      adcopy.project_out_vec(unit=unit)
+      self.set_cormat(update=1)
+      adcopy.set_cormat(update=1)
+
+      for rind, row in enumerate(adcopy.cormat):
+         for ind in range(len(row)):
+            row[ind] = self.cormat[rind][ind] - row[ind]
+      return adcopy
+
+   def show_cormat(self, dp=3, spaces=2):
+      """print the correlation matrix, to the given number of places
+            dp > 0      : use that to right of decimal
+            dp = 0      : use %g
+            dp = -1     : use %f
+      """
+      self.set_cormat()
+      self.show_mat(self.cormat, dp=dp, spaces=spaces)
+
+   def show_mat(self, mat, dp=3, spaces=2):
+      """print the correlation matrix, to the given number of places
+            dp > 0      : use that to right of decimal
+            dp = 0      : use %g
+            dp = -1     : use %f
+      """
+      ss = ' '*spaces
+      for v, vec in enumerate(mat):
+         for val in vec:
+            if dp > 0:    ps = "%.*f%s" % (dp, val, ss)
+            elif dp == 0: ps = "%g%s" % (val, ss)
+            else:         ps = "%f%s" % (val, ss)
+            print ps,
+         print ""
 
    def make_cormat_warnings_string(self, cutoff=0.4, name=''):
       """make a string for any entires at or above cutoffs:
@@ -1305,7 +1723,7 @@ class Afni1D:
       rcount = [0 for r in runstart]  # count entries per run
       for gval in goodlist:
          # maybe adjust the run index (note that rnext[-1] > goodlist vals)
-         while gval > rnext[run]: run += 1
+         while gval >= rnext[run]: run += 1
          rcount[run] += 1
 
       # and verify that we have accounted for everything
@@ -1508,6 +1926,56 @@ class Afni1D:
             form = "%7.4f %7.4f %7.4f %7.4f"
          print ps + form % UTIL.min_mean_max_stdev(col)
 
+   def add_offset(self, offset):
+      """add offset value to every value in matrix"""
+
+      if not self.ready:
+         print '** add_affset: data not ready'
+         return 1
+
+      for row in self.mat:
+         for ind in range(len(row)): row[ind] += offset
+
+      return 0
+
+   def rank(self, style='dense', reverse=0, base1=0, verb=1):
+      """convert to the min to max rank
+         i.e. for each value, apply its ordered index
+         e.g. 3.4 -0.3 4.9 2.0   ==>   2 0 3 1
+
+         style :  rank style ('dense' or 'competition')
+         reverse: sort largest to smallest
+         base1:   apply 1-based ranks
+
+         If there is one row or col, use it.  Otherwise, use column 0.
+
+         return status (0=success)
+      """
+
+      if not self.ready:
+         print '** rank: data not ready'
+         return 1, []
+
+      if self.nvec == 0 or self.nt == 0: return 0       # nothing to do
+
+      # if nt == 1, use first value per vector (apply as transpose)
+      if self.nt == 1 and self.nvec > 1:
+         data = [self.mat[ind][0] for ind in range(self.nvec)]
+         rv, data = UTIL.get_rank(data, style=style, reverse=reverse)
+         if rv: return 1
+         for ind in range(self.nvec):
+            self.mat[ind][0] = data[ind]
+
+      # else nt > 1, process all vectors
+      else:
+         for ind, row in enumerate(self.mat):
+            rv, data = UTIL.get_rank(row, style=style, reverse=reverse)
+            if rv: return 1
+            self.mat[ind] = data
+
+      if base1: return self.add_offset(1)
+      else:     return 0
+
    def get_indices_str(self, ind_types):
       """return an index list (sub-brick selector form) for the
          following groups:
@@ -1581,14 +2049,30 @@ class Afni1D:
              return []
          groups.extend([g for g in self.groups if g > 0])
       if len(groups) < 1 or len(self.groups) < 1: return []
-      # if not list2_is_in_list1(self.groups, groups, "groups"): return []
       return [val for val in range(self.nvec) if self.groups[val] in groups]
+      
+   def ordered_cols_by_group_list(self, groups):
+      """return a list of columns, given a list of groups
+
+         for each group, insert all columns from that group
+         (i.e. keep group order)
+      """
+      if not self.groups: return []
+
+      if len(groups) < 1 or len(self.groups) < 1: return []
+
+      clist = []
+      for g in groups:
+         clist.extend([v for v in range(self.nvec) if self.groups[v] == g])
+
+      return clist
       
    def cols_by_label_list(self, labels):
       """return a list of columns, given a list of labels"""
       if not self.labels or not labels: return []
       if not list2_is_in_list1(self.labels, labels, "labels"): return []
-      return [val for val in range(self.nvec) if val in cols]
+      # make a working function, suggested by I Schwabacher
+      return [self.labels.index(lab) for lab in labels]
 
    def init_from_matrix(self, matrix):
       """initialize Afni1D from a 2D (or 1D) array"""
@@ -2043,11 +2527,10 @@ class AfniData(object):
       rstr = ''
       if self.verb > 2 and not flag_empty: rstr += 'run %02d : ' % (row+1)
 
-      # rcr - fix
+      # rcr - fix?
       # if flagging an empty run, use '*' characters
-      if len(data) == 0 and flag_empty:
-         if row == 0: rstr += '* *'
-         else:        rstr += '*'
+      if len(data) == 0 and flag_empty: rstr += '* *'
+      # little gain in trying to usually put one '*'
 
       for val in data:
          if simple:

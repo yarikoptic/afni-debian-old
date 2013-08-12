@@ -141,8 +141,8 @@ typedef struct {
 
       void (* send_CB)() ;   /* callback, if non_NULL */
 
-      MCW_function_list * transforms0D ;
-      MCW_function_list * transforms1D ;
+      MCW_function_list *transforms0D ;
+      MCW_function_list *transforms1D ;
 
       char namecode[32] ;
 
@@ -166,8 +166,10 @@ typedef struct {
 
 /*--- stuff for changing the graph length: pinning ---*/
 
-#define MIN_PIN 2
-#define MAX_PIN 9999
+#define MIN_PIN    2
+#define MAX_PIN    9999
+#define MAX_STRIDE 99
+#define ALLOW_STRIDE
 
 /* plotting range is from time index NBOT to NTOP-1 */
 
@@ -176,7 +178,18 @@ typedef struct {
 #define NTOP(gr) ( ((gr)->pin_top >= MIN_PIN                ) ? (gr)->pin_top            \
                                                               : (gr)->status->num_series )
 
-#define NPTS(gr) (NTOP(gr)-NBOT(gr))   /* number of points visible in graph */
+#ifdef ALLOW_STRIDE
+#define NSTRIDE(gr) ( (gr)->pin_stride )
+#else
+#define NSTRIDE(gr) 1
+#endif
+
+#ifdef ALLOW_STRIDE
+# define NABC(a,b,c) ( (int)ceil( ((b)-(a))/(double)(c) ) )
+# define NPTS(gr)    NABC( NBOT(gr) , NTOP(gr) , NSTRIDE(gr) )
+#else
+# define NPTS(gr) (NTOP(gr)-NBOT(gr))   /* number of points visible in graph */
+#endif
 
 /* data plotting range is from time index TBOT to TTOP-1 */
 
@@ -214,7 +227,7 @@ typedef struct {
 
 #define DEFAULT_GR_BOXES_COLOR    DARKEST_COLOR
 #define DEFAULT_GR_BACKG_COLOR    BRIGHTEST_COLOR
-#define DEFAULT_GR_GRID_COLOR     1                /* yellow */
+#define DEFAULT_GR_GRID_COLOR     2
 #define DEFAULT_GR_TEXT_COLOR     DARKEST_COLOR
 #define DEFAULT_GR_DATA_COLOR     DARKEST_COLOR
 #define DEFAULT_GR_IDEAL_COLOR    REDDEST_COLOR
@@ -378,7 +391,7 @@ typedef struct {
 
    get_ptr   getser ;
    XtPointer getaux ;
-   MCW_grapher_status * status ;
+   MCW_grapher_status *status ;
 
    /* sub-graph stuff */
 
@@ -397,22 +410,23 @@ typedef struct {
    float fscale ;
    int pin_top ;      /* 27 Apr 1997 */
    int pin_bot ;      /* 17 Mar 2004 */
+   int pin_stride ;   /* 19 Jul 2013 */
    int HorZ ;         /* 05 Jan 1999 */
 
    int key_Nlock , key_lock_sum ;
    int time_index ;
 
    int        ncen_line , nncen ;
-   XPoint    * cen_line ;
-   MRI_IMAGE * cen_tsim ;
-   MRI_IMAGE * xax_tsim ;  /* 09 Jan 1998 */
-   MRI_IMAGE * ave_tsim ;  /* 26 Jan 2004 */
+   XPoint    *cen_line ;
+   MRI_IMAGE *cen_tsim ;
+   MRI_IMAGE *xax_tsim ;  /* 09 Jan 1998 */
+   MRI_IMAGE *ave_tsim ;  /* 26 Jan 2004 */
 
    int xx_text_1 , xx_text_2 , xx_text_2p , xx_text_3 ;
 
    /* external time-series stuff */
 
-   MRI_IMARR * ref_ts , * ort_ts ;
+   MRI_IMARR *ref_ts , *ort_ts ;
    int ref_ts_color , ort_ts_color ;
    int ref_ts_plotall , ort_ts_plotall ;
 
@@ -466,7 +480,7 @@ typedef struct {
           opt_baseline_global_label  ;
    float global_base ;
 
-   MCW_bbox * opt_textgraph_bbox , * opt_baseline_bbox ;    /* 22 Sep 2000 */
+   MCW_bbox *opt_textgraph_bbox , *opt_baseline_bbox ;    /* 22 Sep 2000 */
    int textgraph ;
 
 #ifdef USE_OPTMENUS
@@ -513,6 +527,12 @@ typedef struct {
    int dont_setref ;                                /* 27 Jan 2004 */
    int dont_redraw ;                                /* 27 Jan 2004 */
    int tschosen ;                                   /* 31 Mar 2004 */
+
+   MCW_arrowval *detrend_av ;
+   int           detrend ;                          /* 05 Dec 2012 */
+
+   int           thresh_fade ;                      /* Mar 2013 */
+   MCW_bbox  *opt_tfade_bbox ;
 
 } MCW_grapher ;
 
@@ -680,6 +700,8 @@ extern void GRA_setshift_action_CB( Widget , XtPointer , XtPointer ) ;
 extern void GRA_transform_CB     ( MCW_arrowval * , XtPointer ) ;
 extern char * GRA_transform_label( MCW_arrowval * , XtPointer ) ;
 
+extern void GRA_detrend_CB       ( MCW_arrowval * , XtPointer ) ;  /* 05 Dec 2012 */
+
 extern void GRA_ggap_CB( MCW_arrowval * , XtPointer ) ;
 extern void GRA_gthick_CB( MCW_arrowval * , XtPointer ) ;  /* 06 Oct 2004 */
 
@@ -702,6 +724,8 @@ extern void GRA_mapmenu_CB( Widget , XtPointer , XtPointer ) ;
 
 extern void GRA_textgraph_CB( Widget , XtPointer , XtPointer ) ;  /* 22 Sep 2000 */
 extern void GRA_baseline_CB ( Widget , XtPointer , XtPointer ) ;  /* 22 Sep 2000 */
+
+extern void GRA_tfade_CB( Widget , XtPointer , XtPointer ) ;  /* Mar 2013 */
 
  /* 07 Aug 2001 */
 extern void GRA_finalize_global_baseline_CB( Widget,

@@ -114,6 +114,10 @@ mat44   MRILIB_dicom_matrix     ;
 
 int     MRILIB_dicom_count = 0 ;
 
+/*! Global variable reporting signed 16-bit overflow (into unsigned). */
+
+int     MRILIB_dicom_s16_overflow = 0 ;
+
 /*! Global variable containing DICOM header info for each file. */
 
 AFD_dicom_header **MRILIB_dicom_header = NULL ;
@@ -2074,7 +2078,8 @@ ENTRY("mri_read_ppm") ;
 
 /*! Length of line buffer for mri_read_ascii() */
 /* rcr - improve this */
-#define LBUF 2524288  /* 08 Jul 2004: increased to 512K from 64K */
+#define LBUF 5048576  /* 08 Jul 2004: increased to 512K from 64K 
+                         27 Dec 2012: increased to 1024K from 512K  */
 
 /*! Free a buffer and set it to NULL */
 #define FRB(b) do{ if( (b)!=NULL ){free((b)); (b)=NULL;} }while(0)
@@ -2918,6 +2923,7 @@ ENTRY("mri_read_1D") ;
    ii = strlen(fname) ;
    if( (ii <= 2 && fname[0] == '-')                  ||
        (ii <= 6 && strncmp(fname,"stdin"   ,5) == 0) ||
+       (ii <= 9 && strncmp(fname,"1D:stdin",8) == 0) || /* Isaac S.'s 02/06/13 */
        (ii <= 9 && strncmp(fname,"/dev/fd0",8) == 0)   ){
      inim = mri_read_1D_stdin() ;
      if( inim != NULL && fname[ii-1] == '\'' ){
@@ -3033,6 +3039,16 @@ ENTRY("mri_read_1D") ;
    if( flip ){ inim=mri_transpose(flim); mri_free(flim); flim=inim; }
 
    mri_add_name(fname,flim) ; RETURN(flim) ;
+}
+
+/*---------------------------------------------------------------------------*/
+
+MRI_IMAGE * mri_rowmajorize_1D( MRI_IMAGE *im )
+{
+   MRI_IMAGE *qim = mri_transpose(im) ;
+   qim->nx *= qim->ny ;
+   qim->ny  = 1 ;
+   return qim ;
 }
 
 /*---------------------------------------------------------------------------*/

@@ -214,7 +214,8 @@ int main (int argc, char *argv[])
    static char FuncName[]={"MapIcosahedron"};
    SUMA_Boolean brk, smooth=NOPE, verb=NOPE, all_surfs_spec=NOPE;
    char fout[SUMA_MAX_FILENAME_LENGTH];
-   char icoFileNm[SUMA_MAX_FILENAME_LENGTH], outSpecFileNm[SUMA_MAX_FILENAME_LENGTH];
+   char icoFileNm[SUMA_MAX_FILENAME_LENGTH], 
+        outSpecFileNm[SUMA_MAX_FILENAME_LENGTH];
    char bin[SUMA_MAX_FILENAME_LENGTH], *histnote=NULL;
    int numTriBin=0, numTriLin=0, numIt=0;
 
@@ -590,6 +591,10 @@ int main (int argc, char *argv[])
                FuncName, brainSpecFile);
       exit(1);
    }
+   /* Remove some states that are certainly of no use here 
+      ZSS. Aug 06 2013                                              */
+   SUMA_RemoveSpecState(&brainSpec, "pial-outer-smoothed", 1, "SAME");     
+   
    /* scan trough spec file and make sure there is one and only one
       LocalDomainParent. Otherwise issue a warning */
    found = 0;
@@ -935,9 +940,9 @@ int main (int argc, char *argv[])
       Cx = SUMA_Convexity_Engine ( SO_morph->NodeList, 
                                    SO_morph->N_Node, 
                                    SO_morph->NodeNormList, 
-                                   SO_morph->FN, OutName);
+                                   SO_morph->FN, OutName, NULL);
       if (Cx) SUMA_free(Cx); Cx = NULL;
-      SUMA_SphereQuality (SO_morph, SO_morph->Label, NULL);
+      SUMA_SphereQuality (SO_morph, SO_morph->Label, NULL, NULL, NULL);
       fprintf( SUMA_STDERR, 
                "%s:\nExiting after SUMA_SphereQuality\n", FuncName);
 

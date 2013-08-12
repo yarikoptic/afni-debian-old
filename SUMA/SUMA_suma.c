@@ -404,7 +404,7 @@ int main (int argc,char *argv[])
    
 	SUMAg_CF->isGraphical = YUP;
    
-   ps = SUMA_Parse_IO_Args(argc, argv, "-i;-t;");
+   ps = SUMA_Parse_IO_Args(argc, argv, "-i;-t;-dset;");
 
    /* initialize Volume Parent and AfniHostName to nothing */
    for (ispec=0; ispec < SUMA_MAX_N_GROUPS; ++ispec) {
@@ -449,7 +449,7 @@ int main (int argc,char *argv[])
 		
       if (strcmp(argv[kar], "-h") == 0 || strcmp(argv[kar], "-help") == 0) {
 			SUMA_usage (ps, strlen(argv[kar]) > 3 ? 2:1);
-          exit (1);
+          exit (0); /* return a good status on -help   12 Jul 2013 [rickr] */
 		}
 		
       /* -list_ports list and quit */
@@ -508,16 +508,21 @@ int main (int argc,char *argv[])
       if (strcmp(argv[kar], "-environment") == 0) {
 			 s = SUMA_env_list_help (0);
           fprintf (SUMA_STDOUT,  
-                  "#SUMA ENVIRONMENT \n"
-                  "# If you do not have a ~/.sumarc, \n"
-                  "# or you want to update yours with\n"
-                  "# new variables while keeping your\n"
-                  "# settings intact, you can use: \n"
-                  "#    suma -environment > ~/sumarc && mv ~/sumarc ~/.sumarc \n"
-                  "# \n"
-                  "# or more simply:\n"
-                  "#    suma -update_env\n"
-                  "***ENVIRONMENT\n"
+            "#SUMA ENVIRONMENT \n"
+            "# If you do not have a ~/.sumarc file, cannot find a SUMA\n"
+            "# environment variable that's been mentioned in documentation,\n"
+            "# or fervently desire to update your current ~/.sumarc with  \n"
+            "# all the latest variables that SUMA uses, you should run: \n"
+            "# \n"
+            "#    suma -update_env\n"
+            "# \n"
+            "# Unless you have setup SUMA environment variables outside of\n"
+            "# your ~/.sumarc file, updating your ~/.sumarc file with \n"
+            "# 'suma -update_env' WILL NOT ALTER changes you have already\n"
+            "# made to the variables in your current ~/.sumarc. \n"
+            "# For this reason consider running the update command after each \n"
+            "# upgrade of your AFNI/SUMA binaries.\n" 
+            "***ENVIRONMENT\n"
                   "%s\n", s); 
           SUMA_free(s); s = NULL;
           exit (0);
@@ -890,6 +895,23 @@ int main (int argc,char *argv[])
          exit (1);   
       }
    }
+   
+   /* load the datasets onto the first SO*/
+   if (ps->N_dsetname>0) {
+      SUMA_SurfaceObject *SO = SUMA_findanySOp_inDOv(SUMAg_DOv, 
+                                                     SUMAg_N_DOv, NULL);
+      if (!SO) {
+         SUMA_S_Err("Could not find any SO!");
+         exit(1);
+      }
+      for (i=0; i<ps->N_dsetname; ++i) {
+         if (!(SUMA_LoadDsetOntoSO_eng(ps->dsetname[i], SO, 1, 1, 1, NULL))) {
+            SUMA_S_Errv("Failed to load %s onto %s\n", 
+                        ps->dsetname[i], SO->Label);
+         }
+      }
+   }
+
    SUMA_FreeGenericArgParse(ps); ps = NULL;
  
    /* A Warning about no sumarc */

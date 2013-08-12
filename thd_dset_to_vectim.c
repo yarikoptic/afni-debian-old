@@ -5,7 +5,10 @@
 #endif
 
 #undef  VECTIM_scan
-#define VECTIM_scan(vv) thd_floatscan((vv)->nvals*(vv)->nvec,(vv)->fvec)
+#define VECTIM_scan(vv)                                                     \
+ do{ int nbad = thd_floatscan((vv)->nvals*(vv)->nvec,(vv)->fvec) ;          \
+     if( nbad > 0 ) WARNING_message("found %d bad values in vectim",nbad) ; \
+ } while(0)
 
 /*--------------------------------------------------------------------------*/
 /*! Convert a dataset to the MRI_vectim format, where each time
@@ -97,6 +100,132 @@ ENTRY("THD_dset_to_vectim") ;
    if( mmm != mask ) free(mmm) ;
    VECTIM_scan(mrv) ; /* 09 Nov 2010 */
    RETURN(mrv) ;
+}
+
+/*--------------------------------------------------------------------------*/
+
+MRI_vectim * THD_dset_censored_to_vectim( THD_3dim_dataset *dset,
+                                          byte *mask , int nkeep , int *keep )
+{
+   byte *mmm=mask ;
+   MRI_vectim *mrv=NULL ;
+   int kk,iv,jj , nvals , nvox , nmask ;
+
+ENTRY("THD_dset_censored_to_vectim") ;
+
+                     if( !ISVALID_DSET(dset) ) RETURN(NULL) ;
+   DSET_load(dset) ; if( !DSET_LOADED(dset)  ) RETURN(NULL) ;
+
+   if( nkeep <= 0 || keep == NULL ){
+     mrv = THD_dset_to_vectim( dset , mask , 0 ) ;
+     RETURN(mrv) ;
+   }
+
+   nvals = nkeep ;
+   nvox  = DSET_NVOX(dset) ;
+
+   if( mmm != NULL ){
+     nmask = THD_countmask( nvox , mmm ) ;  /* number to keep */
+     if( nmask <= 0 ) RETURN(NULL) ;
+   } else {
+     nmask = nvox ;                         /* keep them all */
+#pragma omp critical (MALLOC)
+     mmm   = (byte *)malloc(sizeof(byte)*nmask) ;
+     if( mmm == NULL ){
+       ERROR_message("THD_dset_to_vectim: out of memory") ;
+       RETURN(NULL) ;
+     }
+     memset( mmm , 1 , sizeof(byte)*nmask ) ;
+   }
+
+#pragma omp critical (MALLOC)
+   mrv = (MRI_vectim *)malloc(sizeof(MRI_vectim)) ;
+
+   mrv->nvec   = nmask ;
+   mrv->nvals  = nvals ;
+   mrv->ignore = 0 ;
+#pragma omp critical (MALLOC)
+   mrv->ivec   = (int *)malloc(sizeof(int)*nmask) ;
+   if( mrv->ivec == NULL ){
+     ERROR_message("THD_dset_to_vectim: out of memory") ;
+     free(mrv) ; if( mmm != mask ) free(mmm) ;
+     RETURN(NULL) ;
+   }
+#pragma omp critical (MALLOC)
+   mrv->fvec  = (float *)malloc(sizeof(float)*nmask*nvals) ;
+   if( mrv->fvec == NULL ){
+     ERROR_message("THD_dset_to_vectim: out of memory") ;
+     free(mrv->ivec) ; free(mrv) ; if( mmm != mask ) free(mmm) ;
+     RETURN(NULL) ;
+   }
+
+   /* store desired voxel time series */
+
+   for( kk=iv=0 ; iv < nvox ; iv++ ){
+     if( mmm[iv] ) mrv->ivec[kk++] = iv ;  /* build index list */
+   }
+
+#pragma omp critical (MALLOC)
+  { float *var = (float *)malloc(sizeof(float)*DSET_NVALS(dset)) ;
+    float *vpt ;
+     for( kk=iv=0 ; iv < nvox ; iv++ ){
+       if( mmm[iv] == 0 ) continue ;
+       (void)THD_extract_array( iv , dset , 0 , var ) ;
+       vpt = VECTIM_PTR(mrv,kk) ; kk++ ;
+       for( jj=0 ; jj < nkeep ; jj++ ) vpt[jj] = var[keep[jj]] ;
+     }
+     free(var) ;
+   }
+
+   mrv->nx = DSET_NX(dset) ; mrv->dx = fabs(DSET_DX(dset)) ;
+   mrv->ny = DSET_NY(dset) ; mrv->dy = fabs(DSET_DY(dset)) ;
+   mrv->nz = DSET_NZ(dset) ; mrv->dz = fabs(DSET_DZ(dset)) ;
+
+   DSET_UNMSEC(dset) ; mrv->dt = DSET_TR(dset) ;
+   if( mrv->dt <= 0.0f ) mrv->dt = 1.0f ;
+
+   if( mmm != mask ) free(mmm) ;
+   VECTIM_scan(mrv) ; /* 09 Nov 2010 */
+   RETURN(mrv) ;
+}
+
+/*---------------------------------------------------------------------------*/
+
+int THD_vectim_data_tofile( MRI_vectim *mrv , char *fnam )
+{
+   FILE *fp ; size_t nf , nw ;
+
+   if( mrv == NULL || fnam == NULL ) return 0 ;
+
+   fp = fopen( fnam , "w" ) ; if( fp == NULL ) return 0 ;
+   nf = ((size_t)mrv->nvec) * ((size_t)mrv->nvals) ;
+   nw = fwrite( mrv->fvec , sizeof(float) , nf , fp ) ;
+   fclose(fp) ; if( nw == nf ) return 1 ;
+   remove(fnam) ; return 0 ;
+}
+
+/*---------------------------------------------------------------------------*/
+
+void THD_vector_fromfile( int nvals , int iv , float *vv , FILE *fp )
+{
+   fseeko( fp , ((off_t)iv) * ((off_t)nvals) * ((off_t)sizeof(float)) , SEEK_SET ) ;
+   fread( vv , sizeof(float) , nvals , fp ) ;
+   return ;
+}
+
+/*---------------------------------------------------------------------------*/
+
+int THD_vectim_reload_fromfile( MRI_vectim *mrv , char *fnam )
+{
+   FILE *fp ; size_t nf , nw ;
+
+   if( mrv == NULL || fnam == NULL ) return 0 ;
+
+   fp = fopen( fnam , "r" ) ; if( fp == NULL ) return 0 ;
+   nf = mrv->nvec * mrv->nvals ;
+   if( mrv->fvec == NULL ) mrv->fvec = (float *)malloc(sizeof(float)*nf) ;
+   nw = fread( mrv->fvec , sizeof(float) , nf , fp ) ;
+   fclose(fp) ; return (int)nw ;
 }
 
 /*---------------------------------------------------------------------------*/
@@ -485,6 +614,8 @@ void THD_vectim_dotprod( MRI_vectim *mrv , float *vec , float *dp , int ata )
  } /* end OpenMP */
  AFNI_OMP_END ;
 
+  thd_floatscan(mrv->nvec,dp) ;  /* 16 May 2013 */
+
   return ;
 }
 
@@ -503,6 +634,8 @@ void THD_vectim_vectim_dot( MRI_vectim *arv, MRI_vectim *brv, float *dp )
      for( sum=0.0f,ii=0 ; ii < nvals ; ii++ ) sum += av[ii]*bv[ii] ;
      dp[iv] = sum ;
    }
+
+   thd_floatscan(nvec,dp) ;  /* 16 May 2013 */
 
    return ;
 }
@@ -531,6 +664,8 @@ void THD_vectim_spearman( MRI_vectim *mrv , float *vec , float *dp )
      dp[iv] = spearman_rank_corr( nvals , bv , sav , av ) ;
    }
 
+   thd_floatscan(nvec,dp) ;  /* 16 May 2013 */
+
    free(bv) ; free(av) ; return ;
 }
 
@@ -557,6 +692,8 @@ void THD_vectim_quadrant( MRI_vectim *mrv , float *vec , float *dp )
      AAmemcpy( bv , VECTIM_PTR(mrv,iv) , sizeof(float)*nvals ) ;
      dp[iv] = quadrant_corr( nvals , bv , sav , av ) ;
    }
+
+   thd_floatscan(nvec,dp) ;  /* 16 May 2013 */
 
    free(bv) ; free(av) ; return ;
 }
@@ -590,6 +727,8 @@ void THD_vectim_tictactoe( MRI_vectim *mrv , float *vec , float *dp )
      AAmemcpy( bv , VECTIM_PTR(mrv,iv) , sizeof(float)*nvals ) ;
      dp[iv] = tictactoe_corr( nvals , bv , sav , av ) ;
    }
+
+   thd_floatscan(nvec,dp) ;  /* 16 May 2013 */
 
    free(bv) ; free(av) ; return ;
 }
@@ -629,6 +768,8 @@ STATUS("loop") ;
      dp[iv] = kendallNlogN( aav , bv , nvals ) ;
    }
 
+   thd_floatscan(nvec,dp) ;  /* 16 May 2013 */
+
    free(qv) ; free(bv) ; free(aav) ; free(av) ; EXRETURN ;
 }
 
@@ -656,6 +797,8 @@ void THD_vectim_quantile( MRI_vectim *mrv , float *vec , float *dp )
      dp[iv] = quantile_corr( nvals , bv , sav , av ) ;
    }
 
+   thd_floatscan(nvec,dp) ;  /* 16 May 2013 */
+
    free(bv) ; free(av) ; return ;
 }
 
@@ -669,15 +812,15 @@ void THD_vectim_quantile( MRI_vectim *mrv , float *vec , float *dp )
             of values (dimensions) at each voxel
             If string contains "inv", return the inverse of the distance
 */
-void THD_vectim_distance( MRI_vectim *mrv , float *vec , 
+void THD_vectim_distance( MRI_vectim *mrv , float *vec ,
                           float *dp, int abs, char *xform)
 {
-   
+
    if( mrv == NULL || vec == NULL || dp == NULL ) return ;
 
  AFNI_OMP_START ;
 #pragma omp parallel if( mrv->nvec > 1 && mrv->nvec * mrv->nvals > 999999 )
-   {  int nvec=mrv->nvec, nvals=mrv->nvals, nv1=nvals-1, iv, ii ; 
+   {  int nvec=mrv->nvec, nvals=mrv->nvals, nv1=nvals-1, iv, ii ;
       float sum, *fv, a1, a2;
 #pragma omp for
       for( iv=0 ; iv < nvec ; iv++ ){
@@ -704,18 +847,20 @@ void THD_vectim_distance( MRI_vectim *mrv , float *vec ,
       if (strstr(xform,"inv")) {
          for( iv=0 ; iv < nvec ; iv++ ) {
             if (dp[iv] != 0.0) {
-               dp[iv] = a1/dp[iv]; 
-            } 
+               dp[iv] = a1/dp[iv];
+            }
          }
       } else if (a1 != 1.0) {
          for( iv=0 ; iv < nvec ; iv++ ) {
             if (dp[iv] != 0.0) {
                dp[iv] = dp[iv]/a1;
-            } 
+            }
          }
-      } 
+      }
    }
- 
+
+   thd_floatscan(mrv->nvec,dp) ;  /* 16 May 2013 */
+
   return ;
 }
 
@@ -931,6 +1076,43 @@ ENTRY("THD_vectim_to_dset") ;
    }
 
    EXRETURN ;
+}
+
+/*----------------------------------------------------------------------*/
+/* The jj-th time point in the vectim goes to the tlist[jj]-th time
+   point in the output dataset [06 Aug 2013].
+*//*--------------------------------------------------------------------*/
+
+void THD_vectim_to_dset_indexed( MRI_vectim *mrv ,
+                                 THD_3dim_dataset *dset , int *tlist )
+{
+   int nvals , nvec ,  jj,kk , tmax=0 ;
+   float *tar , *var ;
+
+ENTRY("THD_vectim_to_dset_indexed") ;
+
+   if( mrv == NULL || !ISVALID_DSET(dset) || tlist == NULL ) EXRETURN ;
+
+   nvec  = mrv->nvec ;
+   nvals = mrv->nvals ;
+
+   for( kk=0 ; kk < nvals ; kk++ ){
+     if( tlist[kk] < 0    ) EXRETURN ;
+     if( tlist[kk] > tmax ) tmax = tlist[kk] ;
+   }
+   tmax++ ; if( DSET_NVALS(dset) < tmax ) EXRETURN ;
+
+   tar = (float *)malloc(sizeof(float)*tmax) ;
+
+   for( kk=0 ; kk < nvec ; kk++ ){
+     var = VECTIM_PTR(mrv,kk) ;
+     for( jj=0 ; jj < tmax  ; jj++ ) tar[jj] = 0.0f ;
+     for( jj=0 ; jj < nvals ; jj++ ) tar[jj] = var[tlist[jj]] ;
+     THD_insert_series( mrv->ivec[kk] , dset ,
+                        tmax , MRI_float , tar , 0 ) ;
+   }
+
+   free(tar) ; EXRETURN ;
 }
 
 /*---------------------------------------------------------------------------*/

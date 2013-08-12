@@ -49,13 +49,85 @@
 
 
 afni_history_struct dglen_history[] = {
+{ 14 , MAY, 2013 , DRG , "align_epi_anat.py" , 
+    MINOR , TYPE_BUG_FIX, 
+    "motion file renamed",
+    "Renamed motion files for -save_vr without -epi2anat"
+} ,
+{ 7 , MAY, 2013 , DRG , "3dAnatNudge" , 
+    MINOR , TYPE_MODIFY, 
+    "always produce output with -prefix even if no shift"
+} ,
+
+{ 19 , APR, 2013 , DRG , "3dmaskdump" , 
+    MINOR , TYPE_NEW_OPT, 
+    "lpi xyz output option"
+} ,
+
+{ 17 , APR, 2013 , DRG , "align_epi_anat.py" , 
+    MINOR , TYPE_BUG_FIX, 
+    "save_vr result causes crash"
+} ,
+
+{ 1 , APR, 2013 , DRG , "align_epi_anat.py" , 
+    MINOR , TYPE_BUG_FIX, 
+    "motion file renamed",
+    "Some output files like the motion files were accidentally renamed."
+} ,
+{ 29 , MAR, 2013 , DRG , "general compression" , 
+    MINOR , TYPE_NEW_ENV, 
+    "pigz for faster gzip-like compression"
+    "pigz is a gzip utility that makes use of multiple CPU's.\n"
+    "It produces and uses .gz files. To use, set AFNI_COMPRESSOR to PIGZ."
+} ,
+{ 27 , MAR, 2013 , DRG , "3dBrickStat" , 
+    MINOR , TYPE_NEW_OPT, 
+    "absolute value of voxels for statistics"
+} ,
+{ 19 , MAR, 2013 , DRG , "align_epi_anat.py" , 
+    MINOR , TYPE_BUG_FIX, 
+    "alignment AddEdge error",
+    "Error in resampling step of AddEdge procedure causes crash.\n"
+    "Problem requires both -giant_move (or -prep_off or -resample off) and\n"
+    "-AddEdge."
+} ,
+{ 12 , MAR, 2013 , DRG , "align_epi_anat.py" , 
+    MINOR , TYPE_NEW_OPT, 
+    "Handling input and output directories",
+    "Output now goes to current directory (./) unless otherwise specified\n"
+    "with -output_dir. Thanks a lot, Rick."
+} ,
+{ 11 , MAR, 2013 , DRG , "align_epi_anat.py" , 
+    MINOR , TYPE_NEW_OPT, 
+    "Handling input and output directories",
+    "Output follows input directories unless specified with -output_dir\n"
+    "Previously, all input files had to exist in current directory.\n"
+    "Changes allow for output to follow anat or epi dataset directories\n"
+    "or specified output directory. Also minor change to call tcsh without\n"
+    "sourcing startup .cshrc"
+} ,
+{ 11 , MAR, 2013 , DRG , "@Atlasize center of mass" , 
+    MINOR , TYPE_NEW_OPT, 
+    "Add -centers for center of mass locations in atlas regions",
+    "-centers option added to @Atlasize and @MakeLabelTable\n"
+    "This location is simple center of mass for now and may be\n"
+    "outside region for non-blobbish regions"
+} ,
+{ 07 , FEB, 2013 , DRG , "3dDWItoDT" , 
+    MINOR , TYPE_NEW_OPT, 
+    "Added Greg Baxter's (UCSD) change for b-matrix input"
+} ,
+{ 04 , JAN, 2013 , DRG , "3drefit" , 
+    MINOR , TYPE_BUG_FIX, 
+    "Fixed bug that would make 3drefit exit if dataset contains a warpdrive attribute"
+} ,
 { 16 , OCT, 2012 , DRG , "afni show atlas colors" , 
     MINOR , TYPE_BUG_FIX, 
-    "Fixed bug that would crash afni if paned color and show atlas colors",
+    "Fixed bug that would crash afni if paned color and show atlas colors"
 } ,
 { 15 , AUG, 2012 , DRG , "whereami web" , 
     MICRO , TYPE_BUG_FIX, 
-    "Web-based atlases would not open webpage with ampersands, punctuation",
+    "Web-based atlases would not open webpage with ampersands, punctuation"
 } ,
 { 14 , AUG, 2012 , DRG , "whereami minimum probability" , 
     MINOR , TYPE_NEW_OPT, 

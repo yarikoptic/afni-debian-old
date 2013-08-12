@@ -2618,51 +2618,51 @@ ENTRY("ISQ_overlay") ;
 
    /*-- Case: both are short indices, no transparency --*/
 
-   if( ulim->kind == MRI_short && ovim->kind == MRI_short && alpha > 0.99 ){
-      register short *tar , *oar=MRI_SHORT_PTR(ovim) , *iar=MRI_SHORT_PTR(ulim) ;
+   if( ulim->kind == MRI_short && ovim->kind == MRI_short && alpha > 0.99f ){
+     register short *tar , *oar=MRI_SHORT_PTR(ovim) , *iar=MRI_SHORT_PTR(ulim) ;
 
-      outim = mri_new_conforming( ulim , MRI_short ) ;
-      tar = MRI_SHORT_PTR( outim ) ;
-      for( ii=0 ; ii < npix ; ii++ )
-         tar[ii] = (oar[ii] <= 0) ? iar[ii] : -oar[ii] ;
+     outim = mri_new_conforming( ulim , MRI_short ) ;
+     tar = MRI_SHORT_PTR( outim ) ;
+     for( ii=0 ; ii < npix ; ii++ )
+       tar[ii] = (oar[ii] <= 0) ? iar[ii] : -oar[ii] ;
 
-      RETURN(outim) ;
+     RETURN(outim) ;
    }
 
    /*-- Convert both inputs to RGB, if needed --*/
 
    switch( ulim->kind ){              /* we always make a new RGB underlay,  */
-      case MRI_rgb:                   /* since this will be the output image */
-         outim = mri_copy(ulim) ;
-         our   = MRI_RGB_PTR(outim) ;
-      break ;
+     case MRI_rgb:                   /* since this will be the output image */
+       outim = mri_copy(ulim) ;
+       our   = MRI_RGB_PTR(outim) ;
+     break ;
 
-      default:
-         RETURN(NULL) ; break ;   /* bad bad bad */
+     default:
+       RETURN(NULL) ; break ;   /* bad bad bad */
 
-      case MRI_short:
-         outim = ISQ_index_to_rgb( dc , 0 , ulim ) ;
-         our   = MRI_RGB_PTR(outim) ;
-      break ;
+     case MRI_short:
+       outim = ISQ_index_to_rgb( dc , 0 , ulim ) ;
+       our   = MRI_RGB_PTR(outim) ;
+     break ;
    }
 
    switch( ovim->kind ){    /* but we don't make a new overlay unless needed */
-      case MRI_rgb:
-         orim = ovim ; orr = MRI_RGB_PTR(orim) ; break ;
+     case MRI_rgb:
+       orim = ovim ; orr = MRI_RGB_PTR(orim) ; break ;
 
-      default:
-         mri_free(outim) ;
-         RETURN(NULL) ; break ;              /* bad bad bad */
+     default:
+       mri_free(outim) ;
+       RETURN(NULL) ; break ;              /* bad bad bad */
 
-      case MRI_short:
-         orim = ISQ_index_to_rgb( dc , 1 , ovim ) ;
-         orr  = MRI_RGB_PTR(orim) ;
-      break ;
+     case MRI_short:
+       orim = ISQ_index_to_rgb( dc , 1 , ovim ) ;
+       orr  = MRI_RGB_PTR(orim) ;
+     break ;
    }
 
    /* now overlay */
 
-   if( alpha > 0.99 ){                          /* opaque overlay */
+   if( alpha > 0.99f ){                          /* opaque overlay */
       for( jj=ii=0 ; ii < npix ; ii++,jj+=3 ){
          if( orr[jj] > 0 || orr[jj+1] > 0 || orr[jj+2] > 0 ){
             our[jj  ] = orr[jj  ] ;
@@ -2706,14 +2706,11 @@ ENTRY("ISQ_overlay") ;
                           modulation. Need much fancier method to deal
                           with mixing appropriately */
                bb = (gs[ii])*orr[jj  ]  ;  /* mix colors */
-               if (bb > 255) our[jj  ] = 255;
-               else our[jj  ] = (byte)bb;
+               if (bb > 255) our[jj  ] = 255; else our[jj  ] = (byte)bb;
                bb = (gs[ii])*orr[jj+1]  ;
-               if (bb > 255) our[jj+1] = 255;
-               else our[jj+1] = (byte)bb;
+               if (bb > 255) our[jj+1] = 255; else our[jj+1] = (byte)bb;
                bb = (gs[ii])*orr[jj+2]  ;
-               if (bb > 255) our[jj+2] = 255;
-               else our[jj+2] = (byte)bb;
+               if (bb > 255) our[jj+2] = 255; else our[jj+2] = (byte)bb;
          }
       }
       free(gs); gs=NULL;
@@ -2722,6 +2719,43 @@ ENTRY("ISQ_overlay") ;
    if( orim != ovim ) mri_free(orim) ;  /* destroy copy of overlay, if any */
 
    RETURN(outim) ;
+}
+
+/*-----------------------------------------------------------------------*/
+
+MRI_IMAGE * ISQ_binarize_overlay( MRI_IMAGE *tim )  /* Mar 2013 */
+{
+   MRI_IMAGE *bim ; byte *bar ;
+   int npix ;
+
+ENTRY("ISQ_binarize_overlay") ;
+
+   if( tim == NULL || !ISQ_GOOD_OVERLAY_TYPE(tim->kind) ) RETURN(NULL) ;
+
+   npix = tim->nvox ;
+   bim = mri_new_conforming(tim,MRI_byte) ; bar = MRI_BYTE_PTR(bim) ;
+
+   switch( tim->kind ){
+
+     default:  mri_free(bim) ; RETURN(NULL) ;  /* should be impossible */
+
+     case MRI_short:{
+       short *tar = MRI_SHORT_PTR(tim) ; int ii ;
+       for( ii=0 ; ii < npix ; ii++ )
+         bar[ii] = (tar[ii] > 0) ;
+     }
+     break ;
+
+     case MRI_rgb:{
+       byte *tar = MRI_RGB_PTR(tim) ; int ii,jj ;
+       for( ii=jj=0 ; ii < npix ; ii++,jj+=3 )
+         bar[ii] = ( tar[jj] > 0 || tar[jj+1] > 0 || tar[jj+2] > 0 ) ;
+     }
+     break ;
+
+   }
+
+   RETURN(bim) ;
 }
 
 /*-----------------------------------------------------------------------
@@ -5337,14 +5371,23 @@ ENTRY("ISQ_show_bar") ;
    if( seq->given_xbar == NULL ) ISQ_make_bar( seq ) ;
 
    if( seq->sized_xbar == NULL ){
-      int nx , ny ;
+      int nx , ny ; char *eee ;
 STATUS("making sized_xbar");
 
       MCW_widget_geom( seq->wbar , &nx , &ny , NULL,NULL ) ;
 
       seq->sized_xbar = resize_XImage( seq->dc, seq->given_xbar, nx, ny ) ;
-   }
 
+      eee = getenv("AFNI_PBAR_TICK") ;
+      if( eee == NULL || ( toupper(*eee) != 'N' && *eee != '0' ) ){
+        int jj,kk ;
+        for( kk=1 ; kk <= 9 ; kk++ ){      /* tic marks [25 Jun 2013] */
+          jj = (int)rintf( 0.1f*kk*ny ) ;
+          rectzero_XImage( seq->dc , seq->sized_xbar , 0   ,jj , 2   ,jj ) ;
+          rectzero_XImage( seq->dc , seq->sized_xbar , nx-3,jj , nx-1,jj ) ;
+        }
+      }
+   }
 
    if( seq->sized_xbar != NULL ){
 STATUS("putting sized_xbar to screen");
@@ -11998,9 +12041,9 @@ MRI_IMAGE * ISQ_snap_to_mri_image( int ww , int hh , byte *pix  )
 
    ENTRY("ISQ_snap_to_mri_image") ;
 
-   if( ww < 2 || pix == NULL ) EXRETURN ;
+   if( ww < 2 || pix == NULL ) RETURN(NULL) ;
    if( hh < 0 ){ hh = -hh ; flip = 1 ; }
-   if( hh < 2 ) EXRETURN ;
+   if( hh < 2 )                RETURN(NULL) ;
 
    tim = mri_new( ww,hh, MRI_rgb ) ; qix = MRI_RGB_PTR(tim) ;
 
@@ -12014,6 +12057,43 @@ MRI_IMAGE * ISQ_snap_to_mri_image( int ww , int hh , byte *pix  )
    RETURN(tim) ;
 }
 
+/*----------------------------------------------------------------------------*/
+/*! Like ISQ_snap_to_mri_image, but pix is a pointer to RGBA data. 
+      Returned image is still MRI_rbg, so alphas are ignored.
+------------------------------------------------------------------------------*/
+MRI_IMAGE * ISQ_snap4_to_mri_image( int ww , int hh , byte *pix  )
+{
+   MRI_IMAGE *tim ;
+   byte *qix ;
+   int ii , jj , flip=0, nn3, nn4 ;
+
+   ENTRY("ISQ_snap4_to_mri_image") ;
+
+   if( ww < 2 || pix == NULL ) RETURN(NULL) ;
+   if( hh < 0 ){ hh = -hh ; flip = 1 ; }
+   if( hh < 2 )                RETURN(NULL) ;
+
+   tim = mri_new( ww,hh, MRI_rgb ) ; qix = MRI_RGB_PTR(tim) ;
+
+   if( flip ){                    /* flip vertically */
+     for (jj=(hh-1), nn3=0; jj>=0; --jj) {
+     for (ii=0; ii < ww; ii++ ) {
+         nn4 = (jj*ww+ii)*4;
+         qix[nn3++] = pix[nn4]; 
+         qix[nn3++] = pix[nn4+1]; 
+         qix[nn3++] = pix[nn4+2]; 
+     } }
+   } else {                                                   /* simple copy */
+     for (jj=0, nn3=0, nn4=0; jj < hh; jj++ ) {
+     for (ii=0; ii < ww; ii++ ) {
+         qix[nn3++] = pix[nn4++]; 
+         qix[nn3++] = pix[nn4++]; 
+         qix[nn3++] = pix[nn4++]; ++nn4; 
+     }}
+   }
+
+   RETURN(tim) ;
+}
 
 /*----------------------------------------------------------------------------*/
 

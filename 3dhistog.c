@@ -67,13 +67,13 @@ static THD_3dim_dataset *HI_roi=NULL;
 static int     HI_pdf = 0;        /* ZSS Sept 2012 */
 
 static int integral_dset(THD_3dim_dataset *dset, int iv_bot, int iv_top);
-static int minmax_dset(THD_3dim_dataset *dset, float *dmin, float *dmax,
-                       int iv_bot, int iv_top);
 
 #define KEEP(x) ( (HI_nomit==0) ? 1 :  \
                   (HI_nomit==1) ? ((x) != HI_omit[0]) : HI_keep(x) )
 
 #define CEIL_CHECK(x) ( use_ceil ? ceil(x) : (x) )
+
+static int HI_igfac = 0 ;  /* 06 Jun 2013 [RWCox] */
 
 void HI_read_opts( int , char ** ) ;
 #define HI_syntax(str) \
@@ -119,6 +119,8 @@ void usage_3dhistog(int detail) {
 "            This option is only valid with -prefix\n"
 "  -min x    Means specify minimum (inclusive) of histogram.\n"
 "  -max x    Means specify maximum (inclusive) of histogram.\n"
+"  -igfac    Means to ignore sub-brick scale factors and histogram-ize\n"
+"              the 'raw' data in each volume.\n"
 "  Output options for integer and floating point data\n"
 "  By default, the program will determine if the data is integer or float\n"
 "   even if the data is stored as shorts with a scale factor.\n"
@@ -204,6 +206,8 @@ int main( int argc , char * argv[] )
      fprintf(stderr,"** ERROR: Can't open dataset %s\n",argv[iarg]) ;
      exit(1) ;
    }
+   if( HI_igfac )
+     EDIT_dset_items( dset , ADN_brick_fac,NULL , ADN_none ) ;   /* 06 Jun 2013 */
 
    if( (HI_mask_nvox > 0) && (HI_mask_nvox != DSET_NVOX(dset)) )
      HI_syntax("mask and input dataset bricks don't match in size!") ;
@@ -255,7 +259,9 @@ int main( int argc , char * argv[] )
       use_ceil = 0 ;
    }
 
-   minmax_dset(dset, &temp_fbot, &temp_ftop, iv_bot, iv_top);
+   /* renamed from minmax_dset to THD_slow_minmax_dset, and moved to */
+   /* thd_info.c                                 18 Dec 2012 [rickr] */
+   THD_slow_minmax_dset(dset, &temp_fbot, &temp_ftop, iv_bot, iv_top);
 
    if(HI_min != BIG_NUMBER) {
      fbot = HI_min;
@@ -716,11 +722,15 @@ void HI_read_opts( int argc , char * argv[] )
          nopt++ ; continue ;
       }
 
-
       if( strncmp(argv[nopt],"-max",4) == 0 ){
          HI_max = strtod( argv[++nopt] , NULL ) ;
          nopt++ ; continue ;
       }
+
+      if( strncmp(argv[nopt],"-igfac",5) == 0 ){
+         HI_igfac = 1 ; nopt++ ; continue ;
+      }
+
 
       if( strcmp(argv[nopt],"-int") == 0 ){
          HI_datatype = HI_INTOUT ;

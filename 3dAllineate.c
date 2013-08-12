@@ -463,8 +463,12 @@ int main( int argc , char *argv[] )
 
    int do_zclip                = 0 ;             /* 29 Oct 2010 */
 
+   bytevec *emask              = NULL ;          /* 14 Feb 2013 */
+
    /**----------------------------------------------------------------------*/
    /**----------------- Help the pitifully ignorant user? -----------------**/
+
+   AFNI_SETUP_OMP(0) ;  /* 24 Jun 2013 */
 
    if( argc < 2 || strcmp(argv[1],"-help")==0 ||
                    strcmp(argv[1],"-HELP")==0 || strcmp(argv[1],"-POMOC")==0 ){
@@ -920,6 +924,13 @@ int main( int argc , char *argv[] )
 " -wtprefix p = Write the weight volume to disk as a dataset with\n"
 "               prefix name 'p'.  Used with '-autoweight/mask', this option\n"
 "               lets you see what voxels were important in the algorithm.\n"
+" -emask ee   = This option lets you specify a mask of voxels to EXCLUDE from\n"
+"               the analysis. The voxels where the dataset 'ee' is nonzero\n"
+"               will not be included (i.e., their weights will be set to zero).\n"
+"             * Like all the weight options, it applies in the base image\n"
+"               coordinate system.\n"
+"             * Like all the weight options, it means nothing if you are using\n"
+"               one of the 'apply' options.\n"
       ) ;
 
       if( visible_noweights > 0 ){
@@ -1432,6 +1443,12 @@ int main( int argc , char *argv[] )
         "===========================================================================\n"
         "\n"
         " -nwarp type = Experimental nonlinear warping:\n"
+        "\n"
+        "              ***** Note that these '-nwarp' options are superseded  *****\n"
+        "              ***** by the AFNI program 3dQwarp,  which does a more  *****\n"
+        "              ***** accurate and better and job of nonlinear warping *****\n"
+        "              ***** ------ Zhark the Warper ------ July 2013 ------- *****\n"
+        "\n"
         "              * At present, the only 'type' is 'bilinear',\n"
         "                as in 3dWarpDrive, with 39 parameters.\n"
         "              * I plan to implement more complicated nonlinear\n"
@@ -1601,7 +1618,7 @@ int main( int argc , char *argv[] )
 
        printf(
         "\n"
-        "[[[ To see a plethora of advanced/experimental options, use '-HELP'. ]]]\n");
+        " [[[ To see a plethora of advanced/experimental options, use '-HELP'. ]]]\n");
 
      }
 
@@ -1694,6 +1711,13 @@ int main( int argc , char *argv[] )
        } else {
          ERROR_exit("don't know option %s",argv[iarg]) ;
        }
+       iarg++ ; continue ;
+     }
+
+     /*-----*/
+
+     if( strcasecmp(argv[iarg],"-nwarp_HERMITE") == 0 ){  /** 28 Mar 2013: SUPER-SECRET **/
+       GA_setup_polywarp(GA_HERMITE) ; nwarp_parmax = 0.0444f ;
        iarg++ ; continue ;
      }
 
@@ -2133,6 +2157,16 @@ int main( int argc , char *argv[] )
 
      /*-----*/
 
+     if( strcmp(argv[iarg],"-emask") == 0 ){                   /* 14 Feb 2013 */
+       if( emask != NULL ) ERROR_exit("Can't have multiple %s options :-(",argv[iarg]) ;
+       if( ++iarg >= argc ) ERROR_exit("no argument after '-emask' :-(") ;
+       emask = THD_create_mask_from_string( argv[iarg] ) ;
+       if( emask == NULL ) ERROR_exit("Can't create emask from '%s'",argv[iarg]) ;
+       iarg++ ; continue ;
+     }
+
+     /*-----*/
+
      if( strcmp(argv[iarg],"-base") == 0 ){
        if( dset_base != NULL ) ERROR_exit("Can't have multiple %s options :-(",argv[iarg]) ;
        if( ++iarg >= argc ) ERROR_exit("no argument after '-base' :-(") ;
@@ -2301,10 +2335,14 @@ int main( int argc , char *argv[] )
        apply_nx  = apply_im->nx ;  /* # of values per row */
        apply_ny  = apply_im->ny ;  /* number of rows */
        apply_mode = APPLY_AFF12 ;
+       if( apply_nx < 12 && apply_im->nvox == 12 ){  /* special case of a 3x4 array */
+         apply_nx = 12 ; apply_ny = 1 ;
+         INFO_message("-1Dmatrix_apply: converting input 3x4 array to 1 row of 12 numbers") ;
+       }
        if( apply_nx < 12 )
-         ERROR_exit("Less than 12 numbers per row in -1Dmatrix_apply '%s' :-(",apply_1D) ;
+         ERROR_exit("%d = Less than 12 numbers per row in -1Dmatrix_apply '%s' :-(" ,apply_nx,apply_1D) ;
        else if( apply_nx > 12 )
-         WARNING_message("More than 12 numbers per row in -1Dmatrix_apply '%s'",apply_1D) ;
+         WARNING_message("%d = More than 12 numbers per row in -1Dmatrix_apply '%s'",apply_ny,apply_1D) ;
        iarg++ ; continue ;
      }
 
@@ -3005,18 +3043,18 @@ int main( int argc , char *argv[] )
      wtprefix = param_save_1D = matrix_save_1D = NULL ;
      zeropad = 0 ; auto_weight = auto_tmask = 0 ;
      if( dset_weig != NULL ){
-       WARNING_message("-1D*_apply: Ignoring weight dataset") ;
+       INFO_message("-1D*_apply: Ignoring weight dataset") ;
        DSET_delete(dset_weig) ; dset_weig=NULL ;
      }
      if( im_tmask != NULL ){
-       WARNING_message("-1D*_apply: Ignoring -source_mask") ;
+       INFO_message("-1D*_apply: Ignoring -source_mask") ;
        mri_free(im_tmask) ; im_tmask = NULL ;
      }
      if( dset_mast == NULL && dxyz_mast == 0.0 )
        INFO_message("You might want to use '-master' when using '-1D*_apply'") ;
      if( do_allcost ){  /* 19 Sep 2007 */
        do_allcost = 0 ;
-       WARNING_message("-allcost option illegal with -1D*_apply") ;
+       INFO_message("-allcost option illegal with -1D*_apply") ;
      }
    }
 
@@ -3118,12 +3156,21 @@ int main( int argc , char *argv[] )
                                    DSET_BRICK(dset_targ,0)         ) ;
      dx_base = dx_targ; dy_base = dy_targ; dz_base = dz_targ;
      if( do_cmass && apply_mode == 0 ){   /* 30 Jul 2007 */
-       WARNING_message("no base dataset ==> -cmass is disabled"); do_cmass = 0;
+       INFO_message("no base dataset ==> -cmass is disabled"); do_cmass = 0;
      }
    }
    nx_base = im_base->nx ;
    ny_base = im_base->ny ; nxy_base  = nx_base *ny_base ;
    nz_base = im_base->nz ; nvox_base = nxy_base*nz_base ;
+
+   /* Check emask for OK-ness [14 Feb 2013] */
+
+   if( apply_mode != 0 && emask != NULL ){
+     INFO_message("-emask is ignored in apply mode") ;
+     KILL_bytevec(emask) ;
+   }
+   if( emask != NULL && emask->nar != nvox_base )
+     ERROR_exit("-emask doesn't match base dataset dimensions :-(") ;
 
    if( nx_base < 9 || ny_base < 9 )
      ERROR_exit("Base volume i- and/or j-axis dimension < 9") ;
@@ -3190,12 +3237,25 @@ int main( int argc , char *argv[] )
      /* zeropad the base image at this point in spacetime? */
 
      if( zeropad ){
+       int nxold=nx_base , nyold=ny_base , nzold=nz_base ;
        qim = mri_zeropad_3D( pad_xm,pad_xp , pad_ym,pad_yp ,
                                              pad_zm,pad_zp , im_base ) ;
        mri_free(im_base) ; im_base = qim ;
        nx_base = im_base->nx ;
        ny_base = im_base->ny ; nxy_base  = nx_base *ny_base ;
        nz_base = im_base->nz ; nvox_base = nxy_base*nz_base ;
+
+       if( emask != NULL ){             /* also zeropad emask [14 Feb 2013] */
+         byte *ezp = (byte *)EDIT_volpad( pad_xm,pad_xp ,
+                                          pad_ym,pad_yp ,
+                                          pad_zm,pad_zp ,
+                                          nxold,nyold,nzold ,
+                                          MRI_byte , emask->ar ) ;
+         if( ezp == NULL )
+           ERROR_exit("zeropad of emask fails !?!") ;
+         free(emask->ar) ; emask->ar = ezp ; emask->nar = nvox_base ;
+       }
+
      }
    }
 
@@ -3323,7 +3383,27 @@ STATUS("zeropad weight dataset") ;
                                  auto_string , COX_cpu_time()-ctim ) ;
    }
 
-   /* also, make a mask from the weight (not used much, yet) */
+   /* Apply the emask [14 Feb 2013] */
+
+   if( emask != NULL ){
+     float *war ; byte *ear=emask->ar ; int near=0 ;
+     if( im_weig == NULL ){
+       im_weig = mri_new_conforming(im_base,MRI_float) ;  /* all zero */
+       war = MRI_FLOAT_PTR(im_weig) ;
+       for( ii=0 ; ii < nvox_base ; ii++ ){
+         if( ear[ii] == 0 ) war[ii] = 1.0f ; else near++ ;
+       }
+     } else {
+       war = MRI_FLOAT_PTR(im_weig) ;
+       for( ii=0 ; ii < nvox_base ; ii++ ){
+         if( ear[ii] != 0 && war[ii] != 0.0f ){ war[ii] = 0.0f ; near++ ; }
+       }
+     }
+     if( verb ) INFO_message("-emask excludes %d voxels from weight/mask",near) ;
+     KILL_bytevec(emask) ;
+   }
+
+   /* also, make a mask from the weight (not used much, if at all) */
 
    if( im_weig != NULL ){
      float *wf = MRI_FLOAT_PTR(im_weig) ;
@@ -3982,7 +4062,7 @@ STATUS("zeropad weight dataset") ;
 
      if( do_zclip ){
        float *bar = MRI_FLOAT_PTR(im_targ) ;
-       for( ii=0 ; ii < nvox_base ; ii++ ) if( bar[ii] < 0.0f ) bar[ii] = 0.0f ;
+       for( ii=0 ; ii < im_targ->nvox ; ii++ ) if( bar[ii] < 0.0f ) bar[ii] = 0.0f ;
      }
 
      /*** if we are just applying input parameters, set up for that now ***/

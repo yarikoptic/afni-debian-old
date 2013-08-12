@@ -6,9 +6,9 @@
 /*  basic format: 3-field date, user, program_name, impact_level,
                   short description without newline
                   (optional) long descrption with intermediate newlines
-  
+
     copy entire section: { ... } ,
-  
+
     Notes: - months are JAN ... DEC (see .h file)
 
            - levels are :
@@ -43,7 +43,244 @@
 
 afni_history_struct rwcox_history[] = {
 /*=====BELOW THIS LINE=====*/
-  { 23 , NOV , 2012 , RWC , "afni instacorr" , MINOR , TYPE_MODIFY ,
+  { 9 , AUG , 2013 , RWC , "3dTproject" , MINOR , TYPE_NEW_PROG ,
+   "Rapid orthogonal projection to remove unwanted time series" ,
+   "To replace 3dBandpass when necessary" } ,
+
+ { 26 , JUL , 2013 , RWC , "3dNwarpFuncs" , MINOR , TYPE_NEW_PROG ,
+   "Calculate various functions of a warp (e.g., Jacobian)" ,
+   NULL } ,
+
+ { 23 , JUL , 2013 , RWC , "afni" , MICRO , TYPE_NEW_ENV ,
+   "Make AFNI_RECENTER_VIEWING an editable (in the GUI) variable" ,
+   NULL } ,
+
+ { 19 , JUL , 2013 , RWC , "3dDeconvolve" , MICRO , TYPE_MODIFY ,
+   "Added warning if censor array is too long" ,
+   NULL } ,
+
+ { 19 , JUL , 2013 , RWC , "3dQwarp" , MINOR , TYPE_NEW_OPT ,
+   "-resample and -allinfast options" ,
+   "For resampling (without registering) and fast affine registering -- both\n"
+   "done via 3dAllineate." } ,
+
+ { 18 , JUL , 2013 , RWC , "@toMNI_Awarp _Qwarpar" , MICRO , TYPE_MODIFY ,
+   "Modified to gzip output BRIKs" ,
+   NULL } ,
+
+ { 18 , JUL , 2013 , RWC , "3dQwarp" , MICRO , TYPE_BUG_FIX ,
+   "Yet another indexing error (in argv[], no less)" ,
+   NULL } ,
+
+ { 17 , JUL , 2013 , RWC , "3dAllineate" , MICRO , TYPE_BUG_FIX ,
+   "fixed problem with -zclip in the source volume - indexing error" ,
+   NULL } ,
+
+ { 17 , JUL , 2013 , RWC , "3dQwarp" , MICRO , TYPE_MODIFY ,
+   "clip output image to range of input image when interpolating" ,
+   NULL } ,
+
+ { 17 , JUL , 2013 , RWC , "3dQwarp" , MICRO , TYPE_BUG_FIX ,
+   "fixed indexing error in duplo_up for odd-sized grids" ,
+   NULL } ,
+
+ { 16 , JUL , 2013 , RWC , "3dQwarp" , MAJOR , TYPE_NEW_OPT ,
+   "-allineate = run 3dAllineate first" ,
+   "With this option, 3dQwarp can align datasets that are not so close, and\n"
+   "are not on the same 3D grid (since the substitute source dataset output\n"
+   "by 3dAllineate will be on the base grid)." } ,
+
+ { 26 , JUN , 2013 , RWC , "various files" , MINOR , TYPE_GENERAL ,
+   "Allow individual sub-bricks over 2 GB in size" ,
+   "By changing the brick_bytes[] array to int64_t from int, and then\n"
+   "modifying all places that use it." } ,
+
+ { 25 , JUN , 2013 , RWC , "3dUnifize" , MICRO , TYPE_NEW_OPT ,
+   "Add -ssave option, to save scaling dataset for perusal" ,
+   NULL } ,
+
+ { 25 , JUN , 2013 , RWC , "AFNI_PBAR_TICK" , MICRO , TYPE_NEW_ENV ,
+   "Ability to disable new tick marks for colorscales and image bars." ,
+   "Can set this to NO, or to the number of tick marks desired." } ,
+
+ { 24 , JUN , 2013 , RWC , "afni" , MICRO , TYPE_MODIFY ,
+   "Add 'Thr=OLay?' to 'Thr=OLay+1?' repertoire" ,
+   "Mostly because I wanted to do this a lot.  This is on the popup menu\n"
+   "over the threshold slider bar in the 'Define OverLay' control panel." } ,
+
+ { 24 , JUN , 2013 , RWC , "AFNI_HISTORY_NAME" , MICRO , TYPE_NEW_ENV ,
+   "Lets user change username@machine in History notes" ,
+   "Because super-heroes need to have a secret identity, right?" } ,
+
+ { 24 , JUN , 2013 , RWC , "distsend (script)" , MICRO , TYPE_GENERAL ,
+   "Modify to recursively mv contents of subdirectories properly" ,
+   NULL } ,
+
+ { 24 , JUN , 2013 , RWC , "all OpenMP progs" , MICRO , TYPE_GENERAL ,
+   "Add AFNI_SETUP_OMP(0) macro at startup" ,
+   "To limit number of threads to 12 if the system has more CPUs.  Will be\n"
+   "over-ridden by OMP_NUM_THREADS, if it is set." } ,
+
+ { 13 , JUN , 2013 , RWC , "3dLocalHistog" , MICRO , TYPE_BUG_FIX ,
+   "Fixed bug that caused first value from label table to be lost" ,
+   "Or actually, subsumed into the 0=Other histogram.  stupid stupid stupid" } ,
+
+ { 7 , JUN , 2013 , RWC , "3dhistog" , MICRO , TYPE_NEW_OPT ,
+   "Add -igfac option" ,
+   "To ignore scale factors -- to histogram-ize the underlying shorts or\n"
+   "bytes in a dataset." } ,
+
+ { 4 , JUN , 2013 , RWC , "Nwarp programs" , MICRO , TYPE_MODIFY ,
+   "Added 'FAC:x,y,z:dataset' input format for warps" ,
+   "To allow separate scaling of each direction of a warp." } ,
+
+ { 30 , MAY , 2013 , RWC , "afni" , MICRO , TYPE_MODIFY ,
+   "AFNI_OVERRIDE_VIEW lets you force all datasets into one view" ,
+   "Should be set to TLRC or ORIG" } ,
+
+ { 24 , MAY , 2013 , RWC , "3dQwarp" , MICRO , TYPE_NEW_OPT ,
+   "Add -noneg option, to crush negative values in input datasets." ,
+   NULL } ,
+
+ { 22 , MAY , 2013 , RWC , "3dUnifize" , MICRO , TYPE_MODIFY ,
+   "Change default clip fraction for automask to 0.1 from 0.5" ,
+   "For Juen -- to deal with heavily faded images." } ,
+
+ { 14 , MAY , 2013 , RWC , "3dQwarp" , MINOR , TYPE_NEW_OPT ,
+   "New -plusminus option" ,
+   "'Meet-in-the-middle' matching: base(x-dis(x)) = source(x+dis(x)).\n"
+   "For application to unwarping blip-up and blip-down EPI datasets.\n"
+   "\n"
+   "Also, fix bug when -no?dis options are used -- when the code for\n"
+   "parameter sub-vector mapping was moved around, the 'free' call to get\n"
+   "rid of any old mapping wasn't moved with it -- bad Bob, bad bad bad." } ,
+
+ { 7 , MAY , 2013 , RWC , "3dQwarp" , MICRO , TYPE_NEW_OPT ,
+   "Add -Qfinal option (experimental)" ,
+   NULL } ,
+
+ { 6 , MAY , 2013 , RWC , "3dNwarpApply" , MICRO , TYPE_NEW_OPT ,
+   "Add -short option == save results as shorts" ,
+   "For use in warping label datasets." } ,
+
+ { 3 , MAY , 2013 , RWC , "thd_compress.c" , MICRO , TYPE_MODIFY ,
+   "Substitute pigz for gzip and pbzip2 for bzip2 if present in path" ,
+   NULL } ,
+
+ { 1 , MAY , 2013 , RWC , "3dQwarp" , MINOR , TYPE_MODIFY ,
+   "Minor updates" ,
+   "Make -emask work with -duplo.\n"
+   "Add SAMPLE USAGE section to help to show how to combine 3dAllineate with\n"
+   "3dQwarp, and/or align_epi_anat.py also.\n"
+   "Add -base and -source options, to make program look more like 3dAllineate." } ,
+
+ { 26 , APR , 2013 , RWC , "3dQwarp" , MICRO , TYPE_MODIFY ,
+   "Make -emask option work correctly with -duplo" ,
+   NULL } ,
+
+ { 25 , APR , 2013 , RWC , "afni" , MICRO , TYPE_MODIFY ,
+   "strlist chooser stays in same place if re-opened - for Allison" ,
+   NULL } ,
+
+ { 22 , APR , 2013 , RWC , "3dNwarpAdjust" , MINOR , TYPE_NEW_PROG ,
+   "For template-building via @toMNI_Qwarp" ,
+   "Computes the mean warp, and adjusts the individual warps to get rid of\n"
+   "this mean warp (under the presumption that it is some kind of bias)." } ,
+
+ { 18 , APR , 2013 , RWC , "3dQwarp" , MICRO , TYPE_BUG_FIX ,
+   "-useweight didn't actually do anything inside OpenMP" ,
+   "Obviously, this can't be my fault.  I blame evil spirits." } ,
+
+ { 12 , APR , 2013 , RWC , "afni" , MICRO , TYPE_MODIFY ,
+   "detach from terminal and graph fading are now the defaults" ,
+   NULL } ,
+
+ { 12 , APR , 2013 , RWC , "3dLocalHistog" , MINOR , TYPE_NEW_PROG ,
+   "Collecting counts of labels in nbhd of each voxel" ,
+   "For building atlases that allow for uncertainty in position" } ,
+
+ { 4 , APR , 2013 , RWC , "3dGroupInCorr" , MINOR , TYPE_NEW_OPT ,
+   "Add -Apair option" ,
+   "For testing differences in correlations in 1 group from 2 different\n"
+   "seeds -- the regular seed minus the 'Apair' seed.  Also changes to AFNI\n"
+   "to set the Apair seed, etc." } ,
+
+ { 2 , APR , 2013 , RWC , "Nwarp" , MICRO , TYPE_GENERAL ,
+   "Replace sqrt(nwarp) algorithm" ,
+   "Schulz method gives unpleasant ringing artifacts in the square root. \n"
+   "Use the Denman-Beavers methods instead, which is slower and maybe a\n"
+   "little less accurate, but doesn't do the ringing weirdness." } ,
+
+ { 26 , MAR , 2013 , RWC , "3dttest++" , MINOR , TYPE_NEW_OPT ,
+   "Add option -cmeth (MEAN or MEDIAN) for Steve Gotts" ,
+   NULL } ,
+
+ { 26 , MAR , 2013 , RWC , "afni" , MICRO , TYPE_MODIFY ,
+   "Minor changes to Fade feature in graph viewer" ,
+   "Toggle button in Opt menu.\n"
+   "AFNI_GRAPH_FADE environment variable.\n"
+   "Make sure it works with Clusterize and InstaCorr updates." } ,
+
+ { 22 , MAR , 2013 , RWC , "afni" , MICRO , TYPE_MODIFY ,
+   "Fading of graph sub-windows with the 'F' key" ,
+   NULL } ,
+
+ { 12 , MAR , 2013 , RWC , "3dNwarpApply" , MINOR , TYPE_NEW_OPT ,
+   "Various fixes" ,
+   "-ainterp = lets you interpolate data differently from warp\n"
+   "-affter  = lets you use a different affine warp for each sub-brick\n"
+   "-nwarp   = allow catenation and inversion directly on the command line\n"
+   "\n"
+   "These last 2 options make the program 3dNwarpCat pleonastically\n"
+   "redundant." } ,
+
+ { 27 , FEB , 2013 , RWC , "3dUnifize" , MICRO , TYPE_NEW_OPT ,
+   "Added -GM option to stretch gray matter to a consistent-ish place" ,
+   NULL } ,
+
+ { 20 , FEB , 2013 , RWC , "3dUnifize" , MINOR , TYPE_NEW_PROG ,
+   "Quick and dirty approximate spatial uniformization of T1 anats" ,
+   "Mostly for use with 3dQwarp" } ,
+
+ { 19 , FEB , 2013 , RWC , "afni" , MINOR , TYPE_NEW_ENV ,
+   "Histogram plugins can now do cumulative distributions" ,
+   "set AFNI_HISTOG_CUMULATIVE to YES" } ,
+
+ { 14 , FEB , 2013 , RWC , "3dAllineate" , MICRO , TYPE_NEW_OPT ,
+   "Add -emask option (exclude certain voxels)" ,
+   "For use in registering pre- and post-surgery volumes (e.g.)." } ,
+
+ { 7 , FEB , 2013 , RWC , "afni" , MICRO , TYPE_MODIFY ,
+   "Add MASK= to driver for INSTACORR INIT" ,
+   "Per the request of the esteemed Daniel Handwerker, scientist\n"
+   "extraordinaire." } ,
+
+ { 2 , JAN , 2013 , RWC , "afni Clusterize" , MINOR , TYPE_MODIFY ,
+   "Allow use of Spearman rather than Pearson for scatterplot correlation" ,
+   "Set via environment variable AFNI_CLUSTER_SPEARMAN, or by popup menu\n"
+   "attached to top of clusterize report form.  This is for PK." } ,
+
+ { 27 , DEC , 2012 , RWC , "3dPolyfit" , MICRO , TYPE_NEW_OPT ,
+   "Add '-base' option" ,
+   "To allow fitting (in space) arbitrary input images, as well as (spatial)\n"
+   "polynomials." } ,
+
+ { 26 , DEC , 2012 , RWC , "3dDeconvolve" , MICRO , TYPE_NEW_OPT ,
+   "-virtvec option for Javier" ,
+   NULL } ,
+
+ { 5 , DEC , 2012 , RWC , "afni" , MINOR , TYPE_MODIFY ,
+   "add Detrend button to Opt menu" ,
+   "Detrends each time series before plotting.  For Javier." } ,
+
+ { 28 , NOV , 2012 , RWC , "3dGroupInCorr" , MINOR , TYPE_NEW_OPT ,
+   "-dospcov" ,
+   "Compute Spearman correlation of subject results with covariate.  Output\n"
+   "sub-bricks are labeled with '_SP' at the end, as in 'LLL_cov_SP' to\n"
+   "indicate the group with label 'LLL' correlated with the covariate with\n"
+   "label 'cov'.  This is for the IMom (PK)." } ,
+
+ { 23 , NOV , 2012 , RWC , "afni instacorr" , MINOR , TYPE_MODIFY ,
    "Allow Start and End indexes, rather than Ignore (=Start)" ,
    "To allow Instacorr-ing a subset of a time series.  Per the request of\n"
    "the Exceptional Javier Gonzalez-Castillo" } ,

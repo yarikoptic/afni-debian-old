@@ -63,7 +63,11 @@ float SUMA_etime (struct  timeval  *t, int Report);
 int SUMA_etime2(char *name, char *str, char *strloc);
 char *SUMA_time(void);
 char *SUMA_time_stamp(void);
-byte * SUMA_isinpoly(float *P, float *NodeList, int *FaceSetList, int N_FaceSet, int FaceSetDim, int *dims, int *N_in, byte *usethis, byte *mask);
+byte * SUMA_isinpoly(float *P, float *NodeList, int *FaceSetList, int N_FaceSet, 
+                     int FaceSetDim, int *dims, int *N_in, byte *usethis, 
+                     byte *mask);
+int is_in_wedge(float *P, float *C, float rr1, float rr2, float coshalpha,
+                float *Q, float *uCP, float *rrQ, float *cosaQ);
 SUMA_ISINBOX SUMA_isinbox (float * NodeList, int nr, float *S_cent , 
                            float *S_dim , int BoundIn);
 byte *SUMA_isinsphere_bm (float * NodeList, int nr, float *S_cent , 
@@ -101,7 +105,6 @@ SUMA_Boolean SUMA_Point_To_Point_Distance (float *NodeList, int N_points, float 
 int *SUMA_z_dqsort (int *x , int nx );
 int *SUMA_z_dqsort_nsc (int *x , int nx );
 int *SUMA_z_qsort (float *x , int nx );
-int *SUMA_reorder(int *y, int *isort, int N_isort);
 int SUMA_compare_int (int *a, int *b );
 int SUMA_compare_float (float *a, float *b );
 int SUMA_compare_double (double *a, double *b );
@@ -183,7 +186,8 @@ float * SUMA_SmoothAttr_Neighb_wght (float *attr, int N_attr, float *wght,
 float * SUMA_SmoothAttr_Neighb_Rec (float *attr, int N_attr, 
                                     float *attr_sm_orig, 
                                     SUMA_NODE_FIRST_NEIGHB *fn, 
-                                    int nr, int N_rep);
+                                    int nr, int N_rep, 
+                                    byte *nmask, byte strict_mask);
 SUMA_NODE_FIRST_NEIGHB * SUMA_Build_FirstNeighb (
                            SUMA_EDGE_LIST *el, int N_Node, 
                            char *ownerid, int verb);
@@ -199,8 +203,10 @@ SUMA_SURFACE_CURVATURE * SUMA_Surface_Curvature (float *NodeList, int N_Node,
 SUMA_DSET *SUMA_CurvatureToDset(SUMA_SURFACE_CURVATURE *SC, char *OutPrefix);
 SUMA_Boolean SUMA_Householder (float *Ni, float **Q);
 void SUMA_Free_SURFACE_CURVATURE (SUMA_SURFACE_CURVATURE *SC);
-float * SUMA_Convexity (float *NodeList, int N_Node, float *NodeNormList, SUMA_NODE_FIRST_NEIGHB *FN);
-float * SUMA_Convexity_Engine (float *NodeList, int N_Node, float *NodeNormList, SUMA_NODE_FIRST_NEIGHB *FN, char *Fname);
+float * SUMA_Convexity (float *NodeList, int N_Node, float *NodeNormList, 
+                        SUMA_NODE_FIRST_NEIGHB *FN, float *usethis);
+float * SUMA_Convexity_Engine (float *NodeList, int N_Node, float *NodeNormList, 
+                     SUMA_NODE_FIRST_NEIGHB *FN, char *Fname, float *usethis);
 int SUMA_Read_file (float *x,char *f_name,int n_points);
 int SUMA_Read_dfile (int *x,char *f_name,int n_points);
 char * SUMA_pad_str ( char *str, char pad_val , int pad_ln , int opt);

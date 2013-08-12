@@ -65,6 +65,343 @@
 
 afni_history_struct ziad_history[] = {
 /*=====BELOW THIS LINE=====*/
+ { 6, Aug , 2013 , ZSS , "suma-general" , MINOR , TYPE_MODIFY,
+   "Recreated suma_MNI_N27.tgz and suma_TT_N27.tgz with LPI GIFTI",
+   "The surfaces had to be recreated to fit LPI assumption.\n"
+   "Old suma will not work with new archives and vice versa.\n"
+   "SUMA will warn when using old archive to help users with transition\n"
+   "See @SUMA_Make_Spec_FS -nocor and -GNIFTI options for more info.\n"
+ },
+ 
+ { 6, Aug , 2013 , ZSS , "MapIcosahedron" , MINOR , TYPE_MODIFY,
+   "Hard coded skipping of outer-pial-smoothed surfaces",
+   "Those brain envelopes are not isotopic with the rest of \n"
+   "the surfaces so there is no point standardizing them."
+ },
+ 
+ { 5, Aug , 2013 , ZSS , "@SUMA_Make_Spec_FS" , MINOR , TYPE_MODIFY,
+   "Option -nocor is now obsolte. -GNIFTI replaces it",
+   "This was necessary to alert whoever was using -nocor that\n"
+   "resultant GIFTI surfaces were being written in RAI and that now\n"
+   "they are in LPI in keeping with the standard.\n"
+   "See @SUMA_Make_Spec_FS -nocor and -GNIFTI options for more info.\n"
+ },
+ 
+ { 5, Aug , 2013 , ZSS , "inspec" , MINOR , TYPE_NEW_OPT,
+   "Added -remove_state to remove surfaces of specific state from spec file",
+   NULL
+ },
+ 
+ { 31, Jul , 2013 , ZSS , "ConvertSurface" , MINOR , TYPE_NEW_OPT,
+   "Added -xmat_1D NegXY to flip X Y coordinate sign of surfaces.",
+   "This should make it easy to turn GIFTI files with RAI units to\n"
+   "LPI with something like: \n"
+   "ConvertSurface -i toy.gii -o_gii toy -overwrite -xmat_1D NegXY\n"
+ },
+ 
+ { 31, Jul , 2013 , ZSS , "ConvertSurface" , MINOR , TYPE_NEW_OPT,
+   "Added -merge_surfs to facilitate ECOG strip merging.",
+   NULL
+ },
+ 
+ { 29, Jul , 2013 , ZSS , "suma" , MICRO , TYPE_BUG_FIX,
+   "Coordinates xform of GIFTI surfaces was applied too late",
+   NULL
+ },
+ 
+ { 26, Jul , 2013 , ZSS , "@RetinoProc" , MICRO , TYPE_MODIFY,
+   "Fixed bad option name in -help and clarified -delay option",
+   NULL
+ },
+ 
+ { 14, Jun , 2013 , ZSS , "1dmatcalc" , MICRO , TYPE_MODIFY,
+   "Set status to 1 on failure",
+   NULL
+ },
+ 
+ { 4, Jun , 2013 , ZSS , "SurfToSurf" , MINOR , TYPE_NEW_OPT,
+   "Added nearest neighbor search option",
+   "There is no need to search along a certain direction when\n"
+   "mapping between two speres of identical radius and size.\n"
+ },
+ 
+ { 9, May , 2013 , ZSS , "R_io" , MINOR , TYPE_BUG_FIX,
+   "Temporary fix of segfault happening in R from R_io.so",
+   "Source of problem is a call to COMPRESS_setup_programs()\n"
+   "Not sure why the following crash was happening:\n"
+   "*** caught segfault ***\n"
+   "address 0x3800000100, cause 'memory not mapped'\n"
+   "However a temporary env. SKIP_COMPRESS_SETUP will get around it."
+ },
+ 
+ { 22, Apr , 2013 , ZSS , "3dAutoTcorrelate" , MINOR , TYPE_NEW_OPT,
+   "Added -out1D option to output correlations in text format.",
+   NULL
+ },
+ 
+ { 9, Apr , 2013 , ZSS , "@RetinoProc" , MINOR , TYPE_NEW_OPT,
+   "Added options for providing orts for each input time series",
+   "See options -*_orts in the help output."
+ },
+ 
+ { 1, Apr , 2013 , ZSS , "afni-general" , MICRO , TYPE_BUG_FIX,
+   "AFNIio.R's newid.AFNI() was duplicated and the more compact one was broken",
+   NULL
+ },
+ 
+ { 1, Apr , 2013 , ZSS , "3dAutoTcorrelate" , MICRO , TYPE_NEW_OPT,
+   "Added option -mask_source",
+   NULL
+ },
+ 
+ { 28, Mar , 2013 , ZSS , "@RetinoProc" , MICRO , TYPE_BUG_FIX,
+   "Parsing of -on* and -off* options failed for non-integral values",
+   NULL
+ },
+ 
+ { 26, Mar , 2013 , ZSS , "suma" , MICRO , TYPE_BUG_FIX,
+   "Loop variable error in 3DEdge/src/convert.c variable s32buf",
+   "Affected regions in some locations under: case UCHAR and case SSHORT\n"
+ },
+ 
+ { 26, Mar , 2013 , ZSS , "suma" , MICRO , TYPE_MODIFY,
+   "AlignToExperiment transforms no longer applied to spherical surfaces ",
+   "This makes spheres show up better by default in SUMA for prying.\n"
+ },
+ 
+ { 26, Mar , 2013 , ZSS , "SurfSmooth" , MICRO , TYPE_NEW_OPT,
+   "Added -match_center to force recentering of smoothed surfaces.",
+   "SurfSmooth -help for details\n"
+ },
+ 
+ { 26, Mar , 2013 , ZSS , "@SUMA_Make_Spec_FS" , MINOR , TYPE_NEW_OPT,
+   "Added option -inflate for automatic creation of semi-inflated surfaces",
+   "See @SUMA_Make_Spec_FS -help for details\n"
+ },
+ 
+ { 25, Mar , 2013 , ZSS , "suma" , MINOR , TYPE_NEW_OPT,
+   "Merged handling of CoordBias with Prying, all in VisX",
+   "Lots of annoying little details there. See functions like:\n"
+   "  SUMA_*CoordBias*, SUMA_ApplyVisXform(), and SUMA_Apply_VisX_Chain()\n"
+ },
+ 
+ { 22, Mar , 2013 , ZSS , "suma" , MINOR , TYPE_NEW_OPT,
+   "Added stippling for line segments DOs, see SUMA's ctrl+h for details.",
+   NULL
+ },
+ 
+ { 20, Mar , 2013 , ZSS , "suma" , MINOR , TYPE_BUG_FIX,
+   "Texture demos in DriveSuma were failing.",
+   "Problem was a combination of coordinate clipping when frame coords\n"
+   "were at 0 or 1. That is now fixed. Also, demo.*do files needed changing\n"
+   "to move texture on surface into mobile.niml.do\n"
+   "Depth test is no longer disabled with textures.\n"
+ },
+ 
+ { 20, Mar , 2013 , ZSS , "suma" , MINOR , TYPE_BUG_FIX,
+   "Text was not appearing at times. Bug was in SUMA_SO_NIDO_Node_Texture()",
+   NULL
+ },
+ 
+ { 19, Mar , 2013 , ZSS , "suma" , MINOR , TYPE_BUG_FIX,
+   "Prying was off for new GIFTI standard-mesh surfaces.",
+   "Bug was caused by a failure to identify LR sides of GIFTI\n"
+   "surfaces. SUMA was not preserving the side of a GIFTI surface\n"
+   "at write time in SUMA_GIFTI_Write(). Code was also modified\n"
+   "to guess the side of pre-existing GIFTI surfaces.\n"
+   "Prying was also off when a transform was found in the header\n"
+   "of the surface volume because dimensions were not being recomputed\n"
+   "after applying the VolPar transform. That is now fixed.\n"
+ },
+
+ { 14, Mar , 2013 , ZSS , "SurfToSurf" , MINOR , TYPE_NEW_OPT,
+   "NearestNodeCoords was added to -output_params",
+   NULL
+ },
+
+ { 14, Mar , 2013 , ZSS , "@auto_tlrc" , MICRO , TYPE_NEW_OPT,
+   "-init_xform now takes AUTO_CENTER_CM and CENTER_CM",
+   NULL
+ },
+
+ { 22, Feb , 2013 , ZSS , "suma" , MINOR , TYPE_NEW_OPT,
+   "Option -anatomical labels all -i_* -t_* surfs anatomically correct",
+   NULL
+ },
+
+ { 22, Feb , 2013 , ZSS , "suma" , MINOR , TYPE_NEW_OPT,
+   "Option -onestate put all -i_* surfs on command line in the same state",
+   NULL
+ },
+
+ { 22, Feb , 2013 , ZSS , "suma" , MINOR , TYPE_BUG_FIX,
+   "Fixed FOV problems for auto setting and fixing zoom level across states",
+   NULL
+ },
+
+ { 22, Feb , 2013 , ZSS , "suma" , MAJOR , TYPE_NEW_OPT,
+   "Prying hemispheres apart to see medial or lateral sides simultaneously",
+   "This is controlled via the ctrl+Button 1-Motion. See SUMA's ctrl+h output\n"
+   "for details. The prying behaviour is different for spheres and flat maps\n"
+   "Just try it and see. ctrl+double click to get back to initial view.\n"
+   "See also env: SUMA_LHunify"
+ },
+
+ { 22, Feb , 2013 , ZSS , "suma" , MINOR , TYPE_NEW_ENV,
+   "SUMA_LHunify to automatically merge LR hemispheres in all views",
+   "This is done by discarding the _lh _rh to state names that are \n"
+   "created by @SUMA_Make_Spec_FS"
+ },
+
+ { 22, Feb , 2013 , ZSS , "suma" , MAJOR , TYPE_NEW_OPT,
+   "Automatically adjust position of LR surfaces so that they don't overlap",
+   "This is only done for anatomically incorrect surfaces, the others should\n"
+   "not overlap of course. This allows for simultaneous viewing of inflated\n"
+   "surfaces and flattened ones side by side."
+ },
+
+ { 15, Feb , 2013 , ZSS , "@SUMA_AlignToExperiment" , MINOR , TYPE_NEW_OPT,
+   "Allowed script to work with NIFTI input for both -surf_anat and -exp_anat",
+   NULL
+ },
+
+ { 15, Feb , 2013 , ZSS , "ParseName" , MINOR , TYPE_NEW_OPT,
+   "Added -FNameNoAfniExt to -out option",
+   NULL
+ },
+
+ { 14, Feb , 2013 , ZSS , "apsearch" , MINOR , TYPE_MODIFY,
+   "Improved parsing for options to avoid getting options from sample commands",
+   "Previously, if you used an example in the help that called\n"
+   "a different program and you used options on clean lines as part of that\n"
+   "example command, those options would get attributed to the program\n"
+   "whose help you're reading. Pfew. Not anymore."
+ },
+
+ { 14, Feb , 2013 , ZSS , "@SUMA_Make_Spec_FS" , MAJOR , TYPE_NEW_OPT,
+   "Option -nocor to improve data import from FreeSurfer",
+   "Option avoid COR images, produces NIFTI and GIFTI output that\n"
+   "aligns with the initial volume passed to FreeSurfer. This required\n"
+   "considerable changes to the script and will not be the default for\n"
+   "a while longer."
+ },
+
+ { 14, Feb , 2013 , ZSS , "@SUMA_Make_Spec_FS" , MICRO , TYPE_NEW_OPT,
+   "Option -set_space set space of output volumes",
+   NULL
+ },
+
+ { 14, Feb , 2013 , ZSS , "suma" , MAJOR , TYPE_NEW_OPT,
+   "Added stippling-based transparency to surface viewing.",
+   "Fancier blending-based transparency will have to wait."
+ },
+
+ { 14, Feb , 2013 , ZSS , "DriveSuma" , MINOR , TYPE_NEW_OPT,
+   "Added -TransMode to control surface transparency.",
+   NULL
+ },
+
+ { 6, Feb , 2013 , ZSS , "afni-general" , MINOR , TYPE_MODIFY,
+   "Merged Paul Taylor's recent code changes",
+   "Also created afni_history_ptaylor.c\n"
+   "see afni_history -author ptaylor for details on the changes\n"
+ },
+
+ { 6, Feb , 2013 , ZSS , "afni-general" , MICRO , TYPE_NEW_OPT,
+   "Added special filename '1D:stdin' to make mri_read get 1D from stdin",
+   "In this manner, most 3d programs can now accept stdin input in 1D format\n"
+   "This change was suggested by Isaac Schwabacher.\n"
+ },
+
+ { 6, Feb , 2013 , ZSS , "ConvertDset" , MINOR , TYPE_NEW_OPT,
+   "-labelize for assigning a SUMA colormap to an integral valued dset",
+   NULL
+ },
+
+ { 6, Feb , 2013 , ZSS , "MakeColorMap" , MINOR , TYPE_NEW_OPT,
+   "-suma_cmap, -usercolutfile, and -sdset* options for SUMA colormaps",
+   "The new options allow users to create SUMA's colormaps with labels\n"
+   "and turn datasets into labeled datasets with the user's colormap\n" 
+ },
+
+ { 4, Feb , 2013 , ZSS , "R" , MICRO , TYPE_BUG_FIX,
+   "Properly set IDCODE of new dsets, read .1D.dset as dset not matrix",
+   NULL 
+ },
+
+ { 1, Feb , 2013 , ZSS , "suma" , MICRO , TYPE_NEW_ENV,
+   "SUMA_ContourThickness to control the tickness of dset contour lines",
+   "Addition made in response to Valentinos' feedback.\n"
+   "Documentation is in .sumarc file.\n" 
+ },
+
+ { 22, Jan , 2013 , ZSS , "HalloSuma" , MINOR , TYPE_NEW_PROG,
+   "A sample light-weight program to illustrate 2-way communication with AFNI",
+   "The program can be compiled in C or C++ along with the NIML library\n"
+   "without having to link to AFNI/SUMA libraries.\n"
+   "Documentation is the code.\n" 
+ },
+
+ { 22, Jan , 2013 , ZSS , "apsearch" , MINOR , TYPE_NEW_OPT,
+   "Added -bash option for bash filename completion, & -recreate_all_afni_help",
+   "Thanks be to Isaac Schwabacher."
+ },
+
+ { 22, Jan , 2013 , ZSS , "DriveSuma" , MINOR , TYPE_NEW_OPT,
+   "Added -echo_nel(*) option to show NIML communication elements",
+   NULL
+ },
+
+ { 22, Jan , 2013 , ZSS , "3dinfo" , MINOR , TYPE_NEW_OPT,
+   "Added -hand for handeness of orientation",
+   NULL
+ },
+
+ { 22, Jan , 2013 , ZSS , "3dLocalstat" , MICRO , TYPE_MODIFY,
+   "THD_localstat() was not applying mask to output under resam. mode",
+   NULL
+ },
+
+ { 11, Jan , 2013 , ZSS , "ConvertSurface" , MINOR , TYPE_NEW_OPT,
+   "Added -flip_orient option to change orientation of triangles.",
+   NULL
+ },
+
+ { 7, Jan , 2013 , ZSS , "3dinfill" , MINOR , TYPE_NEW_OPT,
+   "Added -radial_* options to test SUMA_Volume_RadFill() function.",
+   NULL
+ },
+
+ { 27, Dec , 2012 , ZSS , "afni-general" , MICRO , TYPE_BUG_FIX,
+   "Increased buffer size for reading one line.",
+   "See LBUF in mri_read.c, also added error message when\n"
+   "line is too long for LBUF in afni_fgets()\n"
+ },
+
+ { 21, Dec , 2012 , ZSS , "@clip_volume" , MICRO , TYPE_NEW_OPT,
+   "Added options -crop_allzero and -crop_greedy.",
+   NULL
+ },
+
+ { 18, Dec , 2012 , ZSS , "cat_matvec" , MICRO , TYPE_NEW_OPT,
+   "option -4x4 to output augmented matrix.",
+   NULL
+ },
+
+ { 3, Dec , 2012 , ZSS , "3dSkullStrip" , MICRO , TYPE_MODIFY,
+   "More modifications for head extraction",
+   "Approach now uses 'Radial Stats' for head/non-head separation.\n"
+   "See functions SUMA_THD_Radial_HeadBoundary(), SUMA_ShrinkSkullHull_RS()\n"
+   "and SUMA_ExtractHead_RS()\n"
+ },
+
+ { 3, Dec , 2012 , ZSS , "afni-general" , MICRO , TYPE_MODIFY,
+   "Added temporary overwriting without upsetting initial setting",
+   "See THD_get_ok_overwrite()\n"
+ },
+
+
+
  { 15, Nov , 2012 , ZSS , "afni-general" , MICRO , TYPE_BUG_FIX,
    "Guarded against NULL strings in THD_dblkatr_from_niml()",
    "These strings came via R_io.c, but could come from elsewhere."

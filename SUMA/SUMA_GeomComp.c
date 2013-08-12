@@ -3,6 +3,37 @@
 extern int *z_rand_order(int bot, int top, long int seed) ;
 
 /*!
+   Fill a 3x4 affine matrix that performs a rotation
+   about an axis Ax passing though point C
+   if C is NULL rotation it is set to 0, 0, 0
+   Ax should be a unit vector
+   rotation angle is in radians
+*/
+SUMA_Boolean SUMA_BuildRotationMatrix(double *C, double *Ax, 
+                                      double alpha, double mat[4][4])
+{
+   static char FuncName[] = {"SUMA_BuildRotationMatrix"};
+   double mm[3], Cr[3];
+   
+   SUMA_ENTRY;
+   
+   if (!mat || !Ax) SUMA_RETURN(NOPE);
+   
+   SUMA_3Dax_Rotation_Matrix(Ax, alpha, mat);
+   if (C) { 
+      SUMA_ROTATE_ABOUT_AXIS(C, Ax, alpha, Cr);
+      mat[0][3] = -Cr[0]+C[0];
+      mat[1][3] = -Cr[1]+C[1];
+      mat[2][3] = -Cr[2]+C[2];
+   } else {
+      mat[0][3] = mat[1][3] = mat[2][3] = 0.0;
+   }
+   mat[3][0] = mat[3][1] = mat[3][2] = 0.0; mat[3][3] = 1.0;
+   
+   SUMA_RETURN(YUP);
+}
+
+/*!
    \brief Find boundary triangles, 
    those that have an edge that is shared by less than 2 triangles.
    
@@ -2633,7 +2664,9 @@ SUMA_Boolean SUMA_EquateSurfaceAreas(
    - This function does not update the normals and other coordinate related properties for SO.
    \sa SUMA_RECOMPUTE_NORMALS 
 */
-SUMA_Boolean SUMA_EquateSurfaceVolumes(SUMA_SurfaceObject *SO, SUMA_SurfaceObject *SOref, float tol, SUMA_COMM_STRUCT *cs)
+SUMA_Boolean SUMA_EquateSurfaceVolumes(SUMA_SurfaceObject *SO, 
+                                       SUMA_SurfaceObject *SOref, 
+                                       float tol, SUMA_COMM_STRUCT *cs)
 {
    static char FuncName[]={"SUMA_EquateSurfaceVolumes"};
    int iter, i, iter_max, ndiv;
@@ -2656,7 +2689,7 @@ SUMA_Boolean SUMA_EquateSurfaceVolumes(SUMA_SurfaceObject *SO, SUMA_SurfaceObjec
                            " SOref Center: %f, %f, %f\n"
                            , FuncName, 
                            SO->Center[0], SO->Center[1], SO->Center[2],
-                           SOref->Center[0], SOref->Center[1], SOref->Center[2]);  
+                           SOref->Center[0], SOref->Center[1], SOref->Center[2]);
    }
      
    /* fill up fdata */
@@ -2681,6 +2714,54 @@ SUMA_Boolean SUMA_EquateSurfaceVolumes(SUMA_SurfaceObject *SO, SUMA_SurfaceObjec
    /* now make the new node list be SO's thingy*/
    SUMA_free(SO->NodeList); SO->NodeList = fdata.tmpList; fdata.tmpList = NULL;
        
+   SUMA_RETURN(YUP);
+}
+
+SUMA_Boolean SUMA_EquateSurfaceCenters (SUMA_SurfaceObject *SO, 
+                                        SUMA_SurfaceObject *SOref,
+                                        int recompute)
+{
+   static char FuncName[]={"SUMA_EquateSurfaceCenters"};
+   float d[3];
+   int i, i3;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+
+   if (!SO || !SOref) { SUMA_SL_Err("NULL surfaces"); SUMA_RETURN(NOPE); }
+   if (recompute > 0) {/* recompute center of SO */
+      SUMA_MIN_MAX_SUM_VECMAT_COL ( SO->NodeList, SO->N_Node, 
+                                    SO->NodeDim,  SO->MinDims, 
+                                    SO->MaxDims,  SO->Center );
+      SO->Center[0] /= SO->N_Node;
+      SO->Center[1] /= SO->N_Node;
+      SO->Center[2] /= SO->N_Node;
+   }
+   if (recompute > 1) {/* recompute center of SOref */
+      SUMA_MIN_MAX_SUM_VECMAT_COL ( SOref->NodeList, SOref->N_Node, 
+                                    SOref->NodeDim,  SOref->MinDims, 
+                                    SOref->MaxDims,  SOref->Center );
+      SOref->Center[0] /= SOref->N_Node;
+      SOref->Center[1] /= SOref->N_Node;
+      SOref->Center[2] /= SOref->N_Node;
+   }
+   if (LocalHead) {
+      fprintf(SUMA_STDERR, "%s:\n"
+                           " SO    Center: %f, %f, %f\n"
+                           " SOref Center: %f, %f, %f\n"
+                           , FuncName, 
+                           SO->Center[0], SO->Center[1], SO->Center[2],
+                           SOref->Center[0], SOref->Center[1], SOref->Center[2]);
+   }
+   for (i=0; i<3; ++i) d[i] = SO->Center[i] - SOref->Center[i];
+   for (i=0; i<SO->N_Node; ++i) {
+      i3 = SO->NodeDim*i;
+      SO->NodeList[i3  ] -= d[0];
+      SO->NodeList[i3+2] -= d[1];
+      SO->NodeList[i3+3] -= d[2];
+   }
+   for (i=0; i<3; ++i) SO->Center[i] = SOref->Center[i];
+   
    SUMA_RETURN(YUP);
 }
 
@@ -7522,25 +7603,28 @@ float *SUMA_Project_Coords_PCA (float *xyz, int N_xyz, int iref,
    if (compnum >= E1_DIR_PRJ) lineproj = 1;
    else lineproj = 0;
    
-          if (compnum == EZ_PLN_PRJ || compnum == EZ_DIR_PRJ) {
-      /* find direction closest to Z */
-            if (pc_m[0] == 'Z') compnum = E1_PLN_PRJ;
-      else  if (pc_m[1] == 'Z') compnum = E2_PLN_PRJ;
-      else  if (pc_m[2] == 'Z') compnum = E3_PLN_PRJ; 
-   } else if (compnum == EY_PLN_PRJ || compnum == EY_DIR_PRJ) {
-      /* find direction closest to Y */
-            if (pc_m[0] == 'Y') compnum = E1_PLN_PRJ;
-      else  if (pc_m[1] == 'Y') compnum = E2_PLN_PRJ;
-      else  if (pc_m[2] == 'Y') compnum = E3_PLN_PRJ; 
-   } else if (compnum == EX_PLN_PRJ || compnum == EX_DIR_PRJ) {
-      /* find direction closest to X */
-            if (pc_m[0] == 'X') compnum = E1_PLN_PRJ;
-      else  if (pc_m[1] == 'X') compnum = E2_PLN_PRJ;
-      else  if (pc_m[2] == 'X') compnum = E3_PLN_PRJ;
-   } else {
-      SUMA_S_Errv("Bad value for compnum %d, setting to 0\n",
-                  compnum);
-      compnum = 0;
+   if (compnum != E1_PLN_PRJ && compnum != E2_PLN_PRJ &&
+       compnum != E3_PLN_PRJ) {
+             if (compnum == EZ_PLN_PRJ || compnum == EZ_DIR_PRJ) {
+         /* find direction closest to Z */
+               if (pc_m[0] == 'Z') compnum = E1_PLN_PRJ;
+         else  if (pc_m[1] == 'Z') compnum = E2_PLN_PRJ;
+         else  if (pc_m[2] == 'Z') compnum = E3_PLN_PRJ; 
+      } else if (compnum == EY_PLN_PRJ || compnum == EY_DIR_PRJ) {
+         /* find direction closest to Y */
+               if (pc_m[0] == 'Y') compnum = E1_PLN_PRJ;
+         else  if (pc_m[1] == 'Y') compnum = E2_PLN_PRJ;
+         else  if (pc_m[2] == 'Y') compnum = E3_PLN_PRJ; 
+      } else if (compnum == EX_PLN_PRJ || compnum == EX_DIR_PRJ) {
+         /* find direction closest to X */
+               if (pc_m[0] == 'X') compnum = E1_PLN_PRJ;
+         else  if (pc_m[1] == 'X') compnum = E2_PLN_PRJ;
+         else  if (pc_m[2] == 'X') compnum = E3_PLN_PRJ;
+      } else {
+         SUMA_S_Errv("Bad value for compnum %d, setting to 0\n",
+                     compnum);
+         compnum = 0;
+      }
    }
    
    if (!lineproj) {
@@ -7807,9 +7891,11 @@ int SUMA_VoxelDepth(THD_3dim_dataset *dset, float **dpth,
    SUMA_RETURN(N_inmask);                   
 }
 
-int SUMA_VoxelDepth_Z(THD_3dim_dataset *dset, float **dpth,
+
+int SUMA_VoxelDepth_Z(THD_3dim_dataset *dset, byte *cmasku, 
+                    float **dpth,
                     float thr, byte **cmaskp, int applymask,
-                    float peakperc) 
+                    float peakperc, float *ztop) 
 {
    static char FuncName[]={"SUMA_VoxelDepth_Z"};
    float *zs=NULL, *z=NULL;
@@ -7835,9 +7921,13 @@ int SUMA_VoxelDepth_Z(THD_3dim_dataset *dset, float **dpth,
    }
    
    /* get xyz of all non-zero voxels in dset */
-   if (!(cmask = THD_makemask( dset , 0 , 1.0, -1.0 ))) {
-      SUMA_S_Err("Failed to get mask");
-      SUMA_RETURN(-1);
+   if (!cmasku) {
+      if (!(cmask = THD_makemask( dset , 0 , 1.0, -1.0 ))) {
+         SUMA_S_Err("Failed to get mask");
+         SUMA_RETURN(-1);
+      }
+   } else {
+      cmask = cmasku;
    }
    for (nvox=0, ii=0; ii<DSET_NVOX(dset); ++ii) {
       if (cmask[ii]) ++nvox;
@@ -7846,13 +7936,13 @@ int SUMA_VoxelDepth_Z(THD_3dim_dataset *dset, float **dpth,
    if (!(z = (float *)SUMA_calloc(nvox, sizeof(float)))) {
       SUMA_S_Errv("Failed to allocate for %d floats\n",
                   nvox);
-      free(cmask);
+      if (!cmasku) free(cmask);
       SUMA_RETURN(-1);
    }
    if (!(zs = (float *)SUMA_calloc(nvox, sizeof(float)))) {
       SUMA_S_Errv("Failed to allocate for %d floats\n",
                   nvox);
-      free(cmask);
+      if (!cmasku) free(cmask);
       SUMA_RETURN(-1);
    }
    vv=0; nn = 0;
@@ -7883,6 +7973,7 @@ int SUMA_VoxelDepth_Z(THD_3dim_dataset *dset, float **dpth,
       itop = 0;
    }
    SUMA_LHv("Top Z selection at %f %% is %fmm\n", peakperc, zs[itop]);
+   if (ztop) *ztop = zs[itop];
    
    /* Does the user want voxel depths back ? */
    if (dpth) {
@@ -7968,7 +8059,7 @@ int SUMA_VoxelDepth_Z(THD_3dim_dataset *dset, float **dpth,
    }
    
    SUMA_LH("Liberte");
-   if (cmask) free(cmask); cmask = NULL;
+   if (!cmasku && cmask) free(cmask); cmask = NULL;
    if (z) SUMA_free(z); z= NULL;
    if (zs) SUMA_free(zs); zs= NULL;
    SUMA_RETURN(N_inmask);                   
@@ -9266,6 +9357,88 @@ SUMA_Boolean SUMA_FlipTriangles (int *FaceSetList,int N_FaceSet)
    SUMA_RETURN(YUP);
 }
 
+/*
+   \brief A surface to merge a bunch of surfaces into one big mamma
+*/
+SUMA_SurfaceObject *SUMA_MergeSurfs(SUMA_SurfaceObject **SOv, int N_SOv)
+{
+   static char FuncName[]={"SUMA_MergeSurfs"};
+   SUMA_SurfaceObject *SO=NULL, *iso=NULL;
+   int i = 0, cnt = 0, n3=0;
+   int N_Node = 0, NodeOffset=0, *meshp=NULL;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   
+   if (!SOv || N_SOv < 1) {
+      SUMA_SL_Err("Null input");
+      SUMA_RETURN(SO);
+   }
+   
+   /* count the number of nodes and initialize imask*/
+   SO = SUMA_Alloc_SurfObject_Struct(1);
+   if (!SO) {
+      SUMA_SL_Err("Failed to allocate");
+      SUMA_RETURN(SO);
+   }
+   
+   for (i=0; i<N_SOv; ++i) {
+      if ((iso = SOv[i])) {
+         if (i==0 || SO->N_Node == 0) {
+            SO->NodeDim = iso->NodeDim;
+            SO->FaceSetDim = iso->FaceSetDim;
+         } else if (iso->NodeDim != SO->NodeDim) {
+            SUMA_S_Errv("Bad dimensions for %s, skipping it\n",
+                        iso->Label);
+            SOv[i] = NULL;
+            continue;
+         }
+         SO->N_Node += iso->N_Node;
+         SO->N_FaceSet += iso->N_FaceSet;
+      }
+   }
+   
+   if (!(SO->NodeList = (float *)SUMA_calloc(SO->N_Node*SO->NodeDim, 
+                                       sizeof(float))) ||
+       !(SO->FaceSetList = (int *)SUMA_calloc(SO->N_FaceSet*SO->FaceSetDim, 
+                                         sizeof(int)))) {
+      SUMA_S_Errv("Could not allocate for %d nodes, %d triangles\n",
+                  SO->N_Node, SO->N_FaceSet);
+      SUMA_ifree(SO->NodeList);
+      SUMA_ifree(SO->FaceSetList);
+      SUMA_Free_Surface_Object(SO);
+      SUMA_RETURN(NULL);
+   }
+   cnt = 0;
+   for (i=0; i<N_SOv; ++i) {
+      if ((iso = SOv[i])) {
+         memcpy(SO->NodeList+(cnt*iso->NodeDim),iso->NodeList,
+                  sizeof(float)*iso->N_Node*iso->NodeDim); 
+         cnt += iso->N_Node;
+      }
+   }
+   cnt = 0;
+   for (i=0; i<N_SOv; ++i) {
+      if ((iso = SOv[i])) {
+         if (cnt == 0) {
+            memcpy(SO->FaceSetList+(cnt*iso->FaceSetDim),iso->FaceSetList,
+                     sizeof(int)*iso->N_FaceSet*iso->FaceSetDim);
+            NodeOffset = iso->N_Node;
+         } else {
+            meshp = SO->FaceSetList+(cnt*iso->FaceSetDim);
+            for (n3=0; n3<iso->N_FaceSet*iso->FaceSetDim; ++n3) {
+               *meshp = iso->FaceSetList[n3]+NodeOffset; ++meshp;
+            }
+            NodeOffset += iso->N_Node;
+         }
+         cnt += iso->N_FaceSet;
+      }
+   }
+   
+   SUMA_RETURN(SO);
+}
+
+
 /* 
    \brief a function to turn a surface patch (not all vertices are in use) into a surface where all nodes are used.
    \param NodeList (float *) N_Nodelist * 3 vector containing xyz triplets for vertex coordinates
@@ -10341,8 +10514,6 @@ double SUMA_Pattie_Volume (SUMA_SurfaceObject *SO1, SUMA_SurfaceObject *SO2,
 SUMA_Boolean SUMA_FillScaleXform(double xform[][4], double sc[3]) 
 {
    static char FuncName[]={"SUMA_FillScaleXform"};
-   float a[3], phi, q[4];
-   GLfloat m[4][4];
    int nrow, ncol, i;
    SUMA_Boolean LocalHead = NOPE;
    
@@ -10357,6 +10528,25 @@ SUMA_Boolean SUMA_FillScaleXform(double xform[][4], double sc[3])
    
    SUMA_RETURN(YUP);
 } 
+
+SUMA_Boolean SUMA_FillXYnegXform(double xform[][4]) 
+{
+   static char FuncName[]={"SUMA_FillXYnegXform"};
+   int nrow, ncol, i;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   for(nrow=0;nrow<4;++nrow) 
+      for (ncol=0; ncol<4;++ncol) 
+         xform[nrow][ncol] = 0.0;
+   xform[0][0] = -1.0;
+   xform[1][1] = -1.0;
+   xform[2][2] =  1.0;
+   xform[3][3] =  1.0;
+   
+   SUMA_RETURN(YUP);
+} 
+
 
 SUMA_Boolean SUMA_FillRandXform(double xform[][4], int seed, int type) 
 {
@@ -11463,7 +11653,9 @@ void SUMA_free_SPI (SUMA_SURF_PLANE_INTERSECT *SPI)
 /*! 
 Show the SPI structure 
 */
-SUMA_Boolean SUMA_Show_SPI (SUMA_SURF_PLANE_INTERSECT *SPI, FILE * Out, SUMA_SurfaceObject *SO, char *opref, SUMA_SurfaceViewer *sv)
+SUMA_Boolean SUMA_Show_SPI (SUMA_SURF_PLANE_INTERSECT *SPI, FILE * Out, 
+                           SUMA_SurfaceObject *SO, char *opref, 
+                           SUMA_SurfaceViewer *sv)
 {
    static char FuncName[]={"SUMA_Show_SPI"};
    int i, j;
@@ -11503,7 +11695,8 @@ SUMA_Boolean SUMA_Show_SPI (SUMA_SURF_PLANE_INTERSECT *SPI, FILE * Out, SUMA_Sur
    if (sv) {
       SUMA_SegmentDO *SDO = NULL;
       if ((SDO = SUMA_Alloc_SegmentDO (SPI->N_IntersEdges, 
-                                 "Show_SPI_segs", 0, NULL, 0, LS_type))) {
+                                 "Show_SPI_segs", 0, SO->idcode_str, 
+                                 0, LS_type, SO_type, NULL))) {
          SDO->do_type = LS_type;
          for (i=0; i < SPI->N_IntersEdges; ++i) {
             for (j=0; j<3;++j) {
@@ -12232,7 +12425,8 @@ int * SUMA_Dijkstra_usegen (SUMA_SurfaceObject *SO, int Nx,
    \sa SUMA_NodePath_to_EdgePath_Inters
    \sa Path S in labbook NIH-2 page 153
 */
-int *SUMA_NodePath_to_EdgePath (SUMA_EDGE_LIST *EL, int *Path, int N_Path, int *N_Edge)
+int *SUMA_NodePath_to_EdgePath (SUMA_EDGE_LIST *EL, int *Path, int N_Path, 
+                                int *N_Edge)
 {
    static char FuncName[]={"SUMA_NodePath_to_EdgePath"};
    int *ePath = NULL, i, i0;
@@ -13426,7 +13620,8 @@ SUMA_Boolean SUMA_CenterOfSphere(double *p1, double *p2, double *p3,
 }
 
 
-SUMA_Boolean SUMA_GetCenterOfSphereSurface(SUMA_SurfaceObject *SO, int Nquads, double *cs, double *cm)
+SUMA_Boolean SUMA_GetCenterOfSphereSurface(SUMA_SurfaceObject *SO, 
+                                           int Nquads, double *cs, double *cm)
 {
    static char FuncName[]={"SUMA_GetCenterOfSphereSurface"};
    double  p1[3], p2[3], p3[3], p4[3], c[3];
@@ -13481,9 +13676,12 @@ SUMA_Boolean SUMA_GetCenterOfSphereSurface(SUMA_SurfaceObject *SO, int Nquads, d
          cs[ii] /= (double)Ns;
       }
       /* sort coords */
-      qsort(cx, Ns, sizeof(double), (int(*) (const void *, const void *)) SUMA_compare_double);
-      qsort(cy, Ns, sizeof(double), (int(*) (const void *, const void *)) SUMA_compare_double);
-      qsort(cz, Ns, sizeof(double), (int(*) (const void *, const void *)) SUMA_compare_double);
+      qsort(cx, Ns, sizeof(double), 
+            (int(*) (const void *, const void *)) SUMA_compare_double);
+      qsort(cy, Ns, sizeof(double), 
+            (int(*) (const void *, const void *)) SUMA_compare_double);
+      qsort(cz, Ns, sizeof(double), 
+            (int(*) (const void *, const void *)) SUMA_compare_double);
       cm[0] = cx[Ns/2];
       cm[1] = cy[Ns/2];
       cm[2] = cz[Ns/2];

@@ -19,9 +19,12 @@ extern "C" {                    /* care of Greg Balls    7 Aug 2006 [rickr] */
 /*------------------------------------------------------------------*/
 
 #undef INLINE
+
 #ifdef __GNUC__
 # define INLINE __inline__
-#else
+#endif
+
+#ifndef INLINE
 # define INLINE /*nada*/
 #endif
 
@@ -81,6 +84,7 @@ extern mat44   MRILIB_dicom_matrix ;
 
 #include "mri_dicom_stuff.h"
 extern int                MRILIB_dicom_count ;  /* 15 Mar 2006 */
+extern int                MRILIB_dicom_s16_overflow ;  /* 9 Jul 2013 [rickr] */
 extern AFD_dicom_header **MRILIB_dicom_header ;
 
 /*! Clear the MRILIB globals
@@ -125,6 +129,8 @@ static INLINE void AAmemset( void *ooo , int c , size_t nnn )
 # define AAmemcpy memcpy
 # define AAmemset memset
 #endif
+#define AA_memcpy AAmemcpy
+#define AA_memset AAmemset
 
 /* to disable ENTRY/RETURN macros (which use static variables) */
 
@@ -135,6 +141,23 @@ static INLINE void AAmemset( void *ooo , int c , size_t nnn )
 # define AFNI_OMP_START   /*nada*/
 # define AFNI_OMP_END     /*nada*/
 #endif
+
+/* Set max number of threads to be at most thn */
+
+#ifdef USE_OMP
+# define AFNI_SETUP_OMP(thn)                            \
+  do{ int mm=omp_get_max_threads() , nn=thn , ee;       \
+      ee = (int)AFNI_numenv("OMP_NUM_THREADS") ;        \
+      if( ee <= 0 ){                                    \
+        if( nn < 1 ) nn = 12 ; if( mm > nn ) mm = nn ;  \
+        omp_set_num_threads(mm) ;                       \
+      }                                                 \
+  } while(0)
+#else
+# define AFNI_SETUP_OMP(thn) /*nada*/
+#endif
+
+/* Macro to use in -help output */
 
 #ifdef USE_OMP
 # define PRINT_AFNI_OMP_USAGE(pnam,extra)                                          \
@@ -155,6 +178,8 @@ static INLINE void AAmemset( void *ooo , int c , size_t nnn )
     "   using all CPUs available.\n"                                               \
     "   ++ However, on some systems (such as the NIH Biowulf), it seems to be\n"   \
     "      necessary to set OMP_NUM_THREADS explicitly, or you only get one CPU.\n"\
+    "   ++ On other systems with many CPUS, you probably want to limit the CPU\n"  \
+    "      count, since using more than (say) 16 threads is probably useless.\n"   \
     "* You must set OMP_NUM_THREADS in the shell BEFORE running the program,\n"    \
     "   since OpenMP queries this variable BEFORE the program actually starts.\n"  \
     "   ++ You can't usefully set this variable in your ~/.afnirc file or on the\n"\
@@ -162,7 +187,7 @@ static INLINE void AAmemset( void *ooo , int c , size_t nnn )
     "* How many threads are useful?  That varies with the program, and how well\n" \
     "   it was coded.  You'll have to experiment on your own systems!\n"           \
     "* The number of CPUs on this particular computer system is ...... %d.\n"      \
-    "* The maximum number of CPUs that will be used is ............... %d.\n"      \
+    "* The maximum number of CPUs that will be used is now set to .... %d.\n"      \
     "%s"                                                                           \
     " =========================================================================\n" \
     , (pnam) , omp_get_num_procs() , omp_get_max_threads() ,                       \
@@ -344,6 +369,11 @@ typedef struct { double a,b ; } double_pair ;
 typedef struct { double a,b,c ; } double_triple ;
 #endif
 
+#ifndef TYPEDEF_double_quad
+#define TYPEDEF_double_quad
+typedef struct { double a,b,c,d ; } double_quad ;
+#endif
+
 /*-------*/
 
 /*! Triple to hold RGB bytes. */
@@ -444,6 +474,7 @@ typedef struct MRI_IMAGE {
 
          int was_swapped ; /* 07 Mar 2002 */
          int vdim ;        /* 28 Nov 2008 */
+         int flags ;       /* 21 Mar 2013 */
 } MRI_IMAGE ;
 
 #ifdef USE_MRI_LABELS
@@ -902,6 +933,8 @@ extern MRI_IMAGE * mri_zeropad_2D( int,int,int,int, MRI_IMAGE * ) ;
 extern double mri_max( MRI_IMAGE * ) ;
 extern double mri_min( MRI_IMAGE * ) ;
 extern double mri_maxabs( MRI_IMAGE * ) ;
+extern double_pair mri_minmax   ( MRI_IMAGE *im ) ;  /* Apr 2013 */
+extern double_pair mri_minmax_nz( MRI_IMAGE *im ) ;  /* Apr 2013 */
 
 extern MRI_IMAGE * mri_cut_2D( MRI_IMAGE * , int,int,int,int ) ;
 extern int mri_cut_many_2D(MRI_IMARR *,  int,int,int,int );
@@ -1153,7 +1186,8 @@ extern double * startup_lsqfit( int , float * , int , float *ref[] ) ;
 extern float * delayed_lsqfit( int , float * , int , float *ref[] , double * ) ;
 
 extern void mri_polyfit_verb( int ) ;
-MRI_IMAGE * mri_polyfit( MRI_IMAGE *, int, byte *, float, int ) ;
+MRI_IMAGE * mri_polyfit( MRI_IMAGE *, int, MRI_IMARR *, byte *, float, int ) ;
+MRI_IMAGE * mri_polyfit_byslice( MRI_IMAGE *, int, MRI_IMARR *, byte *, float, int ) ;
 
 extern MRI_IMAGE * mri_pcvector  ( MRI_IMARR *imar , int,int ) ;
 extern MRI_IMAGE * mri_meanvector( MRI_IMARR *imar , int,int ) ;
@@ -1163,7 +1197,7 @@ extern MRI_IMAGE * mri_sobel( int , int , MRI_IMAGE * ) ;
 extern MRI_IMAGE * mri_sharpen( float , int , MRI_IMAGE * ) ;
 extern MRI_IMAGE * mri_transpose( MRI_IMAGE * ) ;
 extern MRI_IMAGE * mri_interleave_columns(MRI_IMAGE *, int) ; /* 27 Jul 2009 */
-
+extern MRI_IMAGE * mri_rowmajorize_1D( MRI_IMAGE *im ) ;      /* 14 Mar 2013 */
 
 #define FILT_FFT_WRAPAROUND  1
 
@@ -1914,6 +1948,11 @@ typedef struct {
      }                                                                      \
  } while(0)
 
+#define GA_LEGENDRE 1
+#define GA_HERMITE  2
+
+extern void GA_setup_polywarp(int) ;
+
 extern void mri_genalign_scalar_setup( MRI_IMAGE *, MRI_IMAGE *,
                                        MRI_IMAGE *, GA_setup  * ) ;
 extern int mri_genalign_scalar_optim( GA_setup *, double, double, int) ;
@@ -2046,6 +2085,8 @@ void mri_fwhm_setfester( THD_fvec3 (*func)(MRI_IMAGE *, byte *) ) ;
 
 extern THD_fvec3 mri_nstat_fwhmxyz( int,int,int ,
                                     MRI_IMAGE *, byte *, MCW_cluster * );
+
+extern int mri_nstat_mMP2S( int npt , float *far , float voxval, float *fv5);
 
 extern void mri_blur3D_variable( MRI_IMAGE * , byte * ,
                                  MRI_IMAGE * , MRI_IMAGE * , MRI_IMAGE * ) ;
@@ -2241,8 +2282,9 @@ extern IndexWarp3D * IW3D_sum( IndexWarp3D *AA, float Afac, IndexWarp3D *BB, flo
 extern void IW3D_scale( IndexWarp3D *AA , float fac ) ;
 extern IndexWarp3D * IW3D_from_dataset( THD_3dim_dataset *dset , int empty , int ivs ) ;
 extern THD_3dim_dataset * IW3D_to_dataset( IndexWarp3D *AA , char *prefix ) ;
-extern float_pair IW3D_load_hexvol( IndexWarp3D *AA ) ;
-extern float_pair IW3D_load_energy( IndexWarp3D *AA ) ;
+extern float IW3D_load_hexvol( IndexWarp3D *AA , float *hv ) ;
+extern float IW3D_load_energy( IndexWarp3D *AA ) ;
+extern void IW3D_load_bsv( IndexWarp3D *AA , float,float,float, float *bb , float *ss , float *vv ) ;
 extern IndexWarp3D * IW3D_compose( IndexWarp3D *AA , IndexWarp3D *BB     , int icode ) ;
 extern IndexWarp3D * IW3D_invert ( IndexWarp3D *AA , IndexWarp3D *BBinit , int icode ) ;
 extern IndexWarp3D * IW3D_sqrtinv( IndexWarp3D *AA , IndexWarp3D *BBinit , int icode ) ;
@@ -2253,16 +2295,19 @@ extern void NwarpCalcRPN_verb(int i) ;
 extern void THD_interp_floatim( MRI_IMAGE *fim ,
                                 int np , float *ip , float *jp , float *kp ,
                                 int code, float *outar ) ;
-extern MRI_IMARR * THD_setup_nwarp( MRI_IMARR *bimar, mat44 cmat_bim ,
-                                    int incode      , float wfac     ,
+extern MRI_IMARR * THD_setup_nwarp( MRI_IMARR *bimar,
+                                    int use_amat    , mat44 amat ,
+                                    mat44 cmat_bim  ,
+                                    int incode      , float wfac ,
                                     mat44 cmat_src  ,
                                     mat44 cmat_out  ,
-                                    int nx_out      , int ny_out     , int nz_out  ) ;
+                                    int nx_out      , int ny_out , int nz_out  ) ;
 extern THD_3dim_dataset * THD_nwarp_dataset( THD_3dim_dataset *dset_nwarp ,
                                              THD_3dim_dataset *dset_src  ,
                                              THD_3dim_dataset *dset_mast ,
-                                             char *prefix , int interp_code ,
-                                             float dxyz_mast , float wfac , int nvlim ) ;
+                                             char *prefix , int wincode , int dincode ,
+                                             float dxyz_mast , float wfac , int nvlim ,
+                                             MRI_IMAGE *amatim ) ;
 
 /*----------------------------------------------------------------------------*/
 

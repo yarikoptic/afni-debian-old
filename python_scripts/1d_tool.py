@@ -39,6 +39,43 @@ examples (very basic for now):
                     -write t2.1D
          diff t1.1D t2.1D
 
+   2b. Select or remove columns by label prefixes.
+
+       Keep only bandpass columns:
+
+         1d_tool.py -infile X.xmat.1D -write X.bandpass.1D    \\
+                    -label_prefix_keep bandpass
+
+       Remove only bandpass columns (maybe for 3dRFSC):
+
+         1d_tool.py -infile X.xmat.1D -write X.no.bandpass.1D \\
+                    -label_prefix_drop bandpass
+
+       Keep polort columns (start with 'Run') motion shifts ('d') and labels
+       starting with 'a' and 'b'.  But drop 'bandpass' columns:
+
+         1d_tool.py -infile X.xmat.1D -write X.weird.1D   \\
+                    -label_prefix_keep Run d a b          \\
+                    -label_prefix_drop bandpass
+
+   2c. Select columns by group values, 3 examples.
+
+       First be sure of what the group labels represent.
+
+         1d_tool.py -infile X.xmat.1D -show_group_labels
+
+       i) Select polort (group -1) and other baseline (group 0) terms.
+
+         1d_tool.py -infile X.xmat.1D -select_groups -1 0 -write baseline.1D
+
+       ii) Select everything but baseline groups (anything positive).
+
+         1d_tool.py -infile X.xmat.1D -select_groups POS -write regs.of.int.1D
+
+       iii) Reorder to have rests of interest, then motion, then polort.
+
+         1d_tool.py -infile X.xmat.1D -select_groups POS 0, -1 -write order.1D
+
    3.  Transpose a dataset, akin to 1dtranspose.
 
          1d_tool.py -infile t3.1D -transpose -write ttr.1D
@@ -66,9 +103,17 @@ examples (very basic for now):
 
          1d_tool.py -infile X.xmat.1D -show_indices_interest
 
-   6.  Show correlation matrix warnings for this matrix.
+       c. Display labels by group.
+
+         1d_tool.py -infile X.xmat.1D -show_group_labels
+
+   6a.  Show correlation matrix warnings for this matrix.
 
          1d_tool.py -infile X.xmat.1D -show_cormat_warnings
+
+   6b.  Show entire correlation matrix.
+
+         1d_tool.py -infile X.xmat.1D -show_cormat
 
    7a. Output temporal derivative of motion regressors.  There are 9 runs in
        dfile.rall.1D, and derivatives are applied per run.
@@ -122,6 +167,8 @@ examples (very basic for now):
 
   10.  Given motion.1D, create censor files to use in 3dDeconvolve, where a
        TR is censored if the derivative values have a Euclidean Norm above 1.2.
+       It is common to also censor each previous TR, as motion may span both
+       (previous because "derivative" is actually a backward difference).
 
        The file created by -write_censor can be used with 3dD's -censor option.
        The file created by -write_CENSORTR can be used with -CENSORTR.  They
@@ -130,11 +177,12 @@ examples (very basic for now):
  
        a. general example
 
-          1d_tool.py -infile motion.1D -set_nruns 9                 \\
-                     -derivative -collapse_cols euclidean_norm      \\
-                     -moderate_mask -1.2 1.2                        \\
-                     -show_censor_count                             \\
-                     -write_censor subjA_censor.1D                  \\
+          1d_tool.py -infile motion.1D -set_nruns 9     \\
+                     -derivative -censor_prev_TR        \\
+                     -collapse_cols euclidean_norm      \\
+                     -moderate_mask -1.2 1.2            \\
+                     -show_censor_count                 \\
+                     -write_censor subjA_censor.1D      \\
                      -write_CENSORTR subjA_CENSORTR.txt
 
        b. using -censor_motion
@@ -147,14 +195,16 @@ examples (very basic for now):
 
           1d_tool.py -infile motion.1D -set_nruns 9     \\
                      -show_censor_count                 \\
-                     -censor_motion 1.2 subjA
+                     -censor_motion 1.2 subjA           \\
+                     -censor_prev_TR
 
        c. allow the run lengths to vary
 
           1d_tool.py -infile motion.1D                           \\
                      -set_run_lengths 64 61 67 61 67 61 67 61 67 \\
                      -show_censor_count                          \\
-                     -censor_motion 1.2 subjA_rlens
+                     -censor_motion 1.2 subjA_rlens              \\
+                     -censor_prev_TR
 
        Consider also '-censor_prev_TR' and '-censor_first_trs'.
 
@@ -282,12 +332,58 @@ examples (very basic for now):
    18. Just output censor count for default method.
 
        This will output nothing but the number of TRs that would be censored,
-       akin to using -censor_motion.
+       akin to using -censor_motion and -censor_prev_TR.
 
         1d_tool.py -infile dfile_rall.1D -set_nruns 3 -quick_censor_count 0.3
 
         1d_tool.py -infile dfile_rall.1D -set_run_lengths 100 80 120 \
                    -quick_censor_count 0.3
+
+   19. Compute GCOR from some 1D file.
+
+       * Note, time should be in the vertical direction of the file
+         (else use -transpose).
+
+        1d_tool.py -infile data.1D -show_gcor
+
+       Or get some GCOR documentation and many values.
+        
+        1d_tool.py -infile data.1D -show_gcor_doc
+        1d_tool.py -infile data.1D -show_gcor_all
+
+   20. Display censored or uncensored TRs lists (maybe for use in 3dTcat).
+
+       TRs which were censored:
+
+          1d_tool.py -infile X.xmat.1D -show_trs_censored encoded
+
+       TRs which were applied in analysis (those NOT censored):
+
+          1d_tool.py -infile X.xmat.1D -show_trs_uncensored encoded
+
+   21. Convert to rank order.
+
+       a. show rank order of slice times from a 1D file
+
+         1d_tool.py -infile slice_times.1D -rank -write -
+
+       b. show rank order of slice times piped directly from 3dinfo
+
+         3dinfo -slice_timing epi+orig | 1d_tool.py -infile - -rank -write -
+
+       c. show rank order using 'competition' rank, instead of default 'dense'
+
+         3dinfo -slice_timing epi+orig \\
+                | 1d_tool.py -infile - -rank_style competition -write -
+
+   22. Guess volreg base index from motion parameters.
+
+         1d_tool.py -infile dfile_rall.1D -collapse_cols enorm -show_argmin
+
+   23. Convert volreg parameters to those suitable for 3dAllineate.
+
+         1d_tool.py -infile dfile_rall.1D -volreg2allineate \\
+                    -write allin_rall_aff12.1D
 
 ---------------------------------------------------------------------------
 basic informational options:
@@ -307,7 +403,7 @@ general options:
 
    -add_cols NEW_DSET.1D        : extend dset to include these columns
 
-   -backward_diff               : take derivative as backward difference
+   -backward_diff               : take derivative as first backward difference
 
         Take the backward differences at each time point.  For each index > 0,
         value[index] = value[index] - value[index-1], and value[0] = 0.
@@ -339,6 +435,8 @@ general options:
            The point of these numbers is to suggest that equating degrees and
            mm should be fine.  The average distance caused by a 1 degree
            rotation is very close to 1 mm (in an adult human).
+
+         * 'enorm' is short for 'euclidean_norm'.
 
          * Use of weighted_enorm requires the -weight_vec option.
 
@@ -393,12 +491,14 @@ general options:
 
    -censor_first_trs N          : when censoring motion, also censor the first
                                   N TRs of each run
+   -censor_next_TR              : for each censored TR, also censor next one
+                                  (probably for use with -forward_diff)
    -censor_prev_TR              : for each censored TR, also censor previous
    -cormat_cutoff CUTOFF        : set cutoff for cormat warnings (in [0,1])
    -demean                      : demean each run (new mean of each run = 0.0)
 
    -derivative                  : take the temporal derivative of each vector
-                                  (done as backward difference)
+                                  (done as first backward difference)
 
         Take the backward differences at each time point.  For each index > 0,
         value[index] = value[index] - value[index-1], and value[0] = 0.
@@ -417,9 +517,9 @@ general options:
 
         Note: this was originally described incorrectly in the help.
 
-   -forward_diff                : take the temporal derivative of each vector
+   -forward_diff                : take first forward difference of each vector
 
-        Take the forward differences at each time point.  For index < last,
+        Take the first forward differences at each time point.  For index<last,
         value[index] = value[index+1] - value[index], and value[last] = 0.
 
         The difference between -forward_diff and -backward_diff is a time shift
@@ -436,6 +536,36 @@ general options:
         -censor file should be a time series of TRs to apply.
 
         See also -extreme_mask.
+
+   -label_prefix_drop prefix1 prefix2 ... : remove labels matching prefix list
+
+        e.g. to remove motion shift (starting with 'd') and bandpass labels:
+
+             -label_prefix_drop d bandpass
+
+        This is a type of column selection.
+
+        Use this option to remove columns from a matrix that have labels
+        starting with any from the given prefix list.
+
+        This option can be applied along with -label_prefix_keep.
+
+        See also -label_prefix_keep and example 2b.
+
+   -label_prefix_keep prefix1 prefix2 ... : keep labels matching prefix list
+
+        e.g. to keep only motion shift (starting with 'd') and bandpass labels:
+
+             -label_prefix_keep d bandpass
+
+        This is a type of column selection.
+
+        Use this option to keep columns from a matrix that have labels starting
+        with any from the given prefix list.
+
+        This option can be applied along with -label_prefix_drop.
+
+        See also -label_prefix_drop and example 2b.
 
    "Looks like" options:
 
@@ -516,9 +646,53 @@ general options:
            -censor_prev_TR -verb 0 -show_censor_count 
            -moderate_mask 0 LIMIT
 
+   -rank                        : convert data to rank order
+                                  0-based index order of small to large values
+                                  The default rank STYLE is 'dense'.
+
+        See also -rank_style.
+
+   -rank_style STYLE            : convert to rank using the given style
+
+        The STYLE refers to what to do in the case of repeated values.
+        Assuming inputs 4 5 5 9...
+
+            dense      - repeats get same rank, no gaps in rank
+                        - same a "3dmerge -1rank"
+                        - result: 0 1 1 2
+
+            competition - repeats get same rank, leading to gaps in rank
+                        - same a "3dmerge -1rank"
+                        - result: 0 1 1 3
+                          (case '2' is counted, though no such rank occurs)
+
+        Option '-rank' uses style 'dense'.
+
+        See also -rank.
+
+   -reverse_rank                : convert data to reverse rank order
+                                  (large values come first)
+
    -reverse                     : reverse data over time
    -randomize_trs               : randomize the data over time
    -seed SEED                   : set random number seed (integer)
+   -select_groups g0 g1 ...     : select columns by group numbers
+
+        e.g. -select groups 0
+        e.g. -select groups POS 0
+
+        An X-matrix dataset (e.g. X.xmat.1D) often has columns partitioned by
+        groups, such as:
+                -1  : polort regressors
+                 0  : motion regressors and other (non-polort) baseline terms
+                 N>0: regressors of interest
+
+        This option can be used to select columns by integer groups, with
+        special cases of POS (regs of interest), NEG (probably polort).
+        Note that NONNEG is unneeded as it is the pair POS 0.
+
+        See also -show_group_labels.
+
    -select_cols SELECTOR        : apply AFNI column selectors, [] is optional
                                   e.g. '[5,0,7..21(2)]'
    -select_rows SELECTOR        : apply AFNI row selectors, {} is optional
@@ -537,17 +711,30 @@ general options:
         See examples 7b, 10c and 14.
 
    -set_tr TR                   : set the TR (in seconds) for the data
+   -show_argmin                 : display the index of min arg (of first column)
    -show_censor_count           : display the total number of censored TRs
+   -show_cormat                 : display correlation matrix
    -show_cormat_warnings        : display correlation matrix warnings
-   -show_label_ordering         : display the labels
-   -show_labels                 : display the labels
+   -show_gcor                   : display GCOR: the average correlation
+   -show_gcor_all               : display many ways of computing (a) GCOR
+   -show_gcor_doc               : display descriptions of those ways
+   -show_group_labels           : display group and label, per column
    -show_indices_baseline       : display column indices for baseline
    -show_indices_motion         : display column indices for motion regressors
    -show_indices_interest       : display column indices for regs of interest
+   -show_label_ordering         : display the labels
+   -show_labels                 : display the labels
    -show_max_displace           : display max displacement (from motion params)
                                   - the maximum pairwise distance (enorm)
    -show_mmms                   : display min, mean, max, stdev of columns
    -show_rows_cols              : display the number of rows and columns
+   -show_trs_censored STYLE     : display a list of TRs which were censored
+   -show_trs_uncensored STYLE   : display a list of TRs which were not censored
+                                  STYLE can be one of:
+                                     comma      : comma delimited
+                                     space      : space delimited
+                                     encoded    : succinct selector list
+                                     verbose    : chatty
    -sort                        : sort data over time (smallest to largest)
                                   - sorts EVERY vector
                                   - consider the -reverse option
@@ -572,7 +759,23 @@ general options:
 
         See example 14.
 
-   -transpose                   : transpose the matrix (rows for columns)
+   -transpose                   : transpose the input matrix (rows for columns)
+   -transpose_write             : transpose the output matrix before writing
+   -volreg2allineate            : convert 3dvolreg parameters to 3dAllineate
+
+        This option should be used when the -input file is a 6 column file
+        of motion parameters (roll, pitch, yaw, dS, dL, dP).  The output would
+        be converted to a 12 parameter file, suitable for input to 3dAllineate
+        via the -1Dparam_apply option.
+
+        volreg:     roll, pitch, yaw,   dS,    dL,     dP
+        3dAllinate: -dL,  -dP,   -dS,   roll,  pitch,  yaw,  0,0,0,  0,0,0
+
+        These parameters would be to correct the motion, akin to what 3dvolreg
+        did (i.e. they are the negative estimates of how the subject moved).
+
+        See example 23.
+
    -write FILE                  : write the current 1D data to FILE
 
    -weight_vec v1 v2 ...        : supply weighting vector
@@ -685,9 +888,19 @@ g_history = """
    1.08 Jul 30, 2012 - display -show_mmms output to 4 decimal places
    1.09 Oct  3, 2012 - some options do not allow dashed parameters
    1.10 Oct  5, 2012 - added option -quick_censor_count
+   1.11 Jan 16, 2013 - added -show_gcor, and _all and _doc
+   1.12 Mar 27, 2013
+        - added -show_group_labels (for xmat.1D format)
+        - added -label_prefix_keep/_drop (e.g. for removing bandpass regressors)
+   1.13 Apr 24, 2013 - added -censor_next_TR
+   1.14 Apr 26, 2013 - added options -show_trs_censored/uncensored
+   1.15 May  6, 2013 - added option -transpose_write
+   1.16 May  8, 2013 - added options -rank, -rank_style
+   1.17 May 14, 2013 - added -show_argmin/argmax
+   1.18 Jun 10, 2013 - added -select_groups, -show_cormat, -volreg2allineate
 """
 
-g_version = "1d_tool.py version 1.10, October 5, 2012"
+g_version = "1d_tool.py version 1.18, June 10, 2013"
 
 
 class A1DInterface:
@@ -704,12 +917,16 @@ class A1DInterface:
 
       # action variables
       self.add_cols_file   = None       # filename to add cols from
+      self.rank            = ''         # convert data to rank order
+                                        # method '', 'dense', or 'competition'
+      self.reverse_rank    = 0          # convert data to reverse rank order
       self.censor_dset     = None       # censor dataset from censor_infile
       self.censor_infile   = None       # for -censor_infile
 
       self.censor_fill     = 0          # zero-fill censored TRs
       self.censor_fill_par = ''         # same, but via this parent dset
       self.censor_first_trs= 0          # number of first TRs to also censor
+      self.censor_next_TR  = 0          # if censor, also censor next TR
       self.censor_prev_TR  = 0          # if censor, also censor previous TR
       self.collapse_method = ''         # method for collapsing columns
       self.demean          = 0          # demean the data
@@ -720,8 +937,11 @@ class A1DInterface:
       self.rand_trs        = 0          # randomize order of data over time
       self.rand_seed       = 0          # randomization seed, set if positive
       self.reverse         = 0          # reverse data over time
+      self.select_groups   = []         # column selection list
       self.select_cols     = ''         # column selection string
       self.select_rows     = ''         # row selection string
+      self.label_pre_drop  = []         # columns to drop - label prefix list
+      self.label_pre_keep  = []         # columns to keep - label prefix list
       self.set_extremes    = 0          # make mask of extreme TRs
       self.set_moderates   = 0          # make mask of moderate TRs
       self.set_nruns       = 0          # assume input is over N runs
@@ -730,19 +950,27 @@ class A1DInterface:
       self.split_into_pad_runs = ''     # prefix, for splitting into many runs
 
       self.cormat_cutoff   = -1         # if > 0, apply to show_cormat_warns
+      self.show_argmax     = 0          # show index of max arg
+      self.show_argmin     = 0          # show index of min arg
       self.show_censor_count= 0         # show count of censored TRs
+      self.show_cormat     = 0          # show cormat
       self.show_cormat_warn= 0          # show cormat warnings
       self.show_displace   = 0          # max_displacement (0,1,2)
+      self.show_gcor       = 0          # bitmask: GCOR, all, doc
+      self.show_group_labels = 0        # show the groups and labels
       self.show_indices    = 0          # bitmask for index lists to show
                                         # (base, motion, regs of interest)
       self.show_label_ord  = 0          # show the label ordering
       self.show_labels     = 0          # show the labels
       self.show_mmms       = 0          # show min, mean, max, stdev
       self.show_rows_cols  = 0          # show the number of rows and columns
-                                
-
+      self.show_trs_censored = ''       # style variable can be in:
+      self.show_trs_uncensored = ''     # style variable can be in:
+                               # {'', 'comma', 'space', 'encoded', 'verbose'}
       self.sort            = 0          # sort data over time
-      self.transpose       = 0          # transpose the matrix
+      self.transpose       = 0          # transpose the input matrix
+      self.transpose_w     = 0          # transpose the output matrix
+      self.vr2allin        = 0          # -volreg2allineate
       self.censor_file     = None       # output as 1D censor file
       self.censortr_file   = None       # output as CENSORTR string
       self.collapse_file   = None       # output as 1D collapse file
@@ -776,7 +1004,7 @@ class A1DInterface:
 
       if not adata.ready: return 1
 
-      if self.verb > 1: print "++ read 1D data from file '%s'" % fname
+      if self.verb > 2: print "++ read 1D data from file '%s'" % fname
 
       self.fname = fname
       self.adata = adata
@@ -825,15 +1053,15 @@ class A1DInterface:
                       helpstr='display the current version number')
 
       # required parameter
-      self.valid_opts.add_opt('-infile', 1, [], req=1,
+      self.valid_opts.add_opt('-infile', 1, [], req=1, 
                       helpstr='read the given 1D file')
 
       # general options
-      self.valid_opts.add_opt('-add_cols', 1, [],
+      self.valid_opts.add_opt('-add_cols', 1, [], 
                       helpstr='extend dataset with columns from new file')
 
       self.valid_opts.add_opt('-backward_diff', 0, [], 
-                      helpstr='take derivative using backward differences')
+                      helpstr='compute first backward differences')
 
       self.valid_opts.add_opt('-censor_fill', 0, [], 
                       helpstr='zero-fill previously censored TRs')
@@ -844,18 +1072,21 @@ class A1DInterface:
       self.valid_opts.add_opt('-censor_first_trs', 1, [], 
                       helpstr='number of initial TRs to censor, per run')
 
-      self.valid_opts.add_opt('-censor_infile', 1, [],
+      self.valid_opts.add_opt('-censor_infile', 1, [], 
                       helpstr='apply censor file to input file')
 
       self.valid_opts.add_opt('-censor_motion', 2, [], 
                       helpstr='censor motion data with LIMIT and PREFIX')
 
+      self.valid_opts.add_opt('-censor_next_TR', 0, [], 
+                      helpstr='if censoring a TR, also censor next one')
+
       self.valid_opts.add_opt('-censor_prev_TR', 0, [], 
                       helpstr='if censoring a TR, also censor previous one')
 
-      self.valid_opts.add_opt('-collapse_cols', 1, [], 
+      self.valid_opts.add_opt('-collapse_cols', 1, [],
                       acplist=['min','max','minabs','maxabs',
-                               'euclidean_norm', 'weighted_enorm'],
+                               'euclidean_norm', 'enorm', 'weighted_enorm'],
                       helpstr='collapse into one column via supplied METHOD')
 
       self.valid_opts.add_opt('-cormat_cutoff', 1, [], 
@@ -871,10 +1102,16 @@ class A1DInterface:
                       helpstr='create mask for values outside (MIN,MAX)')
 
       self.valid_opts.add_opt('-forward_diff', 0, [], 
-                      helpstr='take derivative using forward differences')
+                      helpstr='compute first forward differences')
 
       self.valid_opts.add_opt('-moderate_mask', 2, [], 
                       helpstr='create mask for values within [MIN,MAX]')
+
+      self.valid_opts.add_opt('-label_prefix_drop', -1, [], okdash=0, 
+                      helpstr='label prefix list for columns to drop')
+
+      self.valid_opts.add_opt('-label_prefix_keep', -1, [], okdash=0, 
+                      helpstr='label prefix list for columns to keep')
 
       self.valid_opts.add_opt('-looks_like_1D', 0, [], 
                       helpstr='show whether file has 1D format')
@@ -903,6 +1140,16 @@ class A1DInterface:
       self.valid_opts.add_opt('-randomize_trs', 0, [], 
                       helpstr='randomize the data over time (fixed per TR)')
 
+      self.valid_opts.add_opt('-rank', 0, [], 
+                      helpstr='conver input to rank order')
+
+      self.valid_opts.add_opt('-rank_style', 1, [], 
+                      acplist=['dense', 'competition'],
+                      helpstr='conver input to rank order using given STYLE')
+
+      self.valid_opts.add_opt('-reverse_rank', 0, [], 
+                      helpstr='conver input to reverse rank order')
+
       self.valid_opts.add_opt('-reverse', 0, [], 
                       helpstr='reverse the data per column (over time)')
 
@@ -915,6 +1162,9 @@ class A1DInterface:
       self.valid_opts.add_opt('-select_rows', 1, [], 
                       helpstr='select the list of rows from the dataset')
 
+      self.valid_opts.add_opt('-select_groups', -1, [], 
+                      helpstr='select columns by the given list of groups')
+
       self.valid_opts.add_opt('-set_nruns', 1, [], 
                       helpstr='specify the number of runs in the input')
 
@@ -924,11 +1174,32 @@ class A1DInterface:
       self.valid_opts.add_opt('-set_tr', 1, [], 
                       helpstr='specify the TR (in seconds) of the data')
 
+      self.valid_opts.add_opt('-show_argmax', 0, [], 
+                      helpstr='show index of max element in column 0')
+
+      self.valid_opts.add_opt('-show_argmin', 0, [], 
+                      helpstr='show index of min element in column 0')
+
       self.valid_opts.add_opt('-show_censor_count', 0, [], 
                       helpstr='display the total number of censored TRs')
 
+      self.valid_opts.add_opt('-show_cormat', 0, [], 
+                      helpstr='display the correlation matrix (all pairs)')
+
       self.valid_opts.add_opt('-show_cormat_warnings', 0, [], 
                       helpstr='display warnings for the correlation matrix')
+
+      self.valid_opts.add_opt('-show_gcor', 0, [], 
+                      helpstr='display GCOR : the average correlation')
+
+      self.valid_opts.add_opt('-show_gcor_all', 0, [], 
+                      helpstr='display many ways to compute GCOR')
+
+      self.valid_opts.add_opt('-show_gcor_doc', 0, [], 
+                      helpstr='display documentation of ways to compute GCOR')
+
+      self.valid_opts.add_opt('-show_group_labels', 0, [], 
+                      helpstr='display group and label for each column')
 
       self.valid_opts.add_opt('-show_indices_baseline', 0, [], 
                       helpstr='display index list for baseline regressors')
@@ -954,6 +1225,14 @@ class A1DInterface:
       self.valid_opts.add_opt('-show_rows_cols', 0, [], 
                       helpstr='display the number of rows and columns')
 
+      self.valid_opts.add_opt('-show_trs_censored', 1, [], 
+                   acplist=['comma', 'space', 'encoded', 'describe', 'verbose'],
+                   helpstr='display TRs censored from Xmat in given STYLE')
+
+      self.valid_opts.add_opt('-show_trs_uncensored', 1, [], 
+                   acplist=['comma', 'space', 'encoded', 'describe', 'verbose'],
+                   helpstr='display TRs applied from Xmat in given STYLE')
+
       self.valid_opts.add_opt('-sort', 0, [], 
                       helpstr='sort the data per column (over time)')
 
@@ -961,7 +1240,13 @@ class A1DInterface:
                       helpstr='write input as one zero-padded file per run')
 
       self.valid_opts.add_opt('-transpose', 0, [], 
-                      helpstr='transpose the data')
+                      helpstr='transpose the input matrix')
+
+      self.valid_opts.add_opt('-transpose_write', 0, [], 
+                      helpstr='transpose the output matrix before writing')
+
+      self.valid_opts.add_opt('-volreg2allineate', 0, [], 
+                      helpstr='convert volreg parameters to 3dAllineate')
 
       self.valid_opts.add_opt('-weight_vec', -1, [], 
                       helpstr='specify weights (for enorm computation)')
@@ -1063,6 +1348,17 @@ class A1DInterface:
 
          # ----- general options -----
 
+         elif opt.name == '-rank':
+            self.rank = 'dense'
+
+         elif opt.name == '-rank_style':
+            val, err = uopts.get_string_opt('', opt=opt)
+            if err: return 1
+            self.rank = val
+
+         elif opt.name == '-reverse_rank':
+            self.reverse_rank = 1
+
          if opt.name == '-censor_infile':
             val, err = uopts.get_string_opt('', opt=opt)
             if err: return 1
@@ -1113,6 +1409,9 @@ class A1DInterface:
             if err: return 1
             self.censor_first_trs = val
 
+         elif opt.name == '-censor_next_TR':
+            self.censor_next_TR = 1
+
          elif opt.name == '-censor_prev_TR':
             self.censor_prev_TR = 1
 
@@ -1158,6 +1457,12 @@ class A1DInterface:
             self.derivative = 1
             self.direct = 1
 
+         elif opt.name == '-show_argmax':
+            self.show_argmax = 1
+
+         elif opt.name == '-show_argmin':
+            self.show_argmin = 1
+
          elif opt.name == '-moderate_mask':
             val, err = uopts.get_type_list(float, '', opt=opt)
             if err: return 1
@@ -1168,6 +1473,16 @@ class A1DInterface:
             else:
                print '** -extreme_mask: must have min <= max'
                return 1
+
+         elif opt.name == '-label_prefix_drop':
+            val, err = uopts.get_string_list('', opt=opt)
+            if err: return 1
+            self.label_pre_drop = val
+
+         elif opt.name == '-label_prefix_keep':
+            val, err = uopts.get_string_list('', opt=opt)
+            if err: return 1
+            self.label_pre_keep = val
 
          # looks_like options, to test AfniData (not Afni1D)
          elif opt.name == '-looks_like_1D':
@@ -1202,14 +1517,15 @@ class A1DInterface:
                return 1
             # check for redundant options
             errors = 0
-            olist = ['-derivative', '-demean', '-collapse_cols', '-verb',
-                     '-extreme_mask', 'moderate_mask', '-show_censor_count']
+            olist = ['-derivative', '-demean', '-collapse_cols',
+                     'moderate_mask', '-show_censor_count',
+                     '-show_censor_count', '-verb']
             for oname in olist:
                if uopts.find_opt(oname):
                   print "** option %s is redundant with -quick_censor_count" \
                         % oname
                   errors += 1
-            olist = ['-censor_motion', '-write_censor']
+            olist = ['-censor_motion', '-write_censor', '-extreme_mask']
             for oname in olist:
                if uopts.find_opt(oname):
                   print "** option %s is not allowed with -quick_censor_count" \
@@ -1248,11 +1564,31 @@ class A1DInterface:
             if err: return 1
             self.select_rows = val
 
+         elif opt.name == '-select_groups':
+            val, err = uopts.get_string_list('', opt=opt)
+            if err: return 1
+            self.select_groups = val
+
+         elif opt.name == '-show_cormat':
+            self.show_cormat = 1
+
          elif opt.name == '-show_cormat_warnings':
             self.show_cormat_warn = 1
 
          elif opt.name == '-show_censor_count':
             self.show_censor_count = 1
+
+         elif opt.name == '-show_gcor':         # show_gcor is bit mask
+            self.show_gcor |= 1
+
+         elif opt.name == '-show_gcor_all':
+            self.show_gcor |= 2
+
+         elif opt.name == '-show_gcor_doc':
+            self.show_gcor |= 4
+
+         elif opt.name == '-show_group_labels':
+            self.show_group_labels = 1
 
          elif opt.name == '-show_indices_baseline':
             self.show_indices |= 1
@@ -1278,6 +1614,16 @@ class A1DInterface:
          elif opt.name == '-show_rows_cols':
             self.show_rows_cols = 1
 
+         elif opt.name == '-show_trs_censored':
+            val, err = uopts.get_string_opt('', opt=opt)
+            if err: return 1
+            self.show_trs_censored = val
+
+         elif opt.name == '-show_trs_uncensored':
+            val, err = uopts.get_string_opt('', opt=opt)
+            if err: return 1
+            self.show_trs_uncensored = val
+
          elif opt.name == '-sort':
             self.sort = 1
 
@@ -1288,6 +1634,12 @@ class A1DInterface:
 
          elif opt.name == '-transpose':
             self.transpose = 1
+
+         elif opt.name == '-transpose_write':
+            self.transpose_w = 1
+
+         elif opt.name == '-volreg2allineate':
+            self.vr2allin = 1
 
          elif opt.name == '-write':
             val, err = uopts.get_string_opt('', opt=opt)
@@ -1376,6 +1728,17 @@ class A1DInterface:
          if ilist == None: return 1
          if self.adata.reduce_by_tlist(ilist): return 1
 
+      if len(self.select_groups) > 0:
+         if self.adata.reduce_by_group_list(self.select_groups): return 1
+
+      if self.label_pre_drop or self.label_pre_keep:
+         if self.adata.reduce_by_label_prefix(keep_pre=self.label_pre_keep,
+                                              drop_pre=self.label_pre_drop):
+            return 1
+
+      if self.transpose: # possibly transpose on read
+         if self.adata.transpose(): return 1
+
       # ---- processing options -----
 
       if self.set_nruns > 0:
@@ -1413,9 +1776,6 @@ class A1DInterface:
             return 1
          if self.adata.pad_into_many_runs(val[0], val[1], rlens): return 1
 
-      if self.transpose:
-         if self.adata.transpose(): return 1
-
       if self.collapse_method:
          if self.adata.collapse_cols(self.collapse_method, self.weight_vec):
             return 1
@@ -1440,16 +1800,43 @@ class A1DInterface:
          parent = LAD.Afni1D(self.censor_fill_par, verb=self.verb)
          if self.adata.apply_goodlist(padbad=1, parent=parent): return 1
 
+      if self.censor_next_TR:
+         if self.adata.clear_next_TRs(): return 1
+
       if self.censor_prev_TR:
          if self.adata.clear_prior_TRs(): return 1
 
       if self.censor_first_trs:
          if self.adata.set_first_TRs(self.censor_first_trs, newval=0): return 1
 
-      # ---- 'show' options come after all other processing ----
+      if self.vr2allin:
+         if self.adata.volreg_2_allineate(): return 1
+
+      # ---- show options come after all other processing ----
 
       if self.show_label_ord: self.adata.show_major_order_of_labels()
       if self.show_labels: self.adata.show_labels()
+      if self.show_group_labels: self.adata.show_group_labels()
+
+      # treat reverse as a toggl
+      if self.reverse_rank:
+         if self.rank: style = self.rank
+         else:         style = 'dense'
+         if self.adata.rank(style=style, reverse=1, verb=self.verb): return 1
+      elif self.rank:
+         if self.adata.rank(style=self.rank, verb=self.verb): return 1
+
+      if self.show_argmax:
+         amax = UTIL.argmax(self.adata.mat[0])
+         if self.verb > 1:
+            print '-- val[%d] = %s' % (amax, self.adata.mat[0][amax])
+         print '%d' % amax
+
+      if self.show_argmin:
+         amin = UTIL.argmin(self.adata.mat[0])
+         if self.verb > 1:
+            print '-- val[%d] = %s' % (amin, self.adata.mat[0][amin])
+         print '%d' % amin
 
       if self.show_indices:
          istr = self.adata.get_indices_str(self.show_indices)
@@ -1458,19 +1845,35 @@ class A1DInterface:
       if self.show_displace:
          print self.adata.get_max_displacement_str(verb=self.verb)
 
+      if self.show_gcor:
+         if self.show_gcor & 1:
+            self.adata.show_gcor(verb=self.verb)
+         if self.show_gcor & 2:
+            self.adata.show_gcor_all()
+         if self.show_gcor & 4:
+            self.adata.show_gcor_doc_all()
+
       if self.show_mmms:
          self.adata.show_min_mean_max_stdev(verb=self.verb)
 
       if self.show_rows_cols: self.adata.show_rows_cols(verb=self.verb)
 
+      if self.show_trs_censored   != '': self.show_TR_censor_list(1)
+      if self.show_trs_uncensored != '': self.show_TR_censor_list(0)
+
       if self.show_censor_count: self.adata.show_censor_count()
 
+      if self.show_cormat: self.adata.show_cormat()
+
       if self.show_cormat_warn:
-         err, str = self.adata.make_cormat_warnings_string(self.cormat_cutoff,
+         err, wstr = self.adata.make_cormat_warnings_string(self.cormat_cutoff,
                                                            name=self.infile)
-         print str
+         print wstr
 
       # ---- possibly write: last option -----
+
+      if self.transpose_w: # if transpose on write, do it now
+         if self.adata.transpose(): return 1
 
       if self.censortr_file:
          bdata = self.adata.copy()
@@ -1487,6 +1890,39 @@ class A1DInterface:
          if self.write_1D(self.write_file): return 1
 
       return
+
+   def show_TR_censor_list(self, censored=0):
+      """output either the cencored or uncensored TR index list in the
+         specified style
+      """
+      if censored: action = 'censored'
+      else:        action = 'kept'
+
+      if censored:
+         rv, tlist = self.adata.get_censored_trs()
+         style = self.show_trs_censored
+      else:
+         rv, tlist = self.adata.get_uncensored_trs()
+         style = self.show_trs_uncensored
+
+      # check bad style or failure
+      if style == '': return
+      if rv: return 1
+
+      if   style == 'comma':   print UTIL.int_list_string(tlist, sepstr=',')
+      elif style == 'space':   print UTIL.int_list_string(tlist, sepstr=' ')
+      elif style == 'encoded': print UTIL.encode_1D_ints(tlist)
+      elif style == 'describe':
+         if len(self.adata.goodlist) > 0: ntot = self.adata.nrowfull
+         else:                            ntot = self.adata.nt
+         print '%s %d of %d TR indices: %s' \
+               % (action, len(tlist), ntot, UTIL.encode_1D_ints(tlist))
+      else: # assume verbose = describe + actual list
+         if len(self.adata.goodlist) > 1: ntot = self.adata.nrowfull
+         else:                            ntot = self.adata.nt
+         print '%s %d of %d TR indices: %s' \
+               % (action, len(tlist), ntot, UTIL.encode_1D_ints(tlist))
+         print UTIL.int_list_string(tlist, mesg='TRs = ',sepstr=', ')
 
 def test(self, verb=3):
       # init

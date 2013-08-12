@@ -1,10 +1,14 @@
 #!/usr/bin/env afni_run_R
 #Welcome to 3dICC_REML.R, an AFNI IntraClass Correlation Package!
 #-----------------------------------------------------------
-#Version 0.0.3,  Jul. 26, 2010
+#Version 0.0.6,  Aug 1, 2013
 #Author: Gang Chen (gangchen@mail.nih.gov)
 #Website: http://afni.nimh.nih.gov/sscc/gangc/icc.html
 #SSCC/NIMH, National Institutes of Health, Bethesda MD 20892
+# If this program is useful for you, consider cite the following:
+# Chen, G., Saad, Z.S., Britton, J.C., Pine, D.S., Cox, R.W. (2013). 
+# Linear Mixed-Effects Modeling Approach to FMRI Group Analysis. 
+# NeuroImage, 10.1016/j.neuroimage.2013.01.047.
 #-----------------------------------------------------------
 
 # Commannd line to run this script: 3dICC.R MyOutput & (R CMD BATCH 3dICC3.R MyOut &)
@@ -29,7 +33,14 @@ getInfo <- function(key, inFile) {
 band <- function(x, lo, hi) {ifelse((x<=hi)&(x>=lo), x, ifelse(x>hi, hi, lo))}
 
 system("rm -f .RData")
-source(file.path(Sys.getenv("AFNI_R_DIR"), "AFNIio.R"))
+
+first.in.path <- function(file) {
+   ff <- paste(strsplit(Sys.getenv('PATH'),':')[[1]],'/', file, sep='')
+   ff<-ff[lapply(ff,file.exists)==TRUE];
+   #cat('Using ', ff[1],'\n');
+   return(gsub('//','/',ff[1], fixed=TRUE)) 
+}
+source(first.in.path('AFNIio.R'))
 #source("~/abin/AFNIio.R")
 
 comArgs <- commandArgs()
@@ -44,12 +55,16 @@ if(is.na(Out)) {
    print("No output file name provided: a suffix of TEST will be used...")
 	Out <- "TEST"
 }	
-OutFile <- paste(Out, "+orig", sep="") 
+OutFile <- paste(Out, "+tlrc", sep="") 
 
 libLoad("lme4")
 
 # MASK: optional
 mask <- getInfo("Mask", parFile)
+
+fixEff <- getInfo("FixEff", parFile)
+if(is.na(fixEff)) fixEff <- 1
+ranEff <- unlist(strsplit(getInfo("RanEff", parFile), split="[+]"))
 
 # number of Clusters: optional
 nNodes <- as.integer(getInfo("Clusters", parFile))
@@ -65,15 +80,17 @@ if(!is.na(LN<-lineNum("InputFile", parFile))) {
 
 # Number of input files
 NoFile <- dim(Model[1])[1]
-# number of factors
-nFact <- dim(Model)[2]-1
+# number of random factors
+# nFact <- dim(Model)[2]-1
+nFact <- length(ranEff)
 # factor names
-fNames <- colnames(Model)[which(colnames(Model) != "InputFile")]
+#fNames <- colnames(Model)[which(colnames(Model) != "InputFile")]
 
-ModelForm <- paste("Beta~(1|",fNames[1],")")
+#ModelForm <- paste("Beta~(1|",fNames[1],")")
+ModelForm <- paste("Beta~", fixEff)
 #if (nFact == 2 ) ModelForm <- paste(ModelForm,"+","(1|",fNames[2],")")
 #if (nFact == 3 ) ModelForm <- paste(ModelForm,"+","(1|",fNames[2],")","+(1|",fNames[3],")")
-if(nFact>1) for(ii in 2:nFact) ModelForm <- paste(ModelForm,"+(1|",fNames[ii],")")
+for(ii in 1:nFact) ModelForm <- paste(ModelForm,"+(1|",ranEff[ii],")")
 ModelForm <- as.formula(ModelForm)
 
 # Read in the 1st input file so that we have the dimension information
@@ -81,6 +98,8 @@ Data <- read.AFNI(Model[1, "InputFile"])
 dimx <- Data$dim[1]
 dimy <- Data$dim[2]
 dimz <- Data$dim[3]
+
+head <- Data
 
 if(!is.na(mask)) Mask <- read.AFNI(mask)$brk
 
@@ -191,13 +210,16 @@ rm(IData)  # retrieve some memory
 #outData <- band(outData, 0, 1)
 #dd<-aperm(dd, c(2,3,4,1))
 
-MyLabel <- append(fNames, "Residual")
+#MyLabel <- append(fNames, "Residual")
+MyLabel <- append(names(VarCorr(fm)), "Residual")
 
-write.AFNI(OutFile, outData, MyLabel, note=Data$header$HISTORY_NOTE, origin=Data$origin, 
-   delta=Data$delta, idcode="whatever")
+#write.AFNI(OutFile, outData, MyLabel, note=Data$header$HISTORY_NOTE, origin=Data$origin, 
+#   delta=Data$delta, idcode="whatever")
+
+write.AFNI(OutFile, outData, MyLabel, defhead=head, idcode=newid.AFNI())
 
 statpar <- "3drefit"
-statpar <- paste(statpar, " -newid -view ", outView, OutFile)
+statpar <- paste(statpar, " -view ", outView, OutFile)
 system(statpar)
 print(sprintf("Congratulations! You've got output %s+%s.*", Out, outView))
 

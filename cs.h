@@ -35,6 +35,7 @@ extern void qsort_double    ( int , double * ) ;            /* 06 Jul 2010 */
 /***** Quicksort-ish median *****/
 
 extern float qmed_float     ( int , float * ) ;
+extern float qmean_float    ( int , float * ) ;               /* 26 Mar 2013 */
 extern void  qmedmad_float  ( int,float *,float *,float * ) ; /* 08 Mar 2001 */
 extern void  meansigma_float( int,float *,float *,float * ) ; /* 07 Dec 2006 */
 
@@ -116,6 +117,7 @@ extern int powell_newuoa_constrained(
 extern char * approximate_number_string( double ) ;   /* 16 Jan 2004 */
 extern char * commaized_integer_string( long long );  /* 18 Mar 2010 */
 extern char * string_substitute( char *src , char *targ , char *repl ) ;
+extern char * nice_time_string( int ) ;               /* 18 Dec 2012 */
 
 extern int is_a_number(char *) ; /* 03 Apr 2012 */
 extern int is_an_int  (char *) ;
@@ -158,6 +160,7 @@ extern int compare_Z_IQSORT_STRING (Z_QSORT_STRING *a, Z_QSORT_STRING *b );
 extern int compare_Z_IQSORT_DOUBLE (Z_QSORT_DOUBLE *a, Z_QSORT_DOUBLE *b );
 extern int compare_Z_IQSORT_FLOAT (Z_QSORT_FLOAT *a, Z_QSORT_FLOAT *b );
 extern int compare_Z_IQSORT_INT (Z_QSORT_INT *a, Z_QSORT_INT *b );
+extern int compare_Z_QSORT_INT (Z_QSORT_INT *a, Z_QSORT_INT *b );
 extern int compare_string (const void *a, const void *b );
 extern int compare_double (double *a, double *b );
 extern int compare_float (float *a, float *b );

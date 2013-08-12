@@ -195,7 +195,25 @@ plot.1D.setupdevice <- function (P) {
    }
    if (is.null(P$img.width)) { P$img.width<- 2000 }
    if (is.null(P$img.height)) { P$img.height<- 2000 }
-   
+   if (is.null(P$udev)) { 
+      P$udev <- NULL
+      if (is.null(P$udev)) {
+         ccpp <- capabilities(what='aqua')
+         if (length(ccpp) == 1 && ccpp) P$udev <- 'quartz'
+      }
+      if (is.null(P$udev)) {
+         ccpp <- capabilities(what='X11')
+         if (length(ccpp) == 1 && ccpp) P$udev <- 'X11'
+      }
+      if (is.null(P$udev)) {
+         warning.AFNI("Setting device to pdf, no interactive ones found.");
+         if (is.null(P$prefix)) {
+            P$prefix <- 'AFNI_plot_bailing_out.pdf'
+         }
+         P$nodisp <- TRUE
+      }
+   }
+
    #Note, there are other ways to control graph size, see 
    #?par for pin and fin
    if (!is.null(P$prefix) && P$nodisp) { #render to device directly
@@ -223,10 +241,22 @@ plot.1D.setupdevice <- function (P) {
          dev.set(P$dev.this)
       } else if (P$dev.new) {
          #give me new one
-         x11()
+         if (P$udev == 'X11') x11()
+         else if (P$udev == 'quartz') quartz()
+         else {
+            warn.AFNI("No proper device selected");
+            x11()
+         }
       } else {
          #Only get new if list is empty
-         if (is.null(dev.list())) x11()
+         if (is.null(dev.list())) {
+            if (P$udev == 'X11') x11()
+            else if (P$udev == 'quartz') quartz()
+            else {
+               warn.AFNI("No proper device selected");
+               x11()
+            }   
+         }
       }
    }
    return(dev.cur())
@@ -253,11 +283,14 @@ plot.1D.unsetupdevice <- function(P) {
 }
 
 plot.1D.save <- function (prefix='plot.pdf', dev=NULL) {
-   if (!is.good.dev(dev)) dev = dev.cur()
+   if (!is.good.dev(dev)) {
+      dev = dev.cur()
+   }
    if (!is.good.dev(dev)) {
       err.AFNI("NO good device");
       return(0)
    }
+   #cat('Working dev ', dev, '\n');
    pp <- parse.name(prefix)
    if (tolower(pp$ext) == '.jpg') dev.copy(jpeg,prefix)
    else if (tolower(pp$ext) == '.png') dev.copy(png,prefix)
@@ -345,7 +378,7 @@ plot.1D.optlist <- function(...) {
             img.width=2000, img.height=2000, img.qual = 98, 
             img.dpi = 300, img.def.fontsize=12,
             dev.this=NULL, dev.new=FALSE,
-            showcond = FALSE,
+            showcond = FALSE, udev = NULL,
             verb = 0);
    
    #Same list, but all flagged with NA as not user initialized
@@ -1237,40 +1270,113 @@ image.corr.1D.eng <- function(P) {
    return(P$dev.this)
 }
 
-make.col.map <- function (fids=NULL, ncols=32, hex=FALSE) {
-   if (is.null(fids)) {
+make.col.map <- function (fids=NULL, ncols=32, hex=FALSE, stdmap=NULL) {
+   if (!is.null(stdmap)) {
+      sys.AFNI(com=paste('MakeColorMap -std ', stdmap),
+               fout=paste(stdmap,'.1D.cmap.R', sep=''), echo=FALSE);
+      m <- read.AFNI.matrix(paste(stdmap,'.1D.cmap.R', sep=''));
+      sys.AFNI(com=paste('\\rm -f ',paste(stdmap,'.1D.cmap.R', sep='')));
+   } else if (is.null(fids)) {
       fids <- matrix(0,3,3)
       for(i in 1:3) fids[i,i]<-1
-   }
-   rr <- ncols%%(nrow(fids)-1)
-   nc <- ncols/(nrow(fids)-1)
-   if (rr) {
-      err.AFNI(paste("Can't create colormap of ", ncols, "colors from ",
-                        nrow(fids), "fiducials. I suggest you use ", 
-                        ncols-rr, "or " , ceiling(nc)*(nrow(fids)-1),
-                        "colors instead"))
-      return(NULL);
-   }
-   m <- matrix(0,ncols,3)
-   for (j in 1:3) {
-      r <- vector()
-      for (i in 1:(nrow(fids)-1)) {
-         nc <- ncols/(nrow(fids)-1)
-         fr <- fids[i,j]
-         ft <- fids[i+1,j]
-         bb <- (ft-fr)/nc
-         if (bb != 0) {
-            r <- c(r,seq(from=fr,to=ft, by = bb))
-         } else {
-            r <- c(r,rep(fr, nc)) 
-         }
+      rr <- ncols%%(nrow(fids)-1)
+      nc <- ncols/(nrow(fids)-1)
+      if (rr) {
+         err.AFNI(paste("Can't create colormap of ", ncols, "colors from ",
+                           nrow(fids), "fiducials. I suggest you use ", 
+                           ncols-rr, "or " , ceiling(nc)*(nrow(fids)-1),
+                           "colors instead"))
+         return(NULL);
       }
-      #browser()
-      m[,j] <- r[ncols:1]
+      m <- matrix(0,ncols,3)
+      for (j in 1:3) {
+         r <- vector()
+         for (i in 1:(nrow(fids)-1)) {
+            nc <- ncols/(nrow(fids)-1)
+            fr <- fids[i,j]
+            ft <- fids[i+1,j]
+            bb <- (ft-fr)/nc
+            if (bb != 0) {
+               r <- c(r,seq(from=fr,to=ft, by = bb))
+            } else {
+               r <- c(r,rep(fr, nc)) 
+            }
+         }
+         #browser()
+         m[,j] <- r[ncols:1]
+      }
    }
    if (hex) m <- rgb(m)
    return(m)
 }
+
+ROIcmap <- function(nc=32, state=0, avoid=c(1,1,1), hex=FALSE) {
+   set.seed(state);
+   M <- matrix(0,nc,3)
+
+   alldiff_lim <- 0.5; #between 0 and 1, controls how different all colors 
+                       #in map are. 
+               #The first few colors can be quite different, high alldiff_lim 
+               #The difference is adjusted as more colors are demanded.
+   g_lim = 0.2; #limit for too gray (0-1)
+   d_lim <- 0.40; #limit for too dim (0-3)
+   b_lim <- 2.2; #limit for too bright  (0-3)              
+   for (i in 1:nc) {
+      M[i,] <- runif(3);
+      cnt <- 0;
+      #reject if too gray or too close to previous color
+      while (  toogray(M[i,], g_lim, d_lim, b_lim) ||  
+               tooclose(M,i, 0.6, alldiff_lim) ||
+               (!is.null(avoid) && (sum(abs(M[i,]-avoid)) < 0.6))) {
+         M[i,] <- runif(3);
+         cnt <- cnt + 1;
+         if (cnt > 2000 && d_lim != 0.01 && alldiff_lim != 0.02 && b_lim != 8) {
+                     #too tight, relax
+            #cat('relaxing\n')
+            alldiff_lim <- 0.9*alldiff_lim
+            if (alldiff_lim < 0.02) alldiff_lim <- 0.02
+            d_lim <- 0.9*d_lim
+            if (d_lim < 0.01) d_lim <- 0.01
+            b_lim <- 1.1*b_lim;
+            if (b_lim > 8) b_lim <- 8              
+            cnt <- 0;
+         }
+      }
+   }
+   
+   if (hex) M <- rgb(M)
+   return(M)
+}
+
+toogray <- function (ccol, g_lim, d_lim, b_lim) {
+   dc <- abs(ccol - mean(ccol));
+   cs <- sum(ccol);
+   if (dc[1] < g_lim && dc[2] < g_lim && dc[3] < g_lim) { return(TRUE); }
+   if (cs < d_lim || cs > b_lim) { return(TRUE); }
+   return(FALSE);
+}
+
+tooclose <- function (M,i,prev_lim, alldiff_lim) {
+
+   if (i==1) { return(FALSE); }
+   
+   
+   #too close to previous ?
+   dc <- abs(M[i,]-M[i-1,]);
+   if (sum(dc) < prev_lim) { return(TRUE); }
+   
+   #too close to one before?
+   if (i > 2) {
+      for (j in 1:(i-2)) {
+         dc = abs(M[i,]-M[j,]);
+         if (dc[1] < alldiff_lim && dc[2] < alldiff_lim && dc[3] < alldiff_lim) {
+          return(TRUE); 
+         }  
+      }
+   }
+   
+   return(FALSE);
+}   
 
 #This function is based on
 #www.phaget4.org/R/mymatrix.AFNI.show.R

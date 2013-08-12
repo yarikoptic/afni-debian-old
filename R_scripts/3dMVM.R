@@ -3,7 +3,7 @@
 ##!/usr/bin/env afni_run_R
 
 
-# Commannd line to run this script: 3dMVM.R dataStr.txt diary.txt &
+# Command line to run this script: 3dMVM.R dataStr.txt diary.txt &
 # (Output is a file in which the running progress including 
 # error messages will be stored)
 
@@ -28,7 +28,7 @@ greeting.MVM <- function ()
           ================== Welcome to 3dMVM ==================          
    AFNI Group Analysis Program with Multivariate Linear Modeling Approach
 #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-Version 0.1.1, Nov 21, 2012
+Version 1.0.5, May 30, 2013
 Author: Gang Chen (gangchen@mail.nih.gov)
 Website - http://afni.nimh.nih.gov/sscc/gangc/MVM.html
 SSCC/NIMH, National Institutes of Health, Bethesda MD 20892
@@ -44,7 +44,7 @@ help.MVM.opts <- function (params, alpha = TRUE, itspace='   ', adieu=FALSE) {
           ================== Welcome to 3dMVM ==================          
     AFNI Group Analysis Program with Multi-Variate Modeling Approach
 #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-Version 0.1.1, Nov 21, 2012
+Version 1.0.5, May 30, 2013
 Author: Gang Chen (gangchen@mail.nih.gov)
 Website - http://afni.nimh.nih.gov/sscc/gangc/MVM.html
 SSCC/NIMH, National Institutes of Health, Bethesda MD 20892
@@ -54,10 +54,10 @@ Usage:
 ------ 
  3dMVM is a group-analysis program that performs traditional ANOVA- and ANCOVA-
  style computations. It does not impose any bound on the number of explanatory
- variables, and these variables can be either orcategorical or quantitative 
- (factors or covariates). F-statistics for main effects and interactions are 
- automatically included in the output. In addition, general linear tests (GLTs) 
- can be requested via symbolic coding.
+ variables, and these variables can be either categorical (factor) or numerical 
+ /quantitative (covariate). F-statistics for all main effects and interactions 
+ are automatically included in the output. In addition, general linear tests 
+ (GLTs) can be requested via symbolic coding.
  
  Input files for 3dMVM can be in AFNI, NIfTI, or surface (niml.dset) format.
  Note that unequal number of subjects across groups are allowed, but scenarios 
@@ -68,6 +68,11 @@ Usage:
  capability to correct for sphericity violations when within-subject variables
  with more than two levels are involved.
  
+ If you want to cite the analysis approach, use the following at this moment:
+ 
+ Chen, G., Saad, Z.S., Britton, J.C., Pine, D.S., Cox, R.W. (2013). Linear 
+ Mixed-Effects Modeling Approach to FMRI Group Analysis. NeuroImage, in press.
+
  In addition to R installtion, the following two R packages need to be acquired
  in R first before running 3dMVM:
  
@@ -79,6 +84,20 @@ Usage:
  
  install.packages("snow")
  
+ Once the 3dMVM command script is constructed, it can be run by copying and
+ pasting to the terminal. Alternatively (and probably better) you save the 
+ script as a text file, for example, called MVM.txt, and execute it with the 
+ following  (assuming on tc shell),
+ 
+ tcsh -x MVM.txt &
+ 
+ or,
+ 
+ tcsh -x MVM.txt > diary.txt &
+ 
+ The advantage of the latter command is that the progrression is saved into
+ the text file diary.txt and, if anything goes awry, can be examined later.
+ 
  More details about 3dMVM can be found at 
  http://afni.nimh.nih.gov/sscc/gangc/MVM.html
  
@@ -86,57 +105,76 @@ Usage:
  technical support.'
 
    ex1 <- 
-"
+"\n--------------------------------
 Example 1 --- three between-subjects (genotype, sex, and scanner) and two 
 within-subject (condition and emotion) variables:
---------------------------------
    3dMVM  -prefix Example1 -jobs 4            \\
           -model  'genotype*sex+scanner'      \\
           -wsVars \"condition*emotion\"         \\
           -num_glt 14                         \\
-          -gltLabel 1 face_pos_vs_neg -gltCode  1 'condition : 1*face emotion : 1*pos -1*neg'        \\
-          -gltLabel 2 face_emot_vs_neu -gltCode 1 'condition : 1*face emotion : 1*pos +1*neg -2*neu' \\
+          -gltLabel 1 face_pos_vs_neg -gltCode  1 'condition : 1*face emotion : 1*pos -1*neg'            \\
+          -gltLabel 2 face_emot_vs_neu -gltCode 2 'condition : 1*face emotion : 1*pos +1*neg -2*neu'     \\
+          -gltLabel 3 sex_by_condition_interaction -gltCode 3 'sex : 1*male -1*female condition : 1*face -1*house' \\
+          -gltLabel 4 3way_interaction -gltCode 4 'sex : 1*male -1*female condition : 1*face -1*house emotion : 1*pos -1*neg' \\
           ...            
-          -dataTable                                                                                 \\
-          Subj  genotype   sex    scanner  condition   emotion   InputFile                           \\
-          s1    TT         male   scan1   face        pos       s1+tlrc\'[face_pos_beta]\'             \\
-          s1    TT         male   scan1   face        neg       s1+tlrc\'[face_neg_beta]\'             \\
-          s1    TT         male   scan1   face        neu       s1+tlrc\'[face_neu_beta]\'             \\
-          s1    TT         male   scan1   house       pos       s1+tlrc\'[house_pos_beta]\'            \\
+          -dataTable                                                                                     \\
+          Subj  genotype   sex    scanner  condition   emotion   InputFile                               \\
+          s1    TT         male   scan1   face        pos       s1+tlrc\'[face_pos_beta]\'                 \\
+          s1    TT         male   scan1   face        neg       s1+tlrc\'[face_neg_beta]\'                 \\
+          s1    TT         male   scan1   face        neu       s1+tlrc\'[face_neu_beta]\'                 \\
+          s1    TT         male   scan1   house       pos       s1+tlrc\'[house_pos_beta]\'                \\
           ...
-          s68   TN         female scan2   house       pos       s68+tlrc\'[face_pos_beta]\'            \\
-          s68   TN         female scan2   house       neg       s68+tlrc\'[face_neg_beta]\'            \\
+          s68   TN         female scan2   house       pos       s68+tlrc\'[face_pos_beta]\'                \\
+          s68   TN         female scan2   house       neg       s68+tlrc\'[face_neg_beta]\'                \\
           s68   TN         female scan2   house       neu       s68+tlrc\'[house_pos_beta]\'                    
-     \n"
+
+   NOTE:  1) The model for the analysis can also be set up as and is equivalent to 
+          'genotype*sex*condition*emotion+scanner*condition*emotion'.
+          2) The 3rd GLT is for the 2-way 2 x 2 interaction between sex and condition, which
+          is essentially a t-test (or one degree of freedom for the numerator of F-statatistic).
+          Multiple degrees of freedom for the numerator of F-statistic is currently unavailable.
+          3) Similarly, the 4th GLT is a 3-way 2 x 2 x 2 interaction, which is a partial (not full)
+          interaction between the three factors because 'emotion' has three levels. The F-test for
+          the full 2 x 2 x 3 interaction is automatically spilled out by 3dMVM.\n"
       
    ex2 <-
-"Example 2 --- two between-subjects (genotype and sex), onewithin-subject
+"--------------------------------
+Example 2 --- two between-subjects (genotype and sex), onewithin-subject
 (emotion) factor, plus two quantitative variables (age and IQ).f
--------------------------------------------------------------------------
-   3dMVM -prefix Example2 -jobs 4        \\
+
+   3dMVM -prefix Example2 -jobs 24        \\
           -model  \"genotype*sex+age+IQ\"  \\
           -wsVars emotion                \\
-          -qVars  \"age+IQ\"               \\
+          -qVars  \"age,IQ\"               \\
           -qVarCenters '25,105'          \\
           -num_glt 10                    \\
-          -gltLabel 1 pos_F_vs_M   -gltCode 1 'sex : 1*F -1*M emotion : 1*pos'        \\
-          -gltLabel 2 age_TT_vs_NN -gltCode 2 'geneotype : 1*TT -1*NN age :'          \\
+          -gltLabel 1 pos_F_vs_M   -gltCode 1 'sex : 1*female -1*male emotion : 1*pos' \\
+          -gltLabel 2 age_pos_vs_neg -gltCode 2 'emotion : 1*pos -1*neg age :'           \\
+          -gltLabel 3 genotype_by_sex -gltCode 3 'genotype : 1*TT -1*NN sex : 1*male -1*female' \\
+          -gltLabel 4 genotype_by_sex_emotion -gltCode 4 'genotype : 1*TT -1*NN sex : 1*male -1*female emotion : 1*pos -1*neg' \\
           ...            
-          -dataTable                                                                  \\
-          Subj  geneotype  sex    age  IQ     emotion   InputFile                     \\
-          s1    TT         male   24   107    pos       s1+tlrc\'[pos_beta]\'           \\
-          s1    TT         male   24   107    neg       s1+tlrc\'[neg_beta]\'           \\
-          s1    TT         male   24   107    neu       s1+tlrc\'[neu_beta]\'           \\
+          -dataTable                                                                   \\
+          Subj  genotype  sex    age  IQ     emotion   InputFile                       \\
+          s1    TT         male   24   107    pos       s1+tlrc\'[pos_beta]\'            \\
+          s1    TT         male   24   107    neg       s1+tlrc\'[neg_beta]\'            \\
+          s1    TT         male   24   107    neu       s1+tlrc\'[neu_beta]\'            \\
           ... 
-          s63   NN         female 29   110    pos       s63+tlrc\'[pos_beta]\'          \\
-          s63   NN         female 29   110    neg       s63+tlrc\'[neg_beta]\'          \\
+          s63   NN         female 29   110    pos       s63+tlrc\'[pos_beta]\'           \\
+          s63   NN         female 29   110    neg       s63+tlrc\'[neg_beta]\'           \\
           s63   NN         female 29   110    neu       s63+tlrc\'[neu_beta]\'         
+
+   NOTE:  1) The model for the analysis can be also set up as and is equivalent to 
+          'genotype*sex*emotion+age+IQ'.
+          2) The 3rd GLT is for the 2-way 2 x 2 interaction between genotype and sex, which
+          is essentially a t-test (or one degree of freedom for the numerator of F-statatistic).
+          Multiple degrees of freedom for the numerator of F-statistic is currently unavailable.
+          3) Similarly, the 4th GLT is a 3-way 2 x 2 x 2 interaction, which is a partial (not full)
+          interaction between the three factors because 'emotion' has three levels. The F-test for
+          the full 2 x 2 x 3 interaction is automatically spilled out by 3dMVM.\n"
      
-   \n"
-   
-   
    ex3 <-
-"Example 3 --- BOLD response was modeled with multiple basis functions at individual
+"---------------------------------
+Example 3 --- BOLD response was modeled with multiple basis functions at individual
 subject level. In addition, there are one between-subjects (Group) and one within-
 subject (Condition) variable. Furthermore, the variable corresponding to the number 
 of basis functions, Time, is also a within-subject variable. In the end, the F-
@@ -144,8 +182,7 @@ statistics for the interactions of Group:Condition:Time, Group:Time, and
 Condition:Time are of specific interest. And these interactions can be further
 explored with GLTs in 3dMVM.
 
----------------------------------
-   3dMVM -prefix Example3 -jobs 4   \\
+   3dMVM -prefix Example3 -jobs 12   \\
          -model Group               \\
          -wsVars 'Condition*Time'   \\
          -num_glt 32                \\
@@ -174,8 +211,9 @@ explored with GLTs in 3dMVM.
          s40   yng    house     t1   s40+tlrc\'[house#1_beta]\'  \\
          s40   yng    house     t2   s40+tlrc\'[house#2_beta]\'  \\
          s40   yng    house     t3   s40+tlrc\'[house#3_beta]\'      
-   \n"
-   
+
+   NOTE:  The model for the analysis can also be set up as and is equivalent to 
+          'Group*Condition*Time'.\n"   
    
    parnames <- names(params)
    ss <- vector('character')
@@ -225,29 +263,36 @@ read.MVM.opts.batch <- function (args=NULL, verb = 0) {
    "         additive effects of A and B, A:B is the interaction between A",
    "         and B, and A*B = A+B+A:B. The effects of within-subject",
    "         factors, if present under -wsVars are automatically assumed",
-   "         to interact with the ones specified here. Subject should not",
-   "         occur in the model specifiction here.\n", sep = '\n'
+   "         to interact with the ones specified here. Subject as a variable",
+   "         should not occur in the model specifiction here.\n", sep = '\n'
              ) ),
 
       '-wsVars' = apl(n=c(1,100), d=NA, h = paste(
-   "-wsVars FORMULA: Provide within-subject factors only. Coding for",
-   "         additive and interaction effects is the same as in -model. The",
+   "-wsVars FORMULA: Within-subject factors, if present, have to be listed",
+   "         here; otherwise the program will choke. If no within-subject ",
+   "         exists, don't include this option in the script. Coding for",
+   "         additive effects and interactions is the same as in -model. The",
    "         FORMULA with more than one variable has to be surrounded ",
-   "         within (single or double) quotes\n", sep = '\n'
+   "         within (single or double) quotes. Note that the within-subject",
+   "         variables are assumed to interact with those between-subjects",
+   "         variables specified under -model.\n", sep = '\n'
                              ) ),
 
       '-qVars' = apl(n=c(1,100), d=NA, h = paste(
-   "-qVars FORMULA: Provide quantitative variables (or covariates) only.",
-   "         Coding for additive and interaction effects is the same as in",
-   "         -model. The expression FORMULA with more than one variable has",
-   "         to be surrounded within (single or double) quotes. Variable",
+   "-qVars variable_list: Identify quantitative variables (or covariates) with",
+   "         this option. The list with more than one variable has to be",
+   "         separaated with comma (,) without any other characters such as",
+   "         spaces and should be surrounded within (single or double) quotes.",
+   "          For example, -qVars \"Age,IQ\"",
    "         WARNINGS:",
    "         1) Centering a quantitative variable through -qVarsCenters is",
    "         very critical when other fixed effects are of interest.",
    "         2) Between-subjects covariates are generally acceptable.",
-   "         However caution should be taken when different average value",
-   "         for a covariate exists across groups.",
-   "         3) Within-subject covariates are better modeled with 3dLME.\n",
+   "         However EXTREME caution should be taken when the groups",
+   "         differ significantly in the average value of the covariate.",
+   "         3) Within-subject covariates vary across the levels of a",
+   "         within-subject factor, and can be analyzed with 3dLME,",
+   "         but not 3dLME.\n",
              sep = '\n'
              ) ),
 
@@ -259,7 +304,7 @@ read.MVM.opts.batch <- function (args=NULL, verb = 0) {
    "         Default (absence of option -qVarsCetners) means centering on the",
    "         average of the variable across ALL subjects regardless their",
    "         grouping. If within-group centering is desirable, center the",
-   "         variable first before the values are fed into -dataTable.\n",
+   "         variable YOURSELF first before the values are fed into -dataTable.\n",
              sep = '\n'
                      ) ),
 
@@ -269,13 +314,13 @@ read.MVM.opts.batch <- function (args=NULL, verb = 0) {
    "         -gltLabel.\n", sep = '\n'
              ) ),
                      
-     '-gltLabel' = apl(n=c(2,1000), d=NA, h = paste(
+     '-gltLabel' = apl(n=c(1,1000), d=NA, h = paste(
    "-gltLabel k label: Specify the label for the k-th general linear test",
    "         (GLT). A symbolic coding for the GLT is assumed to follow with",
    "         each -gltLabel.\n", sep = '\n'
                      ) ),
 
-     '-gltCode' = apl(n=c(2,1000), d=NA, h = paste(
+     '-gltCode' = apl(n=c(1,1000), d=NA, h = paste(
    "-gltCode k CODING: Specify the k-th general linear test (GLT) through a",
    "         weighted combination among factor levels. The symbolic coding has",
    "         to be within (single or double) quotes. For example, the following",
@@ -414,8 +459,13 @@ gltConstr <- function(cStr, dataStr) {
 #Change options list to 3dMVM variable list 
 process.MVM.opts <- function (lop, verb = 0) {
    if(is.null(lop$outFN)) errex.AFNI(c("Output filename not specified! Add filename with -prefix.\n"))
-   if(file.exists(paste(lop$outFN,"+tlrc.HEAD", sep="")) || 
-         file.exists(paste(lop$outFN,"+tlrc.HEAD", sep=""))) {
+   an <- parse.AFNI.name(lop$outFN)
+   if(an$type == "NIML") {
+      if(file.exists(lop$outFN)) errex.AFNI(c("File ", lop$outFN, " exists! Try a different name.\n"))
+   } else if(file.exists(paste(lop$outFN,"+tlrc.HEAD", sep="")) ||
+      file.exists(paste(lop$outFN,"+tlrc.BRIK", sep="")) ||
+      file.exists(paste(lop$outFN,"+orig.HEAD", sep="")) ||
+      file.exists(paste(lop$outFN,"+orig.BRIK", sep=""))) {
          errex.AFNI(c("File ", lop$outFN, " exists! Try a different name.\n"))
          return(NULL)
    }      
@@ -426,7 +476,7 @@ process.MVM.opts <- function (lop, verb = 0) {
       errex.AFNI(c('Must of use -cio option with any input/output ',
                    'format other than BRIK'))
 
-   if(!is.na(lop$qVars)) lop$QV <- strsplit(lop$qVars, '\\+')[[1]]
+   if(!is.na(lop$qVars[1])) lop$QV <- strsplit(lop$qVars, '\\,')[[1]]
 
    if(!is.null(lop$gltLabel)) {
       sq <- as.numeric(unlist(lapply(lop$gltLabel, '[', 1)))
@@ -449,14 +499,17 @@ process.MVM.opts <- function (lop, verb = 0) {
    len <- length(lop$dataTable)
    wd <- which(lop$dataTable == "InputFile")
    hi <- len / wd - 1
-   
+   #browser()
    if(len %% wd != 0)
       errex.AFNI('The content under -dataTable is not rectangular!') else {
       lop$dataStr <- NULL
       for(ii in 1:wd) 
          lop$dataStr <- data.frame(cbind(lop$dataStr, lop$dataTable[seq(wd+ii, len, wd)]))
       names(lop$dataStr) <- lop$dataTable[1:wd]
-      if(!is.na(lop$qVars)) for(jj in lop$QV) lop$dataStr[,jj] <- as.numeric(lop$dataStr[,jj])
+      # wow, terrible mistake here with as.numeric(lop$dataStr[,jj])
+      #if(!is.na(lop$qVars)) for(jj in lop$QV) lop$dataStr[,jj] <- as.numeric(lop$dataStr[,jj])
+      if(!is.na(lop$qVars[1])) for(jj in lop$QV) lop$dataStr[,jj] <- as.numeric(as.character(lop$dataStr[,jj]))
+      # or if(!is.na(lop$qVars)) for(jj in lop$QV) lop$dataStr[,jj] <- as.numeric(levels(lop$dataStr[,jj]))[as.integer(lop$dataStr[,jj])]
    }
 
    
@@ -464,11 +517,13 @@ process.MVM.opts <- function (lop, verb = 0) {
       lop$gltList    <- vector('list', lop$num_glt)
       lop$slpList    <- vector('list', lop$num_glt)
       for (n in 1:lop$num_glt) {
-         if(!is.na(lop$qVars)) { if(any(lop$QV %in% lop$gltCode[[n]])) {
+         #if(!is.na(lop$qVars)) { if(any(lop$QV %in% lop$gltCode[[n]])) {
+         if(!is.na(lop$qVars) & any(lop$QV %in% lop$gltCode[[n]])) {
             QVpos <- which(lop$gltCode[[n]] %in% lop$QV)
             lop$gltList[[n]]   <- gltConstr(lop$gltCode[[n]][-c(QVpos, QVpos+1)], lop$dataStr)
             lop$slpList[[n]] <- lop$gltCode[[n]][QVpos]   
-         } } else lop$gltList[[n]] <- gltConstr(lop$gltCode[[n]], lop$dataStr)
+         } else lop$gltList[[n]] <- gltConstr(lop$gltCode[[n]], lop$dataStr)
+         #} else lop$gltList[[n]] <- gltConstr(lop$gltCode[[n]], lop$dataStr)
       }
    }
    
@@ -511,21 +566,41 @@ scanLine <- function(file, lnNo=1, marker="\\:")
    strip.white=TRUE, nline=1)), marker))[2]
 
 
-runAOV <- function(inData, dataframe, ModelForm, pars, tag) {
+runAOV <- function(inData, dataframe, ModelForm, pars) {
    Stat <- rep(0, pars[[1]])
    #browser()
    options(warn = -1)
    if (!all(abs(inData) < 10e-8)) {        
       dataframe$Beta<-inData
-      tryCatch(fm <- aov.car(ModelForm, data=dataframe, return='lm'), error=function(e) NULL)
+      fm <- NULL
+      try(fm <- aov.car(ModelForm, data=dataframe, factorize=FALSE, return='full'), silent=TRUE)
       if(!is.null(fm)) {
          #if(pars[[6]]) try(Stat[1:pars[[2]]] <- univ(fm[[1]])[2:(1+pars[[2]]),3], silent=TRUE) else
          #   try(Stat[1:pars[[2]]] <- unname(univ(fm[[1]])[[1]][-1,5]), silent=TRUE)
          
-         tmp <- tryCatch(univ(fm[[1]]), error=function(e) NULL)
-         if(!is.null(tmp)) { if(pars[[6]]) try(Stat[1:pars[[2]]] <- tmp[2:(1+pars[[2]]),3], silent=TRUE) else
-            try(Stat[1:pars[[2]]] <- unname(tmp[[1]][-1,5]), silent=TRUE) }
+         # The part can't handle NaN's for F-stat!!!
+         #tmp <- tryCatch(univ(fm[[1]]), error=function(e) NULL)   # univariate model only for now
+         #if(!is.null(tmp)) {
+         #   if(pars[[6]]) try(Stat[1:pars[[2]]] <- tmp[2:(1+pars[[2]]),3], silent=TRUE) else
+         #   try(Stat[1:pars[[2]]] <- unname(tmp[[1]][-1,5]), silent=TRUE) # with within-subject variable(s)
+         #}
          
+         # works, but prints on terminal which is not annoying!
+         #tmp <- tryCatch(print(fm[[1]]), error=function(e) NULL)   # univariate model only for now
+         #if(!is.null(tmp)) {
+         #   if(pars[[6]]) try(Stat[1:pars[[2]]] <- univ(tmp)[2:(1+pars[[2]]),3], silent=TRUE) else
+         #   try(Stat[1:pars[[2]]] <- unname(univ(tmp)[[1]][-1,5]), silent=TRUE) # with within-subject variable(s)
+         #}
+         
+         # univariate model only for now
+         tmp <- tryCatch(univ(fm[[1]]), error=function(e) NULL)   # univariate model 
+         if(!is.null(tmp)) {
+            if(pars[[6]]) tryCatch(tmp0 <- tmp[2:(1+pars[[2]]),3], error=function(e) NULL) else
+            tryCatch(tmp0 <- unname(tmp[[1]][-1,5]), error=function(e) NULL) # contain within-subject variable(s)
+                        
+            if(!is.null(tmp0)) if(!any(is.nan(tmp0))) Stat[1:pars[[2]]] <- tmp0
+         }         
+                           
          if(pars[[3]]>=1) for(ii in 1:pars[[3]]) {
 	         #tryCatch(glt <- testInteractions(fm[[2]], custom=pars[[4]][[ii]], slope=pars[[5]][[ii]], 
             #   adjustment="none", idata = fm[["idata"]]), error=function(e) NULL) 
@@ -542,7 +617,7 @@ runAOV <- function(inData, dataframe, ModelForm, pars, tag) {
 }
 
 #################################################################################
-########################## Read information from a file #########################tryCatch(print(fm[[1]]), error=function(e) NULL)
+########################## Read information from a file #########################
 #################################################################################
 
 #A function to parse all user input from a file
@@ -606,7 +681,7 @@ read.MVM.opts.from.file <- function (modFile='model.txt', verb = 0) {
          } else lop$gltList[[n]] <- gltConstr(clist[[n]], lop$dataStr)
       }
    }
-   browser()
+   #browser()
    return(lop)
 } # end of read.MVM.from.file
 
@@ -658,11 +733,8 @@ read.MVM.opts.from.file <- function (modFile='model.txt', verb = 0) {
 
 ########################################################################
 
-
-
 if(!is.na(lop$qVarCenters)) lop$qVarCenters <- as.numeric(strsplit(as.character(lop$qVarCenters), '\\,')[[1]])
-
-
+                                                
 require("afex")
 require("phia")
 
@@ -695,14 +767,23 @@ cat('***** Summary information of data structure *****\n')
 #print(sprintf('%i subjects: ', nlevels(lop$dataStr$Subj)))
 #for(ii in 1:nlevels(lop$dataStr$Subj)) print(sprintf('%s ', levels(lop$dataStr$Subj)[ii]))
 
-cat('#', nlevels(lop$dataStr$Subj), 'subjects: ', levels(lop$dataStr$Subj), '\n')
-cat('#', length(lop$dataStr$InputFile), 'response values\n')
+cat(nlevels(lop$dataStr$Subj), 'subjects : ', levels(lop$dataStr$Subj), '\n')
+cat(length(lop$dataStr$InputFile), 'response values\n')
 for(ii in 2:(dim(lop$dataStr)[2]-1)) if(class(lop$dataStr[,ii]) == 'factor')
-   cat('#', nlevels(lop$dataStr[,ii]), 'levels for factor', names(lop$dataStr)[ii], ':', 
-   levels(lop$dataStr[,ii]), '\n') else if(class(lop$dataStr[,ii]) == 'numeric')
-   cat('#',length(lop$dataStr[,ii]), 'centered values for numeric variable', names(lop$dataStr)[ii],':', lop$dataStr[,ii], '\n')
-cat('#', lop$num_glt, 'post hoc tests\n')
-cat('***** End of data structure information *****\n')   
+   cat(nlevels(lop$dataStr[,ii]), 'levels for factor', names(lop$dataStr)[ii], ':', 
+   levels(lop$dataStr[,ii]), '\n') else if(class(lop$dataStr[,ii]) == 'matrix' | class(lop$dataStr[,ii]) == 'numeric')  # numeric may not work
+   cat(length(lop$dataStr[,ii]), 'centered values for numeric variable', names(lop$dataStr)[ii], ':', lop$dataStr[,ii], '\n')
+cat(lop$num_glt, 'post hoc tests\n')
+
+cat('\nTabulation of subjects against all categorical variables')
+all_vars <- names(lop$dataStr)
+for(var in all_vars[-c(1, length(all_vars))]) if(!(var %in% lop$QV)) {
+   cat('\n~~~~~~~~~~~~~~')
+   cat('\nSubj vs ', var, ':\n', sep='')
+   print(table(lop$dataStr$Subj, lop$dataStr[,var]))
+}
+
+cat('\n***** End of data structure information *****\n')   
 cat('++++++++++++++++++++++++++++++++++++++++++++++++++++\n\n')
 
 
@@ -717,6 +798,9 @@ NoFile <- dim(lop$dataStr[1])[1]
 #if (length(unique(lop$dataStr$Subj)) != length(lop$dataStr$Subj)) RM <- TRUE else RM <- FALSE
 
 cat('Reading input files now...\n\n')
+cat('If the program hangs here for more than, for example, half an hour,\n')
+cat('kill the process because the model specification or the GLT coding\n')
+cat('is likely inappropriate.\n\n')
 
 # Read in the 1st input file so that we have the dimension information
 inData <- read.AFNI(lop$dataStr[1, FileCol], verb=lop$verb, meth=lop$iometh)
@@ -750,38 +834,60 @@ if(dimz==1) zinit <- 1 else zinit <- dimz%/%2
 
 ii <- xinit; jj <- yinit; kk <- zinit
 
-tag<-1
+fm<-NULL
 gltRes <- vector('list', lop$num_glt)
 
-while (tag == 1) {
-   tag<-0
+while(is.null(fm)) {
+   fm<-NULL
    lop$dataStr$Beta<-inData[ii, jj, kk,]
    options(warn=-1)     
-   try(fm <- aov.car(ModelForm, data=lop$dataStr, return='lm'), tag <- 1)
-   if(tag == 0) if (lop$num_glt > 0) try(for (n in 1:lop$num_glt) 
-      gltRes[[n]] <- testInteractions(fm[[2]], custom=lop$gltList[[n]], slope=lop$slpList[[n]], 
-         adjustment="none", idata = fm[["idata"]]) )
-   if (tag == 1) if(ii<dimx) ii<-ii+1 else if(jj<dimy) {ii<-xinit; jj <- jj+1} else if(kk<dimz) {
+   try(fm <- aov.car(ModelForm, data=lop$dataStr, factorize=FALSE, return='full'), silent=TRUE)
+   if(!is.null(fm)) if (lop$num_glt > 0) {
+      n <- 1
+      while(!is.null(fm) & (n <= lop$num_glt)) {
+        gltRes[[n]] <- tryCatch(testInteractions(fm[[2]], custom=lop$gltList[[n]], slope=lop$slpList[[n]], 
+            adjustment="none", idata = fm[["idata"]]), error=function(e) NA)
+         if(is.na(gltRes[[n]])) fm <- NULL
+         n <- n+1
+      }      
+   }
+   if(!is.null(fm))  {
+      print(sprintf("Great, test run passed at voxel (%i, %i, %i)!", ii, jj, kk))
+   } else if(ii<dimx) ii<-ii+1 else if(jj<dimy) {ii<-xinit; jj <- jj+1} else if(kk<dimz) {
       ii<-xinit; jj <- yinit; kk <- kk+1 } else {
-      errex.AFNI("Something is not quite right during testing!")
+      cat('~~~~~~~~~~~~~~~~~~~ Model test failed! ~~~~~~~~~~~~~~~~~~~\n')
+      cat('Possible reasons:\n\n')
+      cat('0) Make sure that R packages afex and phia have been installed. See the 3dMVM\n')
+      cat('help documentation for more details.\n\n')
+      cat('1) Inappropriate model specification with options -model, -wsVars, or -qVars.\n')
+      cat('Note that within-subject or repeated-measures variables have to be declared\n')
+      cat('with -wsVars.\n\n')
+      cat('2) Misspecifications in general linear test coding with -gltCode.\n\n')
+      cat('3) Mistakes in data table. Check the data structure shown above, and verify\n')
+      cat('whether there are any inconsistencies.\n\n')
+      cat('4) Inconsistent variable names which are case sensitive. For example, factor\n')
+      cat('named Group in model specifiction and then listed as group in the table hader\n')
+      cat('would cause grief for 3dMVM.\n')
+      cat('5) Not enough number of subjects. This may happen when there are two or more\n')
+      cat('withi-subject factors. For example, a model with two within-subject factors with\n')
+      cat('m and n levels respectively requires more than (m-1)*(n-1) subjects to be able to\n')
+      cat('model the two-way interaction with the multivariate approach.\n\n')
+      errex.AFNI("Quitting due to model test failure...")
       #break
    }
 }
 
-if(tag == 0)  {
-   print(sprintf("Great, test run passed at voxel (%i, %i, %i)!", ii, jj, kk))
-   #if (NoConst) NoF <- nrow(anova(fm)) else NoF <- nrow(anova(fm))-1  # Just assume an intercept in the model
-        #NoF <- nrow(anova(fm))
-   #for (n in 1:lop$num_glt) contrDF[n] <- temp[n]$df
-   } else { 
-      errex.AFNI(sprintf("Ouch, model testing failed! Multiple reasons could cause the failure.... \n"))
+#if(!is.null(fm))  {
+#   print(sprintf("Great, test run passed at voxel (%i, %i, %i)!", ii, jj, kk))
+#   } else { 
+#      errex.AFNI(sprintf("Ouch, model testing failed! Multiple reasons could cause the failure.... \n"))
 #                "might be inappropriate, or there are incorrect specifications in model.txt \n",
 #                "such as contrasts, factor levels, or other obscure problems.", lop$model))
       #break; next # won't run the whole brain analysis if the test fails
-}
+#}
 
 
-#fm <- aov.car(ModelForm, data=Model, return='lm')
+#fm <- aov.car(ModelForm, data=Model, factorize=FALSE, return='lm')
 #bm <- c(1,-1)%*%t(aa$lm$coefficients)
 #Vm <- c(1,-1)%*%vcov(aa$lm)%*%c(1,-1)
 #t(bm)%*%solve(Vm)%*%bm
@@ -801,7 +907,7 @@ pars[[5]] <- lop$slpList
 pars[[6]] <- is.na(lop$wsVars)
 
 
-#runAOV(inData[ii, jj, kk,], dataframe=lop$dataStr, ModelForm=ModelForm, pars=pars, tag=0)
+#runAOV(inData[ii, jj, kk,], dataframe=lop$dataStr, ModelForm=ModelForm, pars=pars)
 
 print(sprintf("Start to compute %s slices along Z axis. You can monitor the progress", dimz))
 print("and estimate the total run time as shown below.")
@@ -830,9 +936,9 @@ if(dimy == 1 & dimz == 1) {
    dim(inData) <- c(dimx_n, nSeg, NoFile)
    if (lop$nNodes==1) for(kk in 1:nSeg) {
       if(NoBrick > 1) Stat[,kk,] <- aperm(apply(inData[,kk,], 1, runAOV, dataframe=lop$dataStr,
-            ModelForm=ModelForm, pars=pars, tag=0), c(2,1)) else
+            ModelForm=ModelForm, pars=pars), c(2,1)) else
          Stat[,kk,] <- aperm(apply(inData[,kk,], 1, runAOV, dataframe=lop$dataStr,
-            ModelForm=ModelForm, pars=pars, tag=0), dim=c(dimx_n, 1))
+            ModelForm=ModelForm, pars=pars), dim=c(dimx_n, 1))
       cat("Computation done: ", 100*kk/nSeg, "%", format(Sys.time(), "%D %H:%M:%OS3"), "\n", sep='')   
    }
    
@@ -842,9 +948,9 @@ if(dimy == 1 & dimz == 1) {
    clusterEvalQ(cl, library(afex)); clusterEvalQ(cl, library(phia))
    for(kk in 1:nSeg) {
       if(NoBrick > 1) Stat[,kk,] <- aperm(parApply(cl, inData[,kk,], 1, runAOV, dataframe=lop$dataStr,
-            ModelForm=ModelForm, pars=pars, tag=0), c(2,1)) else
+            ModelForm=ModelForm, pars=pars), c(2,1)) else
       Stat[,kk,] <- aperm(parApply(cl, inData[,kk,], 1, runAOV, dataframe=lop$dataStr,
-            ModelForm=ModelForm, pars=pars, tag=0), dim=c(dimx_n, 1))
+            ModelForm=ModelForm, pars=pars), dim=c(dimx_n, 1))
       cat("Computation done ", 100*kk/nSeg, "%: ", format(Sys.time(), "%D %H:%M:%OS3"), "\n", sep='')   
    }
    stopCluster(cl)
@@ -858,11 +964,14 @@ if(dimy == 1 & dimz == 1) {
 # Initialization
 Stat <- array(0, dim=c(dimx, dimy, dimz, NoBrick))
 
+# set up a voxel @ ii jj kk to test
+#runAOV(inData[ii, jj, kk,], dataframe=lop$dataStr, ModelForm=ModelForm, pars=pars)
+
 if (lop$nNodes==1) for (kk in 1:dimz) {
    if(NoBrick > 1) Stat[,,kk,] <- aperm(apply(inData[,,kk,], c(1,2), runAOV, dataframe=lop$dataStr, 
-         ModelForm=ModelForm, pars=pars, tag=0), c(2,3,1)) else
+         ModelForm=ModelForm, pars=pars), c(2,3,1)) else
       Stat[,,kk,] <- array(apply(inData[,,kk,], c(1,2), runAOV, dataframe=lop$dataStr, 
-         ModelForm=ModelForm, pars=pars, tag=0), dim=c(dimx, dimy, 1))      
+         ModelForm=ModelForm, pars=pars), dim=c(dimx, dimy, 1))      
    cat("Z slice ", kk, "done: ", format(Sys.time(), "%D %H:%M:%OS3"), "\n")
 } 
 
@@ -873,9 +982,9 @@ if (lop$nNodes>1) {
    clusterEvalQ(cl, library(afex)); clusterEvalQ(cl, library(phia)) 
    for (kk in 1:dimz) {
       if(NoBrick > 1) Stat[,,kk,] <- aperm(parApply(cl, inData[,,kk,], c(1,2), runAOV, 
-            dataframe=lop$dataStr, ModelForm=ModelForm, pars=pars, tag=0), c(2,3,1)) else
+            dataframe=lop$dataStr, ModelForm=ModelForm, pars=pars), c(2,3,1)) else
          Stat[,,kk,] <- array(parApply(cl, inData[,,kk,], c(1,2), runAOV, 
-            dataframe=lop$dataStr, ModelForm=ModelForm, pars=pars, tag=0), dim=c(dimx, dimy, 1))
+            dataframe=lop$dataStr, ModelForm=ModelForm, pars=pars), dim=c(dimx, dimy, 1))
       cat("Z slice ", kk, "done: ", format(Sys.time(), "%D %H:%M:%OS3"), "\n")
    } 
    stopCluster(cl)
@@ -890,7 +999,7 @@ if (lop$nNodes>1) {
 #   clusterEvalQ(cl, library(afex)); #clusterEvalQ(cl, library(contrast))
 #   kk<- 32
 #   
-#      Stat[,,kk,] <-aperm(parApply(cl, inData[,,kk,], c(1,2), runAOV, dataframe=lop$dataStr, ModelForm=ModelForm, pars=pars, tag=0), c(2,3,1))
+#      Stat[,,kk,] <-aperm(parApply(cl, inData[,,kk,], c(1,2), runAOV, dataframe=lop$dataStr, ModelForm=ModelForm, pars=pars), c(2,3,1))
 #      cat("Z slice ", kk, "done: ", format(Sys.time(), "%D %H:%M:%OS3"), "\n")
 #   stopCluster(cl)
 #}
@@ -908,12 +1017,12 @@ statpar <- "3drefit"
 for(ii in 1:nF) statpar <- paste(statpar, " -substatpar ", ii-1, " fift ",
    ifelse(is.na(lop$wsVars), univ(fm[[1]])[ii+1, 'Df'], unname(univ(fm[[1]])[[1]][ii+1,'num Df'])), " ",
    ifelse(is.na(lop$wsVars), univ(fm[[1]])[2+nF, 'Df'], unname(univ(fm[[1]])[[1]][ii+1,'den Df'])) )
-for(ii in 1:lop$num_glt) statpar <- paste(statpar, " -substatpar ", nF+2*ii-1, " fitt", 
+if(lop$num_glt>0) for(ii in 1:lop$num_glt) statpar <- paste(statpar, " -substatpar ", nF+2*ii-1, " fitt", 
    ifelse(is.na(lop$wsVars), gltRes[[ii]][2,2], gltRes[[ii]][,6]))    
 statpar <- paste(statpar, " -addFDR -newid ", lop$outFN)
 
-#write.AFNI(lop$outFN, Stat, outLabel, note=myHist, origin=myOrig, delta=myDelta, idcode="whatever")
-write.AFNI(lop$outFN, Stat, outLabel, defhead=head, idcode="whatever")
+#write.AFNI(lop$outFN, Stat, outLabel, note=myHist, origin=myOrig, delta=myDelta, idcode=newid.AFNI())
+write.AFNI(lop$outFN, Stat, outLabel, defhead=head, idcode=newid.AFNI(), type='MRI_short')
 
 system(statpar)
 print(sprintf("Congratulations! You've got an output %s", lop$outFN))

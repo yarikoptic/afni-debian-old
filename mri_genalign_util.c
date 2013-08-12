@@ -86,6 +86,9 @@ static float outval = 0.0f ;                   /* value for 'outside' voxels */
 void  GA_set_outval( float v ){ outval = v; }  /* 28 Feb 2007 */
 float GA_get_outval(void){ return outval; }    /* 10 Dec 2008 */
 
+#undef  ISTINY
+#define ISTINY(a) (fabsf(a) < 0.0001f)
+
 /*---------------------------------------------------------------*/
 /*! Interpolate an image at npp (index) points, using NN method. */
 
@@ -235,6 +238,11 @@ ENTRY("GA_interp_cubic") ;
      ix = floorf(xx) ;  fx = xx - ix ;   /* integer and       */
      jy = floorf(yy) ;  fy = yy - jy ;   /* fractional coords */
      kz = floorf(zz) ;  fz = zz - kz ;
+
+     if( ISTINY(fx) && ISTINY(fy) && ISTINY(fz) ){
+       CLIP(ix,nx1); CLIP(jy,ny1); CLIP(kz,nz1);
+       vv[pp] = FAR(ix,jy,kz) ; continue ;
+     }
 
      ix_m1 = ix-1    ; ix_00 = ix      ; ix_p1 = ix+1    ; ix_p2 = ix+2    ;
      CLIP(ix_m1,nx1) ; CLIP(ix_00,nx1) ; CLIP(ix_p1,nx1) ; CLIP(ix_p2,nx1) ;
@@ -403,6 +411,7 @@ ENTRY("GA_interp_varp1") ;
      AFNI_WSINC5_RADIUS    = integer from 3 to 21 (bigger = slower)
      AFNI_WSINC5_TAPERFUN  = 'H' for Hamming (2 terms); otherwise, uses 3 terms
      AFNI_WSINC5_SPHERICAL = 'Y' for spherical mask ; otherwise uses cubical
+     AFNI_WSINC5_SILENT    = 'Y' to avoid the message
 *//*--------------------------------------------------------------------------*/
 
 #undef  PIF
@@ -417,6 +426,8 @@ static int   WFUN  = 0 ;       /* window chooser: 0 = M3(x) ; 1 = HW(x) */
 static int   WSHAP = 0 ;       /* 0 = cubical ; 1 = spherical */
 
 #define IRAD_MAX 21            /* largest IRAD allowed */
+
+/*------------------------------------------------------------------*/
 
 static void setup_wsinc5(void)
 {
@@ -444,14 +455,21 @@ static void setup_wsinc5(void)
    eee = getenv("AFNI_WSINC5_SPHERICAL") ;
    WSHAP = (eee != NULL && toupper(*eee) == 'Y' ) ;
 
-   INFO_message("wsinc5 interpolation setup:") ;
-   ININFO_message("  taper function  = %s",(WFUN)?"Hamming":"Min sidelobe 3 term");
-   ININFO_message("  taper cut point = %.3f",WCUT) ;
-   ININFO_message("  window radius   = %d voxels",IRAD) ;
-   ININFO_message("  window shape    = %s",(WSHAP)?"Spherical":"Cubical") ;
+   eee = getenv("AFNI_WSINC5_SILENT") ;
+   if( eee == NULL || toupper(*eee) != 'Y' ){
+     INFO_message("wsinc5 interpolation setup:") ;
+     ININFO_message("  taper function  = %s",(WFUN)?"Hamming":"Min sidelobe 3 term");
+     ININFO_message("  taper cut point = %.3f",WCUT) ;
+     ININFO_message("  window radius   = %d voxels",IRAD) ;
+     ININFO_message("  window shape    = %s",(WSHAP)?"Spherical":"Cubical") ;
+     ININFO_message("  The above can be altered via the AFNI_WSINC5_* environment variables.") ;
+     ININFO_message(" (To avoid this message, 'setenv AFNI_WSINC5_SILENT YES'.)") ;
+   }
 
    return ;
 }
+
+/*------------------------------------------------------------------*/
 
 /* sinc function = sin(PI*x)/(PI*x) [N.B.: x will always be >= 0] */
 
@@ -459,15 +477,21 @@ static void setup_wsinc5(void)
 #define sinc(x) ( ((x)>0.01f) ? sinf(PIF*(x))/(PIF*(x))     \
                               : 1.0f - 1.6449341f*(x)*(x) )
 
+/*------------------------------------------------------------------*/
+
 /* HW(x) = Hamming Window = minimum sidelobe 2 term window */
 
 #undef  HW
 #define HW(x) (0.53836f+0.46164f*cosf(PIF*(x)))
 
+/*------------------------------------------------------------------*/
+
 /* M3(x) = minimum sidelobe 3 term window (has no catchy name, alas) */
 
 #undef  M3
 #define M3(x) (0.4243801f+0.4973406f*cosf(PIF*(x))+0.0782793f*cosf(PIF*(x)*2.0f))
+
+/*------------------------------------------------------------------*/
 
 /* Weight (taper) function, declining from ww(WCUT)=1 to ww(1)=0 */
 /* Note that the input to ww will always be between WCUT and 1. */
@@ -476,6 +500,7 @@ static void setup_wsinc5(void)
 #define ww(x) ( (WFUN) ?  HW( ((x)-WCUT)*WCUTI ) : M3( ((x)-WCUT)*WCUTI ) )
 
 /*---------------------------------------------------------------------------*/
+
 #define UNROLL    /* unroll some loops */
 
 /*---------------------------------------------------------------------------*/
@@ -492,12 +517,15 @@ ENTRY("GA_interp_wsinc5s") ;
    /*----- first time in: build spherical mask  -----*/
 
    if( smask == NULL ){
+     char *eee ;
      smask = MCW_spheremask( 1.0f,1.0f,1.0f , WRAD ) ;
      nmask = smask->num_pt ;
      di    = smask->i ;
      dj    = smask->j ;
      dk    = smask->k ;
-     ININFO_message("  wsinc5 SPHERE(%d) mask has %d points",IRAD,nmask) ;
+     eee = getenv("AFNI_WSINC5_SILENT") ;
+     if( eee == NULL || toupper(*eee) != 'Y' )
+       ININFO_message("  wsinc5 SPHERE(%d) mask has %d points",IRAD,nmask) ;
    }
 
    /*----- loop over points -----*/
@@ -522,6 +550,11 @@ ENTRY("GA_interp_wsinc5s") ;
      ix = floorf(xx) ;  fx = xx - ix ;   /* integer and       */
      jy = floorf(yy) ;  fy = yy - jy ;   /* fractional coords */
      kz = floorf(zz) ;  fz = zz - kz ;
+
+     if( ISTINY(fx) && ISTINY(fy) && ISTINY(fz) ){
+       CLIP(ix,nx1); CLIP(jy,ny1); CLIP(kz,nz1);
+       vv[pp] = FAR(ix,jy,kz) ; continue ;
+     }
 
      /*- compute sinc at all points plus/minus 5 indexes from current locale -*/
 
@@ -561,7 +594,9 @@ void GA_interp_wsinc5p( MRI_IMAGE *fim ,
 ENTRY("GA_interp_wsinc5p") ;
 
  if( first ){
-   ININFO_message("  wsinc5 CUBE(%d) mask has %d points",IRAD,8*IRAD*IRAD*IRAD) ;
+   char *eee = getenv("AFNI_WSINC5_SILENT") ;
+   if( eee == NULL || toupper(*eee) != 'Y' )
+     ININFO_message("  wsinc5 CUBE(%d) mask has %d points",IRAD,8*IRAD*IRAD*IRAD) ;
    first = 0 ;
  }
 
@@ -582,6 +617,7 @@ ENTRY("GA_interp_wsinc5p") ;
 
    /*----- loop over points -----*/
 
+
 #pragma omp for
    for( pp=0 ; pp < npp ; pp++ ){
      xx = ip[pp] ; if( xx < -0.499f || xx > nxh ){ vv[pp]=outval; continue; }
@@ -591,6 +627,11 @@ ENTRY("GA_interp_wsinc5p") ;
      ix = floorf(xx) ;  fx = xx - ix ;   /* integer and       */
      jy = floorf(yy) ;  fy = yy - jy ;   /* fractional coords */
      kz = floorf(zz) ;  fz = zz - kz ;
+
+     if( ISTINY(fx) && ISTINY(fy) && ISTINY(fz) ){
+       CLIP(ix,nx1); CLIP(jy,ny1); CLIP(kz,nz1);
+       vv[pp] = FAR(ix,jy,kz); continue;
+     }
 
      /*- x interpolations -*/
 
@@ -815,7 +856,7 @@ ENTRY("GA_interp_wsinc5") ;
    if( first ){ setup_wsinc5() ; first = 0 ; }
 
    if( WSHAP ) GA_interp_wsinc5s( fim,npp,ip,jp,kp,vv ) ; /* spherical */
-   else        GA_interp_wsinc5p( fim,npp,ip,jp,kp,vv ) ; /* spherical */
+   else        GA_interp_wsinc5p( fim,npp,ip,jp,kp,vv ) ; /* not spherical */
 
    EXRETURN ;
 }
@@ -875,6 +916,11 @@ ENTRY("GA_interp_quintic") ;
      ix = floorf(xx) ;  fx = xx - ix ;   /* integer and       */
      jy = floorf(yy) ;  fy = yy - jy ;   /* fractional coords */
      kz = floorf(zz) ;  fz = zz - kz ;
+
+     if( ISTINY(fx) && ISTINY(fy) && ISTINY(fz) ){
+       CLIP(ix,nx1); CLIP(jy,ny1); CLIP(kz,nz1);
+       vv[pp] = FAR(ix,jy,kz) ; continue ;
+     }
 
      /* compute indexes from which to interpolate (-2,-1,0,+1,+2,+3),
         but clipped to lie inside input image volume                 */

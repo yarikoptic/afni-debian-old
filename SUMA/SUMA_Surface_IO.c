@@ -1868,6 +1868,7 @@ SUMA_Boolean SUMA_readFScolorLUT(char *f_name, SUMA_FS_COLORTABLE **ctp)
    SUMA_COLOR_MAP_HASH_DATUM *hd=NULL;
    char *fl=NULL, *fl2=NULL, *colfile=NULL, *florig=NULL, *name=NULL, *fle=NULL;
    double dum;
+   float mxcol;
    int i, r, g, b, v, nalloc, nchar, ok, ans, cnt, ism=0;
    SUMA_Boolean state = YUP;
    SUMA_Boolean LocalHead = NOPE;
@@ -1905,7 +1906,7 @@ SUMA_Boolean SUMA_readFScolorLUT(char *f_name, SUMA_FS_COLORTABLE **ctp)
    ct = SUMA_CreateFS_ColorTable(nalloc, strlen(colfile), NULL);
    snprintf(ct->fname, (strlen(colfile)+1)*sizeof(char),"%s", colfile);
    ok = 1;
-   cnt = 0;
+   cnt = 0; mxcol = 0;
    while (ok && fl < fle) {
       SUMA_SKIP_BLANK(fl, fle);
       do {
@@ -1941,23 +1942,40 @@ SUMA_Boolean SUMA_readFScolorLUT(char *f_name, SUMA_FS_COLORTABLE **ctp)
       SUMA_ADVANCE_PAST_NUM(fl, dum, ok);
       if (!ok) { SUMA_S_Err("Failed to read r"); state = NOPE; goto CLEANUP; }
       SUMA_LHv("r %f\n", dum);
-      ce->r=(int)dum;
+      ce->r=(int)(dum*1000);
       SUMA_ADVANCE_PAST_NUM(fl, dum, ok);
       if (!ok) { SUMA_S_Err("Failed to read g"); state = NOPE; goto CLEANUP; }
       SUMA_LHv("g %f\n", dum);
-      ce->g=(int)dum;
+      ce->g=(int)(dum*1000);
       SUMA_ADVANCE_PAST_NUM(fl, dum, ok);
       if (!ok) { SUMA_S_Err("Failed to read b"); state = NOPE; goto CLEANUP; }
       SUMA_LHv("b %f\n", dum);
-      ce->b=(int)dum;
+      ce->b=(int)(dum*1000);
       SUMA_ADVANCE_PAST_NUM(fl, dum, ok);
       if (!ok) { SUMA_S_Err("Failed to read v"); state = NOPE; goto CLEANUP; }
       SUMA_LHv("v %f\n", dum);
-      ce->flag=(int)dum;
+      ce->flag=(int)(dum*1000);
+      if (ce->r > mxcol) mxcol=ce->r; 
+      if (ce->g > mxcol) mxcol=ce->g; 
+      if (ce->b > mxcol) mxcol=ce->b;
+      if (ce->flag > mxcol) mxcol=ce->flag;
       ++cnt;
    }
       
    DONEREAD:
+   if (mxcol < 1.1*1000) { /* range is 0 -- 1 */
+      mxcol = 255.0/1000.0; /* recycle to scale */
+   } else { /* range is 0 -- 255, just undo 1000 scaling */
+      mxcol = 1.0/1000.0;
+   }
+   for (ism=0; ism<cnt; ++ism) {
+      ce = &ct->bins[ism]; 
+      ce->r = (int)((float)ce->r*mxcol);
+      ce->g = (int)((float)ce->g*mxcol);
+      ce->b = (int)((float)ce->b*mxcol);
+      ce->flag = (int)((float)ce->flag*mxcol);
+   }
+   
    ct = SUMA_CreateFS_ColorTable(cnt,  -1, ct);
 
    /* Hash the colormap */
@@ -1988,7 +2006,7 @@ SUMA_Boolean SUMA_readFScolorLUT(char *f_name, SUMA_FS_COLORTABLE **ctp)
 }
 
 SUMA_COLOR_MAP *SUMA_FScolutToColorMap(char *fscolutname, 
-                                       int lbl1, int lbl2, int show) 
+                                       int lbl1, int lbl2, int show, int idISi) 
 {
    static char FuncName[]={"SUMA_FScolutToColorMap"};
    SUMA_FS_COLORTABLE *ct=NULL;
@@ -2002,7 +2020,7 @@ SUMA_COLOR_MAP *SUMA_FScolutToColorMap(char *fscolutname,
       SUMA_RETURN(SM);
    }
    
-   SM = SUMA_FScolutToColorMap_eng(ct, lbl1, lbl2, show);
+   SM = SUMA_FScolutToColorMap_eng(ct, lbl1, lbl2, show, idISi);
    
    ct = SUMA_FreeFS_ColorTable(ct);
    
@@ -2011,7 +2029,7 @@ SUMA_COLOR_MAP *SUMA_FScolutToColorMap(char *fscolutname,
 }
 
 SUMA_COLOR_MAP *SUMA_FScolutToColorMap_eng(SUMA_FS_COLORTABLE *ct, 
-                                       int lbl1, int lbl2, int show) 
+                                       int lbl1, int lbl2, int show, int idISi) 
 {
    static char FuncName[]={"SUMA_FScolutToColorMap_eng"};
    SUMA_COLOR_MAP *SM=NULL;
@@ -2116,12 +2134,17 @@ SUMA_COLOR_MAP *SUMA_FScolutToColorMap_eng(SUMA_FS_COLORTABLE *ct,
          SM->M[ism][2] = (float)(ct->bins[cnt].b) / 255.0;
          SM->M[ism][3] = 1.0;
          SM->cname[ism] = SUMA_copy_string(ct->bins[cnt].name);
-         SM->idvec[ism] =  ct->bins[cnt].r | 
-                           ct->bins[cnt].g << 8 | 
-                           ct->bins[cnt].b << 16; 
-                     /* that's how annotation files encode a node's id,
-                     This annotation is OK for surfaces, Not
-                     for FreeSurfer's volumes*/
+         if (idISi) {
+            /* for non-freesurfer maps */
+            SM->idvec[ism] = ct->bins[cnt].i;
+         } else {
+            SM->idvec[ism] =  ct->bins[cnt].r | 
+                              ct->bins[cnt].g << 8 | 
+                              ct->bins[cnt].b << 16; 
+                        /* that's how annotation files encode a node's id,
+                        This annotation is OK for surfaces, Not
+                        for FreeSurfer's volumes*/
+         }
          SUMA_LHv("FSi %d --> SMi %d\n", ct->bins[cnt].i, ism);
          ++ism;
       } else {
@@ -2472,7 +2495,7 @@ SUMA_Boolean SUMA_readFSannot (char *f_name,
          First allocate for cmap then use SUMA_copy_string to fill it with 
          the names */
          SUMA_LH("Changing to SUMA format");
-         CM = SUMA_FScolutToColorMap_eng(ct, lbl1, lbl2, 0); 
+         CM = SUMA_FScolutToColorMap_eng(ct, lbl1, lbl2, 0, 0); 
 
       /* 2- Create a vector from the labels and create a data set from it */ 
          dset = SUMA_CreateDsetPointer(FuncName, SUMA_NODE_LABEL, 
@@ -4405,7 +4428,7 @@ SUMA_Boolean SUMA_isSOinXformedSpace(SUMA_SurfaceObject *SO, NI_element **nelp)
       SUMA_S_Warn("Can't tell, returning NO");
       SUMA_RETURN(0);
    }
-   nel = SUMA_FindNgrNamedElement(SO->aSO, "Coord_System");
+   nel = SUMA_FindNgrNamedElement(SO->aSO, "Node_XYZ");
    if (nelp) *nelp = nel;
    if (!nel) {
       SUMA_S_Warn("Can't tell, returning Nein");
@@ -4545,11 +4568,26 @@ SUMA_Boolean SUMA_GIFTI_Write (  char *fileNm, SUMA_SurfaceObject *SO,
       SUMA_S_Crit("Unexpected non NULL coords pointer!");
       SUMA_RETURN(NOPE);
    }
+   switch (SO->Side) {
+      case SUMA_LEFT:
+         NI_set_attribute(nel,"AnatomicalStructurePrimary", "CortexLeft");
+         break;
+      case SUMA_RIGHT:
+         NI_set_attribute(nel,"AnatomicalStructurePrimary", "CortexRight");
+         break;
+      case SUMA_LR:
+         NI_set_attribute(nel,"AnatomicalStructurePrimary","CortexRightAndLeft");
+         break;
+      case SUMA_SIDE_ERROR:
+      case SUMA_NO_SIDE:
+         break;
+   }
+   
    /* Now put the Nodelist in the element.
       No pointer tricks here, keep niml separate */
    
    NI_add_column(nel, NI_FLOAT, (void*)NodeList);
-   
+      
    nel = SUMA_FindNgrNamedElement(SO->aSO, "Mesh_IJK");
    if (nel->vec_num) { 
       SUMA_S_Crit("Unexpected non NULL mesh pointer!");
@@ -4901,21 +4939,25 @@ void SUMA_OpenDrawnROI (char *filename, void *data)
       /* load 1D ROI */
       /* You need to select a parent surface */
       SUMA_SLP_Warn("Assuming parent surface.");
-      SO = (SUMA_SurfaceObject *)(SUMAg_DOv[sv->Focus_SO_ID].OP);
-      if (SO->N_patchNode < SO->N_Node ||
-          SO->patchNodeMask) {
-         SUMA_S_Note("Assigning ROI to domain parent");
-         if (!(SOp = SUMA_findSOp_inDOv(SO->LocalDomainParentID, 
-                                        SUMAg_DOv, SUMAg_N_DOv))) {
-            SUMA_S_Note("Failed to find LDP, sticking with initial surf"); 
-                  /* continue ...*/
-         }else {
-            SO = SOp;
+      if ((SO = SUMA_SV_Focus_SO(sv))) {
+         if (SO->N_patchNode < SO->N_Node || SO->patchNodeMask) {
+            SUMA_S_Note("Assigning ROI to domain parent");
+            if (!(SOp = SUMA_findSOp_inDOv(SO->LocalDomainParentID, 
+                                           SUMAg_DOv, SUMAg_N_DOv))) {
+               SUMA_S_Note("Failed to find LDP, sticking with initial surf"); 
+                     /* continue ...*/
+            }else {
+               SO = SOp;
+            }
+         }    
+         if (!( ROIv = SUMA_OpenDrawnROI_1D (filename, SO->idcode_str, 
+                                             &N_ROI, YUP))) {
+            SUMA_SLP_Err("Failed to read NIML ROI.");
+            SUMA_RETURNe;
          }
-      }    
-      if (!( ROIv = SUMA_OpenDrawnROI_1D (filename, SO->idcode_str, 
-                                          &N_ROI, YUP))) {
-         SUMA_SLP_Err("Failed to read NIML ROI.");
+      } else {
+         SUMA_SLP_Err("Have no surface in focus. Can't load ROI\n"
+                      "Select a surface and try again.");
          SUMA_RETURNe;
       }
    }else {
@@ -4962,10 +5004,10 @@ void SUMA_OpenDrawnROI (char *filename, void *data)
    
    /* find the overlay plane */
    over = SUMA_Fetch_OverlayPointer(
-            SO->Overlays, SO->N_Overlays, 
+            (SUMA_ALL_DO *)SO, 
             SUMAg_CF->X->DrawROI->curDrawnROI->ColPlaneName,
             &i);       
-   if (over) SUMA_InitializeColPlaneShell(SO, over);
+   if (over) SUMA_InitializeColPlaneShell((SUMA_ALL_DO *)SO, over);
 
    /* put a nice redisplay here */
    if (!list) list = SUMA_CreateList ();
@@ -5762,9 +5804,8 @@ SUMA_DRAWN_ROI ** SUMA_OpenDrawnROI_NIML (char *filename,
                   
                   sd=SUMA_SideType(NI_get_attribute(nel,"Parent_side"));
                   /* assume user has selected the proper surface first */
-                  if (iDO < 0 && sv->Focus_SO_ID >= 0) { 
+                  if (iDO < 0 && (SO = SUMA_SV_Focus_SO(sv))) { 
                                           /* Use selection and side match ?*/
-                     SO = (SUMA_SurfaceObject *)(SUMAg_DOv[sv->Focus_SO_ID].OP);
                      if (SUMA_isSurfaceOfSide(SO,sd)) {
                         iDO = SUMA_findSO_inDOv(SO->LocalDomainParentID, 
                                              SUMAg_DOv, SUMAg_N_DOv); 
@@ -5781,9 +5822,8 @@ SUMA_DRAWN_ROI ** SUMA_OpenDrawnROI_NIML (char *filename,
                      }
                   }
                   /* forget the side now */
-                  if (iDO < 0 && sv->Focus_SO_ID >= 0 ) {
+                  if (iDO < 0 && (SO = SUMA_SV_Focus_SO(sv))) {
                            /* user selection, who cares about sid */
-                     SO = (SUMA_SurfaceObject *)(SUMAg_DOv[sv->Focus_SO_ID].OP);
                      iDO = SUMA_findSO_inDOv(SO->LocalDomainParentID, 
                                           SUMAg_DOv, SUMAg_N_DOv); 
                      SUMA_LHv("User SO selection (%d) no side check ?\n",
@@ -6247,7 +6287,7 @@ SUMA_DSET *SUMA_ROIv2Grpdataset (SUMA_DRAWN_ROI** ROIv, int N_ROIv,
    
    /* make it easy */
    dset->dnel = SUMA_FindDsetDataElement(dset);
-   dset->inel = SUMA_FindDsetNodeIndexElement(dset);
+   dset->inel = SUMA_FindSDsetNodeIndexElement(dset);
    
    SUMA_LH("cleanup ...");
    if (NodesTotal) SUMA_free(NodesTotal); NodesTotal = NULL;
@@ -6654,7 +6694,7 @@ SUMA_DSET *SUMA_ROIv2MultiDset (SUMA_DRAWN_ROI** ROIv, int N_ROIv,
    
    /* make it easy */
    dset->dnel = SUMA_FindDsetDataElement(dset);
-   dset->inel = SUMA_FindDsetNodeIndexElement(dset);
+   dset->inel = SUMA_FindSDsetNodeIndexElement(dset);
    
    /* Set all column ranges, they don't get set when you add columns with NULL */
    SUMA_UpdateDsetColRange(dset, -1);
@@ -8931,7 +8971,8 @@ char * SUMA_OpenDX_Read_CruiseVolHead(char *fname, THD_3dim_dataset *dset, int L
    LOAD_IVEC3( nxyz   , dxp->counts[2]    , dxp->counts[1]    , dxp->counts[0] ) ;
    
    /* orientation */
-   /* find closest orientation in RAI, delta matrix does allow for obliqueness (non diagonal matrix) but we ignore it */
+   /* find closest orientation in RAI, delta matrix does allow for 
+      obliqueness (non diagonal matrix) but we ignore it */
    LOAD_MAT(m33, 
                dxp->delta[6], dxp->delta[7], dxp->delta[8], 
                dxp->delta[3], dxp->delta[4], dxp->delta[5],

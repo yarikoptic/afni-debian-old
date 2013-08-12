@@ -3943,14 +3943,17 @@ float SUMA_etime (struct  timeval  *t, int Report  )
    
    if (Report)
       {
-         /* fprintf(stderr,"%s: Reporting from %d sec to %d sec\n", FuncName, t->tv_sec, tn.tv_sec);  */
-         delta_t = (((float)(tn.tv_sec - t->tv_sec)*Time_Fact) + (float)(tn.tv_usec - t->tv_usec)) /Time_Fact;
+         /* fprintf(stderr,"%s: Reporting from %d sec to %d sec\n", 
+                        FuncName, t->tv_sec, tn.tv_sec);  */
+         delta_t = (((float)(tn.tv_sec - t->tv_sec)*Time_Fact) + 
+                     (float)(tn.tv_usec - t->tv_usec)) /Time_Fact;
       }
    else
       {
          t->tv_sec = tn.tv_sec;
          t->tv_usec = tn.tv_usec;
-         /*fprintf(stderr,"%s: Initialized to %f sec \n", FuncName, (float)tn.tv_sec); */
+         /*fprintf(stderr,"%s: Initialized to %f sec \n", 
+                           FuncName, (float)tn.tv_sec); */
          delta_t = 0.0;
       }
       
@@ -4585,6 +4588,71 @@ byte * SUMA_isinpoly(float *P, float *NodeList,
    SUMA_RETURN(isin);
 }
 
+/*!
+          mandatory input 
+   P (float *)3 coords of point P in center of wedge
+   C (float *)3 coords of center of 2 spheres of radii r1 and r2
+   rr1 (float) squared radius of inner sphere
+   rr2 (float) squared radius of outer sphere
+   coshalpha (float) cosine of half angle of wedge 
+   Q (float *)3 coords of point in question
+         Optional
+   uCP(float *) if not NULL, then this is the unit vector CP
+         Pass it to speed up computations
+         
+          returned 
+   rrQ (float*) square of distance from Q to C
+                -1.0 when nothing is computed
+   cosaQ (float *) cosine of angle PCQ (using -2.0 for flag of no 
+                   angle computed. Happens when point is outside)
+   
+   return value: 1 for in, 0 for out 
+*/
+int is_in_wedge(float *P, float *C, float rr1, float rr2, float coshalpha,
+                float *Q, float *uCP, float *rrQ, float *cosaQ)
+{
+   float dp, dot, rr, rrP;
+   float CP[3], CQ[3];
+   
+   if (!P || !C || rr2<=0.0) {
+      if (cosaQ) *cosaQ=-2.0;
+      if (rrQ) *rrQ=-1.0;
+      return(0);
+   }
+   
+   /* Distance check */
+   CQ[0] = Q[0]-C[0];
+   CQ[1] = Q[1]-C[1];
+   CQ[2] = Q[2]-C[2];
+   rr = CQ[0]*CQ[0]+CQ[1]*CQ[1]+CQ[2]*CQ[2];
+   if (rrQ) *rrQ=rr;
+   
+   if (rr<rr1 || rr>rr2 || rr == 0.0) {
+      if (cosaQ) *cosaQ=-2.0;
+      return(0);
+   }
+   /* angle check */
+   rr = sqrtf(rr);
+   CQ[0] /= rr;  CQ[1] /= rr; CQ[2] /= rr;/* Normalize CQ */
+
+   if (!uCP) {
+      CP[0] = P[0]-C[0];
+      CP[1] = P[1]-C[1];
+      CP[2] = P[2]-C[2];
+      rrP = sqrtf(CP[0]*CP[0]+CP[1]*CP[1]+CP[2]*CP[2]);
+      CQ[0] /= rrP;  CQ[1] /= rrP; CQ[2] /= rrP;/* Normalize CP */
+      dot = SUMA_MT_DOT(CP,CQ);
+   } else {
+      dot = SUMA_MT_DOT(uCP,CQ);
+   }
+   if (dot >= coshalpha) {
+      if (cosaQ) *cosaQ=dot;
+      return(1);
+   } else {
+      if (cosaQ) *cosaQ=2.0;
+   }
+   return(0);
+}  
        
 /*!**  
 Function: SUMA_Point_At_Distance 
@@ -7437,6 +7505,7 @@ SUMA_EDGE_LIST * SUMA_Make_Edge_List_eng (
    if (ownerid) sprintf(SEL->owner_id, "%s", ownerid);
    else SEL->owner_id[0] = '\0';
    SEL->LinkedPtrType = SUMA_LINKED_OVERLAY_TYPE;
+   SEL->do_type = not_DO_type;
    
    N_Node_Alloc = FL[0];
    for (i=1; i<3*N_FL; ++i) if (N_Node_Alloc < FL[i]) N_Node_Alloc=FL[i]; 
@@ -8495,7 +8564,8 @@ float * SUMA_SmoothAttr_Neighb_wght (float *attr, int N_attr, float *wght,
 float * SUMA_SmoothAttr_Neighb_Rec (float *attr, int N_attr, 
                                     float *attr_sm_orig, 
                                     SUMA_NODE_FIRST_NEIGHB *fn, 
-                                    int nr, int N_rep)
+                                    int nr, int N_rep, 
+                                    byte *mask, byte strict_mask)
 {
    static char FuncName[]={"SUMA_SmoothAttr_Neighb_Rec"};
    int i;
@@ -8518,7 +8588,8 @@ float * SUMA_SmoothAttr_Neighb_Rec (float *attr, int N_attr,
    curr_attr = attr; /* initialize with user's data */
    while (i < N_rep) {
       /* intermediary calls */
-      attr_sm = SUMA_SmoothAttr_Neighb (curr_attr, N_attr, NULL, fn, nr, NULL, 1);
+      attr_sm = SUMA_SmoothAttr_Neighb (curr_attr, N_attr, NULL, fn, nr, 
+                                        mask, strict_mask);
       if (i > 1)  { /* second or more time in */
          /* free input to previous calculation */
          if (curr_attr) SUMA_free(curr_attr);
@@ -8528,7 +8599,8 @@ float * SUMA_SmoothAttr_Neighb_Rec (float *attr, int N_attr,
    }      
    
    /* last call, honor the user's return pointer */
-   attr_sm = SUMA_SmoothAttr_Neighb (curr_attr, N_attr, attr_sm_orig, fn, nr, NULL, 1);
+   attr_sm = SUMA_SmoothAttr_Neighb (curr_attr, N_attr, attr_sm_orig, fn, nr, 
+                                     mask, strict_mask);
    
    /* free curr_attr if i > 1, i.e. it is not the user's original copy */
    if (i > 1) {
@@ -8584,6 +8656,7 @@ SUMA_NODE_FIRST_NEIGHB * SUMA_Build_FirstNeighb (SUMA_EDGE_LIST *el,
    if (ownerid) sprintf(FN->owner_id, "%s", ownerid);
    else FN->owner_id[0] = '\0';
    FN->LinkedPtrType = SUMA_LINKED_ND_FRST_NEI_TYPE;
+   FN->do_type = not_DO_type;
    
    FN->idcode_str = NULL;
    SUMA_NEW_ID(FN->idcode_str, NULL);
@@ -9614,7 +9687,7 @@ SUMA_Boolean SUMA_Householder (float *Ni, float **Q)
    SUMA_RETURN (YUP);   
 }
 /*! 
-   C = SUMA_Convexity (NodeList, N_Node, NodeNormList, FN)
+   C = SUMA_Convexity (NodeList, N_Node, NodeNormList, FN, thisone)
 
    \param NodeList (float *) N_Node x 3 vector containing the coordinates 
                               for each node
@@ -9645,14 +9718,15 @@ SUMA_Boolean SUMA_Householder (float *Ni, float **Q)
    for concave ones. It used to be the opposite.
 */
 
-float * SUMA_Convexity (float *NL, int N_N, float *NNL, SUMA_NODE_FIRST_NEIGHB *FN) 
+float * SUMA_Convexity (float *NL, int N_N, float *NNL, 
+                        SUMA_NODE_FIRST_NEIGHB *FN, float *usethis) 
 {
    static char FuncName[]={"SUMA_Convexity"};
    float *C=NULL;
    
    SUMA_ENTRY;
    
-   C = SUMA_Convexity_Engine (NL, N_N, NNL, FN, NULL);
+   C = SUMA_Convexity_Engine (NL, N_N, NNL, FN, NULL, usethis);
    
    SUMA_RETURN(C);
    
@@ -9663,8 +9737,8 @@ float * SUMA_Convexity (float *NL, int N_N, float *NNL, SUMA_NODE_FIRST_NEIGHB *
    to an ASCII file for debugging.
    
    See documentation for SUMA_Convexity for all parameters except DetailFile
-   \param DetailFile (char *) if not NULL, then you'll get an output file named by DetailFile
-                              with debugging info:
+   \param DetailFile (char *) if not NULL, then you'll get an output file named
+                              by DetailFile with debugging info:
                               i  n  d1 d1ij d1/d1ij .. dn dnij dn/dnij
                                  where i is node index
                                  n = FN->N_Neighb[i]
@@ -9680,7 +9754,9 @@ float * SUMA_Convexity (float *NL, int N_N, float *NNL, SUMA_NODE_FIRST_NEIGHB *
    user's expectation (want fundus to have lower value --> dark color). 
    So to fix this injustice I changed the sign of C
 */             
-float * SUMA_Convexity_Engine (float *NL, int N_N, float *NNL, SUMA_NODE_FIRST_NEIGHB *FN, char *DetailFile)
+float * SUMA_Convexity_Engine (float *NL, int N_N, float *NNL, 
+                               SUMA_NODE_FIRST_NEIGHB *FN, char *DetailFile, 
+                               float *usethis)
 {
    static char FuncName[]={"SUMA_Convexity_Engine"};
    float *C, d, D, dij;
@@ -9690,10 +9766,12 @@ float * SUMA_Convexity_Engine (float *NL, int N_N, float *NNL, SUMA_NODE_FIRST_N
    SUMA_ENTRY;
 
    C = NULL;
+   if (usethis) C = usethis;
    
-   /* allocate for C */
-   C = (float *)SUMA_calloc (N_N, sizeof(float));
-   
+   if (!C) {
+      /* allocate for C */
+      C = (float *)SUMA_calloc (N_N, sizeof(float));
+   }
    if (C == NULL) {
       fprintf (SUMA_STDERR,"Error %s: Could not allocate for C.\n", FuncName);
       SUMA_RETURN (C);
@@ -10184,37 +10262,7 @@ int * SUMA_UniqueInt_ind (int *ys, int N_y, int *kunq, int **iup)
    SUMA_RETURN (yu);
 }/*SUMA_UniqueInt_ind*/
 
-/*!
-   \brief creates a reordered version of a vector 
-   yr = SUMA_reorder(y, isort, N_isort);
-   
-   \param y (int *) vector
-   \param isort (int *) vector containing sorting order
-   \param N_isort (int ) number of elements in isort
-   \return yr (int *) reordered version of y where:
-                     yr[i] = y[isort[i]];
-                     
-   - you should free yr with SUMA_free(yr) when done with it
-   - obviously it's your business to ensure that
-            isort[i] cannot be larger than then number
-            of elements in y 
-*/
-int *SUMA_reorder(int *y, int *isort, int N_isort)
-{
-   static char FuncName[]={"SUMA_reorder"};
-   int i = 0, *yr = NULL;
-   
-   SUMA_ENTRY;
-   
-   if (!y || !isort || N_isort <= 0) SUMA_RETURN(yr);
-   
-   yr = (int *)SUMA_calloc( N_isort, sizeof(int));
-   if (!yr) SUMA_RETURN(yr);
-   
-   for (i=0; i<N_isort; ++i) yr[i] = y[isort[i]];
-   
-   SUMA_RETURN(yr);
-}
+
 
 void SUMA_ShowFromTo(char *f, char *t, char *head){
    if (head) {

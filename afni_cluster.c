@@ -128,6 +128,7 @@ ENTRY("AFNI_cluster_choose_CB") ;
 
    im3d->vwid->func->clu_nnlev = (int)(-rmm) ;
 
+   IM3D_CLEAR_TMASK(im3d) ;      /* Mar 2013 */
    if( im3d->vinfo->func_visible ) AFNI_redisplay_func( im3d ) ;
    EXRETURN ;
 }
@@ -169,6 +170,7 @@ ENTRY("AFNI_clu_CB") ;
      AFNI_vedit_clear( im3d->fim_now ) ;
      set_vedit_cluster_label(im3d,0) ; VEDIT_unhelpize(im3d) ;
      AFNI_cluster_dispkill(im3d) ;
+     IM3D_CLEAR_TMASK(im3d) ;      /* Mar 2013 */
      if( im3d->vinfo->func_visible ) AFNI_redisplay_func( im3d ) ;
      EXRETURN ;
    }
@@ -503,6 +505,14 @@ ENTRY("AFNI_clus_make_widgets") ;
      cwid->histsqrt_bbox = new_MCW_bbox( cwid->top_menu , 1,&blab ,
                                          MCW_BB_check , MCW_BB_noframe , NULL,NULL ) ;
      MCW_reghint_children( cwid->histsqrt_bbox->wrowcol , "Plot square root of histogram?" ) ;
+   }
+
+   { char *blab = "Spearman?" ; int sval ;
+     cwid->spearman_bbox = new_MCW_bbox( cwid->top_menu , 1,&blab ,
+                                         MCW_BB_check , MCW_BB_noframe , NULL,NULL ) ;
+     MCW_reghint_children( cwid->spearman_bbox->wrowcol , "Scatterplot uses Spearman?") ;
+     sval = AFNI_yesenv("AFNI_CLUSTER_SPEARMAN") ;
+     MCW_set_bbox( cwid->spearman_bbox , sval ) ;
    }
 
    /*---- end of popup menu ----*/
@@ -1810,7 +1820,7 @@ ENTRY("AFNI_clus_action_CB") ;
        } else if( doscat ){  /* scatterplot */
          float *xar=NULL, *yar=NULL ; int nix=0, niy=0, nixy=0, jj,kk ;
          float a=0,b=0,pcor=0,p025=0,p975=0 ;
-         char xlab[256] , ylab[256] , tlab[THD_MAX_NAME+256] ;
+         char xlab[256] , ylab[256] , tlab[THD_MAX_NAME+256] , rlab[4]="?" ;
          if( dosmea ){
            im = mri_meanvector( imar , ibot,itop ) ; xar = MRI_FLOAT_PTR(im) ;
            nix = im->nx ; niy = 1 ; nixy = nix*niy ;
@@ -1852,8 +1862,17 @@ ENTRY("AFNI_clus_action_CB") ;
          }
          if( niy == 1 && nix >= 9 ){
            float_triple aaa,bbb,rrr ;
-           THD_pearson_corr_boot( nix,xar,yar , &rrr,&aaa,&bbb ) ;
-           pcor = rrr.a ; p025 = rrr.b ; p975 = rrr.c ; a = aaa.a ; b = bbb.a ;
+           if( MCW_val_bbox(cwid->spearman_bbox) == 0 ){
+             THD_pearson_corr_boot( nix,xar,yar , &rrr,&aaa,&bbb ) ;
+             pcor = rrr.a ; p025 = rrr.b ; p975 = rrr.c ; a = aaa.a ; b = bbb.a ;
+             strcpy(rlab,"R") ;
+           } else {          /* [02 Jan 2013] -- Spearman bootstrap -- for PK */
+             float fit[2]={0.0f,0.0f} ;
+             THD_spearman_corr_boot( nix,xar,yar , &rrr ) ;
+             pcor = rrr.a ; p025 = rrr.b ; p975 = rrr.c ;
+             THD_generic_detrend_L1( -nix , yar , 0 , 1 , &xar , fit ) ;
+             b = fit[0] ; a = fit[1] ; strcpy(rlab,"S") ;
+           }
          }
          sprintf(ylab,"Cluster #%d = %d voxels",ii+1,IMARR_COUNT(imar)) ;
          sprintf(tlab,"\\noesc %s[%d..%d]",
@@ -1862,7 +1881,7 @@ ENTRY("AFNI_clus_action_CB") ;
            if( p025 < pcor && p975 > pcor ){
              if( strlen(tlab) > 30 )
                sprintf(tlab+strlen(tlab),
-                       "\\esc\\red  R=%.2f\\in[%.2f..%.2f]_{95%%}",pcor,p025,p975) ;
+                       "\\esc\\red  %s=%.2f\\in[%.2f..%.2f]_{95%%}",rlab,pcor,p025,p975) ;
              else
                sprintf(tlab+strlen(tlab),
                        "\\esc\\red  R=%.3f\\in[%.3f..%.3f]_{95%%}",pcor,p025,p975) ;
@@ -2167,38 +2186,49 @@ ENTRY("AFNI_thronoff_change_CB") ;
 
 /*-----------------------------------------------------------------*/
 
-void AFNI_throlay1_change_CB( Widget w , XtPointer cd , XtPointer calld )
+void AFNI_throlayx_change_CB( Widget w , XtPointer cd , XtPointer calld )
 {
    Three_D_View *im3d = (Three_D_View *)cd ;
    int qq , pp ;
 
-ENTRY("AFNI_throlay1_change_CB") ;
+ENTRY("AFNI_throlayx_change_CB") ;
 
    if( ! IM3D_VALID(im3d) ) EXRETURN ;
 
-   qq = im3d->vinfo->thr_olay1 ;
-   pp = MCW_val_bbox( im3d->vwid->func->thr_olay1_bbox ) ;
+   qq = im3d->vinfo->thr_olayx ;
+   pp = MCW_val_bbox( im3d->vwid->func->thr_olayx_bbox ) ;
 
    if( pp != qq ){
-     im3d->vinfo->thr_olay1 = pp ;
-     MCW_invert_widget(im3d->vwid->func->thr_buck_av->wrowcol) ;
-     AFNI_enforce_throlay1(im3d) ;
+     im3d->vinfo->thr_olayx = pp ;
+#if 0
+     /** MCW_invert_widget(im3d->vwid->func->thr_buck_av->wrowcol) ; **/
+#else
+     MCW_set_widget_label( im3d->vwid->func->thr_buck_av->wlabel ,
+                           (pp > 0) ? "Thr*" : "Thr " ) ;
+#endif
+     AFNI_enforce_throlayx(im3d) ;
    }
    EXRETURN ;
 }
 
 /*-----------------------------------------------------------------*/
 
-void AFNI_enforce_throlay1( Three_D_View *im3d )
+void AFNI_enforce_throlayx( Three_D_View *im3d )
 {
    int ithr ;
 
-ENTRY("AFNI_enforce_throlay1") ;
+ENTRY("AFNI_enforce_throlayx") ;
 
    if( !IM3D_VALID(im3d) || !ISVALID_DSET(im3d->fim_now)
-                         || !im3d->vinfo->thr_olay1      ) EXRETURN ;
+                         || !im3d->vinfo->thr_olayx      ) EXRETURN ;
 
-   ithr = im3d->vinfo->fim_index + 1 ;
+   if( im3d->vinfo->thr_olayx == 1 )       /* 24 Jun 2013 */
+     ithr = im3d->vinfo->fim_index ;       /* allow Thr=OLay */
+   else if( im3d->vinfo->thr_olayx == 2 )  /* or */
+     ithr = im3d->vinfo->fim_index + 1 ;   /* Thr=OLay+1 */
+   else
+     EXRETURN ;
+
    if( ithr >= DSET_NVALS(im3d->fim_now) ) EXRETURN ;
    AFNI_set_thr_index(im3d,ithr) ;
    if( im3d->vinfo->func_visible ) AFNI_redisplay_func( im3d ) ;

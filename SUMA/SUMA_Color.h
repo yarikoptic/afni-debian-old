@@ -3,45 +3,6 @@
 
 #define SUMA_DUNNO_GRAY 0.54321
 
-#define SUMA_ADD_COORD_BIAS_VECT(SO, ovr, BiasDim, BiasVect) {   \
-   int m_i, m_i3, mx_i3 = 3*SO->N_Node; \
-   switch (BiasDim) {   \
-      case SW_CoordBias_X: \
-         /* Add X bias */  \
-         for (m_i=0; m_i < ovr->N_NodeDef; ++m_i) {   \
-            m_i3 = 3*ovr->NodeDef[m_i]; \
-            if (m_i3 < mx_i3) SO->NodeList[m_i3] += BiasVect[m_i];   \
-         }  \
-         break;   \
-      case SW_CoordBias_Y: \
-         /* Add Y bias */  \
-         for (m_i=0; m_i < ovr->N_NodeDef; ++m_i) {   \
-            m_i3 = 3*ovr->NodeDef[m_i]+1;  \
-            if (m_i3 < mx_i3) SO->NodeList[m_i3] += BiasVect[m_i];   \
-         }  \
-         break;   \
-      case SW_CoordBias_Z: \
-         /* Add Z bias */  \
-         for (m_i=0; m_i < ovr->N_NodeDef; ++m_i) {   \
-            m_i3 = 3*ovr->NodeDef[m_i]+2;  \
-            if (m_i3 < mx_i3) SO->NodeList[m_i3] += BiasVect[m_i];   \
-         }  \
-         break;   \
-      case SW_CoordBias_N: \
-         /* Add Normal bias */   \
-         for (m_i=0; m_i < ovr->N_NodeDef; ++m_i) {   \
-            m_i3 = 3*ovr->NodeDef[m_i]; \
-            if (m_i3 < mx_i3) {  \
-               SO->NodeList[m_i3] += BiasVect[m_i] * SO->NodeNormList[m_i3]; ++m_i3;    \
-               SO->NodeList[m_i3] += BiasVect[m_i] * SO->NodeNormList[m_i3]; ++m_i3;    \
-               SO->NodeList[m_i3] += BiasVect[m_i] * SO->NodeNormList[m_i3];          \
-            }  \
-         }  \
-         break;   \
-      default: \
-         SUMA_SL_Err("This should not be.\nWhy, oh why ?"); \
-   }  \
-}  \
 
 int SUMA_a_good_col(char *name, int i, float *acol);
 SUMA_COLOR_MAP * SUMA_MakeColorMap (float **Fiducials, int Nfid, byte rgba,
@@ -70,11 +31,17 @@ SUMA_OVERLAYS * SUMA_CreateOverlayPointer (const char *Name, SUMA_DSET *dset,
 SUMA_Boolean SUMA_FreeOverlayPointerRecyclables (SUMA_OVERLAYS * Sover);
 void SUMA_KillOverlayContours(SUMA_OVERLAYS * Sover);
 SUMA_Boolean SUMA_FreeOverlayPointer (SUMA_OVERLAYS * Sover);
-SUMA_Boolean SUMA_Overlays_2_GLCOLAR4(SUMA_SurfaceObject *SO, 
+SUMA_Boolean SUMA_Overlays_2_GLCOLAR4(SUMA_ALL_DO *ADO, 
                                     SUMA_SurfaceViewer *sv, GLfloat *glcolar);
-SUMA_OVERLAYS * SUMA_Fetch_OverlayPointerByDset (SUMA_OVERLAYS **Overlays, 
+SUMA_Boolean SUMA_Overlays_2_GLCOLAR4_SO(SUMA_SurfaceObject *SO, 
+                                 SUMA_SurfaceViewer *SV, GLfloat *glcolar);
+SUMA_OVERLAYS * SUMA_Fetch_OverlayPointerByDset(SUMA_ALL_DO *ado,
+                                           SUMA_DSET *dset, int * OverInd);
+SUMA_OVERLAYS * SUMA_Fetch_OverlayPointerByDset_arr (SUMA_OVERLAYS **Overlays, 
                               int N_Overlays, SUMA_DSET *dset, int * OverInd);
-SUMA_OVERLAYS * SUMA_Fetch_OverlayPointer (SUMA_OVERLAYS **Overlays, 
+SUMA_OVERLAYS * SUMA_Fetch_OverlayPointer (SUMA_ALL_DO *ado,
+                                           const char * Name, int * OverInd);
+SUMA_OVERLAYS * SUMA_Fetch_OverlayPointer_arr (SUMA_OVERLAYS **Overlays, 
                               int N_Overlays, const char * Name, int * OverInd);
 SUMA_Boolean SUMA_Show_ColorOverlayPlanes (SUMA_OVERLAYS **Overlays, 
                               int N_Overlays, int detail);
@@ -91,17 +58,21 @@ SUMA_Boolean SUMA_iRGB_to_OverlayPointer (SUMA_SurfaceObject *SO, char *Name,
                                           int N_dov, DList *DsetList);
 SUMA_Boolean SUMA_CompactOverlaysOrder (SUMA_SurfaceObject *SO);
 void SUMA_FreeOverlayListDatum (void *OLDv);
-SUMA_Boolean SUMA_AddNewPlane (SUMA_SurfaceObject *SO, SUMA_OVERLAYS *Overlay, SUMA_DO *dov, int N_dov, int DupFlag);
-SUMA_Boolean SUMA_isOverlayOfSO (SUMA_SurfaceObject *SO, SUMA_OVERLAYS *Plane);
+SUMA_Boolean SUMA_AddNewPlane (SUMA_ALL_DO *ado, SUMA_OVERLAYS *Overlay, 
+                               SUMA_DO *dov, int N_dov, int DupFlag);
+SUMA_Boolean SUMA_isOverlayOfDO (SUMA_ALL_DO *ado, SUMA_OVERLAYS *Plane);
 int SUMA_GetSmallestForegroundOrder (DList *listop);
 int SUMA_GetLargestBackroundOrder (DList *listop);
-DList * SUMA_OverlaysToOrderedList (SUMA_SurfaceObject *SO, int Opt);
-SUMA_Boolean SUMA_ReleaseOverlay (SUMA_OVERLAYS * Overlays, SUMA_INODE *Overlays_Inode);
-char * SUMA_PlaneOrder_Info(SUMA_SurfaceObject *SO);
-void SUMA_Print_PlaneOrder (SUMA_SurfaceObject *SO, FILE *Out);
+DList * SUMA_OverlaysToOrderedList (SUMA_ALL_DO *ado, int Opt);
+SUMA_Boolean SUMA_ReleaseOverlay (SUMA_OVERLAYS * Overlays, 
+                                  SUMA_INODE *Overlays_Inode);
+char * SUMA_PlaneOrder_Info(SUMA_ALL_DO *ado);
+void SUMA_Print_PlaneOrder (SUMA_ALL_DO *ado, FILE *Out);
 SUMA_Boolean SUMA_ListOrderToPlaneOrder (DList *listop); 
-SUMA_Boolean SUMA_MovePlaneUp (SUMA_SurfaceObject *SO, char *Name);
-SUMA_Boolean SUMA_MovePlaneDown (SUMA_SurfaceObject *SO, char *Name);
+SUMA_Boolean SUMA_MovePlaneUp (SUMA_ALL_DO *ado, char *Name);
+SUMA_Boolean SUMA_MovePlaneDown (SUMA_ALL_DO *ado, char *Name);
+SUMA_OVERLAYS * SUMA_NewPlaneSearch(SUMA_ALL_DO *ado, 
+                                    SUMA_OVERLAYS *Overlay);
 void SUMA_LoadDsetOntoSO (char *filename, void *data);
 SUMA_Boolean SUMA_LoadDsetOntoSO_eng (char *filename, SUMA_SurfaceObject *SO,
                               int SetupOverlay, int MakeOverlayCurrent, 
@@ -110,9 +81,10 @@ SUMA_Boolean SUMA_LoadDsetOntoSO_eng (char *filename, SUMA_SurfaceObject *SO,
 void SUMA_LoadColorPlaneFile (char *filename, void *data);
 SUMA_Boolean SUMA_PreserveOverlaySettings(SUMA_OVERLAYS *colplanepre, 
                                    SUMA_OVERLAYS *NewColPlane);
-SUMA_ASSEMBLE_LIST_STRUCT * SUMA_AssembleColorPlaneList (SUMA_SurfaceObject *SO); 
-void SUMA_RefreshDsetList (SUMA_SurfaceObject *SO);
-SUMA_Boolean SUMA_FlushPlaneNotInUse (char *PlaneName, SUMA_SurfaceObject *SO, SUMA_DO *dov, int N_dov);
+SUMA_ASSEMBLE_LIST_STRUCT * SUMA_AssembleColorPlaneList (SUMA_ALL_DO *ado); 
+void SUMA_RefreshDsetList (SUMA_ALL_DO *ado);
+SUMA_Boolean SUMA_FlushPlaneNotInUse (char *PlaneName, SUMA_ALL_DO *ado, 
+                                      SUMA_DO *dov, int N_dov);
 char *SUMA_CmapModeName (SUMA_COLORMAP_INTERP_MODE mapmode);
 int SUMA_StandardMapIndex (char *Name);
 char *SUMA_StandardMapName (int mapindex, int *N_col);
@@ -159,8 +131,13 @@ SUMA_Boolean SUMA_SetSO_CoordBias(SUMA_SurfaceObject *SO, SUMA_OVERLAYS *ovr, fl
 SUMA_Boolean SUMA_SetCoordBias(SUMA_OVERLAYS *ovr, float *NewBias, SUMA_WIDGET_INDEX_COORDBIAS BiasDim);
 SUMA_Boolean SUMA_RemoveSO_CoordBias(SUMA_SurfaceObject *SO, SUMA_OVERLAYS *ovr);
 SUMA_Boolean SUMA_RemoveCoordBias(SUMA_OVERLAYS *ovr); 
-SUMA_Boolean SUMA_TransferSO_CoordBias(SUMA_SurfaceObject *SO, SUMA_OVERLAYS *ovr, SUMA_WIDGET_INDEX_COORDBIAS BiasDim);
-SUMA_Boolean SUMA_TransferCoordBias(SUMA_OVERLAYS *ovr, SUMA_WIDGET_INDEX_COORDBIAS BiasDim);
+SUMA_Boolean SUMA_TransferSO_CoordBias(SUMA_SurfaceObject *SO, SUMA_OVERLAYS 
+                                    *ovr, SUMA_WIDGET_INDEX_COORDBIAS BiasDim);
+SUMA_Boolean SUMA_AddVisX_CoordBias(SUMA_SurfaceObject *SO, SUMA_OVERLAYS *ovr,
+                                      SUMA_WIDGET_INDEX_COORDBIAS BiasDim, 
+                                      float *BiasVect);
+SUMA_Boolean SUMA_TransferCoordBias(SUMA_OVERLAYS *ovr,
+                                    SUMA_WIDGET_INDEX_COORDBIAS BiasDim);
 SUMA_Boolean SUMA_NewSurfaceGeometry(SUMA_SurfaceObject *SO);
 int SUMA_GetNodeOverInd (SUMA_OVERLAYS *Sover, int node);
 SUMA_Boolean SUMA_isDsetColumn_inferred(SUMA_DSET *dset, int icol);
@@ -173,7 +150,7 @@ static char SUMA_COLOR_MAP_NAMES[][32]={
          "ygbrp256"  , "ygbrp128", "ygbrp64",
          "\0" };
 SUMA_Boolean SUMA_Selected_Node_Activate_Callbacks (
-      SUMA_SurfaceObject *SO, SUMA_OVERLAYS *Sover,
+      SUMA_ALL_DO *ado, SUMA_OVERLAYS *Sover,
       SUMA_ENGINE_SOURCE Src, NI_group *ngr);
 SUMA_DRAWN_ROI * SUMA_is_NamedColPlane_ForROI(char *PlaneName);
 SUMA_Boolean  SUMA_isDsetRelated(SUMA_DSET *dset, SUMA_SurfaceObject *SO);

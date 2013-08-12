@@ -445,19 +445,21 @@ class AfniXmat:
 
             # looks good, find run length and the number of runs
             first = base0.index(1)              # find first 1
-            try: next = base0.index(0,first+1)  # find next 0
+            try: rnext = base0.index(0,first+1) # find next 0
             except:     # base until end....
-                next = len(base0)
-            if next <= first:
+                rnext = len(base0)
+            if rnext <= first:
                 if self.verb > 1: print '-- odd run_len check...'
                 return
 
-            # we have a run length
-            rlen = next - first
+            # we have a run length 
+            # rcr - todo: (poorly) assumes equal lengths, fix at some point...
+            rlen = rnext - first
             nruns = len(base0)/rlen
             if rlen*nruns != len(base0):
-                print '** nruns failure: rlen = %d, nruns = %d, len = %d' % \
-                      (rlen, nruns, len(base0))
+                if self.verb > 1:
+                   print '** nruns failure: rlen = %d, nruns = %d, len = %d' \
+                         % (rlen, nruns, len(base0))
                 return
 
             # success!
@@ -616,7 +618,7 @@ class AfniXmat:
         """return a list of columns, given a list of labels"""
         if not self.labels or not labels: return []
         if not list2_is_in_list1(self.labels, labels, "labels"): return []
-        return [val for val in range(self.ncols) if val in cols]
+        return [self.labels.index(lab) for lab in labels]
 
     def init_from_matrix(self, matrix):
         """initialize AfniXmat from a Numpy matrix or 2D array"""

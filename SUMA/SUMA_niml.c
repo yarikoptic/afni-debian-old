@@ -63,71 +63,13 @@ int SUMA_init_ports_assignments(SUMA_CommonFields *cf)
       cf->TalkMode[i] = NI_BINARY_MODE;   
       switch(i) { /* set port numbers */
          case SUMA_AFNI_STREAM_INDEX: /* AFNI listening */
-            #if 0 /*ZSS June 2011. Delete useless code after dust has settled.*/
-            eee = getenv("SUMA_AFNI_TCP_PORT");
-            if (eee) {
-               pb = atoi(eee);
-               if (pb < 1024 ||  pb > 65535) {
-                  fprintf (SUMA_STDERR, 
-                     "Warning %s:\n"
-                     "Environment variable SUMA_AFNI_TCP_PORT %d is invalid.\n"
-                      "port must be between 1025 and 65534.\n"
-                      "Using default of %d\n", 
-                      FuncName, pb, get_port_named("AFNI_SUMA_NIML"));
-                  
-                  cf->TCP_port[i] = get_port_named("AFNI_SUMA_NIML");
-               }
-               cf->TCP_port[i] = pb;
-            } else {
-               cf->TCP_port[i] = get_port_named("AFNI_SUMA_NIML");
-            }
-            #else
-               cf->TCP_port[i] = get_port_named("AFNI_SUMA_NIML");
-            #endif   
+            cf->TCP_port[i] = get_port_named("AFNI_SUMA_NIML");
             break;
          case SUMA_AFNI_STREAM_INDEX2:  /* AFNI listening */
-            #if 0 /*ZSS June 2011. Delete useless code after dust has settled.*/
-            eee = getenv("SUMA_AFNI_TCP_PORT2");
-            if (eee) {
-               pb = atoi(eee);
-               if (pb < 1024 ||  pb > 65535) {
-                  SUMA_S_Warnv(
-                "Environment variable SUMA_AFNI_TCP_PORT2 %d is invalid.\n"
-                "port must be between 1025 and 65534.\n"
-                "Using default of %d\n", 
-                               pb, get_port_named("AFNI_DEFAULT_LISTEN_NIML"));
-                  
-                  cf->TCP_port[i] = get_port_named("AFNI_DEFAULT_LISTEN_NIML");
-               }
-               cf->TCP_port[i] = pb; 
-            } else {
-               cf->TCP_port[i] = get_port_named("AFNI_DEFAULT_LISTEN_NIML");
-            }
-            #else
-               cf->TCP_port[i] = get_port_named("AFNI_DEFAULT_LISTEN_NIML");
-            #endif
+            cf->TCP_port[i] = get_port_named("AFNI_DEFAULT_LISTEN_NIML");
             break;
          case SUMA_TO_MATLAB_STREAM_INDEX: /*Matlab listening */
-            #if 0 /*ZSS June 2011. Delete useless code after dust has settled.*/
-            eee = getenv("SUMA_MATLAB_LISTEN_PORT");
-            if (eee) {
-               pb = atoi(eee);
-               if (pb < 1024 ||  pb > 65535) {
-                  SUMA_S_Warnv( 
-                "Environment variable SUMA_MATLAB_LISTEN_PORT %d is invalid.\n"
-                "port must be between 1025 and 65534.\n"
-                "Using default of %d\n", 
-                         pb, get_port_named("MATLAB_SUMA_NIML"));
-                  
-                  cf->TCP_port[i] = get_port_named("MATLAB_SUMA_NIML");
-               }
-               cf->TCP_port[i] = pb; 
-            } else {
-               cf->TCP_port[i] = get_port_named("MATLAB_SUMA_NIML");
-            }  
-            #else
-               cf->TCP_port[i] = get_port_named("MATLAB_SUMA_NIML");
-            #endif 
+            cf->TCP_port[i] = get_port_named("MATLAB_SUMA_NIML");
             break;
          case SUMA_GENERIC_LISTEN_LINE: /* SUMA listening */
             cf->TCP_port[i] = get_port_named("SUMA_DEFAULT_LISTEN_NIML");
@@ -143,6 +85,9 @@ int SUMA_init_ports_assignments(SUMA_CommonFields *cf)
             break;
          case SUMA_GICORR_LINE:
             cf->TCP_port[i] = get_port_named("SUMA_GroupInCorr_NIML");
+            break;
+         case SUMA_HALLO_SUMA_LINE:
+            cf->TCP_port[i] = get_port_named("SUMA_HALLO_SUMA_NIML");
             break;
          default:
             SUMA_S_Errv("Bad stream index %d. Ignoring it.\n", i);
@@ -329,6 +274,10 @@ Boolean SUMA_niml_workproc( XtPointer thereiselvis )
                   "++ NIML connection opened from %s on port %d (%dth stream)\n",
                   NI_stream_name(SUMAg_CF->ns_v[cc]), 
                   SUMAg_CF->TCP_port[cc], cc) ;
+         if (cc == SUMA_HALLO_SUMA_LINE) { /* Connected flag for AFNI line 
+                                              handled elsewhere */
+            SUMAg_CF->Connected_v[cc] = YUP;
+         }            
      }
    #if 0
       /* not good enough, checks socket only, not buffer */
@@ -1326,9 +1275,8 @@ SUMA_Boolean SUMA_process_NIML_data( void *nini , SUMA_SurfaceViewer *sv)
             sopd.N = 0;
          }
 
-         if (!SUMA_Fetch_OverlayPointer(  SO->Overlays, SO->N_Overlays, 
-                                          "FuncAfni_0", 
-                                           &itmp)) {
+         if (!SUMA_Fetch_OverlayPointer((SUMA_ALL_DO *)SO, 
+                                        "FuncAfni_0", &itmp)) {
             /* first timer, pop it up */
             popit = 1;
          } else popit = 0;
@@ -1340,9 +1288,8 @@ SUMA_Boolean SUMA_process_NIML_data( void *nini , SUMA_SurfaceViewer *sv)
             SUMA_RETURN(NOPE);
          }
          if (popit) {
-            ColPlane = SUMA_Fetch_OverlayPointer(SO->Overlays, SO->N_Overlays, 
-                                                 "FuncAfni_0", 
-                                                 &itmp);
+            ColPlane = SUMA_Fetch_OverlayPointer((SUMA_ALL_DO *)SO, 
+                                                 "FuncAfni_0",&itmp);
             if (!ColPlane) {
                SUMA_S_Errv("Failed to find dset %s\n", 
                            "FuncAfni_0"); 
@@ -1351,11 +1298,12 @@ SUMA_Boolean SUMA_process_NIML_data( void *nini , SUMA_SurfaceViewer *sv)
                   fprintf (SUMA_STDERR,
                            "%s: Retrieved ColPlane named %s\n", 
                            FuncName, ColPlane->Name);
-               SUMA_InitializeColPlaneShell(SO, ColPlane);
-               SUMA_UpdateColPlaneShellAsNeeded(SO); 
+               SUMA_InitializeColPlaneShell((SUMA_ALL_DO *)SO, ColPlane);
+               SUMA_UpdateColPlaneShellAsNeeded((SUMA_ALL_DO *)SO); 
                               /* update other open ColPlaneShells */
                /* If you're viewing one plane at a time, do a remix */
-               if (SO->SurfCont->ShowCurForeOnly) SUMA_RemixRedisplay(SO);
+               if (SO->SurfCont->ShowCurForeOnly) 
+                  SUMA_RemixRedisplay((SUMA_ALL_DO*)SO);
             }
          }
          /* register a color remix request */
@@ -1454,6 +1402,7 @@ SUMA_Boolean SUMA_process_NIML_data( void *nini , SUMA_SurfaceViewer *sv)
          {/* SUMA_crosshair_xyz */
             int found_type = 0;
             SUMA_SurfaceObject *SOaf=NULL;
+            DListElmt *Location=NULL;
             /* Do it for all viewers */
             for (iview = 0; iview < SUMAg_N_SVv; ++iview) {
                found_type = 0;
@@ -1469,19 +1418,23 @@ SUMA_Boolean SUMA_process_NIML_data( void *nini , SUMA_SurfaceViewer *sv)
                      if (LocalHead) 
                         fprintf(SUMA_STDERR,
                                "%s: surface_idcode missing in nel (%s), "
-                               "using svi->Focus_SO_ID.\n", FuncName, nel->name);
-                     dest_SO_ID = svi->Focus_SO_ID; /* default */
-                     SOaf = (SUMA_SurfaceObject *)
-                                 (SUMAg_DOv[svi->Focus_SO_ID].OP);
+                               "using svi->Focus_DO_ID.\n", FuncName, nel->name);
+                     if (!(SOaf = SUMA_SV_Focus_any_SO(svi, &dest_SO_ID))) { 
+                        SUMA_S_Err("No surface I can work with");
+                        SUMA_RETURN(NOPE);
+                     }
                   } else {
                      SOaf = SUMA_findSOp_inDOv (nel_surfidcode, 
                                                 SUMAg_DOv, SUMAg_N_DOv);
                      if (!SOaf) {
                         SUMA_S_Warn("AFNI sending unkown id, "
                                     "taking default for viewer");
-                        SOaf = (SUMA_SurfaceObject *)
-                                       (SUMAg_DOv[svi->Focus_SO_ID].OP);
+                        if (!(SOaf = SUMA_SV_Focus_any_SO(svi, NULL))) { 
+                           SUMA_S_Err("No surface I can work with");
+                           SUMA_RETURN(NOPE);
+                        }
                      }
+                        
                      /* first try to find out if one of the displayed surfaces 
                         is or has a parent equal to nel_surfidcode */
                      if (LocalHead) 
@@ -1510,7 +1463,7 @@ SUMA_Boolean SUMA_process_NIML_data( void *nini , SUMA_SurfaceViewer *sv)
                            SUMA_LHv("Checking %s\n   %s versus\n   %s\n", 
                                     SO->Label, nel_surfidcode, 
                                     SO->LocalDomainParentID);
-                           if (SUMA_isRelated(SOaf, SO, 1)) { 
+                           if (SUMA_isRelated_SO(SOaf, SO, 1)) { 
                               /* ZSS Aug. 06 (used to be: 
                                  (strcmp( nel_surfidcode, 
                                           SO->LocalDomainParentID) == 0) */
@@ -1537,7 +1490,7 @@ SUMA_Boolean SUMA_process_NIML_data( void *nini , SUMA_SurfaceViewer *sv)
                                        "%s:%s: nel idcode is not "
                                        "found in DOv.\n", 
                                        FuncName, nel->name);            
-                           dest_SO_ID = svi->Focus_SO_ID; 
+                           SUMA_SV_Focus_any_SO(svi, &dest_SO_ID);
                         } else { /* good, set SO accordingly */
                            SO = (SUMA_SurfaceObject *)(SUMAg_DOv[dest_SO_ID].OP);
                            if (LocalHead) 
@@ -1550,6 +1503,11 @@ SUMA_Boolean SUMA_process_NIML_data( void *nini , SUMA_SurfaceViewer *sv)
                      }
                   }
 
+                  if (dest_SO_ID < 0) {
+                     SUMA_S_Err("Confounded Tintin!"
+                                "No surface for the life of me.");
+                     SUMA_RETURN(NOPE);
+                  }
                   SO = (SUMA_SurfaceObject *)(SUMAg_DOv[dest_SO_ID].OP);
 
                   if (LocalHead) SUMA_nel_stdout (nel);
@@ -1710,16 +1668,24 @@ SUMA_Boolean SUMA_process_NIML_data( void *nini , SUMA_SurfaceViewer *sv)
                   }
 
                   /* send cross hair coordinates */
+                  if (SO && SO->VisX.Applied ) {       /* apply VisX */
+                     SUMA_Apply_VisX_Chain(XYZ, 1, SO->VisX.Xchain, 0);
+                  }
                   ED = SUMA_InitializeEngineListData (SE_SetCrossHair);
-                  if (!SUMA_RegisterEngineListCommand (  
+                  if (!(Location=SUMA_RegisterEngineListCommand (  
                                        list, ED, 
                                        SEF_fv3, (void*)XYZ,
                                        SES_SumaFromAfni, svi, NOPE,
-                                       SEI_Tail, NULL)) {
+                                       SEI_Tail, NULL))) {
                      fprintf(SUMA_STDERR,
                              "Error %s: Failed to register element\n", FuncName);
                      SUMA_RETURN (NOPE);
                   }
+                  /* and add the SO with this location*/
+                  SUMA_RegisterEngineListCommand (  list, ED, 
+                                           SEF_vp, (void *)SO,
+                                           SES_SumaFromAfni, (void *)svi, NOPE,
+                                           SEI_In, Location);
 
                   svi->ResetGLStateVariables = YUP; 
 
@@ -2084,9 +2050,11 @@ NI_element * SUMA_makeNI_SurfIJK (SUMA_SurfaceObject *SO)
    NI_set_attribute (nel, "surface_label", SO->Label);
    NI_set_attribute (nel, "local_domain_parent_ID", SO->LocalDomainParentID);
    NI_set_attribute (nel, "local_domain_parent", SO->LocalDomainParent);
-   if (SO->SpecFile.FileName) NI_set_attribute (nel, "surface_specfile_name", SO->SpecFile.FileName);
+   if (SO->SpecFile.FileName) 
+      NI_set_attribute (nel, "surface_specfile_name", SO->SpecFile.FileName);
    else NI_set_attribute (nel, "surface_specfile_name", "Unknown");
-   if (SO->SpecFile.Path) NI_set_attribute (nel, "surface_specfile_path", SO->SpecFile.Path);
+   if (SO->SpecFile.Path) 
+      NI_set_attribute (nel, "surface_specfile_path", SO->SpecFile.Path);
    else NI_set_attribute (nel, "surface_specfile_path", "Unknown");
 
    SUMA_RETURN (nel);
@@ -2104,9 +2072,11 @@ SUMA_Boolean SUMA_nel_stdout (NI_element *nel)
       fprintf(SUMA_STDERR,"%s: Can't open fd:1\n", FuncName); 
       SUMA_RETURN(NOPE); 
    }
-   fprintf (stdout, "\n----------------------------nel stdout begin-------------------\n");
+   fprintf (stdout, 
+      "\n----------------------------nel stdout begin-------------------\n");
    NI_write_element( nstdout , nel , NI_TEXT_MODE ) ;
-   fprintf (stdout, "----------------------------nel stdout end  -------------------\n");
+   fprintf (stdout, 
+      "----------------------------nel stdout end  -------------------\n");
    NI_stream_close(nstdout);
 
    SUMA_RETURN(YUP);
@@ -2131,9 +2101,14 @@ NI_element * SUMA_makeNI_CrossHair (SUMA_SurfaceViewer *sv)
       SUMA_RETURN (NULL);
    }
 
-   SO = (SUMA_SurfaceObject *)(SUMAg_DOv[sv->Focus_SO_ID].OP);
+   if (!(SO = SUMA_SV_Focus_SO(sv))) {
+      SUMA_S_Err("no focus so");
+      SUMA_RETURN (NULL);
+   }
+   
    I_C = SO->SelectedNode;
-   XYZmap = SUMA_XYZ_XYZmap (sv->Ch->c, SO, SUMAg_DOv, SUMAg_N_DOv, &I_C, 0);
+   XYZmap = SUMA_XYZ_XYZmap (sv->Ch->c_noVisX, SO, 
+                             SUMAg_DOv, SUMAg_N_DOv, &I_C, 0);
    
    if (XYZmap == NULL){
       fprintf( SUMA_STDERR,
@@ -3727,7 +3702,8 @@ NI_element * SUMA_NodeVal2irgba_nel (SUMA_SurfaceObject *SO, float *val, char *i
       SUMA_LH("Cleanup for SUMA_Mesh_IJK2Mesh_IJK_nel..."); \
       SUMA_Mesh_IJK2Mesh_IJK_nel (NULL, NULL, 1, SUMA_NEW_MESH_IJK); \
 }
-void SUMA_Wait_Till_Stream_Goes_Bad(SUMA_COMM_STRUCT *cs, int slp, int WaitMax, int verb) 
+void SUMA_Wait_Till_Stream_Goes_Bad(SUMA_COMM_STRUCT *cs, 
+                                    int slp, int WaitMax, int verb) 
 {  
    static char FuncName[]={"SUMA_Wait_Till_Stream_Goes_Bad"};
    SUMA_Boolean good = YUP;
@@ -3749,7 +3725,9 @@ void SUMA_Wait_Till_Stream_Goes_Bad(SUMA_COMM_STRUCT *cs, int slp, int WaitMax, 
    }
 
    if (WaitClose >= WaitMax) { 
-      if (verb) SUMA_S_Warnv("\nFailed to detect closed stream after %d ms.\nClosing shop anyway...", WaitMax);  
+      if (verb) 
+         SUMA_S_Warnv("\nFailed to detect closed stream after %d ms.\n"
+                      "Closing shop anyway...", WaitMax);  
    }else{
       if (verb) fprintf (SUMA_STDERR,"Done.\n");
    }
@@ -3760,30 +3738,36 @@ void SUMA_Wait_Till_Stream_Goes_Bad(SUMA_COMM_STRUCT *cs, int slp, int WaitMax, 
 /*!
    \brief Function to handle send data elements to AFNI
    \param SO (SUMA_SurfaceObject *) pointer to surface object structure
-   \param cs (SUMA_COMM_STRUCT *) Communication structure. (initialized when action is 0)
+   \param cs (SUMA_COMM_STRUCT *) Communication structure. 
+                                 (initialized when action is 0)
    \param data (void *) pointer to data that gets typecast as follows:
                         (float *) if dtype == Node_RGBAb or Node_XYZ
-   \param dtype (SUMA_DSET_TYPE) Type of nel to be produced (this determines the typecasting of data)
+   \param dtype (SUMA_DSET_TYPE) Type of nel to be produced 
+                                 (this determines the typecasting of data)
    \param instanceID (char *) a unique identifier for the instance of data sent.
-                              For data of a particular dtype, use same instanceID for data that is being sent repeatedly
-   \param action (int)  2: Make cleanup call to functions producing nel out of data
-                           Close stream
+                              For data of a particular dtype, use same 
+                              instanceID for data that is being sent repeatedly
+   \param action (int)  2: Make cleanup call to functions producing nel out 
+                           of data Close stream
                         1: Create a nel out of data and send to AFNI
                         0: start connection with AFNI 
                            initialize cs
                            prepare functions producing
                            nels out of data
-   \return errflag (SUMA_Boolean) YUP: All is OK (although connection might get closed)
-                                  NOPE: Some'in bad a happening.
-                                  Connections getting closed in the midst of things are
-                                  not considered as errors because they should not halt 
-                                  the execution of the main program
-   NOTE: The cleanup automatically closes the connection. That is stupid whenever you need to 
-   send multiple types of data for multiple surfaces. Cleanup should be done without closing connections!
-   See comment in function SUMA_SendSumaNewSurface's code.
-   Also, send kth should be more clever, keeping separate counts per datatype and per surface
+   \return errflag (SUMA_Boolean) 
+                     YUP: All is OK (although connection might get closed)
+                      NOPE: Some'in bad a happening.
+                      Connections getting closed in the midst of things are
+                      not considered as errors because they should not halt 
+                      the execution of the main program
    
-   NOTE: For some data (lile                                  
+   NOTE: The cleanup automatically closes the connection. 
+         That is stupid whenever you need to send multiple types of data 
+         for multiple surfaces. Cleanup should be done without closing 
+         connections!
+         See comment in function SUMA_SendSumaNewSurface's code.
+         Also, send kth should be more clever, keeping separate counts per 
+         datatype and per surface
 */
 SUMA_Boolean SUMA_SendToSuma (SUMA_SurfaceObject *SO, SUMA_COMM_STRUCT *cs, 
                               void *data, SUMA_DSET_TYPE dtype, int action)
@@ -3878,7 +3862,7 @@ SUMA_Boolean SUMA_SendToSuma (SUMA_SurfaceObject *SO, SUMA_COMM_STRUCT *cs,
             break;
       }
 
-      /* make sure stream is till OK */
+      /* make sure stream is still OK */
       if (NI_stream_goodcheck ( SUMAg_CF->ns_v[cs->istream] , 1 ) < 0) {
          cs->GoneBad = YUP;
          SUMA_SL_Warn("Communication stream gone bad.\n"

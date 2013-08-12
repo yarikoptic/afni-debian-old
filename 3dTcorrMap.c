@@ -196,7 +196,7 @@ void usage_3dTcorrMap(int detail) {
        "Output Options: (at least one of these must be given!)\n"
        "---------------\n"
        "  -Mean pp  = Save average correlations into dataset prefix 'pp'\n"
-       "            ** As pointed out to me by NK, '-Mean' is the same\n"
+       "            ** As pointed out to me by CC, '-Mean' is the same\n"
        "               as computing the correlation map with the 1D file\n"
        "               that is the mean of all the normalized time series\n"
        "               in the mask -- that is, a form of the global signal.\n"
@@ -367,6 +367,7 @@ int main( int argc , char *argv[] )
    mainENTRY("3dTcorrMap main"); machdep(); PRINT_VERSION("3dTcorrMap");
    AFNI_logger("3dTcorrMap",argc,argv);
    THD_check_AFNI_version("3dTcorrMap") ;
+   AFNI_SETUP_OMP(0) ;  /* 24 Jun 2013 */
 
    /*-- option processing --*/
 

@@ -3,6 +3,7 @@
 #------------------------------------------------------------------
 BATCH_MODE <<- 0  #Initialize batch mode flag to 0
 R_io <<- -1
+SHOW_TRC <<- FALSE
 
 #------------------------------------------------------------------
 # Functions for library loading
@@ -15,12 +16,35 @@ find.in.path <- function(file) { #Pretty much same as first.in.path
    return(aa) 
 }
 
+note.AFNI <- function (str='May I speak frankly?',
+                       callstr=NULL, newline=TRUE, tic=1,
+                       trimtrace=30) {
+   if (is.null(callstr)) {
+      if (SHOW_TRC)  callstr <- who.called.me(TRUE, trim=trimtrace)
+      else callstr <- ''
+   }
+   nnn<-''
+   if (newline) nnn <- '\n'
+   if (BATCH_MODE) ff <- stderr()
+   else ff <- ''
+   if (tic == 1) {
+      tm <- format(Sys.time(), " @ %H:%M:%S")
+   } else if (tic==2) {
+      tm <- format(Sys.time(), " @ %a %b %d %H:%M:%S %Y")
+   } else tm <- ''
+   
+   cat(  '\n', '++ Note: ',  callstr,
+         sprintf('%s\n   ', tm), 
+         paste(str, collapse=''),nnn, 
+       sep='', file = ff);
+}
+
 set_R_io <- function() {
    rio <- 0
    ll <- find.in.path('R_io.so')
    if (!is.null(ll)) {
       dd <- try(dyn.load(ll), silent=TRUE)
-      if (!exists('dd')) {
+      if (dd[[1]]!="R_io") {
          note.AFNI(paste("Failed to load R_io.so."));
       } else {
          rio <- 1
@@ -917,8 +941,8 @@ memory.hogs <- function (n=10, top_frac=0.9, test=FALSE, msg=NULL) {
 
 newid.AFNI <-function(len=26) {  
    return(paste("XYZ_",
-            sample(c(rep(0:9,each=5),LETTERS, letters),
-            len-4, replace=TRUE), collapse=''))
+            paste(sample(c(rep(0:9,each=5),LETTERS, letters),
+            len-4, replace=TRUE), collapse='', sep=''), sep='',collapse=''))
 }
 
 sys.AFNI <- function(com=NULL, fout=NULL, ferr=NULL, echo=FALSE,
@@ -1031,8 +1055,6 @@ prompt.AFNI <- function (str='I await', choices=c('y','n'), vals=NULL) {
    return(0)
 }
 
-SHOW_TRC <<- FALSE
-
 set.AFNI.msg.trace <- function (vv=FALSE) { SHOW_TRC <<- vv }
 
 warn.AFNI <- function (str='Consider yourself warned',
@@ -1064,29 +1086,6 @@ err.AFNI <- function (str='Danger Danger Will Robinson',
    else ff <- ''
    cat(  '\n', '** Error: ',  callstr,'\n   ', 
          paste(str, collapse=''), nnn, 
-       sep='', file = ff);
-}
-
-note.AFNI <- function (str='May I speak frankly?',
-                       callstr=NULL, newline=TRUE, tic=1,
-                       trimtrace=30) {
-   if (is.null(callstr)) {
-      if (SHOW_TRC)  callstr <- who.called.me(TRUE, trim=trimtrace)
-      else callstr <- ''
-   }
-   nnn<-''
-   if (newline) nnn <- '\n'
-   if (BATCH_MODE) ff <- stderr()
-   else ff <- ''
-   if (tic == 1) {
-      tm <- format(Sys.time(), " @ %H:%M:%S")
-   } else if (tic==2) {
-      tm <- format(Sys.time(), " @ %a %b %d %H:%M:%S %Y")
-   } else tm <- ''
-   
-   cat(  '\n', '++ Note: ',  callstr,
-         sprintf('%s\n   ', tm), 
-         paste(str, collapse=''),nnn, 
        sep='', file = ff);
 }
 
@@ -2625,13 +2624,15 @@ read.AFNI <- function(filename, verb = 0, ApplyScale = 1, PercMask=0.0,
    show.AFNI.name(an);
   }
   
-  if (an$type == "1D" || an$type == "Rs" || an$type == "1Ds") {
+  if ( (an$type == "1D"  && an$ext != ".1D.dset") 
+         || an$type == "Rs" || an$type == "1Ds") {
     brk <- read.AFNI.matrix(an$orig_name)
     z <- array2dset(brk, format=an$type)
     return(z)
   }
   
-  if (meth == 'clib' || an$type == 'NIML') {
+  if (meth == 'clib' || an$type == 'NIML' || 
+      (an$type == "1D"  && an$ext == ".1D.dset")) {
     return(read.c.AFNI(filename, verb = verb, ApplyScale = 1, PercMask=0.0))
   }
   #If you have any selectors, use 3dbucket to get what you want, then read
@@ -2898,7 +2899,7 @@ minmax <- function(y) {
 }
 
 
-newid.AFNI <- function(ext=0) {
+newid.AFNI.old <- function(ext=0) {
    if (ext) { #in house
       return(
          paste('GCR_',paste(
@@ -2961,8 +2962,8 @@ write.c.AFNI <- function( filename, dset=NULL, label=NULL,
                         default = c(AFNI.view2viewtype(view),11,3, rep(0,5))) 
 
          #The user options
-   if (is.null(idcode) && !is.null(defhead)) 
-      idcode <- dset.attr(defhead,"IDCODE_STRING")
+   if (is.null(idcode)) idcode <- newid.AFNI();
+ 
    if (!is.null(idcode)) dset$NI_head <- 
                            dset.attr(dset$NI_head, "IDCODE_STRING", val=idcode)
    
@@ -3032,7 +3033,7 @@ write.AFNI <- function( filename, brk=NULL, label=NULL,
                         maskinf=0, scale = TRUE, 
                         meth='AUTO', addFDR=FALSE, 
                         statsym=NULL, view="+tlrc",
-                        com_hist=NULL) {
+                        com_hist=NULL, type=NULL) {
 
   if (meth == 'AUTO') {
    if (class(brk) == 'AFNI_R_dataset') {
@@ -3062,7 +3063,8 @@ write.AFNI <- function( filename, brk=NULL, label=NULL,
                         idcode=idcode, defhead=defhead,
                         verb = verb,
                         maskinf=maskinf, scale = scale, addFDR=addFDR,
-                        statsym=statsym, view=view, com_hist=com_hist))
+                        statsym=statsym, view=view, com_hist=com_hist,
+                        type=type))
   }
 
   if (is.na(an$view)) {
@@ -3085,7 +3087,7 @@ write.AFNI <- function( filename, brk=NULL, label=NULL,
   
   #Set the defaults. 
   if (is.null(note)) note <- '';
-  if (is.null(idcode)) idcode <- newid.AFNI(0);
+  if (is.null(idcode)) idcode <- newid.AFNI();
   if (is.null(brk)) {
    err.AFNI("NULL input");
    return(0)
@@ -3182,7 +3184,9 @@ write.AFNI <- function( filename, brk=NULL, label=NULL,
   writeChar(AFNIheaderpart("integer-attribute","DATASET_DIMENSIONS",
                            c(ddb[1:3],0,0)),
             conhead,eos=NULL)  
-  writeChar(AFNIheaderpart("integer-attribute","BRICK_TYPES",rep(1,ddb[4])),
+  if (is.null(type)) type <- 1
+  writeChar(AFNIheaderpart("integer-attribute","BRICK_TYPES",
+                  rep(typecode.AFNI(type),ddb[4])),
             conhead,eos=NULL)  
 
   if (scale) {

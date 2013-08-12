@@ -92,7 +92,9 @@ PROGRAMS = afni to3d from3d abut 3dclust nsize 3dinfo 3dproject 3dmerge count   
            niccc rbox qdelaunay 3dkmeans 3dXYZcat 3dPolyfit 3dNwarpApply        \
            1dCorrelate 3dCountSpikes 3dNwarpCalc dicom_hinfo apsearch 1dBport   \
            3dNormalityTest 3dmask_tool FIRdesign help_format 2perm 3dClustCount \
-           column_cat $(EXTRAS)
+           column_cat 3dUnifize 3dNwarpCat 3dQwarp 3dLocalHistog 3dNwarpAdjust  \
+           3dNwarpFuncs 3dTproject                                              \
+           $(EXTRAS)
 
 PROGRAMS_NOPLUG = afni to3d from3d abut 3dclust nsize 3dinfo 3dproject 3dmerge      \
                   sfim tfim ftosh 3dttest 3ddup imrotate imreg imstat 3dnoise count \
@@ -125,6 +127,8 @@ PROGRAMS_NOPLUG = afni to3d from3d abut 3dclust nsize 3dinfo 3dproject 3dmerge  
                   3dMaskToASCII 3dttest++ 3dDTtoDWI niccc 3dXYZcat 3dPolyfit        \
                   3dNwarpApply 1dCorrelate 3dCountSpikes 3dNwarpCalc dicom_hinfo    \
                   apsearch 3dNormalityTest 3dmask_tool 2perm 3dClustCount           \
+                  3dUnifize 3dNwarpCat 3dQwarp 3dLocalHistog 3dNwarpAdjust          \
+                  3dNwarpFuncs 3dTproject                                           \
                   $(EXTRAS)
 
 # For CYGWIN (look for "exe" to find various places below)
@@ -182,8 +186,10 @@ SCRIPTS = @4Daverage @CommandGlobb @GetAfniOrient @DTI_studio_reposition        
           @Install_InstaCorr_Demo @Quiet_Talkers @radial_correlate                \
           @DeblankFileNames @clean_help_dir @global_parse @AfniEnv @Atlasize      \
           @Install_TSrestMovieDemo @Install_AfniRetinoDemo                        \
-          @Install_PTaylor_TractDemo @Install_RSFMRI_Motion_Group_Demo            \
-          @Install_MEICA_Demo @T1scale 3dMVM  
+          @Install_FATCAT_DEMO @Install_RSFMRI_Motion_Group_Demo                  \
+          @Install_MEICA_Demo @T1scale 3dMVM @compute_gcor 3dLME                  \
+          @move.to.series.dirs @toMNI_Awarp @toMNI_Qwarpar @simulate_motion
+
 
 PY_DIR = python_scripts
 PY_SCRIPTS = afni_base.py @DoPerRoi.py
@@ -1091,6 +1097,22 @@ mri_nstats.o:mri_nstats.c
 
 ## ------- Things to be compiled or linked with OpenMP -------
 
+3dUnifize.o: 3dUnifize.c
+	$(RM) $@
+	$(CCOMP) -c 3dUnifize.c $(INFLAGS)
+
+3dUnifize:3dUnifize.o
+	$(RM) $@
+	$(CCOMP) -o 3dUnifize 3dUnifize.o $(PLFLAGS) $(LLIBS)
+
+3dLocalHistog.o: 3dLocalHistog.c
+	$(RM) $@
+	$(CCOMP) -c 3dLocalHistog.c $(INFLAGS)
+
+3dLocalHistog:3dLocalHistog.o
+	$(RM) $@
+	$(CCOMP) -o 3dLocalHistog 3dLocalHistog.o $(LFLAGS) $(LLIBS)
+
 3dDimRed.o: 3dDimRed.c
 	$(RM) $@
 	$(CCOMP) -c 3dDimRed.c $(INFLAGS)
@@ -1183,6 +1205,14 @@ AlphaSim:AlphaSim.o
 	$(RM) $@
 	$(CCOMP) -o 3dBlurInMask 3dBlurInMask.o $(LFLAGS) $(LLIBS)
 
+3dTproject.o:3dTproject.c mri_blur3d_variable.c
+	$(RM) $@
+	$(CCOMP) -c 3dTproject.c $(INFLAGS)
+
+3dTproject:3dTproject.o
+	$(RM) $@
+	$(CCOMP) -o 3dTproject 3dTproject.o $(LFLAGS) $(LLIBS)
+
 3dDespike.o:3dDespike.c
 	$(RM) $@
 	$(CCOMP) -c 3dDespike.c $(INFLAGS)
@@ -1206,6 +1236,18 @@ AlphaSim:AlphaSim.o
 3dNwarpApply:3dNwarpApply.o
 	$(RM) $@
 	$(CCOMP) -o 3dNwarpApply 3dNwarpApply.o $(LFLAGS) $(LLIBS)
+
+3dNwarpFuncs:3dNwarpFuncs.o
+	$(RM) $@
+	$(CCOMP) -o 3dNwarpFuncs 3dNwarpFuncs.o $(LFLAGS) $(LLIBS)
+
+3dNwarpAdjust:3dNwarpAdjust.o
+	$(RM) $@
+	$(CCOMP) -o 3dNwarpAdjust 3dNwarpAdjust.o $(LFLAGS) $(LLIBS)
+
+3dNwarpCat:3dNwarpCat.o
+	$(RM) $@
+	$(CCOMP) -o 3dNwarpCat 3dNwarpCat.o $(LFLAGS) $(LLIBS)
 
 3dNwarpCalc:3dNwarpCalc.o
 	$(RM) $@
@@ -1231,11 +1273,23 @@ mri_rbfinterp.o:mri_rbfinterp.c
 	$(RM) $@
 	$(CCOMP) -c 3dAllineate.c $(INFLAGS)
 
-3dNwarpApply.o:3dNwarpApply.c mri_nwarp.c
+3dNwarpApply.o:3dNwarpApply.c mri_nwarp.c mri_genalign.c mri_genalign_util.c
 	$(RM) $@
 	$(CCOMP) -c 3dNwarpApply.c $(INFLAGS)
 
-3dNwarpCalc.o:3dNwarpCalc.c mri_nwarp.c
+3dNwarpFuncs.o:3dNwarpFuncs.c mri_nwarp.c mri_genalign.c mri_genalign_util.c
+	$(RM) $@
+	$(CCOMP) -c 3dNwarpFuncs.c $(INFLAGS)
+
+3dNwarpAdjust.o:3dNwarpAdjust.c mri_nwarp.c mri_genalign.c mri_genalign_util.c
+	$(RM) $@
+	$(CCOMP) -c 3dNwarpAdjust.c $(INFLAGS)
+
+3dNwarpCat.o:3dNwarpCat.c mri_nwarp.c mri_genalign.c mri_genalign_util.c
+	$(RM) $@
+	$(CCOMP) -c 3dNwarpCat.c $(INFLAGS)
+
+3dNwarpCalc.o:3dNwarpCalc.c mri_nwarp.c mri_genalign.c mri_genalign_util.c
 	$(RM) $@
 	$(CCOMP) -c 3dNwarpCalc.c $(INFLAGS)
 
@@ -1980,7 +2034,8 @@ THD_OBJS = thd_atr.o thd_dsetto1D.o thd_initalldir.o thd_reconpar.o \
            thd_niml.o afni_vedit.o thd_fdrcurve.o thd_dset_to_vectim.o    \
            thd_bandpass.o thd_instacorr.o thd_svdblur.o thd_satcheck.o    \
            thd_dumdset.o ktaub.o bilinear_warp3D.o thd_table.o            \
-           thd_atlas.o thd_warp_tables.o thd_lasso.o
+           thd_atlas.o thd_warp_tables.o thd_lasso.o thd_mean_dset.o      \
+           thd_despike_L1.o
 
 # these are now included in NIML
 
@@ -2587,7 +2642,7 @@ imcalc:imcalc.o parser.o parser_int.o
 AFNI_HIST_FILES  = afni_history.c					     \
 	afni_history_bpittman.c afni_history_christip.c afni_history_dglen.c \
 	afni_history_gangc.c afni_history_rickr.c afni_history_rwcox.c	     \
-	afni_history_ziad.c
+	afni_history_ziad.c afni_history_ptaylor.c
 
 afni_history: $(AFNI_HIST_FILES)
 	$(RM) $@
@@ -2968,7 +3023,7 @@ suma_exec:libGLws.a libSUMA.a libtracktools.a libmri.a xutil.o LiteClue.o parser
    3dSkullStrip 3dCRUISEtoAFNI 3dBRAIN_VOYAGERtoAFNI 3dSurfMask\
    SurfToSurf Surf2VolCoord ROIgrow SurfDsetInfo SurfInfo AnalyzeTrace \
    DriveSuma SurfDist SpharmReco SpharmDeco prompt_user SurfRetinoMap \
-   ParseName 3dGenPriors 3dSeg SurfExtrema 3dinfill 3dHist \
+   ParseName 3dGenPriors 3dSeg SurfExtrema 3dinfill 3dHist HalloSuma \
    'INSTALLDIR=$(INSTALLDIR)' \
 	'SUMA_INCLUDE_PATH=$(SUMA_INCLUDE_PATH)' \
 	'SUMA_LINK_PATH=$(SUMA_LINK_PATH)' \
@@ -3131,6 +3186,8 @@ suma_clean:
 	if [ -f SUMA/3dinfill ]; then $(RM) SUMA/3dinfill; fi;
 	if [ -f 3dHist ]; then $(RM) 3dHist; fi;
 	if [ -f SUMA/3dHist ]; then $(RM) SUMA/3dHist; fi;
+	if [ -f HalloSuma ]; then $(RM) HalloSuma; fi;
+	if [ -f SUMA/HalloSuma ]; then $(RM) SUMA/HalloSuma; fi;
 
 ###
 #Use precompiled libraries present in SUMA/$(SUMA_BIN_ARCHIVE) and just link SUMA
@@ -3148,7 +3205,7 @@ suma_link:
    3dCRUISEtoAFNI 3dBRAIN_VOYAGERtoAFNI 3dSurfMask\
    SurfToSurf Surf2VolCoord ROIgrow SurfDsetInfo SurfInfo AnalyzeTrace \
    DriveSuma SurfDist SpharmReco SpharmDeco prompt_user SurfRetinoMap \
-   ParseName 3dGenPriors 3dSeg SurfExtrema 3dinfill 3dHist; \
+   ParseName 3dGenPriors 3dSeg SurfExtrema 3dinfill 3dHist HalloSuma; \
 	$(MAKE) -f $(SUMA_MAKEFILE_NAME) testGL suma MakeColorMap ROI2dataset \
    3dVol2Surf 3dSurf2Vol ScaleToMap SurfMeasures SurfFWHM \
 	MapIcosahedron CreateIcosahedron CompareSurfaces ConvertSurface ConvertDset \
@@ -3157,7 +3214,7 @@ suma_link:
    3dCRUISEtoAFNI 3dBRAIN_VOYAGERtoAFNI 3dSurfMask \
 	SurfToSurf Surf2VolCoord ROIgrow SurfDsetInfo SurfInfo AnalyzeTrace \
    DriveSuma SurfDist SpharmReco SpharmDeco prompt_user SurfRetinoMap \
-   ParseName 3dGenPriors 3dSeg SurfExtrema 3dinfill 3dHist \
+   ParseName 3dGenPriors 3dSeg SurfExtrema 3dinfill 3dHist HalloSuma \
 	'INSTALLDIR=$(INSTALLDIR)' \
 	'SUMA_INCLUDE_PATH=$(SUMA_INCLUDE_PATH)' \
 	'SUMA_LINK_PATH=$(SUMA_LINK_PATH)' \
@@ -3188,7 +3245,7 @@ suma_install:
    SUMA/SurfInfo SUMA/AnalyzeTrace SUMA/DriveSuma SUMA/SurfDist \
    SUMA/SpharmReco SUMA/SpharmDeco SUMA/prompt_user SUMA/SurfRetinoMap \
    SUMA/ParseName SUMA/3dGenPriors SUMA/3dSeg SUMA/SurfExtrema SUMA/3dinfill \
-   SUMA/3dHist \
+   SUMA/3dHist SUMA/HalloSuma \
    ${INSTALLDIR} ; \
 	if [ -f SUMA/SurfMesh ]; then $(CP) SUMA/SurfMesh ${INSTALLDIR} ; fi; \
 	$(CP) @SUMA_* ${INSTALLDIR} ;)

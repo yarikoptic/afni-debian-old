@@ -1,8 +1,12 @@
 #include "mrilib.h"
 
-#ifdef USE_OMP
-#include <omp.h>
-#endif
+/*** This file is intended to be #include-d into mri_nwarp.c ***/
+
+/***
+     #ifdef USE_OMP
+     #include <omp.h>
+     #endif
+***/
 
 typedef struct {
   int meth ;
@@ -71,9 +75,9 @@ ENTRY("INCOR_clipate") ;
    if( nq < 666 ){ rr.a = 1.0f; rr.b = 0.0f; mri_free(qim); RETURN(rr); }
    mmm  = mri_min( qim ) ;
    if( mmm >= 0.0f ){   /* for positive images */
-     cbot = THD_cliplevel( qim , 0.345f ) ;
-     ctop = mri_quantile ( qim , 0.966f ) ;
-     if( ctop > 4.321f*cbot ) ctop = 4.321f*cbot ;
+     cbot = THD_cliplevel( qim , 0.321f ) ;
+     ctop = mri_quantile ( qim , 0.987f ) ;
+     if( ctop > 6.543f*cbot ) ctop = 6.543f*cbot ;
    } else {  /* for images including negative values: no go */
      cbot = 1.0f; ctop = 0.0f;
    }
@@ -462,29 +466,28 @@ void INCOR_normalize_2Dhist( INCOR_2Dhist *tdh )
 /*! Compute the mutual info from a histogram (which also normalizes it).
 ----------------------------------------------------------------------------*/
 
-float INCOR_mutual_info( INCOR_2Dhist *tdh )
+double INCOR_mutual_info( INCOR_2Dhist *tdh )
 {
    int ii,jj ;
-   float val ;
-   float nww , *xc, *yc, *xyc ; int nbp ;
+   double val , nww ;
+   float *xc, *yc, *xyc ; int nbp ;
 
-   if( tdh == NULL ) return 0.0f ;
+   if( tdh == NULL ) return 0.0 ;
 
-   nww = tdh->nww; xc = tdh->xc; yc = tdh->yc; xyc = tdh->xyc; nbp = tdh->nbin+1;
-
-   if( nww <= 0.0f ) return 0.0f ;
+   nww = (double)tdh->nww; if( nww <= 0.0 ) return 0.0 ;
+   xc = tdh->xc; yc = tdh->yc; xyc = tdh->xyc; nbp = tdh->nbin+1;
 
    INCOR_normalize_2Dhist(tdh) ;
 
    /*-- compute MI from histogram --*/
 
-   val = 0.0f ;
+   val = 0.0 ;
    for( ii=0 ; ii < nbp ; ii++ ){
     for( jj=0 ; jj < nbp ; jj++ ){
      if( XYC(ii,jj) > 0.0f )
-      val += XYC(ii,jj) * logf( XYC(ii,jj)/(xc[ii]*yc[jj]) ) ;
+      val += XYC(ii,jj) * log( XYC(ii,jj)/(xc[ii]*yc[jj]) ) ;
    }}
-   return (1.4427f*val) ;  /* units are bits, just for fun */
+   return (1.4427*val) ;  /* units are bits, just for fun */
 }
 
 /*--------------------------------------------------------------------------*/
@@ -493,31 +496,30 @@ float INCOR_mutual_info( INCOR_2Dhist *tdh )
     x and y are redundant and should be large if they are independent.
 ----------------------------------------------------------------------------*/
 
-float INCOR_norm_mutinf( INCOR_2Dhist *tdh )
+double INCOR_norm_mutinf( INCOR_2Dhist *tdh )
 {
    int ii,jj ;
-   float numer , denom ;
-   float nww , *xc, *yc, *xyc ; int nbp ;
+   double numer , denom , nww ;
+   float *xc, *yc, *xyc ; int nbp ;
 
-   if( tdh == NULL ) return 0.0f ;
+   if( tdh == NULL ) return 0.0 ;
 
-   nww = tdh->nww; xc = tdh->xc; yc = tdh->yc; xyc = tdh->xyc; nbp = tdh->nbin+1;
-
-   if( nww <= 0.0f ) return 0.0f ;
+   nww = (double)tdh->nww; if( nww <= 0.0 ) return 0.0 ;
+   xc = tdh->xc; yc = tdh->yc; xyc = tdh->xyc; nbp = tdh->nbin+1;
 
    INCOR_normalize_2Dhist(tdh) ;
 
    /*-- compute NMI from histogram --*/
 
-   denom = numer = 0.0f ;
+   denom = numer = 0.0 ;
    for( ii=0 ; ii < nbp ; ii++ ){
-     if( xc[ii] > 0.0f ) denom += xc[ii] * logf( xc[ii] ) ;
-     if( yc[ii] > 0.0f ) denom += yc[ii] * logf( yc[ii] ) ;
+     if( xc[ii] > 0.0f ) denom += xc[ii] * log( xc[ii] ) ;
+     if( yc[ii] > 0.0f ) denom += yc[ii] * log( yc[ii] ) ;
      for( jj=0 ; jj < nbp ; jj++ ){
-       if( XYC(ii,jj) > 0.0f ) numer += XYC(ii,jj) * logf( XYC(ii,jj) );
+       if( XYC(ii,jj) > 0.0f ) numer += XYC(ii,jj) * log( XYC(ii,jj) );
      }
    }
-   if( denom != 0.0f ) denom = numer / denom ;
+   if( denom != 0.0 ) denom = numer / denom ;
    return denom ;
 }
 
@@ -525,95 +527,92 @@ float INCOR_norm_mutinf( INCOR_2Dhist *tdh )
 /*! Compute the correlation ratio from a 2D histogram.
 ----------------------------------------------------------------------------*/
 
-float INCOR_corr_ratio( INCOR_2Dhist *tdh , int crmode )
+double INCOR_corr_ratio( INCOR_2Dhist *tdh , int crmode )
 {
    int ii,jj ;
-   float vv,mm ;
-   float    val , cyvar , uyvar , yrat,xrat ;
-   float nww , *xc, *yc, *xyc ; int nbp ;
+   double vv,mm , val , cyvar , uyvar , yrat,xrat , nww ;
+   float *xc, *yc, *xyc ; int nbp ;
 
-   if( tdh == NULL ) return 0.0f ;
+   if( tdh == NULL ) return 0.0 ;
 
-   nww = tdh->nww; xc = tdh->xc; yc = tdh->yc; xyc = tdh->xyc; nbp = tdh->nbin+1;
-
-   if( nww <= 0.0f ) return 0.0f ;
+   nww = (double)tdh->nww; if( nww <= 0.0 ) return 0.0 ;
+   xc = tdh->xc; yc = tdh->yc; xyc = tdh->xyc; nbp = tdh->nbin+1;
 
    INCOR_normalize_2Dhist(tdh) ;
 
    /*-- compute CR(y|x) from histogram --*/
 
-   cyvar = 0.0f ;
+   cyvar = 0.0 ;
    for( ii=0 ; ii < nbp ; ii++ ){
      if( xc[ii] > 0.0f ){
-       vv = mm = 0.0f ;               /* mm=E(y|x)  vv=E(y^2|x) */
+       vv = mm = 0.0 ;                /* mm=E(y|x)  vv=E(y^2|x) */
        for( jj=1 ; jj < nbp ; jj++ ){
          mm += (jj * XYC(ii,jj)) ; vv += jj * (jj * XYC(ii,jj)) ;
        }
        cyvar += (vv - mm*mm/xc[ii] ) ; /* Var(y|x) */
      }
    }
-   vv = mm = uyvar = 0.0f ;
-   for( jj=1 ; jj < nbp ; jj++ ){     /* mm=E(y)  vv=E(y^2) */
+   vv = mm = uyvar = 0.0 ;
+   for( jj=1 ; jj < nbp ; jj++ ){        /* mm=E(y)  vv=E(y^2) */
      mm += (jj * yc[jj]) ; vv += jj * (jj * yc[jj]) ;
    }
    uyvar = vv - mm*mm ;                  /* Var(y) */
-   yrat  = (uyvar > 0.0f) ? cyvar/uyvar  /* Var(y|x) / Var(y) */
-                          : 1.0f ;
+   yrat  = (uyvar > 0.0 ) ? cyvar/uyvar  /* Var(y|x) / Var(y) */
+                          : 1.0  ;
 
-   if( crmode == 0 ) return (1.0f-yrat) ;   /** unsymmetric **/
+   if( crmode == 0 ) return (1.0-yrat) ;   /** unsymmetric **/
 
    /** compute CR(x|y) also, for symmetrization **/
 
-   cyvar = 0.0f ;
+   cyvar = 0.0 ;
    for( jj=0 ; jj < nbp ; jj++ ){
-     if( yc[jj] > 0.0f ){
-       vv = mm = 0.0f ;               /* mm=E(x|y)  vv=E(x^2|y) */
+     if( yc[jj] > 0.0 ){
+       vv = mm = 0.0 ;                /* mm=E(x|y)  vv=E(x^2|y) */
        for( ii=1 ; ii < nbp ; ii++ ){
          mm += (ii * XYC(ii,jj)) ; vv += ii * (ii * XYC(ii,jj)) ;
        }
        cyvar += (vv - mm*mm/yc[jj] ) ; /* Var(x|y) */
      }
    }
-   vv = mm = uyvar = 0.0f ;
+   vv = mm = uyvar = 0.0 ;
    for( ii=1 ; ii < nbp ; ii++ ){     /* mm=E(x)  vv=E(x^2) */
      mm += (ii * xc[ii]) ; vv += ii * (ii * xc[ii]) ;
    }
    uyvar = vv - mm*mm ;                 /* Var(x) */
-   xrat  = (uyvar > 0.0f) ? cyvar/uyvar /* Var(x|y) / Var(x) */
-                          : 1.0f ;
+   xrat  = (uyvar > 0.0) ? cyvar/uyvar  /* Var(x|y) / Var(x) */
+                         : 1.0 ;
 
-   if( crmode == 2 ) return (1.0f - 0.5f*(xrat+yrat)) ; /** additive **/
+   if( crmode == 2 ) return (1.0 - 0.5*(xrat+yrat)) ; /** additive **/
 
-   return (1.0f - xrat*yrat) ;                          /** multiplicative **/
+   return (1.0 - xrat*yrat) ;                          /** multiplicative **/
 }
 
 /*--------------------------------------------------------------------------*/
 /*! Compute the Hellinger metric from a 2D histogram.
 ----------------------------------------------------------------------------*/
 
-float INCOR_hellinger( INCOR_2Dhist *tdh )
+double INCOR_hellinger( INCOR_2Dhist *tdh )
 {
    int ii,jj ;
-   float val , pq ;
-   float nww , *xc, *yc, *xyc ; int nbp ;
+   double val , pq , nww ;
+   float *xc, *yc, *xyc ; int nbp ;
 
-   if( tdh == NULL ) return 0.0f ;
+   if( tdh == NULL ) return 0.0 ;
 
-   nww = tdh->nww; xc = tdh->xc; yc = tdh->yc; xyc = tdh->xyc; nbp = tdh->nbin+1;
-
-   if( nww <= 0.0f ) return 0.0f ;
+   nww = (double)tdh->nww; if( nww <= 0.0 ) return 0.0 ;
+   xc = tdh->xc; yc = tdh->yc; xyc = tdh->xyc; nbp = tdh->nbin+1;
 
    INCOR_normalize_2Dhist(tdh) ;
 
    /*-- compute Hell metric from histogram --*/
 
-   val = 0.0f ;
+   val = 0.0 ;
    for( ii=0 ; ii < nbp ; ii++ ){
     for( jj=0 ; jj < nbp ; jj++ ){
      pq = XYC(ii,jj) ;
-     if( pq > 0.0f ) val += sqrtf( pq * xc[ii] * yc[jj] ) ;
+     if( pq > 0.0 ) val += sqrt( pq * xc[ii] * yc[jj] ) ;
    }}
-   return (1.0f-val) ;
+   return (1.0-val) ;
 }
 
 /*--------------------------------------------------------------------------*/
@@ -634,81 +633,80 @@ float INCOR_hellinger( INCOR_2Dhist *tdh )
     and to smaller NMI.
 *//*------------------------------------------------------------------------*/
 
-float_quad INCOR_helmicra( INCOR_2Dhist *tdh )
+double_quad INCOR_helmicra( INCOR_2Dhist *tdh )
 {
    int ii,jj ;
-   float hel , pq , vv,uu ;
-   float    val , cyvar , uyvar , yrat,xrat ;
-   float_quad hmc = {0.0f,0.0f,0.0f,0.f} ;
-   float nww , *xc, *yc, *xyc ; int nbp ;
+   double hel , pq , vv,uu , nww ;
+   double val , cyvar , uyvar , yrat,xrat ;
+   double_quad hmc = {0.0,0.0,0.0,0.0} ;
+   float *xc, *yc, *xyc ; int nbp ;
 
    if( tdh == NULL ) return hmc ;
 
-   nww = tdh->nww; xc = tdh->xc; yc = tdh->yc; xyc = tdh->xyc; nbp = tdh->nbin+1;
-
-   if( nww <= 0.0f ) return hmc ;
+   nww = (double)tdh->nww; if( nww <= 0.0 ) return hmc ;
+   xc = tdh->xc; yc = tdh->yc; xyc = tdh->xyc; nbp = tdh->nbin+1;
 
    INCOR_normalize_2Dhist(tdh) ;
 
    /*-- compute Hel, MI, NMI from histogram --*/
 
-   hel = vv = uu = 0.0f ;
+   hel = vv = uu = 0.0 ;
    for( ii=0 ; ii < nbp ; ii++ ){
-     if( xc[ii] > 0.0f ) vv += xc[ii] * logf( xc[ii] ) ;
-     if( yc[ii] > 0.0f ) vv += yc[ii] * logf( yc[ii] ) ;
+     if( xc[ii] > 0.0 ) vv += xc[ii] * log( xc[ii] ) ;
+     if( yc[ii] > 0.0 ) vv += yc[ii] * log( yc[ii] ) ;
      for( jj=0 ; jj < nbp ; jj++ ){
        pq = XYC(ii,jj) ;
-       if( pq > 0.0f ){
-         hel += sqrtf( pq * xc[ii] * yc[jj] ) ;
-         uu  += pq * logf( pq );
+       if( pq > 0.0 ){
+         hel += sqrt( pq * xc[ii] * yc[jj] ) ;
+         uu  += pq * log( pq );
        }
      }
    }
-   hmc.a = 1.0f - hel ;                   /* Hellinger */
-   hmc.b = uu - vv ;                      /* MI */
-   hmc.c = (vv != 0.0f) ? uu/vv : 0.0f ;  /* NMI */
+   hmc.a = 1.0 - hel ;                  /* Hellinger */
+   hmc.b = uu - vv ;                    /* MI */
+   hmc.c = (vv != 0.0) ? uu/vv : 0.0 ;  /* NMI */
 
    /*-- compute CR(y|x) from histogram --*/
 
-   cyvar = 0.0f ;
+   cyvar = 0.0 ;
    for( ii=0 ; ii < nbp ; ii++ ){
-     if( xc[ii] > 0.0f ){
-       vv = uu = 0.0f ;               /* uu=E(y|x)  vv=E(y^2|x) */
+     if( xc[ii] > 0.0 ){
+       vv = uu = 0.0 ;               /* uu=E(y|x)  vv=E(y^2|x) */
        for( jj=1 ; jj < nbp ; jj++ ){
          uu += (jj * XYC(ii,jj)) ; vv += jj * (jj * XYC(ii,jj)) ;
        }
        cyvar += (vv - uu*uu/xc[ii] ) ; /* Var(y|x) */
      }
    }
-   vv = uu = uyvar = 0.0f ;
+   vv = uu = uyvar = 0.0 ;
    for( jj=1 ; jj < nbp ; jj++ ){     /* uu=E(y)  vv=E(y^2) */
      uu += (jj * yc[jj]) ; vv += jj * (jj * yc[jj]) ;
    }
    uyvar = vv - uu*uu ;                  /* Var(y) */
-   yrat  = (uyvar > 0.0f) ? cyvar/uyvar  /* Var(y|x) / Var(y) */
-                          : 1.0f ;
+   yrat  = (uyvar > 0.0) ? cyvar/uyvar   /* Var(y|x) / Var(y) */
+                         : 1.0 ;
 
    /** compute CR(x|y) also, for symmetrization **/
 
-   cyvar = 0.0f ;
+   cyvar = 0.0 ;
    for( jj=0 ; jj < nbp ; jj++ ){
-     if( yc[jj] > 0.0f ){
-       vv = uu = 0.0f ;               /* uu=E(x|y)  vv=E(x^2|y) */
+     if( yc[jj] > 0.0 ){
+       vv = uu = 0.0 ;               /* uu=E(x|y)  vv=E(x^2|y) */
        for( ii=1 ; ii < nbp ; ii++ ){
          uu += (ii * XYC(ii,jj)) ; vv += ii * (ii * XYC(ii,jj)) ;
        }
        cyvar += (vv - uu*uu/yc[jj] ) ; /* Var(x|y) */
      }
    }
-   vv = uu = uyvar = 0.0f ;
+   vv = uu = uyvar = 0.0 ;
    for( ii=1 ; ii < nbp ; ii++ ){     /* uu=E(x)  vv=E(x^2) */
      uu += (ii * xc[ii]) ; vv += ii * (ii * xc[ii]) ;
    }
    uyvar = vv - uu*uu ;                 /* Var(x) */
-   xrat  = (uyvar > 0.0f) ? cyvar/uyvar /* Var(x|y) / Var(x) */
-                          : 1.0f ;
+   xrat  = (uyvar > 0.0) ? cyvar/uyvar  /* Var(x|y) / Var(x) */
+                         : 1.0 ;
 
-   hmc.d = 1.0f - 0.5f*(xrat+yrat) ; /** additive symmetrization **/
+   hmc.d = 1.0 - 0.5*(xrat+yrat) ; /** additive symmetrization **/
    return hmc ;
 }
 
@@ -873,11 +871,11 @@ INCOR_pearson * INCOR_create_incomplete_pearson(void)
 
 /*----------------------------------------------------------------------------*/
 
-float INCOR_incomplete_pearson( INCOR_pearson *inpear )
+double INCOR_incomplete_pearson( INCOR_pearson *inpear )
 {
    double xv , yv , xy , swi , val ;
 
-   if( inpear->sw <= 0.0 ) return 0.0f ;
+   if( inpear->sw <= 0.0 ) return 0.0 ;
 
    swi = 1.0 / inpear->sw ;
 
@@ -885,27 +883,27 @@ float INCOR_incomplete_pearson( INCOR_pearson *inpear )
    yv = inpear->syy - inpear->sy * inpear->sy * swi ;
    xy = inpear->sxy - inpear->sx * inpear->sy * swi ;
 
-   if( xv <= 0.0 || yv <= 0.0 ) return 0.0f ;
-   val = (xy/sqrt(xv*yv)) ; val = MYatanh(val) ; return (float)val ;
+   if( xv <= 0.0 || yv <= 0.0 ) return 0.0 ;
+   val = (xy/sqrt(xv*yv)) ; val = MYatanh(val) ; return val ;
 }
 
 /*----------------------------------------------------------------------------*/
 /*----------------------------------------------------------------------------*/
 
-void INCOR_addto_incomplete_pearclp( int n, float *x, float *y,
-                                            float *w, INCOR_pearclp *inpear )
+#ifndef USE_OMP /*--- Serial code version ---*/
+
+void INCOR_addto_incomplete_pearclp_SS( int n, float *x, float *y,
+                                        float *w, INCOR_pearclp *inpear )
 {
    int ii ; double sx,sxx , sy,syy,sxy , sw ;
-   double xcb,xct , ycb,yct ;
+   double xcb,xct , ycb,yct , xmid,ymid ;
    double xdb,xdt , ydb,ydt ;
-
-   if( n <= 0 || x == NULL || y == NULL || inpear == NULL ) return ;
 
    sx = inpear->sx ; sxx = inpear->sxx ;
    sy = inpear->sy ; syy = inpear->syy ; sxy = inpear->sxy ; sw = inpear->sw ;
 
-   xcb = inpear->xcbot ; xct = inpear->xctop ;
-   ycb = inpear->ycbot ; yct = inpear->yctop ;
+   xcb = inpear->xcbot ; xct = inpear->xctop ; xmid = 0.5f*(xcb+xct) ;
+   ycb = inpear->ycbot ; yct = inpear->yctop ; ymid = 0.5f*(ycb+yct) ;
    xdb = inpear->xdbot ; xdt = inpear->xdtop ;
    ydb = inpear->ydbot ; ydt = inpear->ydtop ;
 
@@ -914,11 +912,11 @@ void INCOR_addto_incomplete_pearclp( int n, float *x, float *y,
      for( ii=0 ; ii < n ; ii++ ){
        cl = 1 ;
        xx = (double)x[ii] ;
-       if( xx <= xcb ){ xx = xdb; cl++; } else if( xx >= xct ){ xx = xdt; cl++;}
+       if( xx <= xcb ){ xx = xdb; cl++; } else if( xx >= xct ){ xx = xdt; cl++; }
        yy = (double)y[ii] ;
-       if( yy <= ycb ){ yy = ydb; cl++; } else if( yy >= yct ){ yy = ydt; cl++;}
-       ww = 1.0 / cl ;
-       sx += xx ; sxx += xx*xx ; sy += yy ; syy += yy*yy ; sxy += xx*yy ; sw += ww ;
+       if( yy <= ycb ){ yy = ydb; cl++; } else if( yy >= yct ){ yy = ydt; cl++; }
+       ww = 1.0 / cl ; xx -= xmid ; yy -= ymid ;
+       sx += xx*ww ; sxx += xx*xx*ww ; sy += yy*ww ; syy += yy*yy*ww ; sxy += xx*yy*ww ; sw += ww ;
      }
    } else {
      double xx , yy , ww ; int cl ;
@@ -927,10 +925,10 @@ void INCOR_addto_incomplete_pearclp( int n, float *x, float *y,
        if( ww > 0.0 ){
          cl = 1 ;
          xx = (double)x[ii] ;
-         if( xx <= xcb ){ xx = xdb; cl++; } else if( xx >= xct ){ xx = xdt; cl++;}
+         if( xx <= xcb ){ xx = xdb; cl++; } else if( xx >= xct ){ xx = xdt; cl++; }
          yy = (double)y[ii] ;
-         if( yy <= ycb ){ yy = ydb; cl++; } else if( yy >= yct ){ yy = ydt; cl++;}
-         ww /= cl ;
+         if( yy <= ycb ){ yy = ydb; cl++; } else if( yy >= yct ){ yy = ydt; cl++; }
+         ww /= cl ; xx -= xmid ; yy -= ymid ;
          sx += xx*ww ; sxx += xx*xx*ww ;
          sy += yy*ww ; syy += yy*yy*ww ; sxy += xx*yy*ww ; sw += ww ;
        }
@@ -941,6 +939,104 @@ void INCOR_addto_incomplete_pearclp( int n, float *x, float *y,
    inpear->sx   = sx ; inpear->sxx = sxx ;
    inpear->sy   = sy ; inpear->syy = syy ; inpear->sxy = sxy ; inpear->sw = sw ;
 
+   return ;
+}
+
+/*----------------------------------------------------------------------------*/
+#else /*--- Parallel-ized verison of the above ----------------------*/
+
+void INCOR_addto_incomplete_pearclp_PP( int n, float *x, float *y,
+                                        float *w, INCOR_pearclp *inpear )
+{
+   int jj ; double sx,sxx , sy,syy,sxy , sw ;
+   double xcb,xct , ycb,yct , xmid,ymid ;
+   double xdb,xdt , ydb,ydt ;
+
+   xcb = inpear->xcbot ; xct = inpear->xctop ; xmid = 0.5f*(xcb+xct) ;
+   ycb = inpear->ycbot ; yct = inpear->yctop ; ymid = 0.5f*(ycb+yct) ;
+   xdb = inpear->xdbot ; xdt = inpear->xdtop ;
+   ydb = inpear->ydbot ; ydt = inpear->ydtop ;
+
+   for( jj=0 ; jj < nthmax ; jj++ ){
+     dhaar[jj] = dhbbr[jj] = dhccr[jj] = dhddr[jj] = dheer[jj] = dhffr[jj] = 0.0 ;
+   }
+
+   if( w == NULL ){
+
+#pragma omp parallel
+     { double xx , yy , ww ; int cl,ii ; int ith=omp_get_thread_num() ;
+       double tx=0.0,txx=0.0,ty=0.0,tyy=0.0,txy=0.0,tw=0.0 ;
+#pragma omp for
+       for( ii=0 ; ii < n ; ii++ ){
+         cl = 1 ;
+         xx = (double)x[ii] ;
+         if( xx <= xcb ){ xx = xdb; cl++; } else if( xx >= xct ){ xx = xdt; cl++; }
+         yy = (double)y[ii] ;
+         if( yy <= ycb ){ yy = ydb; cl++; } else if( yy >= yct ){ yy = ydt; cl++; }
+         ww = 1.0 / cl ; xx -= xmid ; yy -= ymid ;
+         tx  += ww*xx    ; txx += ww*xx*xx ; ty += ww*yy ;
+         tyy += ww*yy*yy ; txy += ww*xx*yy ; tw += ww ;
+       }
+#pragma omp critical
+       { dhaar[ith] = tx  ; dhbbr[ith] = txx ; dhccr[ith] = ty ;
+         dhddr[ith] = tyy ; dheer[ith] = txy ; dhffr[ith] = tw ; }
+     } /* end parallel */
+
+   } else {
+
+#pragma omp parallel
+     { double xx , yy , ww ; int cl,ii ; int ith=omp_get_thread_num() ;
+       double tx=0.0,txx=0.0,ty=0.0,tyy=0.0,txy=0.0,tw=0.0 ;
+#pragma omp for
+       for( ii=0 ; ii < n ; ii++ ){
+         ww = (double)w[ii] ;
+         if( ww > 0.0 ){
+           cl = 1 ;
+           xx = (double)x[ii] ;
+           if( xx <= xcb ){ xx = xdb; cl++; } else if( xx >= xct ){ xx = xdt; cl++; }
+           yy = (double)y[ii] ;
+           if( yy <= ycb ){ yy = ydb; cl++; } else if( yy >= yct ){ yy = ydt; cl++; }
+           ww /= cl ; xx -= xmid ; yy -= ymid ;
+           tx  += ww*xx    ; txx += ww*xx*xx ; ty += ww*yy ;
+           tyy += ww*yy*yy ; txy += ww*xx*yy ; tw += ww ;
+         }
+       }
+#pragma omp critical
+       { dhaar[ith] = tx  ; dhbbr[ith] = txx ; dhccr[ith] = ty ;
+         dhddr[ith] = tyy ; dheer[ith] = txy ; dhffr[ith] = tw ; }
+     } /* end parallel */
+   }
+
+   /*-- add partial sums from each thread to the results --*/
+
+   sx  = inpear->sx  ; sxx = inpear->sxx ;
+   sy  = inpear->sy  ; syy = inpear->syy ;
+   sxy = inpear->sxy ; sw  = inpear->sw  ;
+   for( jj=0 ; jj < nthmax ; jj++ ){
+     sx  += dhaar[jj] ; sxx += dhbbr[jj] ;
+     sy  += dhccr[jj] ; syy += dhddr[jj] ;
+     sxy += dheer[jj] ; sw  += dhffr[jj] ;
+   }
+
+   inpear->npt += n ;
+   inpear->sx   = sx ; inpear->sxx = sxx ;
+   inpear->sy   = sy ; inpear->syy = syy ; inpear->sxy = sxy ; inpear->sw = sw ;
+
+   return ;
+}
+#endif  /* USE_OMP */
+
+/*----------------------------------------------------------------------------*/
+
+void INCOR_addto_incomplete_pearclp( int n, float *x, float *y,
+                                     float *w, INCOR_pearclp *inpear )
+{
+   if( n <= 0 || x == NULL || y == NULL || inpear == NULL ) return ;
+#ifdef USE_OMP
+   INCOR_addto_incomplete_pearclp_PP( n , x,y,w , inpear ) ;
+#else
+   INCOR_addto_incomplete_pearclp_SS( n , x,y,w , inpear ) ;
+#endif
    return ;
 }
 
@@ -971,11 +1067,11 @@ INCOR_pearclp * INCOR_create_incomplete_pearclp(void)
 
 /*----------------------------------------------------------------------------*/
 
-float INCOR_incomplete_pearclp( INCOR_pearclp *inpear )
+double INCOR_incomplete_pearclp( INCOR_pearclp *inpear )
 {
    double xv , yv , xy , swi , val ;
 
-   if( inpear->sw <= 0.0 ) return 0.0f ;
+   if( inpear->sw <= 0.0 ) return 0.0 ;
 
    swi = 1.0 / inpear->sw ;
 
@@ -983,8 +1079,8 @@ float INCOR_incomplete_pearclp( INCOR_pearclp *inpear )
    yv = inpear->syy - inpear->sy * inpear->sy * swi ;
    xy = inpear->sxy - inpear->sx * inpear->sy * swi ;
 
-   if( xv <= 0.0 || yv <= 0.0 ) return 0.0f ;
-   val = (xy/sqrt(xv*yv)) ; val = MYatanh(val) ; return (float)val ;
+   if( xv <= 0.0 || yv <= 0.0 ) return 0.0 ;
+   val = (xy/sqrt(xv*yv)) ; val = MYatanh(val) ; return val ;
 }
 
 /*============================================================================*/
@@ -1238,9 +1334,9 @@ ENTRY("INCOR_addto") ;
      correlation as that varying data is munged around.
 *//*--------------------------------------------------------------------------*/
 
-float INCOR_evaluate( void *vin , int n , float *x , float *y , float *w )
+double INCOR_evaluate( void *vin , int n , float *x , float *y , float *w )
 {
-   void *vtmp ; float val=0.0f ;
+   void *vtmp ; double val=0.0 ;
 
 ENTRY("INCOR_evaluate") ;
 

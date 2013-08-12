@@ -46,6 +46,8 @@ int main( int argc , char *argv[] )
 
    /*----- Read command line -----*/
 
+   AFNI_SETUP_OMP(0) ;  /* 24 Jun 2013 */
+
    if( argc < 2 || strcmp(argv[1],"-help") == 0 ){
       printf("Usage: 3dDespike [options] dataset\n"
              "Removes 'spikes' from the 3D+time input dataset and writes\n"
@@ -211,7 +213,7 @@ int main( int argc , char *argv[] )
    if( corder > 0 && 4*corder+2 > nuse ){
      ERROR_exit("-corder %d is too big for NT=%d",corder,nvals) ;
    } else if( corder < 0 ){
-     corder = rint(nuse/30.0) ;
+     corder = rint(nuse/30.0) ; if( corder > 50 ) corder = 50 ;
      if( verb ) INFO_message("using %d time points => -corder %d",nuse,corder) ;
    } else {
      if( verb ) INFO_message("-corder %d set from command line",corder) ;
@@ -414,6 +416,8 @@ int main( int argc , char *argv[] )
         }
         kzold = kz ;
       }
+#else
+      if( verb && ii % 2345 == 1234 ) fprintf(stderr,".") ;
 #endif
 
       /*** extract ii-th time series into far[] ***/
@@ -548,6 +552,10 @@ int main( int argc , char *argv[] )
 
  } /* end OpenMP */
  AFNI_OMP_END ;
+
+#ifdef USE_OMP
+   if( verb ) fprintf(stderr,"\n") ;
+#endif
 
    /*--- finish up ---*/
 

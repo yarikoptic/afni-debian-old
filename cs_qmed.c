@@ -6,6 +6,18 @@
 
 #include "mrilib.h"
 
+/*------------------------------------------------------------------------*/
+
+float qmean_float( int n , float *ar )
+{
+   int ii ; float sum=0.0f ;
+
+   if( n <= 0 || ar == NULL ) return sum ;
+
+   for( ii=0 ; ii < n ; ii++ ) sum += ar[ii] ;
+   sum /= n ; return sum ;
+}
+
 /*------------------------------------------------------------------------
    Compute the median of an array of floats.  Will rearrange (partially
    sort) the array in the process.  The algorithm is based on Quicksort,
@@ -329,6 +341,18 @@ int compare_Z_IQSORT_INT (Z_QSORT_INT *a, Z_QSORT_INT *b )
       return (0);
    else if (a->x > b->x)
       return (-1);
+   /* this will never be reached but it will shut the compiler up */
+   return (0);
+}
+
+int compare_Z_QSORT_INT (Z_QSORT_INT *a, Z_QSORT_INT *b )
+{
+   if (a->x < b->x)
+      return (-1);
+   else if (a->x == b->x)
+      return (0);
+   else if (a->x > b->x)
+      return (1);
    /* this will never be reached but it will shut the compiler up */
    return (0);
 }

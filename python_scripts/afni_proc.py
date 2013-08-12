@@ -362,12 +362,30 @@ g_history = """
     3.34 Oct 01, 2012: added 'file' type for -regress_stim_types
     3.35 Oct 03, 2012: make dashed parameters illegal for many options
     3.36 Oct 17, 2012: remove unneeded -set_tr from 1d_tool.py -censor_motion
+    3.37 Jan 09, 2013: added -regress_compute_gcor
+    3.38 Feb 05, 2013: minor help intro update
+    3.39 Feb 14, 2013: update for -move_preproc_files for surfaces
+    3.40 Feb 21, 2013: minor help update
+    3.41 Apr 05, 2013: aea.py: revert -save_orig_skullstrip to -save_skullstrip
+                       (requires align_epi_anat.py from 1 Apr 2013)
+    3.42 Apr 09, 2013: fixed computed fitts for REML case
+                       (thanks to G Pagnoni for noting the problem)
+    3.43 Apr 15, 2013: added RESTING STATE NOTE to help
+    3.44 Apr 23, 2013: added eroded ROIs for -regress_ROI: WMe, GMe, CSFe
+    3.45 May 03, 2013: added options -regress_anaticor and -mask_segment_erode
+    3.46 May 03, 2013:
+        - added help example 9b, recommended resting state with ANATICOR
+        - -regress_anaticor implies -mask_segment_anat and -mask_segment_erode
+    3.47 May 09, 2013: small code reorg in prep for ...
+    3.48 May 09, 2013: added options -write_3dD_script, -write_3dD_prefix
+    3.49 Jun 25, 2013: added options -volreg_mosim, -volreg_opts_ms
+    3.50 Jun 27, 2013: added option -regress_mot_as_ort
 """
 
-g_version = "version 3.36, October 17, 2012"
+g_version = "version 3.50, June 27, 2013"
 
 # version of AFNI required for script execution
-g_requires_afni = "8 May 2012"
+g_requires_afni = "10 Jun 2013"
 
 # ----------------------------------------------------------------------
 # dictionary of block types and modification functions
@@ -428,11 +446,13 @@ class SubjProcSream:
         # for regression, maybe just mot_file, maybe per run, external
         # or might include demean and/or derivatives
         self.mot_regs   = []            # motion files to use in regression
+        self.mot_names  = []            # short names for motion files
         self.mot_per_run= 0             # motion regression per run
         self.mot_default= ''            # probably 'dfile_rall.1D', if set
         self.mot_extern = ''            # from -regress_motion_file
         self.mot_demean = ''            # from demeaned motion file
         self.mot_deriv  = ''            # motion derivatives
+        self.mot_simset = None          # motion simulation dset (afni_name)
 
         self.mot_cen_lim= 0             # motion censor limit, if applied
         self.out_cen_lim= 0             # outlier censor limit, if applied
@@ -445,8 +465,12 @@ class SubjProcSream:
         self.out_dir    = ''            # output directory for use by script
         self.od_var     = ''            # output dir variable: $output_dir
         self.script     = None          # script name, default proc.SUBJ
+        self.script_3dD = ''            # name of 3dDecon script, if desired
+        self.prefix_3dD = 'test.'       # prefix for 3dD script output files
+        self.make_main_script = 1       # do we actually create main script?
         self.overwrite  = 0             # overwrite script file?
         self.fp         = None          # file object
+        self.all_runs   = ''            # prefix for final all_runs dataset
         self.anat       = None          # anatomoy to copy (afni_name class)
         self.anat_has_skull = 1         # does the input anat have a skull
                                         # also updated in db_cmd_align
@@ -456,6 +480,8 @@ class SubjProcSream:
         self.tlrc_ss    = 1             # whether to do skull strip in tlrc
         self.warp_epi   = 0             # xform bitmap: tlrc, adwarp, a2e, e2a
         self.a2e_mat    = None          # anat2epi transform matrix file
+        self.e2final_mv = []            # matvec list takes epi base to final
+        self.e2final    = ''            # aff12.1D file for e2final_mv
         self.align_ebase= None          # external EPI for align_epi_anat.py
         self.align_epre = 'ext_align_epi' # copied align epi base prefix
         self.rm_rm      = 1             # remove rm.* files (user option)
@@ -507,6 +533,7 @@ class SubjProcSream:
         self.origview   = '+orig'       # view could also be '+tlrc'
         self.view       = '+orig'       # (starting and 'current' views)
         self.xmat       = 'X.xmat.1D'   # X-matrix file (might go uncensored)
+        self.xmat_nocen = 'X.xmat.1D'   # X-matrix file (without censoring)
 
         # options for surface based script
         self.surf_spec  = []            # left and/or right spec files
@@ -647,6 +674,10 @@ class SubjProcSream:
         self.valid_opts.add_opt('-test_stim_files', 1, [],
                         acplist=['yes','no'],
                         helpstr="test stim_files for validity (default=yes)")
+        self.valid_opts.add_opt('-write_3dD_prefix', 1, [],
+                       helpstr="prefix for output files via -write_3dD_script")
+        self.valid_opts.add_opt('-write_3dD_script', 1, [],
+                       helpstr="only write 3dDeconvolve script (to given file)")
         self.valid_opts.add_opt('-verb', 1, [],
                         helpstr="set the verbose level")
 
@@ -722,8 +753,12 @@ class SubjProcSream:
                         helpstr='compute TSNR datasets (yes/no) of volreg run1')
         self.valid_opts.add_opt('-volreg_interp', 1, [],
                         helpstr='interpolation method used in volreg')
+        self.valid_opts.add_opt('-volreg_motsim', 0, [],
+                        helpstr='create a motion simulated time series')
         self.valid_opts.add_opt('-volreg_no_extent_mask', 0, [],
                         helpstr='do not restrict warped EPI to extents')
+        self.valid_opts.add_opt('-volreg_opts_ms', -1, [],
+                        helpstr='add options directly to @simulate_motion')
         self.valid_opts.add_opt('-volreg_opts_vr', -1, [],
                         helpstr='additional options directly for 3dvolreg')
         self.valid_opts.add_opt('-volreg_regress_per_run', 0, [],
@@ -766,6 +801,9 @@ class SubjProcSream:
         self.valid_opts.add_opt('-mask_segment_anat', 1, [],
                         acplist=['yes', 'no'],
                         helpstr="automatic segmentation using 3dSeg (yes/no)")
+        self.valid_opts.add_opt('-mask_segment_erode', 1, [],
+                        acplist=['yes', 'no'],
+                        helpstr="also create eroded segmentation masks")
         self.valid_opts.add_opt('-mask_test_overlap', 1, [],
                         acplist=['yes','no'],
                         helpstr='test anat/EPI mask overlap (yes/no)')
@@ -780,6 +818,8 @@ class SubjProcSream:
 
         self.valid_opts.add_opt('-regress_3dD_stop', 0, [],
                         helpstr="stop 3dDeconvolve after matrix generation")
+        self.valid_opts.add_opt('-regress_anaticor', 0, [],
+                        helpstr="apply ANATICOR: regress WMeLocal time series")
         self.valid_opts.add_opt('-regress_apply_mask', 0, [],
                         helpstr="apply the mask in regression")
         self.valid_opts.add_opt('-regress_apply_ricor', 1, [],
@@ -793,6 +833,9 @@ class SubjProcSream:
                         helpstr="one basis function per stimulus class")
         self.valid_opts.add_opt('-regress_basis_normall', 1, [],
                         helpstr="specify magnitude of basis functions")
+        self.valid_opts.add_opt('-regress_compute_gcor', 1, [],
+                        acplist=['yes','no'],
+                        helpstr='compute global correlation in residuals')
         self.valid_opts.add_opt('-regress_compute_tsnr', 1, [],
                         acplist=['yes','no'],
                         helpstr='compute TSNR datasets (yes/no) after regress')
@@ -838,6 +881,9 @@ class SubjProcSream:
         self.valid_opts.add_opt('-regress_apply_mot_types', -1, [],
                         acplist=['basic','demean','deriv'],
                         helpstr="specify which motion parameters to apply")
+        self.valid_opts.add_opt('-regress_mot_as_ort', 1, [],
+                        acplist=['yes','no'],
+                        helpstr="apply motion params via -ortvec")
         self.valid_opts.add_opt('-regress_motion_file', 1, [],
                         helpstr="external file to apply as motion regressors")
         self.valid_opts.add_opt('-regress_motion_per_run', 0, [],
@@ -983,6 +1029,15 @@ class SubjProcSream:
 
         # end terminal options
 
+        # options that imply other options
+        if opt_list.find_opt('-regress_anaticor'):
+           opt_list.add_opt("-mask_segment_anat", 1, ["yes"], setpar=1)
+           opt_list.add_opt("-mask_segment_erode", 1, ["yes"], setpar=1)
+
+        # end options that imply other options
+
+        # end terminal options
+
         opt = opt_list.find_opt('-check_results_dir')
         if opt_is_no(opt): self.check_rdir = 'no'
 
@@ -1031,6 +1086,15 @@ class SubjProcSream:
         opt = opt_list.find_opt('-script')
         if opt != None: self.script = opt.parlist[0]
         else:           self.script = 'proc.%s' % self.subj_id
+
+        opt = opt_list.find_opt('-write_3dD_prefix')
+        if opt != None:
+           self.prefix_3dD = opt.parlist[0]
+
+        opt = opt_list.find_opt('-write_3dD_script')
+        if opt != None:
+           self.script_3dD = opt.parlist[0]
+           self.make_main_script = 0
 
         opt = opt_list.find_opt('-scr_overwrite')
         if opt != None: self.overwrite = 1
@@ -1304,14 +1368,14 @@ class SubjProcSream:
                 print "** script creation failure for block '%s'" % block.label
                 errs += 1
             else:
-                self.fp.write(add_line_wrappers(cmd_str))
+                self.write_text(add_line_wrappers(cmd_str))
                 if self.verb>3: block.show('+d post command creation: ')
                 if self.verb>4: print '+d %s cmd: \n%s'%(block.label, cmd_str)
 
         if self.epi_review:
             cmd_str = db_cmd_gen_review(self)
             if cmd_str:
-                self.fp.write(add_line_wrappers(cmd_str))
+                self.write_text(add_line_wrappers(cmd_str))
                 if self.verb > 1:
                     print "+d generated EPI review script %s" % self.epi_review
             else:
@@ -1322,8 +1386,8 @@ class SubjProcSream:
         rv = self.finalize_script()     # finish the script
         if rv: errs += 1
 
-        if self.fp: self.fp.close()
-        os.chmod(self.script, 0755)     # make executable
+        self.close_script()
+        self.make_exec()
 
         if errs > 0:
             # default to removing any created script
@@ -1567,20 +1631,14 @@ class SubjProcSream:
 
     # set subj shell variable, check output dir, create and cd
     def init_script(self):
-        if not self.overwrite and os.path.isfile(self.script):
-            print "error: script file '%s' already exists, exiting..." % \
-                  self.script
-            return 0
-        try: self.fp = open(self.script,'w')
-        except:
-            print "cannot open script file '%s' for writing" % self.script
-            return 1
+        if self.open_script(): return 1
 
         if self.exit_on_error: topt = ' -xef'
         else:                  topt = ' -x'
-        self.fp.write('#!/bin/tcsh%s\n\n' % topt)
-        self.fp.write('echo "auto-generated by afni_proc.py, %s"\n' % asctime())
-        self.fp.write('echo "(%s)"\n\n'% g_version)
+        self.write_text('#!/bin/tcsh%s\n\n' % topt)
+        self.write_text('echo "auto-generated by afni_proc.py, %s"\n' \
+                        % asctime())
+        self.write_text('echo "(%s)"\n\n'% g_version)
 
         # include execution method in script
         if self.exit_on_error: opts = '-xef'
@@ -1595,26 +1653,26 @@ class SubjProcSream:
         if self.user_opts.find_opt('-bash'): self.exec_cmd = self.bash_cmd
         else:                                self.exec_cmd = self.tcsh_cmd
 
-        self.fp.write('# execute via : \n'      \
-                      '#   %s\n\n' % self.exec_cmd)
+        self.write_text('# execute via : \n'      \
+                        '#   %s\n\n' % self.exec_cmd)
 
         # maybe the user want to check the status of the init operations
         if not self.check_setup_errors: stat_inc = ''
         else: stat_inc = '@ nerrors += $status      # accumulate error count\n'
 
-        self.fp.write('# %s\n'  \
+        self.write_text('# %s\n'  \
                       '# script setup\n\n' % block_header('auto block: setup'))
 
         if len(stat_inc) > 0:
-            self.fp.write("# prepare to count setup errors\n" \
-                          "set nerrors = 0\n\n")
+            self.write_text("# prepare to count setup errors\n" \
+                            "set nerrors = 0\n\n")
 
         # possibly check the AFNI version (via afni_history)
         opt = self.user_opts.find_opt('-check_afni_version')
         if not opt or opt_is_yes(opt):
-          self.fp.write('# take note of the AFNI version\n' \
-                        'afni -ver\n\n')
-          self.fp.write(                                                      \
+          self.write_text('# take note of the AFNI version\n' \
+                          'afni -ver\n\n')
+          self.write_text(                                                    \
           '# check that the current AFNI version is recent enough\n'          \
           'afni_history -check_date %s\n'                                     \
           'if ( $status ) then\n'                                             \
@@ -1623,52 +1681,52 @@ class SubjProcSream:
           '    exit\n'                                                        \
           'endif\n\n' % (g_requires_afni, g_requires_afni) )
 
-        self.fp.write('# the user may specify a single subject to run with\n'\
+        self.write_text('# the user may specify a single subject to run with\n'\
                       'if ( $#argv > 0 ) then\n'                             \
                       '    set subj = $argv[1]\n'                            \
                       'else\n'                                               \
                       '    set subj = %s\n'                                  \
                       'endif\n\n' % self.subj_id )
-        self.fp.write('# assign output directory name\n'
-                      'set output_dir = %s\n\n' % self.out_dir)
+        self.write_text('# assign output directory name\n'
+                        'set output_dir = %s\n\n' % self.out_dir)
         if self.check_rdir == 'yes':
-           self.fp.write( \
+           self.write_text( \
                 '# verify that the results directory does not yet exist\n'\
                 'if ( -d %s ) then\n'                                     \
                 '    echo output dir "$subj.results" already exists\n'    \
                 '    exit\n'                                              \
                 'endif\n\n' % self.od_var)
-        self.fp.write('# set list of runs\n')
+        self.write_text('# set list of runs\n')
         digs = 2
         if self.runs > 99: digs = 3
-        self.fp.write('set runs = (`count -digits %d 1 %d`)\n\n' \
-                      % (digs,self.runs) )
+        self.write_text('set runs = (`count -digits %d 1 %d`)\n\n' \
+                        % (digs,self.runs) )
 
-        self.fp.write('# create results and stimuli directories\n')
-        self.fp.write('mkdir %s\nmkdir %s/stimuli\n%s\n' \
-                      % (self.od_var, self.od_var, stat_inc))
+        self.write_text('# create results and stimuli directories\n')
+        self.write_text('mkdir %s\nmkdir %s/stimuli\n%s\n' \
+                        % (self.od_var, self.od_var, stat_inc))
 
         if len(self.stims_orig) > 0: # copy stim files into script's stim dir
-            str = '# copy stim files into stimulus directory\ncp'
+            tstr = '# copy stim files into stimulus directory\ncp'
             for ind in range(len(self.stims)):
-                str += ' %s' % self.stims_orig[ind]
-            str += ' %s/stimuli\n' % self.od_var
-            self.fp.write(add_line_wrappers(str))
-            self.fp.write("%s\n" % stat_inc)
+                tstr += ' %s' % self.stims_orig[ind]
+            tstr += ' %s/stimuli\n' % self.od_var
+            self.write_text(add_line_wrappers(tstr))
+            self.write_text("%s\n" % stat_inc)
 
         if len(self.extra_stims) > 0: # copy extra stim files into stim dir
-            str = '# copy extra stim files\n'   \
+            tstr = '# copy extra stim files\n'   \
                   'cp %s %s/stimuli\n' %        \
                   (' '.join(self.extra_stims_orig), self.od_var)
-            self.fp.write(add_line_wrappers(str))
-            self.fp.write("%s\n" % stat_inc)
+            self.write_text(add_line_wrappers(tstr))
+            self.write_text("%s\n" % stat_inc)
 
         if self.anat:
-            str = '# copy anatomy to results dir\n'     \
+            tstr = '# copy anatomy to results dir\n'     \
                   '3dcopy %s %s/%s\n' %                 \
                       (self.anat.rel_input(), self.od_var, self.anat.prefix)
-            self.fp.write(add_line_wrappers(str))
-            self.fp.write("%s\n" % stat_inc)
+            self.write_text(add_line_wrappers(tstr))
+            self.write_text("%s\n" % stat_inc)
 
             # further use should assume AFNI format
             self.anat.to_afni(new_view=dset_view(self.anat.ppve()))
@@ -1677,35 +1735,35 @@ class SubjProcSream:
 
         # possibly copy over any volreg base
         if self.vr_ext_base != None:
-            str = "# copy over the external volreg base\n"  \
+            tstr = "# copy over the external volreg base\n"  \
                   "3dbucket -prefix %s/%s '%s'\n" %         \
                   (self.od_var, self.vr_ext_pre, self.vr_ext_base)
-            self.fp.write(add_line_wrappers(str))
-            self.fp.write("%s\n" % stat_inc)
+            self.write_text(add_line_wrappers(tstr))
+            self.write_text("%s\n" % stat_inc)
 
         # possibly copy over any align EPI base
         if self.align_ebase != None:
-            str = "# copy over the external align_epi_anat.py EPI volume\n" \
+            tstr = "# copy over the external align_epi_anat.py EPI volume\n" \
                   "3dbucket -prefix %s/%s '%s'\n" %         \
                   (self.od_var, self.align_epre, self.align_ebase)
-            self.fp.write(add_line_wrappers(str))
-            self.fp.write("%s\n" % stat_inc)
+            self.write_text(add_line_wrappers(tstr))
+            self.write_text("%s\n" % stat_inc)
 
         opt = self.user_opts.find_opt('-regress_motion_file')
         if opt and len(opt.parlist) > 0:
-            str = '# copy external motion file into results dir\n' \
+            tstr = '# copy external motion file into results dir\n' \
                   'cp %s %s\n' %                                   \
                       (' '.join(quotize_list(opt.parlist,'')),self.od_var)
-            self.fp.write(add_line_wrappers(str))
-            self.fp.write("%s\n" % stat_inc)
+            self.write_text(add_line_wrappers(tstr))
+            self.write_text("%s\n" % stat_inc)
 
         opt = self.user_opts.find_opt('-regress_censor_extern')
         if opt and len(opt.parlist) > 0:
             fname = opt.parlist[0]
-            str = '# copy external censor file into results dir\n' \
+            tstr = '# copy external censor file into results dir\n' \
                   'cp %s %s\n' % (fname,self.od_var)
-            self.fp.write(add_line_wrappers(str))
-            self.fp.write("%s\n" % stat_inc)
+            self.write_text(add_line_wrappers(tstr))
+            self.write_text("%s\n" % stat_inc)
             self.censor_file = os.path.basename(fname)
             self.censor_count += 1
             if self.verb > 1:
@@ -1713,52 +1771,58 @@ class SubjProcSream:
 
         opt = self.user_opts.find_opt('-copy_files')
         if opt and len(opt.parlist) > 0:
-            str = '# copy extra files into results dir\n' \
+            tstr = '# copy extra files into results dir\n' \
                   'cp -rv %s %s\n' %                      \
                       (' '.join(quotize_list(opt.parlist,'')),self.od_var)
-            self.fp.write(add_line_wrappers(str))
-            self.fp.write("%s\n" % stat_inc)
+            self.write_text(add_line_wrappers(tstr))
+            self.write_text("%s\n" % stat_inc)
 
         # copy ricor_regs last to possibly match 3dTcat TR removal
         if len(self.ricor_regs) > 0:
-            str = copy_ricor_regs_str(self)
-            self.fp.write(add_line_wrappers(str))
-            self.fp.write("%s\n" % stat_inc)
+            tstr = copy_ricor_regs_str(self)
+            self.write_text(add_line_wrappers(tstr))
+            self.write_text("%s\n" % stat_inc)
 
         if len(stat_inc) > 0:
-            self.fp.write("# check for any setup failures\n"
-                          "if ( $nerrors > 0 ) then\n"
-                          "    echo '** setup failure ($nerrors errors)'\n"
-                          "    exit\n"
-                          "endif\n\n")
+            self.write_text("# check for any setup failures\n"
+                            "if ( $nerrors > 0 ) then\n"
+                            "    echo '** setup failure ($nerrors errors)'\n"
+                            "    exit\n"
+                            "endif\n\n")
 
-        self.fp.flush()
+        self.flush_script()
 
     # and last steps
     def finalize_script(self):
-        str = '# %s\n\n' % block_header('auto block: finalize')
-        self.fp.write(str)
+        tstr = '# %s\n\n' % block_header('auto block: finalize')
+        self.write_text(tstr)
 
         if self.rm_rm and self.have_rm and len(self.rm_list) > 0:
             if self.rm_dirs: ropt = 'r'
             else:            ropt = ''
             # make a list of things to delete, starting with rm.*
             delstr = ' '.join(self.rm_list)
-            self.fp.write('# remove temporary files\n'
-                          '\\rm -f%s %s\n\n' % (ropt, delstr))
+            self.write_text('# remove temporary files\n'
+                            '\\rm -f%s %s\n\n' % (ropt, delstr))
 
-        # move or remove pre-processing files
+        # move or remove pre-processing files (but not rm files)
+        # (2 sets: removal and move)
+        if self.surf_anat: proc_files = 'pb*.$subj.[lr]*'
+        else:              proc_files = 'pb*.$subj.r*.*'
+
+        rm_files = 'dfile.r*.1D %s' % proc_files
+        mv_files = 'outcount.*'
         if self.user_opts.find_opt('-move_preproc_files'):
             cmd_str = \
               "# move preprocessing files to 'preproc.data' directory\n"   \
               "mkdir preproc.data\n"                                       \
-              "mv dfile.r*.1D outcount* pb*.$subj.r*.* rm.* preproc.data\n\n"
-            self.fp.write(add_line_wrappers(cmd_str))
+              "mv %s %s preproc.data\n\n"                                  \
+              % (rm_files, mv_files)
+            self.write_text(add_line_wrappers(cmd_str))
         elif self.user_opts.find_opt('-remove_preproc_files'):
-            cmd_str = \
-              "# remove preprocessing files to save disk space\n"   \
-              "\\rm dfile.r*.1D pb*.$subj.r*.* rm.*\n\n"
-            self.fp.write(add_line_wrappers(cmd_str))
+            cmd_str = "# remove preprocessing files to save disk space\n"   \
+                      "\\rm %s\n\n" % rm_files
+            self.write_text(add_line_wrappers(cmd_str))
 
         # at the end, if the basic review script is here, run it
         if self.epi_review:
@@ -1766,35 +1830,35 @@ class SubjProcSream:
                 '# (want this to be the last text output)\n'             \
                 'if ( -e %s ) ./%s |& tee out.ss_review.$subj.txt\n\n'   \
                 % (self.ssr_basic, self.ssr_basic)
-           self.fp.write(ss)
+           self.write_text(ss)
 
         cmd_str = self.script_final_error_checks()
         if cmd_str: 
            if self.out_wfile:
-              self.fp.write(cmd_str)
+              self.write_text(cmd_str)
 
-        self.fp.write('# return to parent directory\n'
-                      'cd ..\n\n')
+        self.write_text('# return to parent directory\n'
+                        'cd ..\n\n')
 
         opt = self.user_opts.find_opt('-no_proc_command')
         if not opt:
-            str = '\n\n\n'                              \
+            tstr = '\n\n\n'                             \
               '# %s\n'                                  \
               '# script generated by the command:\n'    \
               '#\n'                                     \
               '# %s %s\n' %                             \
                 (block_header(''), os.path.basename(self.argv[0]),
                                  ' '.join(quotize_list(self.argv[1:],'')))
-            self.fp.write(add_line_wrappers(str))
+            self.write_text(add_line_wrappers(tstr))
 
         if self.user_opts.find_opt('-ask_me'):
-            str = '#\n# all applied options: '
+            tstr = '#\n# all applied options: '
             for opt in self.user_opts.olist:
                 if opt.name == '-ask_me': continue
-                str += opt.name+' '
-                str += ' '.join(quotize_list(opt.parlist,''))
-            str += '\n'
-            self.fp.write(add_line_wrappers(str))
+                tstr += opt.name+' '
+                tstr += ' '.join(quotize_list(opt.parlist,''))
+            tstr += '\n'
+            self.write_text(add_line_wrappers(tstr))
 
     def script_final_error_checks(self):
         """script for checking any errors that should be reported
@@ -1805,6 +1869,66 @@ class SubjProcSream:
         # pre-steady state errors are checked in @ss_review_basic
 
         return cmd
+
+    def write_text(self, tstr):
+        """control write to output file
+
+           If not actually creating a main script (e.g. just 3dD), return.
+        """
+
+        if not self.make_main_script: return 0
+
+        self.fp.write(tstr)
+
+        return 0
+
+    def open_script(self):
+        """open script for writing
+
+           - if we are not actually creating a script, return
+           - if bad overwrite, fail
+           - try to open
+        """
+
+        if not self.make_main_script: return 0
+
+        if not self.overwrite and os.path.isfile(self.script):
+            print "error: script file '%s' already exists, exiting..." % \
+                  self.script
+            return 1
+
+        try: self.fp = open(self.script,'w')
+        except:
+            print "cannot open script file '%s' for writing" % self.script
+            return 1
+
+        return 0
+
+    def close_script(self):
+        """close self.fp, if it is open (and if we are making one)"""
+
+        if not self.make_main_script: return 0
+
+        if self.fp != None:
+            self.fp.close()
+            self.fp = None
+
+        return 0
+
+    def flush_script(self):
+        """close self.fp, if it is open (and if we are making one)"""
+
+        if not self.make_main_script: return 0
+
+        if self.fp != None: self.fp.flush()
+
+        return 0
+
+    def make_exec(self):
+        if not self.make_main_script: return 0
+
+        if self.script and os.path.isfile(self.script):
+            os.chmod(self.script, 0755)
 
     # given a block, run, return a prefix of the form: pNN.SUBJ.rMM.BLABEL
     #    NN = block index, SUBJ = subj label, MM = run, BLABEL = block label
@@ -1911,10 +2035,11 @@ class SubjProcSream:
 
     # like prefix, but list the whole dset form, in wildcard format
     def dset_form_wild(self, blabel, view=None, surf_names=-1):
-        bind = self.find_block_index(blabel)
-        if bind == None:
+        block = self.find_block(blabel)
+        if not block:
             print "** DFW: failed to find block for label '%s'" % blabel
             return ''
+        bind = block.index
         # if surface, change view to hemisphere and dataset suffix
         if surf_names == -1: surf_names = self.surf_names
         if surf_names:

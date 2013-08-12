@@ -2724,6 +2724,1142 @@ int SUMA_VolumeInFill(THD_3dim_dataset *aset,
    SUMA_RETURN(1);
 }
 
+/*
+   Extrapolate radially to fill region outside of mask.
+   For each voxel on dataset perimeter, draw trace to the 
+   center of mass and sample voxels from CM to perimeter voxel.
+   Search from perimeter down until at least nplug consecutive
+   voxels are in the mask, then keep sampling until you have
+   nlin voxels in the mask. Fit a straight line to the nlin
+   voxels and extrapolate to area outside the mask.
+   
+   aset: Volume providing grid, and data at times
+   ufv: if NULL, use values in 1st sub-brick of aset
+        otherwise, use values in hfv
+   ucmask: if NULL, create mask from non zero values in aset
+           (or ufv), otherwise use values in ucmask to define
+           data voxels.
+   ucm: User supplied xyz (RAI) mm coords of center of mass. 
+        If NULL, function computes one from aset
+   filledp: if NULL, ufv contains results. Otherwise a dataset
+            is created and returned in filledp
+   nplug:Minimum number of consecutive voxels that are in the mask.
+   nlin: Use no more than nlin voxels in mask for the linear fit
+   smooth: Amount of smoothing done to final result 
+   N_off: Number of centroid offsets. Choose from 1, 5, or 9
+          The larger the number, the less likely you are to 
+          end up with holes. Usually 9 will fill everything up
+          except for holes inside the mask. The smoothing function
+          would paper over the few holes that remain. 
+          The function can be modified in the future to have an 
+          aggressive fill, but that is not necessary at this point.
+          Holes inside the mask are not handled yet. 
+*/
+int SUMA_Volume_RadFill_killme(THD_3dim_dataset *aset, float *ufv, byte *ucmask,
+                      float *ucm, THD_3dim_dataset **filledp,
+                      int nplug, int nlin, float smooth, int N_off) 
+{
+   static char FuncName[]={"SUMA_Volume_RadFill_killme"};
+   float *fv=NULL, cm[3], cmo[3], xyz_ijk[3], *vals=NULL, mid,
+         *wt=NULL, **ref=NULL, *wref=NULL, *wtls, *data, *fvn=NULL;
+   THD_fvec3 ccc, ncoord;
+   int ii, jj, kk, nsamp, vv, nn, mm, *ivals=NULL, 
+       off[10][3], ioff, nstrt,
+       found=0, ijk[3], nref, nok, veclen, ncand, niter,
+       *Nv=NULL, iim, iiM, jjm, jjM, kkm, kkM, pl; 
+   byte *cmask=NULL, *holi=NULL;
+   THD_3dim_dataset *filled = *filledp;   
+   MRI_IMAGE *imin=NULL;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   
+   if (!aset) {
+      SUMA_S_Err("Need input dataset");
+      SUMA_RETURN(NOPE);
+   }
+   if (!ufv && !filledp) {
+      SUMA_S_Err("No way to return results");
+      SUMA_RETURN(NOPE);
+   }
+   if (N_off == -1) N_off = 9;
+   if (N_off != 1 && N_off != 5 && N_off != 9) {
+      SUMA_S_Errv("N_off (%d) must be one of 1,5, or 9\n", N_off);
+      SUMA_RETURN(NOPE);
+   }
+   
+   /* If no float vector given get one */
+   if (!ufv) {
+      if (!(fv = THD_extract_to_float(0,aset))) {
+         SUMA_S_Err("Failed to extract float");
+         SUMA_RETURN(0);
+      }
+   } else {
+      fv = ufv;
+   }
+   
+   fvn = (float *)SUMA_malloc(sizeof(float)*DSET_NVOX(aset));
+   memcpy(fvn, fv, sizeof(float)*DSET_NVOX(aset));
+   
+   /* If no mask is given make one */
+   if (!ucmask) {
+      cmask = (byte *)SUMA_malloc(sizeof(byte)*DSET_NVOX(aset));
+      for (vv=0; vv<DSET_NVOX(aset); ++vv) {
+         if (!fv[vv]) cmask[vv]=0; else cmask[vv]=1;
+      }
+   } else {
+      cmask = ucmask;
+   }
+   /* a vector to flag the holiness of a voxel */
+   holi = (byte *)SUMA_malloc(sizeof(byte)*DSET_NVOX(aset));
+   for (vv=0; vv<DSET_NVOX(aset); ++vv) {
+      if (cmask[vv]) holi[vv] = 1; /* in mask */
+      else holi[vv] = 0;
+   }
+   
+   /* center of mass */
+   if (!ucm) {
+      ccc = THD_cmass(aset, 0, cmask); 
+      cm[0] = ccc.xyz[0];
+      cm[1] = ccc.xyz[1];
+      cm[2] = ccc.xyz[2];
+   } else {
+      cm[0] = ucm[0];
+      cm[1] = ucm[1];
+      cm[2] = ucm[2];
+   }
+   /* change cm to index coords */
+   ccc.xyz[0]=cm[0]; ccc.xyz[1]=cm[1]; ccc.xyz[2]=cm[2]; 
+   ncoord = THD_dicomm_to_3dmm(aset, ccc);
+   ccc = THD_3dmm_to_3dfind(aset, ncoord);
+   cm[0] = ccc.xyz[0];
+   cm[1] = ccc.xyz[1];
+   cm[2] = ccc.xyz[2];
+   
+   SUMA_S_Notev("Center of mass in ijk is %d %d %d\n",
+             (int)cm[0], (int)cm[1], (int) cm[2]);
+             
+   /* Overkill buffer but won't hurt */
+   vals = (float *)SUMA_calloc(DSET_NX(aset)+DSET_NY(aset)+DSET_NZ(aset),
+                               sizeof(float));
+   wt = (float *)SUMA_calloc(DSET_NX(aset)+DSET_NY(aset)+DSET_NZ(aset),
+                               sizeof(float));
+   ref = (float **)SUMA_calloc(2, sizeof(float*));
+   ref[0] = (float *)SUMA_calloc(DSET_NX(aset)+DSET_NY(aset)+DSET_NZ(aset),
+                               sizeof(float));
+   ref[1] = (float *)SUMA_calloc(DSET_NX(aset)+DSET_NY(aset)+DSET_NZ(aset),
+                               sizeof(float));
+   ivals = (int *)SUMA_calloc(DSET_NX(aset)+DSET_NY(aset)+DSET_NZ(aset),
+                               sizeof(int));
+   
+   
+   nref = 2;
+   for (nn=0; nn<(DSET_NX(aset)+DSET_NY(aset)+DSET_NZ(aset)); ++nn) 
+      ref[0][nn]=1.0;
+          
+   /* identify holes */
+   Nv = (int *)SUMA_calloc(DSET_NVOX(aset), sizeof(int));
+   /* Because we're traversing by a constant offset
+   on an irregular grid. Some voxels may never get
+   hit, even if we start from them. Using multiple
+   center of masses, via the offsets, will help 
+   increase the coverage and smooth the result */
+   off[0][0] = 0; off[0][1] = 0; off[0][2] = 0;
+   for (pl=0; pl<6; ++pl) {
+      switch (pl) {
+         case 0:
+            iim=              0; iiM=DSET_NX(aset);
+            jjm=              0; jjM=DSET_NY(aset);
+            kkm=              0; kkM=            1;
+            off[1][0] =  1; off[1][1] =  0; off[1][2] =  0;
+            off[2][0] = -1; off[2][1] =  0; off[2][2] =  0;
+            off[3][0] =  0; off[3][1] =  1; off[3][2] =  0;
+            off[4][0] =  0; off[4][1] = -1; off[4][2] =  0;
+            off[5][0] =  1; off[5][1] =  1; off[5][2] =  0;
+            off[6][0] =  1; off[6][1] = -1; off[6][2] =  0;
+            off[7][0] = -1; off[7][1] =  1; off[7][2] =  0;
+            off[8][0] = -1; off[8][1] = -1; off[8][2] =  0;
+            break;
+         case 1:
+            iim=              0; iiM=DSET_NX(aset);
+            jjm=              0; jjM=DSET_NY(aset);
+            kkm=DSET_NZ(aset)-1; kkM=DSET_NZ(aset);
+            off[1][0] =  1; off[1][1] =  0; off[1][2] =  0;
+            off[2][0] = -1; off[2][1] =  0; off[2][2] =  0;
+            off[3][0] =  0; off[3][1] =  1; off[3][2] =  0;
+            off[4][0] =  0; off[4][1] = -1; off[4][2] =  0;
+            off[5][0] =  1; off[5][1] =  1; off[5][2] =  0;
+            off[6][0] =  1; off[6][1] = -1; off[6][2] =  0;
+            off[7][0] = -1; off[7][1] =  1; off[7][2] =  0;
+            off[8][0] = -1; off[8][1] = -1; off[8][2] =  0;
+           break;
+         case 2:
+            iim=              0; iiM=DSET_NX(aset);
+            jjm=              0; jjM=            1;
+            kkm=              0; kkM=DSET_NZ(aset);
+            off[1][0] =  1; off[1][1] =  0; off[1][2] =  0;
+            off[2][0] = -1; off[2][1] =  0; off[2][2] =  0;
+            off[3][0] =  0; off[3][1] =  0; off[3][2] =  1;
+            off[4][0] =  0; off[4][1] =  0; off[4][2] = -1;
+            off[5][0] =  1; off[5][1] =  0; off[5][2] =  1;
+            off[6][0] =  1; off[6][1] =  0; off[6][2] = -1;
+            off[7][0] = -1; off[7][1] =  0; off[7][2] =  1;
+            off[8][0] = -1; off[8][1] =  0; off[8][2] = -1;
+            break;
+         case 3:
+            iim=              0; iiM=DSET_NX(aset);
+            jjm=DSET_NY(aset)-1; jjM=DSET_NY(aset);
+            kkm=              0; kkM=DSET_NZ(aset);
+            off[1][0] =  1; off[1][1] =  0; off[1][2] =  0;
+            off[2][0] = -1; off[2][1] =  0; off[2][2] =  0;
+            off[3][0] =  0; off[3][1] =  0; off[3][2] =  1;
+            off[4][0] =  0; off[4][1] =  0; off[4][2] = -1;
+            off[5][0] =  1; off[5][1] =  0; off[5][2] =  1;
+            off[6][0] =  1; off[6][1] =  0; off[6][2] = -1;
+            off[7][0] = -1; off[7][1] =  0; off[7][2] =  1;
+            off[8][0] = -1; off[8][1] =  0; off[8][2] = -1;
+            break;
+         case 4:
+            iim=              0; iiM=            1;
+            jjm=              0; jjM=DSET_NY(aset);
+            kkm=              0; kkM=DSET_NZ(aset);
+            off[1][0] =  0; off[1][1] =  1; off[1][2] =  0;
+            off[2][0] =  0; off[2][1] = -1; off[2][2] =  0;
+            off[3][0] =  0; off[3][1] =  0; off[3][2] =  1;
+            off[4][0] =  0; off[4][1] =  0; off[4][2] = -1;
+            off[5][0] =  0; off[5][1] =  1; off[5][2] =  1;
+            off[6][0] =  0; off[6][1] = -1; off[6][2] =  1;
+            off[7][0] =  0; off[7][1] =  1; off[7][2] = -1;
+            off[8][0] =  0; off[8][1] = -1; off[8][2] = -1;
+            break;
+         case 5:
+            iim=DSET_NX(aset)-1; iiM=DSET_NX(aset);
+            jjm=              0; jjM=DSET_NY(aset);
+            kkm=              0; kkM=DSET_NZ(aset);
+            off[1][0] =  0; off[1][1] =  1; off[1][2] =  0;
+            off[2][0] =  0; off[2][1] = -1; off[2][2] =  0;
+            off[3][0] =  0; off[3][1] =  0; off[3][2] =  1;
+            off[4][0] =  0; off[4][1] =  0; off[4][2] = -1;
+            off[5][0] =  0; off[5][1] =  1; off[5][2] =  1;
+            off[6][0] =  0; off[6][1] = -1; off[6][2] =  1;
+            off[7][0] =  0; off[7][1] =  1; off[7][2] = -1;
+            off[8][0] =  0; off[8][1] = -1; off[8][2] = -1;
+            break;
+         default:
+            SUMA_S_Err("Rats");
+            SUMA_RETURN(0);
+      }
+      /* When you pick a voxel to debug, make sure you select 
+         it from one of the perimeter voxels */
+      VoxDbg = -1;
+      for (kk=kkm; kk<kkM; ++kk) {
+      for (jj=jjm; jj<jjM; ++jj) {
+      for (ii=iim; ii<iiM; ++ii) {
+         vv = ii+jj*DSET_NX(aset)+kk*DSET_NX(aset)*DSET_NY(aset);
+         if (cmask[vv] == 0) {
+         for (ioff=0; ioff<N_off; ++ioff) {
+            xyz_ijk[0]= ii; xyz_ijk[1]= jj; xyz_ijk[2]= kk;
+            /* offset center of mass */
+            cmo[0]=cm[0]+off[ioff][0];
+            cmo[1]=cm[1]+off[ioff][1];
+            cmo[2]=cm[2]+off[ioff][2];
+            if (!(nsamp = SUMA_Vox_Radial_Samples(fv,
+                     DSET_NX(aset), DSET_NY(aset), DSET_NZ(aset),
+                     xyz_ijk, cmo, vals, ivals))) {
+               SUMA_S_Errv("Failed at voxel %d %d %d\n",
+                           ii, jj, kk);
+               SUMA_RETURN(NOPE);
+            }
+            /* search from outside in until you hit plug */
+            nn=nsamp-1; found = 0;
+            while (nn - nplug > 0 && !found) {
+               found = nn;
+               for (mm=0; mm<nplug && found; ++mm) {
+                  if (!cmask[ivals[nn-mm]]) found=0;
+               }
+               if (!found) --nn;
+            }
+            if (found) {
+               /* just for debugging, fillup the ray, note that 
+                  some voxels will get revisited and the order
+                  of the visitation might affect the outcome
+                  in the modified holi array */
+               nn = found+1;
+               while (nn<nsamp) {
+                  holi[ivals[nn]] = 11; /* exterior (over the plug) 
+                                        overwrite clumps thinner than nplug*/
+                  ++nn;
+               }
+               nn=0;
+               while (nn<=found) {
+                  if (!holi[ivals[nn]]) 
+                     holi[ivals[nn]] = 21; /* interior (under the plug) */
+                  ++nn;
+               }
+               veclen = -1;
+               if (found < nlin) { /* work with what you've got, if possible */
+                  /* count the number of values in the mask */
+                  /* This for loop is not needed except 
+                     for clarity while writing debugging trace
+                  for (nn=0; nn<nsamp; ++nn) wt[nn]=0.0; */
+                  for (nok=0, nn=0; nn <= found; ++nn) {
+                     if (cmask[ivals[nn]]) {
+                        wt[nn] = 1.0;
+                        ++nok;
+                     } else {
+                        wt[nn] = 0.0;
+                     }
+                  }
+                  if (nok > nplug && nok > 2) { /* attempt a fit */
+                     veclen = found+1;
+                     data = vals;
+                     wtls = wt;
+                     mid = (float)veclen/2.0;
+                     nstrt=0;
+                     for (nok=0; nok<veclen; ++nok) 
+                        ref[1][nok] = (float)(nok-mid);
+                  } else {
+                     SUMA_S_Warnv(
+                        "No fit for voxel %d %d %d (found=%d, nok=%d)\n",
+                              ii, jj, kk, found, nok);
+                  }
+               } else { /* more points than we need */
+                  /* This for loop is not needed except 
+                     for clarity while writing debugging trace
+                  for (nn=0; nn<nsamp; ++nn) wt[nn]=0.0; */
+                  /* found a healthy amount of unmasked voxels */
+                  for (nok=0, nn=found; nn>=0 && nok<=nlin; --nn) {
+                     if (cmask[ivals[nn]]) {
+                        ++nok;
+                        wt[nn] = 1.0;
+                     } else {
+                        wt[nn] = 0.0;
+                     }
+                  }
+                  ++nn;
+                  veclen = found - nn+1;
+                  data = vals+nn;
+                  wtls = wt+nn;
+                  mid = (float)veclen/2.0;
+                  nstrt=nn;
+                  for (nok=0; nok<veclen; ++nok) ref[1][nok] = (float)(nok-mid);
+               }            
+               if (veclen > 0) {
+                  for (nn=0; vv == VoxDbg && nn<veclen; ++nn) {
+                     fprintf(stdout,"%f %f %f\n", 
+                             ref[1][nn], data[nn], wtls[nn]);
+                  }
+                  /* Now we fit using the lower points */
+                  if (!(wref = lsqfit( veclen , data , wtls , nref , ref ))) {
+                     SUMA_S_Err("Failed in lsqfit");
+                     SUMA_RETURN(NOPE);
+                  }
+                  
+                  /* and then fill up the output */
+                  /* At some point, consider blending the 
+                     interpolation results with the data
+                     in a manner reflecting the uncertainty
+                     of shallow values. Basically, begin 
+                     blending at the bottom of the 
+                     fitted region with 1 weight of 1
+                     for the data, and 0 for the fit and
+                     increase the weight for the fit (sigmoid)
+                     so that as you leave the data region the
+                     last voxel has a very low weight from 
+                     the data. This would remove transition edges
+                     in the image. For now, just smooth the result
+                     a little */
+                  for (nn=found+1; nn<nsamp; ++nn) {
+                     if (!cmask[ivals[nn]]) {
+                        fvn[ivals[nn]] += wref[0]+wref[1]*(nn-mid-nstrt);
+                        Nv[ivals[nn]] += 1;
+                     }
+                  }
+                  if (vv == VoxDbg) {
+                   SUMA_LHv(
+                     "Trace at ijk %d %d %d, nsamp=%d, nlin=%d, nok=%d\n", 
+                              ii, jj, kk, nsamp, nlin, nok);
+                fprintf(stdout,
+                        "#i  j  k  hol      vals    wtls   n<=f msk  fit\n");
+                     for (nn=0; nn<nsamp; ++nn) {
+                        Vox1D2Vox3D(ivals[nn],DSET_NX(aset),
+                                    DSET_NX(aset)*DSET_NY(aset), ijk);
+                        fprintf(stdout,"%d %d %d %d    %f %f   %d  %d    %f\n",
+                              ijk[0],  ijk[1], 
+                              ijk[2],  holi[ivals[nn]], 
+                              vals[nn], wt[nn], 
+                              nn<=found ? 1:0, cmask[ivals[nn]],
+                              wref[0]+wref[1]*(nn-mid-nstrt));
+                     }
+                fprintf(stdout,
+                        "#i  j  k  hol      vals    wtls   n<f msk  fit\n");
+                  }
+                  free(wref); wref=NULL;
+               }  
+            } else if (0) {
+               nn=0;
+               while (nn<nsamp) {
+                  if (!holi[ivals[nn]]) 
+                     holi[ivals[nn]] = 21; /* interior (under the plug) */
+                  ++nn;
+               }
+            }
+         }
+         }   
+      }}}
+      /* count holes left */
+      for (ncand = 0, nn=0; nn<DSET_NVOX(aset); ++nn) {
+         if (holi[nn]==0) {
+            ++ncand;
+         }
+      }   
+      SUMA_LHv("Have %d candidates left\n", ncand); 
+   }
+   
+   /* compute average */
+   for (nn=0; nn<DSET_NVOX(aset); ++nn) {
+      if (Nv[nn]) fvn[nn]/=Nv[nn];
+   }
+   
+   /* smooth result */
+   if (smooth > 0.0) {
+      THD_3dim_dataset *bset=NULL;
+      THD_3dim_dataset *blurred=NULL;
+      SUMA_LH("Blurring");
+      NEW_FLOATYV(aset,1,"blurry",bset,fvn);
+      SUMA_VolumeBlur(bset,
+                holi,&blurred,
+                smooth);
+      DSET_delete(bset); fvn=NULL; bset=NULL;
+      fvn = (float *)DSET_ARRAY(blurred , 0);
+      memcpy(fv, fvn, sizeof(float)*DSET_NVOX(aset));
+      DSET_delete(blurred); fvn=NULL; blurred=NULL;
+   } else {
+      memcpy(fv, fvn, sizeof(float)*DSET_NVOX(aset));
+      SUMA_free(fvn); fvn=NULL;
+   }
+
+   /* Put result in output dset */
+   if (filledp) {
+      if (!filled) {
+         filled = EDIT_full_copy(aset, FuncName);
+         *filledp = filled;
+      }
+      EDIT_substscale_brick(  filled, 0, MRI_float, fv, 
+                              DSET_BRICK_TYPE(filled,0), -1.0);
+      EDIT_BRICK_LABEL(filled,0,"ExteriorFilled"); 
+      if (DSET_BRICK_TYPE(filled,0) == MRI_float) {
+         /* don't free fv, even if created here */
+         fv = NULL;
+      } else {
+        if (!ufv) free(fv); fv=NULL;  
+      }
+   }
+   
+   if (wt) SUMA_free(wt); wt=NULL;
+   if (ref) { 
+      if (ref[0]) SUMA_free(ref[0]); 
+      if (ref[1]) SUMA_free(ref[1]);
+      SUMA_free(ref); ref = NULL;
+   }      
+   if (holi) SUMA_free(holi); holi=NULL;
+   if (Nv) SUMA_free(Nv); Nv = NULL;
+   if (!ufv) free(fv); fv=NULL;
+   if (!ucmask) free(cmask); cmask=NULL;
+   if (vals) SUMA_free(vals); vals=NULL;
+   if (ivals) SUMA_free(ivals); ivals=NULL;
+   SUMA_RETURN(1);
+}
+
+#define FILL_REF(ref,nref,veclen,mid) {\
+   int m_nok=0, m_iref=0;  \
+   if (nref>1) {  \
+      for (m_nok=0; m_nok<veclen; ++m_nok) \
+         ref[1][m_nok] = (float)(m_nok-mid);\
+      for (m_iref=2; m_iref<nref; ++m_iref) {\
+         if (m_iref==2) {\
+               for (m_nok=0; m_nok<veclen; ++m_nok) \
+                   ref[m_iref][m_nok] = SUMA_POW2(ref[1][m_nok]);\
+         }\
+         if (m_iref==3) {\
+               for (m_nok=0; m_nok<veclen; ++m_nok) \
+                   ref[m_iref][m_nok] = SUMA_POW3(ref[1][m_nok]);\
+         }\
+         if (m_iref==4) {\
+               for (m_nok=0; m_nok<veclen; ++m_nok) \
+                   ref[m_iref][m_nok] = SUMA_POW2(ref[2][m_nok]);\
+         }\
+         if (m_iref==5) {\
+               for (m_nok=0; m_nok<veclen; ++m_nok) \
+                   ref[m_iref][m_nok] = ref[2][m_nok]*ref[3][m_nok];\
+         }\
+         if (m_iref==6) {\
+               for (m_nok=0; m_nok<veclen; ++m_nok) \
+                   ref[m_iref][m_nok] = SUMA_POW2(ref[3][m_nok]);\
+         }\
+      }\
+   }\
+}
+#define FIT_AT(wref,nref,nno, ft)  {\
+   int m_iref;\
+   ft=wref[0]; \
+   if (nref > 1) {   \
+      ft += wref[1]*nno;   \
+      if (nref > 2) {   \
+         ft += wref[2]*nno*nno;  \
+         if (nref > 3) {   \
+            ft += wref[3]*nno*nno*nno;  \
+            for (m_iref=4; m_iref<nref; ++m_iref) {   \
+               ft += wref[m_iref]*pow(nno,m_iref); \
+            }  \
+         }  \
+      }  \
+   }  \
+}               
+
+#define INIT_CM_OFFSET(off, pl, iim, iiM, jjm, jjM, kkm, kkM) {\
+   switch (pl) {\
+      case 0:\
+         iim=              0; iiM=DSET_NX(aset);\
+         jjm=              0; jjM=DSET_NY(aset);\
+         kkm=              0; kkM=            1;\
+         off[1][0] =  1; off[1][1] =  0; off[1][2] =  0;\
+         off[2][0] = -1; off[2][1] =  0; off[2][2] =  0;\
+         off[3][0] =  0; off[3][1] =  1; off[3][2] =  0;\
+         off[4][0] =  0; off[4][1] = -1; off[4][2] =  0;\
+         off[5][0] =  1; off[5][1] =  1; off[5][2] =  0;\
+         off[6][0] =  1; off[6][1] = -1; off[6][2] =  0;\
+         off[7][0] = -1; off[7][1] =  1; off[7][2] =  0;\
+         off[8][0] = -1; off[8][1] = -1; off[8][2] =  0;\
+         break;\
+      case 1:\
+         iim=              0; iiM=DSET_NX(aset);\
+         jjm=              0; jjM=DSET_NY(aset);\
+         kkm=DSET_NZ(aset)-1; kkM=DSET_NZ(aset);\
+         off[1][0] =  1; off[1][1] =  0; off[1][2] =  0;\
+         off[2][0] = -1; off[2][1] =  0; off[2][2] =  0;\
+         off[3][0] =  0; off[3][1] =  1; off[3][2] =  0;\
+         off[4][0] =  0; off[4][1] = -1; off[4][2] =  0;\
+         off[5][0] =  1; off[5][1] =  1; off[5][2] =  0;\
+         off[6][0] =  1; off[6][1] = -1; off[6][2] =  0;\
+         off[7][0] = -1; off[7][1] =  1; off[7][2] =  0;\
+         off[8][0] = -1; off[8][1] = -1; off[8][2] =  0;\
+        break;\
+      case 2:\
+         iim=              0; iiM=DSET_NX(aset);\
+         jjm=              0; jjM=            1;\
+         kkm=              0; kkM=DSET_NZ(aset);\
+         off[1][0] =  1; off[1][1] =  0; off[1][2] =  0;\
+         off[2][0] = -1; off[2][1] =  0; off[2][2] =  0;\
+         off[3][0] =  0; off[3][1] =  0; off[3][2] =  1;\
+         off[4][0] =  0; off[4][1] =  0; off[4][2] = -1;\
+         off[5][0] =  1; off[5][1] =  0; off[5][2] =  1;\
+         off[6][0] =  1; off[6][1] =  0; off[6][2] = -1;\
+         off[7][0] = -1; off[7][1] =  0; off[7][2] =  1;\
+         off[8][0] = -1; off[8][1] =  0; off[8][2] = -1;\
+         break;\
+      case 3:\
+         iim=              0; iiM=DSET_NX(aset);\
+         jjm=DSET_NY(aset)-1; jjM=DSET_NY(aset);\
+         kkm=              0; kkM=DSET_NZ(aset);\
+         off[1][0] =  1; off[1][1] =  0; off[1][2] =  0;\
+         off[2][0] = -1; off[2][1] =  0; off[2][2] =  0;\
+         off[3][0] =  0; off[3][1] =  0; off[3][2] =  1;\
+         off[4][0] =  0; off[4][1] =  0; off[4][2] = -1;\
+         off[5][0] =  1; off[5][1] =  0; off[5][2] =  1;\
+         off[6][0] =  1; off[6][1] =  0; off[6][2] = -1;\
+         off[7][0] = -1; off[7][1] =  0; off[7][2] =  1;\
+         off[8][0] = -1; off[8][1] =  0; off[8][2] = -1;\
+         break;\
+      case 4:\
+         iim=              0; iiM=            1;\
+         jjm=              0; jjM=DSET_NY(aset);\
+         kkm=              0; kkM=DSET_NZ(aset);\
+         off[1][0] =  0; off[1][1] =  1; off[1][2] =  0;\
+         off[2][0] =  0; off[2][1] = -1; off[2][2] =  0;\
+         off[3][0] =  0; off[3][1] =  0; off[3][2] =  1;\
+         off[4][0] =  0; off[4][1] =  0; off[4][2] = -1;\
+         off[5][0] =  0; off[5][1] =  1; off[5][2] =  1;\
+         off[6][0] =  0; off[6][1] = -1; off[6][2] =  1;\
+         off[7][0] =  0; off[7][1] =  1; off[7][2] = -1;\
+         off[8][0] =  0; off[8][1] = -1; off[8][2] = -1;\
+         break;\
+      case 5:\
+         iim=DSET_NX(aset)-1; iiM=DSET_NX(aset);\
+         jjm=              0; jjM=DSET_NY(aset);\
+         kkm=              0; kkM=DSET_NZ(aset);\
+         off[1][0] =  0; off[1][1] =  1; off[1][2] =  0;\
+         off[2][0] =  0; off[2][1] = -1; off[2][2] =  0;\
+         off[3][0] =  0; off[3][1] =  0; off[3][2] =  1;\
+         off[4][0] =  0; off[4][1] =  0; off[4][2] = -1;\
+         off[5][0] =  0; off[5][1] =  1; off[5][2] =  1;\
+         off[6][0] =  0; off[6][1] = -1; off[6][2] =  1;\
+         off[7][0] =  0; off[7][1] =  1; off[7][2] = -1;\
+         off[8][0] =  0; off[8][1] = -1; off[8][2] = -1;\
+         break;\
+      default:\
+         SUMA_S_Err("Rats");\
+         SUMA_RETURN(NULL);\
+   }\
+}
+
+float *SUMA_Volume_RadFill_Fit(THD_3dim_dataset *aset, float *fv, byte *cmask,
+                            float *cm, int nplug, int nlin, int fitord,
+                            int N_off) 
+{
+   static char FuncName[]={"SUMA_Volume_RadFill_Fit"};
+   float cmo[3], xyz_ijk[3], *vals=NULL, mid,
+         *wt=NULL, **ref=NULL, *wref=NULL, *wtls, *data, *fvn=NULL;
+   THD_fvec3 ccc, ncoord;
+   int ii, jj, kk, nsamp, vv, nn, mm, *ivals=NULL, 
+       off[10][3], ioff, nstrt,
+       found=0, ijk[3], nok, veclen, ncand, niter,
+       *Nv=NULL, iim, iiM, jjm, jjM, kkm, kkM, pl, nref; 
+   byte *holi=NULL;
+   double nno, ft;
+   MRI_IMAGE *imin=NULL;
+   SUMA_Boolean LocalHead = YUP;
+   
+   SUMA_ENTRY;
+   
+   if (!aset || !fv || !cmask || !cm) {
+      SUMA_S_Err("Need input parameters");
+      SUMA_RETURN(fvn);
+   }
+   if (N_off == -1) N_off = 9;
+   if (N_off != 1 && N_off != 5 && N_off != 9) {
+      SUMA_S_Errv("N_off (%d) must be one of 1,5, or 9\n", N_off);
+      SUMA_RETURN(fvn);
+   }
+   if (fitord < 0) fitord = 0;
+   
+   nref = fitord+1;
+   if (nref >= nlin) {
+      SUMA_S_Errv(
+         "You're asking for a fit of order %d with a sample of %d\n",
+         nref, nlin);
+      SUMA_RETURN(fvn); 
+   }
+   if (nref > 6) {
+      SUMA_S_Errv("Not willing to go beyond 6th order now. Have %d\n",
+                  nref);
+      SUMA_RETURN(fvn); 
+   }
+   /* a vector to flag the holiness of a voxel */
+   holi = (byte *)SUMA_malloc(sizeof(byte)*DSET_NVOX(aset));
+   for (vv=0; vv<DSET_NVOX(aset); ++vv) {
+      if (cmask[vv]) holi[vv] = 1; /* in mask */
+      else holi[vv] = 0;
+   }
+     
+   SUMA_S_Notev("Center of mass in ijk is %d %d %d, fit order %d\n",
+             (int)cm[0], (int)cm[1], (int) cm[2], fitord);
+             
+   /* Overkill buffer but won't hurt */
+   vals = (float *)SUMA_calloc(DSET_NX(aset)+DSET_NY(aset)+DSET_NZ(aset),
+                               sizeof(float));
+   wt = (float *)SUMA_calloc(DSET_NX(aset)+DSET_NY(aset)+DSET_NZ(aset),
+                               sizeof(float));
+   ref = (float **)SUMA_allocate2D(nref, 
+                     DSET_NX(aset)+DSET_NY(aset)+DSET_NZ(aset), sizeof(float));
+   
+   ivals = (int *)SUMA_calloc(DSET_NX(aset)+DSET_NY(aset)+DSET_NZ(aset),
+                               sizeof(int));
+   fvn = (float *)SUMA_calloc(DSET_NVOX(aset),sizeof(float));
+   Nv = (int *)SUMA_calloc(DSET_NVOX(aset), sizeof(int));
+   
+   /* initialize constant term for fit */   
+   for (nn=0; nn<(DSET_NX(aset)+DSET_NY(aset)+DSET_NZ(aset)); ++nn) 
+      ref[0][nn]=1.0;
+          
+   /* Because we're traversing by a constant offset
+   on an irregular grid. Some voxels may never get
+   hit, even if we start from them. Using multiple
+   center of masses, via the offsets, will help 
+   increase the coverage and smooth the result */
+   off[0][0] = 0; off[0][1] = 0; off[0][2] = 0;
+   for (pl=0; pl<6; ++pl) {
+      SUMA_LHv("pl=%d\n", pl);
+      INIT_CM_OFFSET(off, pl, iim, iiM, jjm, jjM, kkm, kkM);
+      /* When you pick a voxel to debug, make sure you select 
+         it from one of the perimeter voxels */
+      for (kk=kkm; kk<kkM; ++kk) {
+      for (jj=jjm; jj<jjM; ++jj) {
+      for (ii=iim; ii<iiM; ++ii) {
+         vv = ii+jj*DSET_NX(aset)+kk*DSET_NX(aset)*DSET_NY(aset);
+         if (1) {/* enter whether or not in mask, 
+                   you're coming from the perimeter */
+         for (ioff=0; ioff<N_off; ++ioff) {
+            xyz_ijk[0]= ii; xyz_ijk[1]= jj; xyz_ijk[2]= kk;
+            /* offset center of mass */
+            cmo[0]=cm[0]+off[ioff][0];
+            cmo[1]=cm[1]+off[ioff][1];
+            cmo[2]=cm[2]+off[ioff][2];
+            if (!(nsamp = SUMA_Vox_Radial_Samples(fv,
+                     DSET_NX(aset), DSET_NY(aset), DSET_NZ(aset),
+                     xyz_ijk, cmo, vals, ivals))) {
+               SUMA_S_Errv("Failed at voxel %d %d %d\n",
+                           ii, jj, kk);
+               SUMA_RETURN(NOPE);
+            }
+            /* search from outside in until you hit plug */
+            nn=nsamp-1; found = 0;
+            while (nn - nplug > 0 && !found) {
+               found = nn;
+               for (mm=0; mm<nplug && found; ++mm) {
+                  if (!cmask[ivals[nn-mm]]) found=0;
+               }
+               if (!found) --nn;
+            }
+            if (found) {
+               /* just for debugging, fillup the ray, note that 
+                  some voxels will get revisited and the order
+                  of the visitation might affect the outcome
+                  in the modified holi array */
+               nn = found+1;
+               while (nn<nsamp) {
+                  holi[ivals[nn]] = 11; /* exterior (over the plug) 
+                                        overwrite clumps thinner than nplug*/
+                  ++nn;
+               }
+               nn=0;
+               while (nn<=found) {
+                  if (!holi[ivals[nn]]) 
+                     holi[ivals[nn]] = 21; /* interior (under the plug) */
+                  ++nn;
+               }
+               veclen = -1;
+               if (found < nlin) { /* work with what you've got, if possible */
+                  /* count the number of values in the mask */
+                  /* This for loop is not needed except 
+                     for clarity while writing debugging trace
+                  for (nn=0; nn<nsamp; ++nn) wt[nn]=0.0; */
+                  for (nok=0, nn=0; nn <= found; ++nn) {
+                     if (cmask[ivals[nn]]) {
+                        wt[nn] = 1.0;
+                        ++nok;
+                     } else {
+                        wt[nn] = 0.0;
+                     }
+                  }
+                  if (nok > nplug && nok > nref) { /* attempt a fit */
+                     veclen = found+1;
+                     data = vals;
+                     wtls = wt;
+                     mid = (float)veclen/2.0;
+                     nstrt=0;
+                     FILL_REF(ref, nref, veclen, mid);
+                  } else {
+                     SUMA_S_Warnv(
+                       "No fit for voxel %d %d %d (found=%d, nok=%d, nref=%d)\n",
+                              ii, jj, kk, found, nok, nref);
+                  }
+               } else { /* more points than we need */
+                  /* This for loop is not needed except 
+                     for clarity while writing debugging trace
+                  for (nn=0; nn<nsamp; ++nn) wt[nn]=0.0; */
+                  /* found a healthy amount of unmasked voxels */
+                  for (nok=0, nn=found; nn>=0 && nok<=nlin; --nn) {
+                     if (cmask[ivals[nn]]) {
+                        ++nok;
+                        wt[nn] = 1.0;
+                     } else {
+                        wt[nn] = 0.0;
+                     }
+                  }
+                  ++nn;
+                  veclen = found - nn+1;
+                  data = vals+nn;
+                  wtls = wt+nn;
+                  mid = (float)veclen/2.0;
+                  nstrt=nn;
+                  FILL_REF(ref, nref, veclen, mid);
+               }            
+               if (veclen > 0) {
+                  for (nn=0; vv == VoxDbg && nn<veclen; ++nn) {
+                     for (mm=0; mm<nref; ++mm) fprintf(stdout,"%f ",ref[mm][nn]);
+                     fprintf(stdout,"%f %f\n", 
+                             data[nn], wtls[nn]);
+                  }
+                  /* Now we fit using the lower points */
+                  if (!(wref = lsqfit( veclen , data , wtls , nref , ref ))) {
+                     SUMA_S_Err("Failed in lsqfit");
+                     SUMA_RETURN(NOPE);
+                  }
+                  
+                  /* and then fill up the output */
+                  for (nn=0; nn<nsamp; ++nn) {
+                     Nv[ivals[nn]] += 1;
+                     nno = ((double)nn-mid-nstrt);
+                     FIT_AT(wref,nref,nno, ft);
+                     fvn[ivals[nn]] += ft;
+                  }
+                  if (vv == VoxDbg) {
+                   SUMA_LHv(
+                  "Trace at ijk %d %d %d, nsamp=%d, nlin=%d, nok=%d , nref=%d\n",
+                              ii, jj, kk, nsamp, nlin, nok, nref);
+                fprintf(stdout,
+                        "#i  j  k  hol      vals    wtls   n<=f msk  fit\n");
+                     for (nn=0; nn<nsamp; ++nn) {
+                        Vox1D2Vox3D(ivals[nn],DSET_NX(aset),
+                                    DSET_NX(aset)*DSET_NY(aset), ijk);
+                        nno = ((double)nn-mid-nstrt);
+                        FIT_AT(wref,nref,nno, ft);
+                        fprintf(stdout,"%d %d %d %d    %f %f   %d  %d    %f\n",
+                              ijk[0],  ijk[1], 
+                              ijk[2],  holi[ivals[nn]], 
+                              vals[nn], wt[nn], 
+                              nn<=found ? 1:0, cmask[ivals[nn]],
+                              ft);
+                     }
+                fprintf(stdout,
+                        "#i  j  k  hol      vals    wtls   n<f msk  fit\n");
+                  }
+                  free(wref); wref=NULL;
+               }  
+            } else if (0) {
+               nn=0;
+               while (nn<nsamp) {
+                  if (!holi[ivals[nn]]) 
+                     holi[ivals[nn]] = 21; /* interior (under the plug) */
+                  ++nn;
+               }
+            }
+         }
+         }   
+      }}}
+      /* count holes left */
+      for (ncand = 0, nn=0; nn<DSET_NVOX(aset); ++nn) {
+         if (holi[nn]==0) {
+            ++ncand;
+         }
+      }   
+      SUMA_LHv("Have %d candidates left\n", ncand); 
+   }
+   
+   /* compute average */
+   for (nn=0; nn<DSET_NVOX(aset); ++nn) {
+      if (Nv[nn]) fvn[nn]/=Nv[nn];
+   }
+   
+   if (wt) SUMA_free(wt); wt=NULL;
+   if (ref) SUMA_free2D((char **)ref,nref); ref=NULL;
+   if (holi) SUMA_free(holi); holi=NULL;
+   if (Nv) SUMA_free(Nv); Nv = NULL;
+   if (vals) SUMA_free(vals); vals=NULL;
+   if (ivals) SUMA_free(ivals); ivals=NULL;
+   
+   SUMA_RETURN(fvn);
+}
+
+float *SUMA_Volume_RadFill_Blend(THD_3dim_dataset *aset, float *fv, byte *cmask, 
+                            float *bl, byte *cmaskbl, float *cm, int nplug,
+                            float spow, float soff, int N_off) 
+{
+   static char FuncName[]={"SUMA_Volume_RadFill_Blend"};
+   float cmo[3], xyz_ijk[3], *vals=NULL, mid,
+         *fvn=NULL;
+   THD_fvec3 ccc, ncoord;
+   int ii, jj, kk, nsamp, vv, nn, mm, *ivals=NULL, 
+       off[10][3], ioff, nstrt,
+       found=0, ijk[3], nok, ncand, niter,
+       *Nv=NULL, iim, iiM, jjm, jjM, kkm, kkM, pl; 
+   byte *holi=NULL;
+   double bb, tt, bo;
+   MRI_IMAGE *imin=NULL;
+   SUMA_Boolean LocalHead = YUP;
+   
+   SUMA_ENTRY;
+   
+   if (!aset || !fv || !cmask || !cm || !bl || !cmaskbl) {
+      SUMA_S_Err("Need input parameters");
+      SUMA_RETURN(fvn);
+   }
+   if (N_off == -1) N_off = 9;
+   if (N_off != 1 && N_off != 5 && N_off != 9) {
+      SUMA_S_Errv("N_off (%d) must be one of 1,5, or 9\n", N_off);
+      SUMA_RETURN(fvn);
+   }
+   SUMA_S_Warn("Is Holiness Necessary?");
+   /* a vector to flag the holiness of a voxel */
+   holi = (byte *)SUMA_malloc(sizeof(byte)*DSET_NVOX(aset));
+   for (vv=0; vv<DSET_NVOX(aset); ++vv) {
+      if (cmask[vv]) holi[vv] = 1; /* in mask */
+      else holi[vv] = 0;
+   }
+   
+   SUMA_S_Notev("Center of mass in ijk is %d %d %d\n",
+             (int)cm[0], (int)cm[1], (int) cm[2]);
+             
+   /* Overkill buffer but won't hurt */
+   vals = (float *)SUMA_calloc(DSET_NX(aset)+DSET_NY(aset)+DSET_NZ(aset),
+                               sizeof(float));   
+   ivals = (int *)SUMA_calloc(DSET_NX(aset)+DSET_NY(aset)+DSET_NZ(aset),
+                               sizeof(int));
+   fvn = (float *)SUMA_calloc(DSET_NVOX(aset),sizeof(float));
+   Nv = (int *)SUMA_calloc(DSET_NVOX(aset), sizeof(int));
+   
+          
+   /* Because we're traversing by a constant offset
+   on an irregular grid. Some voxels may never get
+   hit, even if we start from them. Using multiple
+   center of masses, via the offsets, will help 
+   increase the coverage and smooth the result */
+   off[0][0] = 0; off[0][1] = 0; off[0][2] = 0;
+   for (pl=0; pl<6; ++pl) {
+      SUMA_LHv("pl=%d\n", pl);
+      INIT_CM_OFFSET(off, pl, iim, iiM, jjm, jjM, kkm, kkM);
+      /* When you pick a voxel to debug, make sure you select 
+         it from one of the perimeter voxels */
+      for (kk=kkm; kk<kkM; ++kk) {
+      for (jj=jjm; jj<jjM; ++jj) {
+      for (ii=iim; ii<iiM; ++ii) {
+         vv = ii+jj*DSET_NX(aset)+kk*DSET_NX(aset)*DSET_NY(aset);
+         if (1) {/* enter whether or not in mask, 
+                   you're coming from the perimeter */
+         for (ioff=0; ioff<N_off; ++ioff) {
+            xyz_ijk[0]= ii; xyz_ijk[1]= jj; xyz_ijk[2]= kk;
+            /* offset center of mass */
+            cmo[0]=cm[0]+off[ioff][0];
+            cmo[1]=cm[1]+off[ioff][1];
+            cmo[2]=cm[2]+off[ioff][2];
+            if (!(nsamp = SUMA_Vox_Radial_Samples(fv,
+                     DSET_NX(aset), DSET_NY(aset), DSET_NZ(aset),
+                     xyz_ijk, cmo, vals, ivals))) {
+               SUMA_S_Errv("Failed at voxel %d %d %d\n",
+                           ii, jj, kk);
+               SUMA_RETURN(NOPE);
+            }
+            /* search from outside in until you hit plug */
+            nn=nsamp-1; found = 0;
+            while (nn - nplug > 0 && !found) {
+               found = nn;
+               for (mm=0; mm<nplug && found; ++mm) {
+                  if (!cmask[ivals[nn-mm]]) found=0;
+               }
+               if (!found) --nn;
+            }
+            if (found) {
+               /* just for debugging, fillup the ray, note that 
+                  some voxels will get revisited and the order
+                  of the visitation might affect the outcome
+                  in the modified holi array */
+               nn = found+1;
+               while (nn<nsamp) {
+                  holi[ivals[nn]] = 11; /* exterior (over the plug) 
+                                        overwrite clumps thinner than nplug*/
+                  ++nn;
+               }
+               nn=0;
+               while (nn<=found) {
+                  if (!holi[ivals[nn]]) 
+                     holi[ivals[nn]] = 21; /* interior (under the plug) */
+                  ++nn;
+               }
+               if (found > 0) {
+                  /* blend the two into the output */
+                  for (nn=0; nn<nsamp; ++nn) {
+                     Nv[ivals[nn]] += 1;
+                     if (cmask[ivals[nn]] && cmaskbl[ivals[nn]]) { 
+                        tt = spow*(nn-found+soff);
+                        bb = 1.0/(1.0+exp(-tt));
+                        fvn[ivals[nn]] += (1-bb)*fv[ivals[nn]]+bb*bl[ivals[nn]];
+                     } else if (cmaskbl[ivals[nn]]) {
+                        fvn[ivals[nn]] += bl[ivals[nn]];
+                     } else fvn[ivals[nn]] += fv[ivals[nn]];
+                  }
+                  if (vv == VoxDbg) {
+                   SUMA_LHv(
+                     "Trace at ijk %d %d %d, nsamp=%d\n", 
+                              ii, jj, kk, nsamp);
+                fprintf(stdout,
+                        "#i  j  k  hol      fv  bl  bb res\n");
+                     for (nn=0; nn<nsamp; ++nn) {
+                        Vox1D2Vox3D(ivals[nn],DSET_NX(aset),
+                                    DSET_NX(aset)*DSET_NY(aset), ijk);
+                        if (cmask[ivals[nn]] && cmaskbl[ivals[nn]]) { 
+                           tt = spow*(nn-found+soff);
+                           bb = 1.0/(1.0+exp(-tt));
+                        } else if (cmaskbl[ivals[nn]]) {
+                           bb = 1.0;
+                        } else bb = 0.0;
+                        bo = (1-bb)*fv[ivals[nn]]+bb*bl[ivals[nn]];
+                        fprintf(stdout,"%d %d %d %d    %f %f %f  %f\n",
+                              ijk[0],  ijk[1], 
+                              ijk[2],  holi[ivals[nn]], 
+                              fv[ivals[nn]], bl[ivals[nn]], bb, bo);
+                     }
+                fprintf(stdout,
+                        "#i  j  k  hol      fv  bl  bb res\n");
+                  }
+               }  
+            } else if (0) {
+               nn=0;
+               while (nn<nsamp) {
+                  if (!holi[ivals[nn]]) 
+                     holi[ivals[nn]] = 21; /* interior (under the plug) */
+                  ++nn;
+               }
+            }
+         }
+         }   
+      }}}
+      /* count holes left */
+      for (ncand = 0, nn=0; nn<DSET_NVOX(aset); ++nn) {
+         if (holi[nn]==0) {
+            ++ncand;
+         }
+      }   
+      SUMA_LHv("Have %d candidates left\n", ncand); 
+   }
+   
+   /* compute average */
+   for (nn=0; nn<DSET_NVOX(aset); ++nn) {
+      if (Nv[nn]) fvn[nn]/=Nv[nn];
+   }
+   
+   if (holi) SUMA_free(holi); holi=NULL;
+   if (Nv) SUMA_free(Nv); Nv = NULL;
+   if (vals) SUMA_free(vals); vals=NULL;
+   if (ivals) SUMA_free(ivals); ivals=NULL;
+   
+   SUMA_RETURN(fvn);
+}
+
+
+int SUMA_Volume_RadFill(THD_3dim_dataset *aset, float *ufv, byte *ucmask,
+                      float *ucm, THD_3dim_dataset **filledp,
+                      int nplug, int nlin, int fitord, float smooth, int N_off) 
+{
+   static char FuncName[]={"SUMA_Volume_RadFill"};
+   float *fv=NULL, cm[3], cmo[3], xyz_ijk[3], 
+         *fvn=NULL, *fvnb=NULL;
+   THD_fvec3 ccc, ncoord;
+   int vv, niter,  pl; 
+   byte *cmask=NULL, *cmaskbl=NULL;
+   THD_3dim_dataset *filled = *filledp;   
+   MRI_IMAGE *imin=NULL;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   
+   if (!aset) {
+      SUMA_S_Err("Need input dataset");
+      SUMA_RETURN(NOPE);
+   }
+   if (!ufv && !filledp) {
+      SUMA_S_Err("No way to return results");
+      SUMA_RETURN(NOPE);
+   }
+   if (N_off == -1) N_off = 9;
+   if (N_off != 1 && N_off != 5 && N_off != 9) {
+      SUMA_S_Errv("N_off (%d) must be one of 1,5, or 9\n", N_off);
+      SUMA_RETURN(NOPE);
+   }
+   
+   /* If no float vector given get one */
+   if (!ufv) {
+      if (!(fv = THD_extract_to_float(0,aset))) {
+         SUMA_S_Err("Failed to extract float");
+         SUMA_RETURN(0);
+      }
+   } else {
+      fv = ufv;
+   }
+   
+   /* If no mask is given make one */
+   if (!ucmask) {
+      cmask = (byte *)SUMA_malloc(sizeof(byte)*DSET_NVOX(aset));
+      for (vv=0; vv<DSET_NVOX(aset); ++vv) {
+         if (!fv[vv]) cmask[vv]=0; else cmask[vv]=1;
+      }
+   } else {
+      cmask = ucmask;
+   }
+   
+   /* center of mass */
+   if (!ucm) {
+      ccc = THD_cmass(aset, 0, cmask); 
+      cm[0] = ccc.xyz[0];
+      cm[1] = ccc.xyz[1];
+      cm[2] = ccc.xyz[2];
+   } else {
+      cm[0] = ucm[0];
+      cm[1] = ucm[1];
+      cm[2] = ucm[2];
+   }
+   
+   /* change cm to index coords */
+   ccc.xyz[0]=cm[0]; ccc.xyz[1]=cm[1]; ccc.xyz[2]=cm[2]; 
+   ncoord = THD_dicomm_to_3dmm(aset, ccc);
+   ccc = THD_3dmm_to_3dfind(aset, ncoord);
+   cm[0] = ccc.xyz[0];
+   cm[1] = ccc.xyz[1];
+   cm[2] = ccc.xyz[2];
+   
+
+   SUMA_S_Notev("Center of mass in ijk is %d %d %d\n",
+             (int)cm[0], (int)cm[1], (int) cm[2]);
+   
+   if (!(fvn = SUMA_Volume_RadFill_Fit(aset, fv, cmask, cm, 
+                                       nplug, nlin, fitord, N_off))){
+      SUMA_S_Err("Misericorde! Can't fit in these pants anymore");
+      SUMA_RETURN(NOPE);
+   }
+   
+   #if 1
+   SUMA_S_Note("Now blending");
+   /* blend */
+   cmaskbl = (byte *)SUMA_calloc(DSET_NVOX(aset), sizeof(byte));
+   for (vv=0; vv<DSET_NVOX(aset); ++vv) if (fvn[vv] != 0.0f) cmaskbl[vv] = 1;
+   fvnb = SUMA_Volume_RadFill_Blend(aset, fv, cmask, 
+                            fvn, cmaskbl, cm, nplug,
+                            1.0, 6, N_off);   
+   memcpy(fvn, fvnb, sizeof(float)*DSET_NVOX(aset));
+   SUMA_free(fvnb); fvnb = NULL;
+   SUMA_free(cmaskbl); cmaskbl = NULL;
+   #endif
+   
+   /* smooth result */
+   if (smooth > 0.0) {
+      THD_3dim_dataset *bset=NULL;
+      THD_3dim_dataset *blurred=NULL;
+      SUMA_LH("Blurring");
+      NEW_FLOATYV(aset,1,"blurry",bset,fvn);
+      SUMA_VolumeBlur(bset,
+                NULL,&blurred,
+                smooth);
+      DSET_delete(bset); fvn=NULL; bset=NULL;
+      fvn = (float *)DSET_ARRAY(blurred , 0);
+      memcpy(fv, fvn, sizeof(float)*DSET_NVOX(aset));
+      DSET_delete(blurred); fvn=NULL; blurred=NULL;
+   } else {
+      memcpy(fv, fvn, sizeof(float)*DSET_NVOX(aset));
+      SUMA_free(fvn); fvn=NULL;
+   }
+
+   /* Put result in output dset */
+   if (filledp) {
+      if (!filled) {
+         filled = EDIT_full_copy(aset, FuncName);
+         *filledp = filled;
+      }
+      EDIT_substscale_brick(  filled, 0, MRI_float, fv, 
+                              DSET_BRICK_TYPE(filled,0), -1.0);
+      EDIT_BRICK_LABEL(filled,0,"ExteriorFilled"); 
+      if (DSET_BRICK_TYPE(filled,0) == MRI_float) {
+         /* don't free fv, even if created here */
+         fv = NULL;
+      } else {
+        if (!ufv) free(fv); fv=NULL;  
+      }
+   }
+   
+   if (!ufv) free(fv); fv=NULL;
+   if (!ucmask) free(cmask); cmask=NULL;
+   
+   SUMA_RETURN(1);
+}
 /*! 
    A local stat moving average blurring of each sub-brick inside mask .
    This was tested only once and FWHM is not handled properly.
@@ -3331,7 +4467,8 @@ THD_3dim_dataset *SUMA_estimate_bias_field (SEG_OPTS *Opt,
       mri_blur3D_addfwhm(imin, mm, FWHMbias); 
       /* do the fit */
       mri_polyfit_verb(Opt->debug) ;
-      if (!(imout = mri_polyfit( imin, polorder , mm , 0.0 , Opt->fitmeth )))  {
+      /* now takes 'exar' parameter; pass NULL    29 Dec 2012 [rickr] */
+      if (!(imout = mri_polyfit(imin, polorder, NULL, mm, 0.0, Opt->fitmeth))){
          ERROR_exit("Failed to fit");
       }
       dmv = MRI_FLOAT_PTR(imout) ;   
@@ -6849,6 +7986,7 @@ SUMA_SurfaceObject *SUMA_ExtractHead_Hull(THD_3dim_dataset *iset,
 */   
 SUMA_Boolean SUMA_ShrinkSkullHull(SUMA_SurfaceObject *SO, 
                              THD_3dim_dataset *iset, float thr,
+                             int use_rad_stat,
                              SUMA_COMM_STRUCT *cs) 
 {
    static char FuncName[]={"SUMA_ShrinkSkullHull"};
@@ -6879,12 +8017,15 @@ SUMA_Boolean SUMA_ShrinkSkullHull(SUMA_SurfaceObject *SO,
       SUMA_S_Err("Very strange, pointer lost");
       exit(1);
    }     
+   
+   
    SUMA_LHv("Getting edges %p %p\n", iset, DSET_ARRAY(iset, 0));
    fedges = (float *)SUMA_calloc(DSET_NVOX(iset),  sizeof(float));
    if (!SUMA_3dedge3(iset, fedges, NULL)){
       SUMA_S_Err("Failed to get edges");
       SUMA_free(fedges); fedges = NULL;
    }
+   
    if (!DSET_ARRAY(iset,0)) {
       SUMA_S_Err("Very strange, pointer lost after edge");
       exit(1);
@@ -6934,7 +8075,7 @@ SUMA_Boolean SUMA_ShrinkSkullHull(SUMA_SurfaceObject *SO,
       dir = SO->NodeNormList+3*in;
       SUMA_Find_IminImax_2(xyz, dir,
                          iset, &fvec, travstep, 1*travstep, 1*travstep,
-                         0.5*thr, in==ndbg?1:0, 
+                         0.5*thr, (LocalHead && in==ndbg)?1:0, 
                          rng_bot, rdist_bot,
                          rng_top, rdist_top,
                          avg,
@@ -7116,8 +8257,6 @@ SUMA_Boolean SUMA_ShrinkSkullHull(SUMA_SurfaceObject *SO,
          } 
       }
       
-      /* A quick smoothing with anchors in place */
-      SUMA_NN_GeomSmooth_SO(SO, mask, 0, 10);
       
       /* Are we making a difference in this world? */
       larea=area;
@@ -7135,6 +8274,13 @@ SUMA_Boolean SUMA_ShrinkSkullHull(SUMA_SurfaceObject *SO,
       }
       ++iter;
       if (iter > itermax1 || SUMA_ABS(darea) < 0.05) stop = YUP;
+      if (!stop) {
+         /* A quick smoothing with anchors in place */
+         SUMA_NN_GeomSmooth_SO(SO, mask, 0, 10);
+      } else {
+         /* A Taubin smooth */
+         SUMA_Taubin_Smooth_SO(SO, SUMA_EQUAL, 0.1, NULL, 0, 20);
+      }
       if (cs && cs->talk_suma && cs->Send) {
          if (!SUMA_SendToSuma (SO, cs, (void *)SO->NodeList, 
                                SUMA_NODE_XYZ, 1)) {
@@ -7167,6 +8313,959 @@ SUMA_Boolean SUMA_ShrinkSkullHull(SUMA_SurfaceObject *SO,
    SUMA_RETURN(YUP);
 }
 
+/* Shrink a surface so that it ends up resting on the skull
+   SO: Is the surface, derived from some head convex hull
+   aset: The anatomical volume
+   arset: The radial stats of aset
+   thr: The threshold for the skull region, 0.5 is plenty good, I hope
+   
+   Resist attempt to change this function without testing any change
+   on ALL 9 anatomical datasets from hell.
+   
+   Improvements should be carried out in an extra step where the surface
+   is walked back slowly to rest of a local acceptable bright voxel of the 
+   anatomy. For now, this is pretty good as is.
+*/
+
+/* Macros for function SUMA_ShrinkSkullHull_RS only */
+
+         /* Does the voxel or the one below it have a rat > thr ? */
+#define HI_RAT_EDGE(vxi,mm) ((rat[vxi[mm]]>thr || (mm>0 && rat[vxi[mm-1]]>thr)))
+         /* Does the voxel or the one below it have an OK rat > thr ? */
+#define HI_RATOK_EDGE(vxi,mm) ((rvec[vxi[mm]]>thr || \
+                                 (mm>0 && rvec[vxi[mm-1]]>thr)))
+         /* Is there good signal at that voxel or below it? 
+            A good signal is at location when:
+               A voxel's signal Z is more than -2, or the voxel below it is
+            Or A voxel's signal Z is more than -2.5, but with its noise Z
+               greater than 5, or if the voxel below it satisfies the 
+               condition.*/
+#define HI_SIG_EDGE(vxi,mm) ( ( vxZ[vxi[mm]] > -2.0/vxZfac ||                   \
+                                (mm>0 && \
+                                vxZ[vxi[mm-1]]  > -2.0/vxZfac ))     ||\
+                              ( (vxZ[vxi[mm]]   > -2.5/vxZfac &&                \
+                                        vxNZ[vxi[mm]]   > 5.0/vxNZfac)   ||     \
+                                (mm>0 && \
+                                 vxZ[vxi[mm-1]] > -2.5/vxNZfac &&               \
+                                        vxNZ[vxi[mm-1]] > 5.0/vxNZfac) )  )
+        /* Using some location nn along the top search direction, sum the voxels'
+           signal Z values over nsteps starting at nn */
+#define SUM_Z_BELOW(nsteps, nn, sum) {\
+   int kk;  \
+   sum=0;   \
+   for (kk=0; kk<nsteps; ++kk) { \
+      if (nn-kk > 0) sum += vxZ[vxi_top[nn-kk]];   \
+      else if (kk-nn < 10) sum += vxZ[vxi_bot[kk-nn]];   \
+      sum /= vxZfac; \
+   }    \
+}
+        /* Using some location nn along the top search direction, sum the voxels'
+           noise Z values over nsteps starting at nn */
+#define SUM_NZ_BELOW(nsteps, nn, sum) {\
+   int kk;  \
+   sum=0;   \
+   for (kk=0; kk<nsteps; ++kk) { \
+      if (nn-kk > 0) sum += vxNZ[vxi_top[nn-kk]];   \
+      else if (kk-nn < 10) sum += vxNZ[vxi_bot[kk-nn]];   \
+      sum /= vxNZfac; \
+   }    \
+}
+
+SUMA_Boolean SUMA_ShrinkSkullHull_RS(SUMA_SurfaceObject *SO, 
+                             THD_3dim_dataset *aset, 
+                             THD_3dim_dataset *arset, float thr,
+                             SUMA_COMM_STRUCT *cs) 
+{
+   static char FuncName[]={"SUMA_ShrinkSkullHull_RS"};
+   char sbuf[256]={""};
+   byte *mask=NULL;
+   short *sb=NULL;
+   int   in=0, vxi_bot[30], vxi_top[30], iter, N_movers, 
+         ndbg=SUMA_getBrainWrap_NodeDbg(), nn,N_um,
+         itermax1 = 50, itermax2 = 10, firstpass;
+   float *rvec=NULL, *xyz, *dir, P2[2][3], travstep, shs_bot[30], shs_top[30];
+   float rng_bot[2], rng_top[2], rdist_bot[2], rdist_top[2], avg[2], nodeval,
+         area=0.0, larea=0.0, ftr=0.0, darea=0.0, fac, *rat=NULL;
+   float *fedges=NULL, edge_thr=0.0, *fnz=NULL, *inedges=NULL, inedge_thr=0.0, 
+         *alt=NULL, szt=0.0, sNzt=0.0;
+   float maxetop, maxebot, maxtop, maxbot, okethr;
+   int maxentop,maxenbot, nmaxtop, nmaxbot, *okrat=NULL, smdisp;
+   short *vxZ=NULL, *vxNZ=NULL;
+   float dirZ[3], *dots=NULL, *curedge=NULL, curemean, curestd, U3[3], Un,
+         *disp=NULL, *dispsm=NULL, *trv=NULL, vxZfac=0.0, vxNZfac=0.0;
+   THD_3dim_dataset *inset=NULL, *rset=NULL;
+   SUMA_Boolean stop = NOPE;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   
+   SUMA_LHv("Begin shrinkage, thr=%f\n", thr);
+   
+   /* make a copy get rid of unwanted voxels */
+   NEW_SHORTY(arset,1,FuncName,rset);
+   sb = DSET_BRICK_ARRAY(rset,0);
+   rat = THD_extract_to_float(2,arset);
+   okrat = THD_extract_to_int(3,arset);
+   for (nn=0; nn<DSET_NVOX(arset); ++nn) {
+      if (rat[nn]> 0.0 && okrat[nn]) {
+         if (rat[nn]>1.0) rat[nn]=1.0;
+         sb[nn]=1000.0*rat[nn]; 
+      } else {
+         sb[nn]=0;
+      }  
+   }
+   EDIT_BRICK_FACTOR(rset, 0, 1/1000.0);
+
+   /* get vxNZ and vxZ */
+   vxZ  = DSET_BRICK_ARRAY(arset,5); 
+   if ((vxZfac = DSET_BRICK_FACTOR(arset,5))==0.0) vxZfac=1.0;
+    
+   vxNZ = DSET_BRICK_ARRAY(arset,6);
+   if ((vxNZfac = DSET_BRICK_FACTOR(arset,6))==0.0) vxNZfac=1.0;
+   
+   /* get the edges on the input set anatomical */
+   if (!DSET_ARRAY(aset,0)) {
+      SUMA_S_Err("Very strange, pointer lost");
+      exit(1);
+   }     
+   
+   fedges = THD_extract_to_float(4,arset);
+   
+   if (!DSET_ARRAY(aset,0)) {
+      SUMA_S_Err("Very strange, pointer lost after edge");
+      exit(1);
+   }     
+   
+   /* non-zero edges, masked by rat*/
+   for (in=0, N_um=0; in<DSET_NVOX(aset); ++in) {
+      if (fedges[in] > 0.0 && okrat[in] && rat[in] > thr) ++N_um;
+   }
+   fnz = (float*)SUMA_calloc(N_um, sizeof(float));
+   for (in=0, N_um=0; in<DSET_NVOX(aset); ++in) {
+      if (fedges[in] > 0.0 && okrat[in] && rat[in] > thr) fnz[N_um++]=fedges[in];
+   }
+   qsort(fnz, N_um, sizeof(float), 
+         (int(*) (const void *, const void *)) SUMA_compare_float);
+   /* get the lowest 2% */
+   edge_thr = fnz[(int)(0.02*N_um)];
+   SUMA_free(fnz); fnz=NULL;
+   SUMA_S_Notev("Edge threshold of %f\n", edge_thr);
+   
+   travstep = SUMA_ABS(DSET_DX(aset));
+   if (travstep > SUMA_ABS(DSET_DY(aset))) travstep = SUMA_ABS(DSET_DY(aset));
+   if (travstep > SUMA_ABS(DSET_DZ(aset))) travstep = SUMA_ABS(DSET_DZ(aset));
+   if (!(mask = (byte *)SUMA_malloc(sizeof(byte)*SO->N_Node))) {
+      SUMA_S_Crit("Failed to allocate");
+      SUMA_RETURN(NOPE);
+   }
+   
+   /* For a clean, bust like button, anchor bottom nodes */
+   /* For now, the decision is solely based on the normals
+      being parallel to the Z direction.
+      Perhaps I should add a depth criterion, but that
+      is not necessary it seems */
+      dirZ[0]=0.0; dirZ[1]=0.0; dirZ[2]=1.0;
+      dots = NULL;
+      if (!(SUMA_DotNormals(SO, dirZ, &dots))) {
+         SUMA_S_Err("Failed to get dots");
+      } else {
+         if (LocalHead) SUMA_WRITE_ARRAY_1D(dots, SO->N_Node, 1, "DOTS.1D.dset");
+      }
+   
+   
+   /* Get distributions of values around the surface */
+   curedge = (float *)SUMA_calloc(SO->N_Node, sizeof(float));
+   for (in=0; in<SO->N_Node; ++in) {
+      xyz = SO->NodeList+3*in;
+      dir = SO->NodeNormList+3*in;
+      SUMA_Find_IminImax_2(xyz, dir,
+                         rset, &rvec, travstep, 1*travstep, 1*travstep,
+                         thr, (LocalHead && in==ndbg)?1:0, 
+                         rng_bot, rdist_bot,
+                         rng_top, rdist_top,
+                         avg,
+                         shs_bot, shs_top,
+                         vxi_bot, vxi_top);
+      curedge[in] = SUMA_MAX_PAIR(fedges[vxi_bot[1]],fedges[vxi_bot[0]]);
+      curedge[in] = SUMA_MAX_PAIR(curedge[in], fedges[vxi_top[1]]);     
+   }
+   SUMA_MEAN_STD_VEC(curedge,SO->N_Node,curemean, curestd, 1);
+   SUMA_LHv("About to loop, surface edge mean=%f, std=%f", curemean, curestd);
+   disp = (float *)SUMA_calloc(SO->N_Node*3, sizeof(float));
+   dispsm = (float *)SUMA_calloc(SO->N_Node*3, sizeof(float));
+   stop = NOPE;
+   N_movers = 0; iter=0;
+   smdisp = 2;
+   firstpass = 1;
+   while (!stop) {
+      N_movers = 0;
+      memset(mask, 1, sizeof(byte)*SO->N_Node);
+      /* Keep bottom nodes fixed. (consider recomputing dots?)*/
+      SUMA_DotNormals(SO, dirZ, &dots);
+      if (SO->normdir < 0) { 
+         for (in=0; in<SO->N_Node; ++in) {
+            if (dots[in]>0.8) mask[in]=0;
+         }
+      } else {
+         for (in=0; in<SO->N_Node; ++in) {
+            if (dots[in]<-0.8) mask[in]=0;
+         }
+      }
+      okethr = SUMA_MAX_PAIR(curemean-2*curestd, edge_thr); 
+      for (in=0; in<SO->N_Node; ++in) {
+         SUMA_LHv("Node %d\n", in);
+         xyz = SO->NodeList+3*in;
+         dir = SO->NodeNormList+3*in;
+         trv = disp+3*in; memset(trv,0,sizeof(float)*3);
+         if (!mask[in]) { /* skip it, masked by being bottom node */
+            curedge[in]=0.0;
+            continue;
+         }
+         SUMA_Find_IminImax_2(xyz, dir,
+                            rset, &rvec, travstep, 11*travstep, 11*travstep,
+                            thr, (LocalHead && in==ndbg)?1:0, 
+                            rng_bot, rdist_bot,
+                            rng_top, rdist_top,
+                            avg,
+                            shs_bot, shs_top,
+                            vxi_bot, vxi_top);
+         nodeval = shs_bot[0];
+         curedge[in] = SUMA_MAX_PAIR(fedges[vxi_bot[1]],fedges[vxi_bot[0]]);
+         curedge[in] = SUMA_MAX_PAIR(curedge[in], fedges[vxi_top[1]]);
+         if (1) {
+            /* find strongest edge above*/
+            maxetop = fedges[vxi_top[0]]; maxentop = 0;
+            maxtop = shs_top[0]; nmaxtop =0;
+            for (nn=1; nn<10 && vxi_top[nn]>=0; ++nn) {
+               if (  (HI_RAT_EDGE(vxi_top,nn) || HI_SIG_EDGE(vxi_top,nn)) &&
+                     (fedges[vxi_top[nn]]>maxetop ||
+                      fedges[vxi_top[nn]]>okethr)) {/*also accept higher 
+                                                  decent edges*/
+                  maxetop = fedges[vxi_top[nn]]; maxentop=nn; 
+               }
+               if (shs_top[nn] > maxtop) {
+                  nmaxtop = nn;
+                  maxtop = shs_top[nn];
+               }
+            }
+            SUM_Z_BELOW(5, maxentop, szt);
+            SUM_NZ_BELOW(5, maxentop, sNzt);
+            
+            /* find strongest edge below */
+            maxebot = fedges[vxi_bot[0]]; maxenbot = 0; 
+            maxbot = shs_bot[0]; nmaxbot = 0;
+            for (nn=1; nn<10 && vxi_bot[nn]>=0; ++nn) {
+               if (fedges[vxi_bot[nn]]>maxebot && vxi_top[nn]>=0) { 
+                  maxebot = fedges[vxi_bot[nn]]; maxenbot=nn; 
+               }
+               if (shs_bot[nn] > maxbot && 
+                     (rat[vxi_bot[nn]]>thr || rat[vxi_bot[nn-1]]>thr)) {
+                  nmaxbot = nn; maxbot = shs_bot[nn];
+               }
+            }
+            
+            
+            if (  (maxetop >= maxebot) || 
+                  ( maxentop > 0 && maxetop >=okethr && 
+                     (  HI_RAT_EDGE(vxi_top, maxentop) || 
+                        HI_SIG_EDGE(vxi_top, maxentop) ) && 
+                     (  szt > -10 || sNzt > 25 ) )
+               ) {
+                                    /* go up for better edge*/
+               nn = maxentop;
+               if (in == ndbg|| LocalHead){
+                  SUMA_S_Notev(
+                     "Better edge above (%f vs %f, ethr %f, [%f %f]) \n"
+                     "%d steps (rat %f, %f, thr %f)\n",
+                     maxetop, maxebot, edge_thr, curemean, curestd, nn,
+                     rat[vxi_top[nn]], rat[vxi_top[nn-1]], thr); }
+               if (fedges[vxi_top[nn]]>=edge_thr) { /* go up  */
+                  ftr = travstep*nn;
+                  trv[0] = ftr*dir[0];
+                  trv[1] = ftr*dir[1];
+                  trv[2] = ftr*dir[2];
+                  if ((fedges[vxi_top[nn]]>= fedges[vxi_top[0]] ||
+                       fedges[vxi_top[nn]]>= okethr ) &&
+                      ( HI_RATOK_EDGE(vxi_top, nn) && HI_SIG_EDGE(vxi_top, nn) &&
+                        ( szt > 0.0 || (szt > -5 && sNzt > 25) ))
+                     )
+                           mask[in]=0;
+                  if (in == ndbg) { 
+                     SUMA_S_Notev("Moving up by %f %f %f, mask[%d]=%d, %d %d\n",
+                                   trv[0], trv[1], trv[2], in, mask[in],
+                                   HI_RATOK_EDGE(vxi_top, nn), 
+                                   HI_SIG_EDGE(vxi_top, nn));  
+                  }
+               }
+            } else {
+               /* look down for better option */
+               if (nodeval < rng_bot[1]) { 
+                  { /* Go down to the 1st voxel meeting threshold 
+                              and a good edge */
+                     if (in == ndbg|| LocalHead) { 
+                        SUMA_S_Notev(
+                           "Looking down nodeval %f, edge %f, ethr %f\n",
+                           nodeval, fedges[vxi_bot[0]], edge_thr); }
+                     nn = 0;
+                     while (nn<10 && (shs_bot[nn]<thr && 
+                                      vxi_bot[nn]>=0 &&
+                                      fedges[vxi_bot[nn]]<edge_thr)) {
+                        ++nn; 
+                     }
+                     if (fedges[vxi_bot[nn]]>=edge_thr) {
+                        if (in == ndbg|| LocalHead){ 
+                           SUMA_S_Notev("Going down %d steps to edge+anchor\n", 
+                                       nn);}
+                        nn = SUMA_MIN_PAIR(nn,3);/* slowly to avoid folding */
+                        ftr = travstep*nn;
+                        trv[0] = -ftr*dir[0];
+                        trv[1] = -ftr*dir[1];
+                        trv[2] = -ftr*dir[2]; 
+                        if (fedges[vxi_bot[nn]]> fedges[vxi_bot[0]])
+                           mask[in]=0;                  
+                     } else  { /* no good edge found, keep going if sitting
+                                 on no edge or no value, including in 
+                                 unmasked ratio*/
+                        if (fedges[vxi_bot[0]] < edge_thr || nodeval < 0.1*thr) {
+                           if (maxbot > nodeval) {
+                              nn = nmaxbot;
+                              nn = SUMA_MIN_PAIR(nn,3);/* slowly, avoid folding*/
+                              if (in == ndbg){ 
+                                 SUMA_S_Notev("Going down %d steps\n", nn);}
+                              ftr = travstep*nn;
+                              trv[0] = -ftr*dir[0];
+                              trv[1] = -ftr*dir[1];
+                              trv[2] = -ftr*dir[2];
+                           } else if ( nodeval == 0.0 && 
+                                       rat[vxi_bot[0]]<0.5*thr ) {
+                              nn = 10;
+                              if (in == ndbg){ 
+                                 SUMA_S_Notev("Going down fast %d steps\n", nn);}
+                              ftr = travstep*nn;
+                              trv[0] = -ftr*dir[0];
+                              trv[1] = -ftr*dir[1];
+                              trv[2] = -ftr*dir[2];
+                              
+                           }
+                        }
+                     }
+                  }
+               }
+            }
+               ++N_movers;
+         }
+      }
+      
+      SUMA_MEAN_STD_VEC(curedge, SO->N_Node, curemean, curestd, 1);
+      SUMA_LHv("Smoothing round %d, surface edge mean=%f, std=%f\n", 
+               iter, curemean, curestd);
+      /* Make sure no one node is an anchor holdout */
+      for (in=0; in<SO->N_Node; ++in) {
+         if (mask[in] == 0) { /* an anchored node */
+            N_um = 0; /* number of unanchored neighbors */
+            for (nn=0; nn<SO->FN->N_Neighb[in]; ++nn) {
+               if (mask[SO->FN->FirstNeighb[in][nn]]) ++N_um;
+            }
+            if ((float)N_um/SO->FN->N_Neighb[in] > 0.75) {
+               mask[in]=1;
+               if (LocalHead && in == ndbg) {
+                  SUMA_LHv("Node %d was anchored but now released %f\n",
+                           in, (float)N_um/SO->FN->N_Neighb[in]);
+               }
+            }
+         } 
+      }
+      
+      /* smooth displacement and add it */
+      if (smdisp) {
+         dispsm = SUMA_SmoothAttr_Neighb_Rec(disp, SO->N_Node*3, dispsm, 
+                                             SO->FN, 3, smdisp, mask, 0);
+      } else {
+         memcpy(dispsm, disp, 3*SO->N_Node*sizeof(float));
+      }  
+      for (in=0; in<SO->N_Node; ++in) {
+         if (in == ndbg) { 
+            SUMA_S_Notev("Post smth & mask manip. Node %d(%d) trv: %f %f %f\n",
+                         in, mask[in], trv[0], trv[1], trv[2]);  
+         }
+         xyz = SO->NodeList+3*in;
+         if (mask[in]) {
+            trv = dispsm+3*in;
+         } else {
+            trv = disp+3*in;
+         }
+         xyz[0] += trv[0];
+         xyz[1] += trv[1];
+         xyz[2] += trv[2];
+      }  
+      
+      /* Are we making a difference in this world? */
+      larea=area;
+      area=SUMA_Mesh_Area(SO, NULL, -1);
+      darea = (area-larea)/area*100.0;
+      
+      /* write it out for debugging */
+      if (LocalHead || ndbg>=0) {
+         SUMA_S_Notev("Iteration %d, N_movers = %d, area = %f (Darea=%f)\n",
+               iter, N_movers, area, darea);
+         if (LocalHead) {
+            THD_force_ok_overwrite(1) ;
+            sprintf(sbuf,"shrink.02%d",iter);
+            SUMA_Save_Surface_Object_Wrap(sbuf, NULL, SO, 
+                                    SUMA_GIFTI, SUMA_ASCII, NULL);
+         }
+      }
+      ++iter;
+      
+      if (iter > itermax1 || SUMA_ABS(darea) < 0.01) stop = YUP;
+      
+      /* By turning off firstpass, you'll allow more flexibility
+      in the mesh which can capture noble shapes like the nose.
+      Mais bien sur! If you don't want such things, don't let 
+      firstpass go to 0
+      Also, you need not go to 0.01 if you do not care for the nose
+      and eye sockets. */
+      if (firstpass && SUMA_ABS(darea) < 0.05) firstpass = 0;
+      
+      if (!stop && firstpass) {
+         /* A quick smoothing with anchors in place, 
+            Use it even if you are smoothing attributes up there.
+            Otherwise you could get skirts at the bottom in 
+            certain cases. */
+         SUMA_NN_GeomSmooth_SO(SO, mask, 0, 10);
+      } else {
+         /* A Taubin smooth */
+         if (1) {
+            SUMA_Taubin_Smooth_SO(SO, SUMA_EQUAL, 0.1, NULL, 0, 20);
+         } else {
+            SUMA_RECOMPUTE_NORMALS_and_AREAS(SO);
+            SUMA_DIM_CENTER(SO);
+         }
+      }
+      if (cs && cs->talk_suma && cs->Send) {
+         if (!SUMA_SendToSuma (SO, cs, (void *)SO->NodeList, 
+                               SUMA_NODE_XYZ, 1)) {
+            SUMA_SL_Warn("Failed in SUMA_SendToSuma\n"
+                         "Communication halted.");
+         }
+      }
+   }
+   
+   if (LocalHead) {
+      SUMA_LHv("End of iterations N_movers = %d, area = %f\n",
+            N_movers, SUMA_Mesh_Area(SO, NULL, -1));
+      THD_force_ok_overwrite(1) ;
+      SUMA_Save_Surface_Object_Wrap("shrink", NULL, SO, 
+                              SUMA_GIFTI, SUMA_ASCII, NULL);
+   }
+   
+   if (iter >= itermax1) {
+      SUMA_S_Note("Convergence criterion not reached. Check results.");
+   }
+   
+   if (rat) free(rat); rat=NULL; 
+   if (okrat) free(okrat); okrat=NULL;
+   if (curedge) SUMA_free(curedge); curedge = NULL;   
+   if (dots) SUMA_free(dots); dots = NULL;   
+   if (mask) free(mask); mask = NULL;
+   if (rvec) free(rvec); rvec = NULL;
+   if (fedges) free(fedges); fedges = NULL;
+   if (inedges) SUMA_free(inedges); inedges = NULL;
+   if (inset) DSET_delete(inset); inset=NULL;
+   if (rset) DSET_delete(rset); rset=NULL;
+   if (disp) SUMA_free(disp); disp=NULL;
+   if (dispsm) SUMA_free(dispsm); dispsm=NULL;
+   SUMA_RETURN(YUP);
+}
+
+SUMA_Boolean SUMA_ShrinkHeadSurf_RS(SUMA_SurfaceObject *SO, 
+                             THD_3dim_dataset *aset, 
+                             THD_3dim_dataset *arset,
+                             float *ucm,
+                             SUMA_COMM_STRUCT *cs) 
+{
+   static char FuncName[]={"SUMA_ShrinkHeadSurf_RS"};
+   char sbuf[256]={""};
+   byte *mask=NULL;
+   short *oke=NULL, *okb=NULL, *ov=NULL, *un=NULL;
+   short *sb=NULL, *isin=NULL;
+   int   in=0, vxi_bot[30], vxi_top[30], iter, N_movers, 
+         ndbg=SUMA_getBrainWrap_NodeDbg(), nn,N_um, trvoff[2],trv[2], 
+         itermax1 = 100, itermax2 = 10, pass, passiter, vv, IJK[3];
+   THD_fvec3 ccc, ncoord;
+   float cm[3], xyz_ijk[3], *avec=NULL, *xyz, *dir, P2[2][3], 
+         travstep, shs_bot[30], shs_top[30], ovfac, unfac;
+   float rng_bot[2], rng_top[2], rdist_bot[2], rdist_top[2], avg[2], nodeval,
+         area=0.0, larea=0.0, ftr=0.0, darea=0.0, fac, *rat=NULL;
+   float *fedges=NULL, edge_thr=0.0, *fnz=NULL, *inedges=NULL, inedge_thr=0.0, 
+         *alt=NULL, szt=0.0, sNzt=0.0, mvoxd, means[3], ztop=0.0;
+   float maxetop, maxebot, maxtop, maxbot, okethr;
+   int maxentop,maxenbot, nmaxtop, nmaxbot, *okrat=NULL, smdisp, N_in, cmijk;
+   short *vxZ=NULL, *vxNZ=NULL;
+   float dirZ[3], *dots=NULL, *curedge=NULL, curemean, curestd, U3[3], Un,
+         *disp=NULL, *dispsm=NULL, vxZfac=0.0, vxNZfac=0.0, cmstats[5],
+         *prvec=NULL, *drvec=NULL, *ftrv=NULL;
+   THD_3dim_dataset *inset=NULL, *rset=NULL;
+   SUMA_SPHERE_QUALITY *SSQ=NULL;
+   SUMA_VOLPAR *vp=NULL;
+   SUMA_Boolean stop = NOPE;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+
+   SUMA_LH("Begin head shrinkage, get Zs\n");
+   /* get under and over */
+   un = DSET_BRICK_ARRAY(arset,0);
+   if ((unfac = DSET_BRICK_FACTOR(arset,0))==0.0) unfac=1.0; 
+   ov = DSET_BRICK_ARRAY(arset,1); 
+   if ((ovfac = DSET_BRICK_FACTOR(arset,1))==0.0) ovfac=1.0;
+   
+   /* get vxNZ and vxZ */
+   vxZ  = DSET_BRICK_ARRAY(arset,5); 
+   if ((vxZfac = DSET_BRICK_FACTOR(arset,5))==0.0) vxZfac=1.0;
+    
+   vxNZ = DSET_BRICK_ARRAY(arset,6);
+   if ((vxNZfac = DSET_BRICK_FACTOR(arset,6))==0.0) vxNZfac=1.0;
+   
+   /* get the edges  */
+   SUMA_LH("get edgess\n");
+   fedges = THD_extract_to_float(4,arset);
+         
+   /* get regions around sign change for (U-O)/O */
+   prvec = THD_extract_to_float(8,arset);
+   drvec = THD_extract_to_float(7,arset);
+   
+   /* get mask of voxels in the head surface */
+   SUMA_LH("is inning\n"); 
+   vp = SUMA_VolParFromDset(aset);
+   if (!(isin = SUMA_FindVoxelsInSurface (SO, vp, &N_in, 1, NULL))) {
+      SUMA_S_Err("Failed to get insiders");
+      SUMA_RETURN(NOPE);
+   }
+   EDIT_add_brick (arset,MRI_short, 0.0, isin);
+   EDIT_BRICK_LABEL (arset, DSET_NVALS(arset)-1, "inhead");
+
+   /* travel step */
+   travstep = SUMA_ABS(DSET_DX(aset));
+   if (travstep > SUMA_ABS(DSET_DY(aset))) travstep = SUMA_ABS(DSET_DY(aset));
+   if (travstep > SUMA_ABS(DSET_DZ(aset))) travstep = SUMA_ABS(DSET_DZ(aset));
+   if (!(mask = (byte *)SUMA_malloc(sizeof(byte)*SO->N_Node))) {
+      SUMA_S_Crit("Failed to allocate");
+      SUMA_RETURN(NOPE);
+   }
+   
+   /* Get angle between normal and radius */
+   SUMA_LH("Compute dots\n");
+   dirZ[0]=0.0; dirZ[1]=0.0; dirZ[2]=1.0;
+   dots = NULL;
+   if (!(SUMA_DotNormals(SO, dirZ, &dots))) {
+      SUMA_S_Err("Failed to get dots");
+   } else {
+      if (LocalHead) SUMA_WRITE_ARRAY_1D(dots, SO->N_Node, 1, "DOTS.1D.dset");
+   }
+   
+   
+   /* Get distributions of edge values around the surface */
+   SUMA_LH("Edge dist\n");
+   curedge = (float *)SUMA_calloc(SO->N_Node, sizeof(float));
+   for (in=0; in<SO->N_Node; ++in) {
+      xyz = SO->NodeList+3*in;
+      dir = SO->NodeNormList+3*in;
+      SUMA_Find_IminImax_2(xyz, dir,
+                         aset, &avec, travstep, 1*travstep, 1*travstep,
+                         0.0, (0 && LocalHead && in==ndbg)?1:0, 
+                         rng_bot, rdist_bot,
+                         rng_top, rdist_top,
+                         avg,
+                         shs_bot, shs_top,
+                         vxi_bot, vxi_top);
+      curedge[in] = SUMA_MAX_PAIR(fedges[vxi_bot[1]],fedges[vxi_bot[0]]);
+      curedge[in] = SUMA_MAX_PAIR(curedge[in], fedges[vxi_top[1]]);     
+   }
+   SUMA_MEAN_STD_VEC(curedge,SO->N_Node,curemean, curestd, 1);
+   
+
+   /* What is the top 5% z coord? */
+   {
+      byte *okmask = (byte *)SUMA_malloc(sizeof(byte)*DSET_NVOX(aset));
+      for (vv=0; vv<DSET_NVOX(aset); ++vv) 
+         if (isin[vv] > 1) okmask[vv]=1; else okmask[vv]=0;
+      if (!SUMA_VoxelDepth_Z(aset, okmask, NULL, 0.0, NULL, 0, 0, &ztop)) {
+         SUMA_S_Err("Failed to get depth");
+         SUMA_RETURN(NOPE);
+      }
+      SUMA_free(okmask); okmask=NULL;
+   }
+   /* center of mass */
+   if (!ucm) {
+      byte *cmmm = (byte *)SUMA_calloc(DSET_NVOX(aset), sizeof(byte));
+      for (vv=0; vv<DSET_NVOX(aset); ++vv) {
+         if (isin[vv]>1) cmmm[vv]=1;
+      }
+      ccc = THD_cmass(aset, 0, cmmm); SUMA_free(cmmm); cmmm=NULL;
+      cm[0] = ccc.xyz[0];
+      cm[1] = ccc.xyz[1];
+      cm[2] = ccc.xyz[2];
+   } else {
+      cm[0] = ucm[0];
+      cm[1] = ucm[1];
+      cm[2] = ucm[2];
+   }
+   
+   /* adjust Z of cm so that we're at 50mm from the top ,
+      this way we're less likely to be too low */
+   if (cm[2] < ztop - 50) {
+      SUMA_S_Notev(
+         "computed cmass Z = %f, top estimated at %f, Z now set to %f\n",
+         cm[2], ztop, ztop - 50);
+      cm[2] = ztop - 50;
+   } else {
+      SUMA_S_Notev(
+         "computed cmass Z = %f, top estimated at %f, Z left alone\n",
+         cm[2], ztop);
+   }  
+   /* change cm to index units */
+   ccc.xyz[0]=cm[0]; ccc.xyz[1]=cm[1]; ccc.xyz[2]=cm[2]; 
+   ncoord = THD_dicomm_to_3dmm(aset, ccc);
+   ccc = THD_3dmm_to_3dfind(aset, ncoord);
+   cm[0] = ccc.xyz[0];
+   cm[1] = ccc.xyz[1];
+   cm[2] = ccc.xyz[2];
+   cmijk = (int)cm[0]+(int)cm[1]*DSET_NX(aset)+
+                      (int)cm[2]*DSET_NX(aset)*DSET_NY(aset);
+   
+  
+   /* compute some stats around the center of mass */
+   SUMA_S_Note("Computing stats around new cm\n");
+   {
+      float *nbar=NULL;
+      int nbar_num;
+      MCW_cluster *nbhd=NULL;
+      MRI_IMAGE *dsim=NULL;
+      dsim = THD_extract_float_brick(0, aset);
+      float *fin = (float*)MRI_FLOAT_PTR(dsim);
+      nbhd = MCW_rectmask( SUMA_ABS(DSET_DX(aset)), 
+                           SUMA_ABS(DSET_DY(aset)),
+                           SUMA_ABS(DSET_DZ(aset)), 
+                           40, 40, 40 ) ;
+      nbar = (float*)SUMA_calloc(nbhd->num_pt, sizeof(float));
+      nbar_num = mri_get_nbhd_array( dsim , NULL, 
+                        (int)cm[0], (int)cm[1], (int)cm[2] , nbhd , nbar ) ;
+      mri_nstat_mMP2S( nbar_num , nbar, fin[cmijk], cmstats ) ;
+      SUMA_free(nbar); nbar = NULL;
+      KILL_CLUSTER(nbhd); nbhd = NULL;
+      
+      cmstats[3] = 1.4826*cmstats[3];     /* turn MAD to stdv */
+      SUMA_S_Notev("cmijk=[%f %f %f], median %f, stdv from MAD %f\n", 
+               cm[0], cm[1], cm[2], cmstats[1], cmstats[3]);
+      /* if (Rcmstats) { Rcmstats[0]=cmstats[1]; Rcmstats[1]=cmstats[3]; }*/
+      mri_free(dsim); dsim = NULL; fin = NULL;
+   }
+
+   /* min voxel dim */
+   mvoxd = SUMA_MIN_PAIR(SUMA_ABS(DSET_DX(aset)), SUMA_ABS(DSET_DY(aset)));
+   mvoxd = SUMA_MIN_PAIR(mvoxd, SUMA_ABS(DSET_DZ(aset)));
+   trv[0] = 0; trv[1] = 1;
+   trv[0] = SUMA_ROUND(3.0 / mvoxd); if (trv[0]<3) trv[0]=3;
+   trv[1] = SUMA_ROUND(3.0 / mvoxd); if (trv[1]<3) trv[1]=3;
+   trvoff[0]=0; trvoff[1]=1;
+   
+   /* Now create a vector marking good edges in the volume */
+   SUMA_LHv("Good edging trv: %d %d, trvoff %d %d\nThis has not been used yet.", 
+         trv[0], trv[1], trvoff[0], trvoff[1]);
+   oke = (short *)SUMA_calloc(DSET_NVOX(aset), sizeof(short));
+   for (vv=0; vv<DSET_NVOX(aset); ++vv) {
+      if (fedges[vv] && prvec[vv]>-0.1 && isin[vv]>1 && drvec[vv] > 0.0) {
+         /* check also that the signal over 2mm above is less than signal over 
+            2 mm below */
+         Vox1D2Vox3D(vv, DSET_NX(aset), DSET_NX(aset)*DSET_NY(aset), IJK);
+         xyz_ijk[0]= IJK[0]; xyz_ijk[1]= IJK[1]; xyz_ijk[2]= IJK[2];
+   
+         if (!SUMA_Vox_Radial_Stats(avec,
+                  DSET_NX(aset), DSET_NY(aset), DSET_NZ(aset),
+                  xyz_ijk, cm, trv, trvoff,
+                  means, 
+                  NULL, NULL, NULL, NULL, 1)) {
+            SUMA_S_Errv("Failed at voxel %d %d %d\n",
+                        IJK[0], IJK[1], IJK[2]);
+            SUMA_RETURN(NOPE);
+         }
+         #if 0
+               fprintf(stdout,"%d %d %d %f %f %f\n", 
+                        IJK[0], IJK[1], IJK[2], fedges[vv], means[1], means[2]);
+         #endif
+         if (means[1] > 0.0 &&
+             (means[1]-means[2])/(means[1]+means[2]) > 0.0) {
+               oke[vv] = 1;
+         }
+      }
+   }
+   
+   /* append to features set */
+   EDIT_add_brick (arset,MRI_short, 0.0, oke);
+   EDIT_BRICK_LABEL (arset, DSET_NVALS(arset)-1, "oke");
+   
+   /* Create a vector marking good candidates for brain contour */
+   SUMA_S_Note("Getting good contour candidates, also not used yet");
+   okb = (short *)SUMA_calloc(DSET_NVOX(aset), sizeof(short));
+   for (vv=0; vv<DSET_NVOX(aset); ++vv) {
+      if ( prvec[vv] > 0.0 && drvec[vv]>0.0 && isin[vv]>1 && 
+           (vxNZ[vv]*vxNZfac > 10 || 
+                     ( vxNZ[vv]*vxNZfac > 5 && vxZ[vv]*vxZfac > -2 ) )  ) {
+         if (vv == 4758873) {
+         Vox1D2Vox3D(vv, DSET_NX(aset), DSET_NX(aset)*DSET_NY(aset), IJK);
+               fprintf(stdout,"Voxel %d %d %d \n"
+                        "%f %f %d \n"
+                        "%f %f %f %f %f \n", 
+                        IJK[0], IJK[1], IJK[2],
+                        prvec[vv], drvec[vv], isin[vv], 
+                        vxNZ[vv]*vxNZfac, vxZ[vv]*vxZfac, 
+                        un[vv]*unfac, ov[vv]*ovfac, cmstats[1]);
+         }
+         okb[vv] = 1;
+      }
+   }
+   EDIT_add_brick (arset,MRI_short, 0.0, okb);
+   EDIT_BRICK_LABEL (arset, DSET_NVALS(arset)-1, "okb");
+   
+   
+   /* DO THIS: STOPPED HERE 
+   Instead of plodding along on a mixture of drvec and pdrvec,
+   it would be easier to create an ok voxel mask with the following:
+   step(prvec)*step(drvec)*(step(vxNZ-10)+step(vxNZ-5)*step(vxZ+2))*
+   UnderMean - OverMean > 0 && UnderMean - OverMean / BrainAvg 
+   (BrainAvg winged it at 235 here) should be decent
+      step(a)*step(b)*
+      (step(c-10)+step(c-5)*step(d+2))*step((e-f)/235-0.1)    
+   It behooves you after the first pass to recompute the stats inside the volume
+   and possibly, all of voxZ then start using the mean of voxels inside, etc.
+   Might also want to use e/235-0.2 or compute the Z of UnderMean.
+   
+   okb is the implementation for the comment above. Consider using it directly 
+   when searching for where to go next.
+   */
+   
+   SUMA_LHv("About to loop, surface edge mean=%f, std=%f\n", curemean, curestd);
+   disp = (float *)SUMA_calloc(SO->N_Node*3, sizeof(float));
+   dispsm = (float *)SUMA_calloc(SO->N_Node*3, sizeof(float));
+   stop = NOPE;
+   N_movers = 0; iter=0;
+   smdisp = 2;
+   pass = 0; passiter=0;
+   while (!stop) {
+      N_movers = 0;
+      memset(mask, 1, sizeof(byte)*SO->N_Node);
+      /* Keep bottom nodes fixed. (consider recomputing dots?)*/
+      SUMA_DotNormals(SO, dirZ, &dots);
+      okethr = SUMA_MAX_PAIR(curemean-2*curestd, edge_thr); 
+      for (in=0; in<SO->N_Node; ++in) {
+         xyz = SO->NodeList+3*in;
+         dir = SO->NodeNormList+3*in;
+         ftrv = disp+3*in; memset(ftrv,0,sizeof(float)*3);
+         if (!mask[in]) { /* skip it, masked by being bottom node */
+            curedge[in]=0.0;
+            continue;
+         }
+         SUMA_Find_IminImax_2(xyz, dir,
+                            arset, &drvec, travstep, 13*travstep, 13*travstep,
+                            0.0, (0 && LocalHead && in==ndbg)?1:0, 
+                            rng_bot, rdist_bot,
+                            rng_top, rdist_top,
+                            avg,
+                            shs_bot, shs_top,
+                            vxi_bot, vxi_top);
+         nodeval = shs_bot[0];
+         
+         /* find positive drvec below */
+         nn = 0;
+         while ( nn < 10 && (
+                  (shs_bot[0] >= 0.0 && shs_bot[nn+1] < 0) ||
+                  (shs_bot[0] < 0 && avec[vxi_bot[0]] > avec[vxi_bot[nn+1]]) ||
+                  (prvec[vxi_bot[nn]] < 0)   
+                            ) ) ++nn;
+         if (nn==10) { /* no good opt */
+            nn = 0;
+         }
+         if (in == ndbg){
+            /* note that conv. measure is not valid here because it reflects
+            things before any movement */
+            SUMA_S_Notev(
+               "Node %d, voxel %d, Better below %d steps\n"
+               "%f %f %f\n%f %f %f\n%f, %f, %f\n"
+               ,
+               in,vxi_bot[0],nn,
+               prvec[vxi_bot[nn]], prvec[vxi_bot[nn+1]], prvec[vxi_bot[nn+2]],
+               drvec[vxi_bot[nn]], drvec[vxi_bot[nn+1]], drvec[vxi_bot[nn+2]],
+               SSQ ? SSQ->node_DelDot[in]:0.0, 
+                  SSQ ? SSQ->node_DelDist[in]/SSQ->AvgDist:0.0,
+                     SSQ ? SSQ->node_Conv[in]:0.0); 
+         }
+         if (prvec[vxi_bot[nn]] > 0 && prvec[vxi_bot[nn+1]] > 0 &&
+              prvec[vxi_bot[nn+2]] > 0 &&
+             drvec[vxi_bot[nn]] > 0  &&  drvec[vxi_bot[nn+1]] > 0 &&
+              drvec[vxi_bot[nn+2]] > 0 &&
+              vxNZ[vxi_bot[0]] > 10 && /* assuredly signal */
+              (pass < 1 || 
+                  (SSQ->node_DelDot[in] < 0.3 && 
+                   SSQ->node_DelDist[in]/SSQ->AvgDist < 0.5 ) ) ) {
+            mask[in] = 0;
+         }
+         
+         if (nn == 0 && mask[in]) {
+            if (SSQ && SSQ->node_Conv[in] < -0.5) nn = 0; 
+                                       /* too concave, don't go down */
+            else /* go down a little? */
+               nn = 3;
+         }
+         if (nn) {
+            ftr = travstep*nn;
+            ftrv[0] = -ftr*dir[0];
+            ftrv[1] = -ftr*dir[1];
+            ftrv[2] = -ftr*dir[2]; 
+            ++N_movers;
+         } 
+      }
+      
+      SUMA_MEAN_STD_VEC(curedge, SO->N_Node, curemean, curestd, 1);
+      SUMA_LHv("Smoothing round %d, surface edge mean=%f, std=%f\n", 
+               iter, curemean, curestd);
+      /* Make sure no one node is an anchor holdout */
+      for (in=0; in<SO->N_Node; ++in) {
+         if (mask[in] == 0) { /* an anchored node */
+            N_um = 0; /* number of unanchored neighbors */
+            for (nn=0; nn<SO->FN->N_Neighb[in]; ++nn) {
+               if (mask[SO->FN->FirstNeighb[in][nn]]) ++N_um;
+            }
+            if ((float)N_um/SO->FN->N_Neighb[in] > 0.75) {
+               mask[in]=1;
+               if (LocalHead && in == ndbg) {
+                  SUMA_LHv("Node %d was anchored but now released %f\n",
+                           in, (float)N_um/SO->FN->N_Neighb[in]);
+               }
+            }
+         } 
+      }
+      
+      /* smooth displacement and add it */
+      if (smdisp) {
+         dispsm = SUMA_SmoothAttr_Neighb_Rec(disp, SO->N_Node*3, dispsm, 
+                                             SO->FN, 3, smdisp, mask, 0);
+      } else {
+         memcpy(dispsm, disp, 3*SO->N_Node*sizeof(float));
+      }  
+      for (in=0; in<SO->N_Node; ++in) {
+         if (in == ndbg) { 
+            SUMA_S_Notev("Post smth & mask manip. Node %d(%d) ftrv: %f %f %f\n",
+                         in, mask[in], ftrv[0], ftrv[1], ftrv[2]);  
+         }
+         xyz = SO->NodeList+3*in;
+         if (mask[in]) {
+            ftrv = dispsm+3*in;
+         } else {
+            ftrv = disp+3*in;
+         }
+         xyz[0] += ftrv[0];
+         xyz[1] += ftrv[1];
+         xyz[2] += ftrv[2];
+      }  
+      
+      /* Are we making a difference in this world? */
+      larea=area;
+      area=SUMA_Mesh_Area(SO, NULL, -1);
+      darea = (area-larea)/area*100.0;
+      
+      /* write it out for debugging */
+      if (LocalHead || ndbg>=0) {
+         SUMA_S_Notev("Iteration %d, N_movers = %d, area = %f (Darea=%f)\n",
+               iter, N_movers, area, darea);
+         if (LocalHead) {
+            THD_force_ok_overwrite(1) ;
+            sprintf(sbuf,"shrink.02%d",iter);
+            SUMA_Save_Surface_Object_Wrap(sbuf, NULL, SO, 
+                                    SUMA_GIFTI, SUMA_ASCII, NULL);
+         }
+      }
+      ++iter;
+      if (pass == 0 && SUMA_ABS(darea) < 0.05) {
+         pass = 1;
+         passiter=iter;
+      }
+      if (iter > itermax1 || 
+            (pass && (iter - passiter) > 10 && SUMA_ABS(darea) < 0.001)) 
+         stop = YUP;
+            
+      if (!stop) {
+         /* A quick smoothing with anchors in place, 
+            Use it even if you are smoothing attributes up there.
+            Otherwise you could get skirts at the bottom in 
+            certain cases. */
+         SUMA_NN_GeomSmooth_SO(SO, mask, 0, 10);
+      } else {
+         /* A Taubin smooth */
+         if (1) {
+            SUMA_Taubin_Smooth_SO(SO, SUMA_EQUAL, 0.1, NULL, 0, 20);
+         } else {
+            SUMA_RECOMPUTE_NORMALS_and_AREAS(SO);
+            SUMA_DIM_CENTER(SO);
+         }
+      }
+      if (cs && cs->talk_suma && cs->Send) {
+         if (!SUMA_SendToSuma (SO, cs, (void *)SO->NodeList, 
+                               SUMA_NODE_XYZ, 1)) {
+            SUMA_SL_Warn("Failed in SUMA_SendToSuma\n"
+                         "Communication halted.");
+         }
+      }
+      if (pass) SSQ = SUMA_SphericalDeviations(SO, SSQ,"dist,dot,conv");
+   }
+   
+   if (LocalHead) {
+      SUMA_LHv("End of iterations N_movers = %d, area = %f\n",
+            N_movers, SUMA_Mesh_Area(SO, NULL, -1));
+      THD_force_ok_overwrite(1) ;
+      SUMA_Save_Surface_Object_Wrap("shrink", NULL, SO, 
+                              SUMA_GIFTI, SUMA_ASCII, NULL);
+   }
+   
+   if (iter >= itermax1) {
+      SUMA_S_Note("Convergence criterion not reached. Check results.");
+   }
+   
+   /* Now compute mask of voxels in surface and add to isin */
+   {
+      short *isin2=NULL;
+      if (!(isin2 = SUMA_FindVoxelsInSurface (SO, vp, &N_in, 1, NULL))) {
+         SUMA_S_Err("Failed to get insiders");
+         SUMA_RETURN(NOPE);
+      }
+      for (vv=0; vv<DSET_NVOX(aset); ++vv) {
+         if (isin[vv] > 1 && isin2[vv]>1) {
+            isin[vv] += 10+isin2[vv];
+         }
+      }
+      SUMA_free(isin2); isin2=NULL;
+   }
+   
+   
+   SUMA_Free_VolPar(vp); vp=NULL;
+   if (SSQ) SSQ = SUMA_Free_SphereQuality(SSQ); 
+   if (rat) free(rat); rat=NULL; 
+   if (okrat) free(okrat); okrat=NULL;
+   if (curedge) SUMA_free(curedge); curedge = NULL;   
+   if (dots) SUMA_free(dots); dots = NULL;   
+   if (mask) free(mask); mask = NULL;
+   if (fedges) free(fedges); fedges = NULL;
+   if (inedges) SUMA_free(inedges); inedges = NULL;
+   if (inset) DSET_delete(inset); inset=NULL;
+   if (rset) DSET_delete(rset); rset=NULL;
+   if (disp) SUMA_free(disp); disp=NULL;
+   if (dispsm) SUMA_free(dispsm); dispsm=NULL;
+   if (prvec) SUMA_free(prvec); prvec=NULL;
+   if (drvec) SUMA_free(drvec); drvec=NULL;
+   SUMA_RETURN(YUP);
+}
+
+
 /*!
    Get a good mask of the whole head.
    hullvolthr is the expected volume of the head, it is
@@ -7178,6 +9277,8 @@ SUMA_Boolean SUMA_ShrinkSkullHull(SUMA_SurfaceObject *SO,
    Use 0.0 for some optimization, but that should not be
    necessary. See SUMA_ExtractHead_Hull for more info.
    
+   The approach in this function is not all that robust.
+   You should use SUMA_ExtractHead_RS instead.
 */    
 SUMA_SurfaceObject *SUMA_ExtractHead(THD_3dim_dataset *iset,
                                      float hullvolthr, 
@@ -7248,12 +9349,123 @@ SUMA_SurfaceObject *SUMA_ExtractHead(THD_3dim_dataset *iset,
    
    /* for each node on the surface, if it is at the threshold or above, 
       leave it in place, otherwise smooth, repeat*/
-   SUMA_ShrinkSkullHull(SOi, iset, sklthr, cs);
+   SUMA_ShrinkSkullHull(SOi, iset, sklthr, 1, cs);
    
    if (SOh) SUMA_Free_Surface_Object(SOh); SOh = NULL;
    if (hh) SUMA_Free_hist(hh); hh = NULL;
    SUMA_RETURN(SOi); 
 }
+
+/*!
+   A head extration tool using the radial stats function.
+   iset is the T1 volume
+   urset is a pointer to the radial stats volume, should you
+         want it back
+   
+*/    
+SUMA_SurfaceObject *SUMA_ExtractHead_RS(THD_3dim_dataset *iset,
+                                     THD_3dim_dataset **urset, 
+                                     SUMA_COMM_STRUCT *cs)
+{
+   static char FuncName[]={"SUMA_ExtractHead_RS"};
+   SUMA_SurfaceObject *SOh = NULL, *SOi = NULL;
+   THD_3dim_dataset *rset=NULL, *mrset=NULL;
+   SUMA_HIST *hh=NULL;
+   float newvol = 0.0, voxvol = 0.0, *rat=NULL;
+   int *ok=NULL, vv=0;
+   short *sb=NULL;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   
+   if (!iset) SUMA_RETURN(SOh);
+   if (urset && *urset) {
+      SUMA_S_Err("If you want rset back, need a NULL *urset");
+      SUMA_RETURN(SOh);
+   }
+   /* Compute the radial stats */
+   SUMA_THD_Radial_HeadBoundary( iset, 0.0, NULL, NULL, &rset, 
+                           1, 0.0, 0.0, 0, 0, NULL, NULL);
+   if (LocalHead) {
+      SUMA_S_Note("Writing rset");
+      DSET_overwrite(rset);
+   }
+   
+   /* make a copy get rid of unwanted voxels */
+   NEW_SHORTY(rset,1,FuncName,mrset);
+   sb = DSET_BRICK_ARRAY(mrset,0);
+   rat = THD_extract_to_float(2,rset);
+   ok = THD_extract_to_int(3,rset);
+   for (vv=0; vv<DSET_NVOX(iset); ++vv) {
+      if (rat[vv]> 0.0 && ok[vv]) {
+         if (rat[vv]>1.0) rat[vv]=1.0;
+         sb[vv]=1000.0*rat[vv]; 
+      } else {
+         sb[vv]=0;
+      }  
+   }
+   EDIT_BRICK_FACTOR(mrset, 0, 1/1000.0);
+   free(rat); rat=NULL; free(ok); ok=NULL;
+   if (!(SOh = SUMA_Dset_ConvexHull(mrset, 0, 0.5, NULL))) {
+      SUMA_S_Err("Failed to get HULL");
+      SUMA_RETURN(SOi);
+   }
+   
+   if (LocalHead) {
+      THD_force_ok_overwrite(1);
+      SUMA_Save_Surface_Object_Wrap("hull_rs", NULL, SOh, 
+                                 SUMA_GIFTI, SUMA_ASCII, NULL);
+   }
+   /* compute surface center, etc. */
+   SUMA_SetSODims(SOh);
+   
+   /* Create a little icosahedron that fits inside the hull */
+   SOi = SUMA_CreateIcosahedron(0.99*SOh->MinCentDist, 20, SOh->Center, "n",1);
+   if (LocalHead) {
+      THD_force_ok_overwrite(1);
+      SUMA_Save_Surface_Object_Wrap("icos", NULL, SOi, 
+                                 SUMA_GIFTI, SUMA_ASCII, NULL);
+   }
+   if (cs && cs->talk_suma && cs->Send) {
+      SUMA_LH("Sending BrainHull2");
+      SOi->VolPar = SUMA_VolParFromDset (iset);
+      SOi->SUMA_VolPar_Aligned = YUP;
+      SOi->AnatCorrect = 1; 
+      if (!SOi->State) {SOi->State = SUMA_copy_string("3dSkullStrip"); }
+      if (!SOi->Group) {SOi->Group = SUMA_copy_string("3dSkullStrip"); }
+      if (!SOi->Label) {SOi->Label = SUMA_copy_string("BrainHull2_RS"); }
+      if (!SOi->idcode_str) { SOi->idcode_str = UNIQ_hashcode("BrainHull2"); }
+      SUMA_SendSumaNewSurface(SOi, cs);
+   }
+
+   /* Now inflate the icosahedron to make it fit the hull */
+   SUMA_Set_SurfSmooth_NodeDebug(SUMA_getBrainWrap_NodeDbg());
+   if (!SUMA_NN_GeomSmooth3_SO(SOi, NULL, 0, 50, 5, SOh, NULL, NULL, 
+                               LocalHead ? cs: NULL)) {
+      SUMA_S_Err("Failed to inflate to anchor");
+      SUMA_RETURN(SOi);
+   }
+   if (LocalHead) {
+      THD_force_ok_overwrite(1);
+      SUMA_Save_Surface_Object_Wrap("icosinfl", NULL, SOi, 
+                                 SUMA_GIFTI, SUMA_ASCII, NULL);
+   }
+
+   /* Get outer surface */
+   SUMA_ShrinkSkullHull_RS(SOi, iset, rset, 0.5, cs);
+   
+   /* Shrink the surface to get at the brain */
+   SUMA_ShrinkHeadSurf_RS(SOi, iset, rset, NULL, cs);
+   
+   if (SOh) SUMA_Free_Surface_Object(SOh); SOh = NULL;
+   if (hh) SUMA_Free_hist(hh); hh = NULL;
+   if (mrset) DSET_delete(mrset); mrset=NULL;
+   if (urset) { *urset = rset; rset = NULL; }
+   if (rset) DSET_delete(rset);  rset=NULL; 
+   
+   SUMA_RETURN(SOi); 
+}
+
 
 static char labels[7][64]={
                            "Out",

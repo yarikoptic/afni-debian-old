@@ -643,6 +643,14 @@ ENTRY("AFNI_process_NIML_data") ;
 
      GICOR_process_dataset( nel , ct_start ) ;
 
+   } else if( strcmp(nel->name,"3dGroupInCorr_message") == 0 ){ /* Apr 2013 */
+
+     GICOR_process_message( nel ) ;
+
+   } else if( strcmp(nel->name,"TextMessage") == 0 ){  /* Apr 2013 */
+
+     process_NIML_textmessage( nel ) ;
+
    } else {
      /*** If here, then name of element didn't match anything ***/
      sprintf(msg,"*** ERROR:\n\n"
@@ -2676,4 +2684,31 @@ ENTRY("process_NIML_MRI_IMAGE") ;
 
    AFNI_add_timeseries( im ) ;
    EXRETURN ;
+}
+
+/*--------------------------------------------------------------------*/
+/*! Process a '<TextMessage text=...>'  [Apr 2013]
+----------------------------------------------------------------------*/
+
+void process_NIML_textmessage( NI_element *nel )
+{
+   static int last_time = -6666 ; int new_time ;
+   Three_D_View *im3d = AFNI_find_open_controller() ;
+   char *mess ;
+
+   if( im3d == NULL ) return ;                     /* should be impossible! */
+
+   new_time = NI_clock_time() ;
+   if( new_time-last_time < 999 ) return ;   /* they're coming in too fast! */
+   last_time = new_time ;
+
+                      mess = NI_get_attribute(nel,"text") ;
+   if( mess == NULL ) mess = NI_get_attribute(nel,"mess") ;
+   if( mess == NULL ) mess = NI_get_attribute(nel,"message") ;
+   if( mess == NULL ) mess = NI_get_attribute(nel,"SMS") ;
+   if( mess == NULL || *mess == '\0' ) return ;          /* bad message :-( */
+
+   (void) MCW_popup_message( im3d->vwid->picture ,
+                             mess , MCW_USER_KILL | MCW_TIMER_KILL ) ;
+   return ;
 }

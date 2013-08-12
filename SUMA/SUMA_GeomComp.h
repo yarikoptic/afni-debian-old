@@ -59,6 +59,8 @@ typedef struct {
    int *N_IntersectedVoxels;  /*!< Number of voxels intersected by some triangle */
 } SUMA_VTI; /*!< Voxel Triangle Intersection Structure. Create with SUMA_CreateVTI, Destroy with SUMA_FreeVTI*/
 
+SUMA_Boolean SUMA_BuildRotationMatrix(double *C, double *Ax, 
+                                      double alpha, double mat[4][4]);
 int SUMA_BoundaryTriangles (SUMA_SurfaceObject *SO, int *boundt,
                             int boundt_asmask ); 
 
@@ -256,6 +258,9 @@ SUMA_Boolean SUMA_EquateSurfaceSize(SUMA_SurfaceObject *SO,
                SUMA_SurfaceObject *SOref, float max_off, SUMA_COMM_STRUCT *cs);
 SUMA_Boolean SUMA_EquateSurfaceVolumes(SUMA_SurfaceObject *SO, 
                SUMA_SurfaceObject *SOref, float perc_tol, SUMA_COMM_STRUCT *cs);
+SUMA_Boolean SUMA_EquateSurfaceCenters (SUMA_SurfaceObject *SO, 
+                                        SUMA_SurfaceObject *SOref,
+                                        int recompute);
 SUMA_Boolean SUMA_EquateSurfaceAreas(SUMA_SurfaceObject *SO, 
                SUMA_SurfaceObject *SOref, float perc_tol, SUMA_COMM_STRUCT *cs);
 double SUMA_Mesh_Volume(SUMA_SurfaceObject *SO, int *FSI, int N_FaceSet, 
@@ -297,20 +302,39 @@ THD_fvec3 SUMA_THD_3dmm_to_dicomm( int xxorient, int yyorient, int zzorient ,
                                     THD_fvec3 imv );
 THD_fvec3 SUMA_THD_dicomm_to_3dmm( int xxorient, int yyorient, int zzorient , 
                                     THD_fvec3 dicv );
-void SUMA_orcode_to_orstring (int xxorient, int yyorient, int zzorient, char *orstr);
+void SUMA_orcode_to_orstring (int xxorient, int yyorient, int zzorient, 
+                              char *orstr);
 void SUMA_sizeto3d_2_deltaHEAD(THD_ivec3 orient, THD_fvec3 *delta);            
 void SUMA_originto3d_2_originHEAD(THD_ivec3 orient, THD_fvec3 *origin);
-SUMA_Boolean SUMA_vec_3dfind_to_3dmm (float *NodeList, int N_Node, SUMA_VOLPAR *VolPar);
-SUMA_Boolean SUMA_vec_3dmm_to_3dfind (float *NodeList, int N_Node, SUMA_VOLPAR *VolPar);
-SUMA_Boolean SUMA_vec_dicomm_to_3dfind (float *NodeList, int N_Node, SUMA_VOLPAR *VolPar);
-SUMA_Boolean SUMA_vec_3dfind_to_dicomm (float *NodeList, int N_Node, SUMA_VOLPAR *VolPar);
-SUMA_Boolean SUMA_vec_3dmm_to_dicomm (float *NodeList, int N_Node, SUMA_VOLPAR *VolPar);
-SUMA_Boolean SUMA_vec_dicomm_to_3dmm (float *NodeList, int N_Node, SUMA_VOLPAR *VolPar);
-SUMA_Boolean SUMA_CoordChange (char *orc_in, char *orc_out, float *XYZ, int N_xyz);
+SUMA_Boolean SUMA_vec_3dfind_to_3dmm (float *NodeList, int N_Node, 
+                                       SUMA_VOLPAR *VolPar);
+SUMA_Boolean SUMA_vec_3dmm_to_3dfind (float *NodeList, int N_Node,  
+                                       SUMA_VOLPAR *VolPar);
+SUMA_Boolean SUMA_vec_dicomm_to_3dfind (float *NodeList, int N_Node,  
+                                       SUMA_VOLPAR *VolPar);
+SUMA_Boolean SUMA_vec_3dfind_to_dicomm (float *NodeList, int N_Node,  
+                                       SUMA_VOLPAR *VolPar);
+SUMA_Boolean SUMA_vec_3dmm_to_dicomm (float *NodeList, int N_Node,  
+                                       SUMA_VOLPAR *VolPar);
+SUMA_Boolean SUMA_vec_dicomm_to_3dmm (float *NodeList, int N_Node,  
+                                       SUMA_VOLPAR *VolPar);
+SUMA_Boolean SUMA_THD_3dfind_to_dicomm(THD_3dim_dataset *dset, 
+                                       float ii, float jj, float kk,
+                                       float *xyz);
+SUMA_Boolean SUMA_THD_dicomm_to_3dfind(THD_3dim_dataset *dset, 
+                                       float RR, float AA, float II,
+                                       float *ijk) ;
+int SUMA_THD_dicomm_to_1dind(THD_3dim_dataset *dset, 
+                              float RR, float AA, float II,
+                              int *ijk);
+SUMA_Boolean SUMA_CoordChange (char *orc_in, char *orc_out, 
+                               float *XYZ, int N_xyz);
 int SUMA_flip_orient(int xxorient);
 int SUMA_ok_orstring (char *orstr);
 SUMA_Boolean SUMA_orstring_to_orcode (char *orstr, int *orient);
-int SUMA_Subdivide_Mesh(float **NodeListp, int *N_Node, int **FaceSetListp, int *N_FaceSet, float maxarea);
+int SUMA_Subdivide_Mesh(float **NodeListp, int *N_Node, int **FaceSetListp, 
+                        int *N_FaceSet, float maxarea);
+SUMA_SurfaceObject *SUMA_MergeSurfs(SUMA_SurfaceObject **SOv, int N_SOv);
 SUMA_Boolean SUMA_FlipTriangles (int *FaceSetList,int N_FaceSet);
 SUMA_Boolean SUMA_FlipSOTriangles(SUMA_SurfaceObject *SO);
 int SUMA_OrientTriangles (float *NodeList, int N_Node, 
@@ -321,10 +345,10 @@ int SUMA_OrientSOTriangles(SUMA_SurfaceObject *SO,
                            int orient, int Force,
                            float *cu);
 SUMA_Boolean SUMA_Offset_Smooth_dset( SUMA_SurfaceObject *SO, 
-                                          float FWHM, float OffsetLim, 
-                                          int N_iter,
-                                          SUMA_DSET *dset, 
-                                          SUMA_COMM_STRUCT *cs, byte *nmask, byte strict_mask); 
+                           float FWHM, float OffsetLim, 
+                           int N_iter,
+                           SUMA_DSET *dset, 
+                           SUMA_COMM_STRUCT *cs, byte *nmask, byte strict_mask); 
 float SUMA_estimate_FWHM_1dif( SUMA_SurfaceObject *SO, float *fim , byte *nmask, int nodup );
 float *SUMA_estimate_dset_FWHM_1dif(SUMA_SurfaceObject *SO, SUMA_DSET *dset, 
                                     int *icols, int N_icols, byte *nmask, 
@@ -357,20 +381,22 @@ int SUMA_q_wrap( int npt , float * xyz , int ** ijk , int fliporient,
 
 DList *SUMA_SliceAlongPlane(SUMA_SurfaceObject *SO, float *Eq, float step);
 
-SUMA_DSET *SUMA_RandomDset(int N_Node, int nc, unsigned int seed, float scale, byte norm); 
+SUMA_DSET *SUMA_RandomDset(int N_Node, int nc, unsigned int seed, 
+                           float scale, byte norm); 
 
 SUMA_Boolean SUMA_FillRandXform(double xform[][4], int seed, int type); 
 SUMA_Boolean SUMA_FillScaleXform(double xform[][4], double sc[3]);
-
+SUMA_Boolean SUMA_FillXYnegXform(double xform[][4]);
 float *SUMA_Project_Coords_PCA (float *xyz, int N_xyz, int iref, 
                                 SUMA_PC_PROJ compnum, SUMA_PC_ROT rotate);
 int SUMA_NodeDepth(float *NodeList, int N_Node, float **dpth, 
                    float thr, byte **cmaskp);                                
 int SUMA_VoxelDepth(THD_3dim_dataset *dset, float **dpth,
                     float thr, byte **cmaskp, int applymask);
-int SUMA_VoxelDepth_Z(THD_3dim_dataset *dset, float **dpth,
-                    float thr, byte **cmaskp, int applymask,
-                    float peakperc);
+int SUMA_VoxelDepth_Z(THD_3dim_dataset *dset, byte *cmasku,
+                     float **dpth,
+                     float thr, byte **cmaskp, int applymask,
+                     float peakperc, float *ztop);
 int SUMA_VoxelPlaneCut(THD_3dim_dataset *dset, float *Eq,
                        byte **cmaskp, int applymask);
 int SUMA_is_Flat_Surf_Coords_PCA (float *xyz, int N_xyz, 
