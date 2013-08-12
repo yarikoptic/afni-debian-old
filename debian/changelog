@@ -1,3 +1,14 @@
+afni (0.20130806~dfsg.1-1) neurodebian; urgency=low
+
+  * New upstream code; updated CMake. Adds 3dUnifize, 3dNwarpCat,
+    3dLocalHistog, 3dNwarpAdjust, 3dNwarpFuncs, 3dTproject, @compute_gcor,
+    3dLME, @move.to.series.dirs, @toMNI_Awarp, @toMNI_Qwarpar, @simulate_motion
+    HalloSuma, afni_system_check.py, auto_warp.py, 3dROIMaker, 3dMatch,
+    3dNetCorr, meicaX.py, optcom.py, optcom_surf.py, t2smap.py, tedanaX.py
+  * Patches accepted upstream: up_secure_snprintf
+
+ -- Alex Waite <Alexqw85@gmail.com>  Mon, 12 Aug 2013 18:23:22 +0200
+
 afni (0.20121123~dfsg.1-2) neurodebian; urgency=low
 
   * Add afni-dbg package to provide debug symbols
