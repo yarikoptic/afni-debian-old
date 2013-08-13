@@ -1,4 +1,4 @@
-afni (0.20130806~dfsg.1-1) neurodebian; urgency=low
+afni (0.20130809~dfsg.1-1) neurodebian; urgency=low
 
   * New upstream code; updated CMake. Adds 3dUnifize, 3dNwarpCat,
     3dLocalHistog, 3dNwarpAdjust, 3dNwarpFuncs, 3dTproject, @compute_gcor,
