@@ -1,15 +1,13 @@
-Format-Specification: http://svn.debian.org/wsvn/dep/web/deps/dep5.mdwn?op=file&rev=135
-Name: AFNI
-Maintainer: Robert Cox <rwcox@nih.gov>
-Source: http://afni.nimh.nih.gov
+Format: http://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: http://svn.debian.org/wsvn/dep/web/deps/dep5.mdwn?op=file&rev=135
+Upstream-Contact: Robert Cox <rwcox@nih.gov>
+Source-Location: http://afni.nimh.nih.gov
 
 Files: *
 Copyright: 1994-2000, Medical College of Wisconsin
   Later developments come from the National Instituts of Health (NIH) and are
   not copyrighted.
 License: GPL-2
-  On Debian systems, the complete text of the GNU General
-  Public License can be found in `/usr/share/common-licenses/GPL-2'.
 
 Files: debian/*
 Copyright: 2009-2011, Michael Hanke <michael.hanke@gmail.com>
@@ -55,7 +53,7 @@ License: Other
 
 Files: mcw_glob.*, Ifile.c
 Copyright: 1989, The Regents of the University of California
-License: Other
+License: BSD-4
  Redistribution and use in source and binary forms, with or without
  modification, are permitted provided that the following conditions
  are met:
@@ -89,7 +87,7 @@ License: GPL-2
 
 Files: ktaub.c
 Copyright: 2010, David Simcha
-License: Other
+License: Boost
  Boost Software License - Version 1.0 - August 17th, 2003
  .
  Permission is hereby granted, free of charge, to any person or organization
@@ -240,7 +238,7 @@ License: GPL-2
 
 Files: svdlib.c, svdlib.h
 Copyright: 2002, University of Tennessee Research Foundation
-License: Other
+License: BSD-3
  Redistribution and use in source and binary forms, with or without
  modification, are permitted provided that the following conditions are met:
  .
@@ -267,18 +265,25 @@ License: Other
  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  POSSIBILITY OF SUCH DAMAGE.
 
-matlab/idummy.m:%   Copyright 1993-2002 The MathWorks, Inc.
-matlab/termcross.m:%   Copyright 1993-2002 The MathWorks, Inc.
-matlab/xticklabel_rotate.m:%Copyright (c) 2009, The MathWorks, Inc.
-matlab/zinputdlg.m:%  Copyright 1994-2007 The MathWorks, Inc.
-mri_drawing.c:** Copyright (C) 1989, 1991 by Jef Poskanzer.
-mri_drawing.c:** Copyright (C) 1994 by John Walker, kelvin@fourmilab.ch
-niml/niml_md5.c: * Copyright (C) 1991-2, RSA Data Security, Inc. Created 199
-niml/niml_md5.c: *  Copyright (C) 2001-2003  Christophe Devine
-plug_lsqfit.c:/*               Copyright (c) 1995                    */
-plug_retroicor.c:  Copyright (C) 2002 Sunnybrook & Women's College Health Sc
-rickr/l_mcw_glob.c: * Copyright (c) 1989 The Regents of the University of Ca
-suma_algorithms.c:code is under copyright and cannot be included in any othe
-whirlgif.c: * Copyright (C) 1995,1996 by Kevin Kadow (kadokev@msg.net)
-vp_renderB.c: * Copyright (c) 1994 The Board of Trustees of The Leland Stanf
+Files:
+ matlab/idummy.m:%   Copyright 1993-2002 The MathWorks, Inc.
+ matlab/termcross.m:%   Copyright 1993-2002 The MathWorks, Inc.
+ matlab/xticklabel_rotate.m:%Copyright (c) 2009, The MathWorks, Inc.
+ matlab/zinputdlg.m:%  Copyright 1994-2007 The MathWorks, Inc.
+ mri_drawing.c:** Copyright (C) 1989, 1991 by Jef Poskanzer.
+ mri_drawing.c:** Copyright (C) 1994 by John Walker, kelvin@fourmilab.ch
+ niml/niml_md5.c: * Copyright (C) 1991-2, RSA Data Security, Inc. Created 199
+ niml/niml_md5.c: *  Copyright (C) 2001-2003  Christophe Devine
+ plug_lsqfit.c:/*               Copyright (c) 1995                    */
+ plug_retroicor.c:  Copyright (C) 2002 Sunnybrook & Women's College Health Sc
+ rickr/l_mcw_glob.c: * Copyright (c) 1989 The Regents of the University of Ca
+ suma_algorithms.c:code is under copyright and cannot be included in any othe
+ whirlgif.c: * Copyright (C) 1995,1996 by Kevin Kadow (kadokev@msg.net)
+ vp_renderB.c: * Copyright (c) 1994 The Board of Trustees of The Leland Stanf
+Copyright: sort it out
+Comment: sort it out
+License: TODO
 
+License: GPL-2
+  On Debian systems, the complete text of the GNU General
+  Public License can be found in `/usr/share/common-licenses/GPL-2'.
