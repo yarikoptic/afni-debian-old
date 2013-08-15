@@ -74,7 +74,10 @@ char * GetAfniTextEditor(void)
 {
    char *ate=NULL;
    ate = getenv("AFNI_GUI_EDITOR");
+
+   if( ate ) return ate;
    
+   /* else, hunt */
    if( ate == NULL ) ate = THD_find_executable( "nedit" )   ;
    if( ate == NULL ) ate = THD_find_executable( "kedit" )   ;
    if( ate == NULL ) ate = THD_find_executable( "gedit" )   ;
@@ -82,6 +85,7 @@ char * GetAfniTextEditor(void)
 #ifdef DARWIN
    if( ate == NULL ) ate = "open -t" ;  /* for Mac OS X */
 #endif
+
    return(ate);
 }
 

@@ -1,3 +1,5 @@
+#ifndef _I_ALREADY_HAVE_SVDLIB_
+#define _I_ALREADY_HAVE_SVDLIB_
 /*
 Copyright © 2002, University of Tennessee Research Foundation.
 All rights reserved.
@@ -863,7 +865,8 @@ void svdWriteDenseArray(double *a, int n, char *filename, char binary) {
   } else {
     fprintf(file, "%d\n", n);
     for (i = 0; i < n; i++)
-      fprintf(file, "%g\n", a[i]);
+      fprintf(file, "%g  ", a[i]);
+    fprintf(file,"\n") ;
   }
   svd_closeFile(file);
 }
@@ -1683,9 +1686,10 @@ SVDRec svdLAS2(SMat A, long dimensions, long iterations, double end[2],
            "RITZ VALUES STABILIZED    = %6ld\n", steps + 1, neig);
   }
   if (SVDVerbosity > 2) {
-    printf("\nCOMPUTED RITZ VALUES  (ERROR BNDS)\n");
+    printf("COMPUTED RITZ VALUES  (ERROR BNDS)\n");
     for (i = 0; i <= steps; i++)
-      printf("%3ld  %22.14E  (%11.2E)\n", i + 1, ritz[i], bnd[i]);
+      printf("# %3ld  %22.14E  (%11.2E)   ", i + 1, ritz[i], bnd[i]);
+    printf("\n") ;
   }
 
   SAFE_FREE(wptr[0]);
@@ -1926,6 +1930,17 @@ long ritvec(long n, SMat A, SVDRec R, double kappa, double *ritz, double *bnd,
   return nsig;
 }
 
+/*----------------------------------------------------------------------*/
+
+static int vstep=0 ;
+static void vstep_print(void)
+{
+   static char xx[10] = "0123456789" ;
+   fprintf(stderr , "%c" , xx[vstep%10] ) ;
+   if( vstep%10 == 9) fprintf(stderr,".") ;
+   vstep++ ;
+}
+
 /***********************************************************************
  *                                                                     *
  *                          lanso()                                    *
@@ -2002,12 +2017,15 @@ int lanso(SMat A, long iterations, long dimensions, double endl,
   last = svd_imin(dimensions + svd_imax(8, dimensions), iterations);
   ENOUGH = FALSE;
   /*id1 = 0;*/
+  if( SVDVerbosity > 1 ){ fprintf(stderr,"Lanczos:"); vstep=0; }
   while (/*id1 < dimensions && */!ENOUGH) {
     if (rnm <= tol) rnm = 0.0;
 
     /* the actual lanczos loop */
+    if( SVDVerbosity > 1 ) vstep_print() ;
     j = lanczos_step(A, first, last, wptr, alf, eta, oldeta, bet, &ll,
                      &ENOUGH, &rnm, &tol, n);
+    if( SVDVerbosity > 1 ) fprintf(stderr,".") ;
     if (ENOUGH) j = j - 1;
     else j = last - 1;
     first = j + 1;
@@ -2037,6 +2055,7 @@ int lanso(SMat A, long iterations, long dimensions, double endl,
         bnd[id3] = rnm * fabs(bnd[id3]);
       l = i + 1;
     }
+    if( SVDVerbosity > 1 ) fprintf(stderr,".") ;
 
     /* sort eigenvalues into increasing order */
     svd_dsort2((j+1) / 2, j + 1, ritz, bnd);
@@ -2061,6 +2080,7 @@ int lanso(SMat A, long iterations, long dimensions, double endl,
     ENOUGH = ENOUGH || first >= iterations;
     /* id1++; */
     /* printf("id1=%d dimen=%d first=%d\n", id1, dimensions, first); */
+    if( SVDVerbosity > 1 ) fprintf(stderr,".") ;
   }
   store(n, STORQ, j, wptr[1]);
   return j;
@@ -2112,6 +2132,7 @@ long lanczos_step(SMat A, long first, long last, double *wptr[],
    double t, *mid, rnm = *rnmp, tol = *tolp, anorm;
    long i, j;
 
+    if( SVDVerbosity > 1 ) fprintf(stderr,"[%d.%d]",first,last) ;
    for (j=first; j<last; j++) {
       mid     = wptr[2];
       wptr[2] = wptr[1];
@@ -2124,13 +2145,18 @@ long lanczos_step(SMat A, long first, long last, double *wptr[],
       if (j-1 < MAXLL) store(n, STORP, j-1, wptr[4]);
       bet[j] = rnm;
 
+
+
+     if( SVDVerbosity > 1 ) fprintf(stderr,"a") ;
       /* restart if invariant subspace is found */
       if (!bet[j]) {
+     if( SVDVerbosity > 1 ) fprintf(stderr,"b") ;
 	 rnm = startv(A, wptr, j, n);
 	 if (ierr) return j;
 	 if (!rnm) *enough = TRUE;
       }
       if (*enough) {
+     if( SVDVerbosity > 1 ) fprintf(stderr,"c") ;
         /* added by Doug... */
         /* These lines fix a bug that occurs with low-rank matrices */
         mid     = wptr[2];
@@ -2160,6 +2186,7 @@ long lanczos_step(SMat A, long first, long last, double *wptr[],
 	 eta[i] = eps1;
 	 oldeta[i] = eps1;
       }
+     if( SVDVerbosity > 1 ) fprintf(stderr,"d") ;
 
       /* extended local reorthogonalization */
       t = svd_ddot(n, wptr[0], 1, wptr[4], 1);
@@ -2180,6 +2207,7 @@ long lanczos_step(SMat A, long first, long last, double *wptr[],
       purge(n, *ll, wptr[0], wptr[1], wptr[4], wptr[3], wptr[5], eta, oldeta,
             j, &rnm, tol);
       if (rnm <= tol) rnm = 0.0;
+     if( SVDVerbosity > 1 ) fprintf(stderr,"e") ;
    }
    *rnmp = rnm;
    *tolp = tol;
@@ -3132,3 +3160,4 @@ fprintf(stderr," unpack results\n") ;
 
    svdFreeSVDRec(aSVD) ; return ;
 }
+#endif
