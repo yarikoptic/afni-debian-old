@@ -20,3 +20,14 @@ Testing
 Missing installations
 =====================
 
+Incorrect paths
+===============
+
+- To READMEs
+
+  > apsearch -view_readme driv 
+  ** ERROR: Could not find README files.
+  They should have been in directory /usr/bin on your machine
+  ** Error: Could not find solid match for readme driv
+  Try to pick a good one using apsearch -list_all_afni_readmes
+
