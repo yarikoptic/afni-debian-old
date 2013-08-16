@@ -644,7 +644,7 @@ int first_principal_vectors( int n , int m , float *xx ,
 
 /*--------------------------------------------------------------------*/
 
-#define CHECK_SVD
+#define CHECK_SVD   /* unfortunately, this is necessary */
 
 #undef CHK
 #ifdef CHECK_SVD
@@ -721,6 +721,8 @@ void svd_double( int m, int n, double *a, double *s, double *u, double *v )
    (void) svd_( &mm , &nn , &lda , aa , ww ,
                 &matu , &ldu , uu , &matv , &ldv , vv , &ierr , rv1 ) ;
 
+   /** the following code is to check if the SVD worked **/
+
 #ifdef CHECK_SVD
    /** back-compute [A] from [U] diag[ww] [V]'
        and see if it is close to the input matrix;
@@ -771,8 +773,9 @@ void svd_double( int m, int n, double *a, double *s, double *u, double *v )
        /* not fixed YET?  try another algorithm (one that's usually slower) */
 
        if( err >= 1.e-5*amag || !IS_GOOD_FLOAT(err) ){
-         fprintf(stderr," new avg err=%g; re-recomputing the hard way ...\n",err) ;
+         fprintf(stderr," new avg err=%g; re-recomputing the hard way ...",err) ;
 #ifdef USE_SVDLIB
+         fprintf(stderr,"\n") ;
          SVDVerbosity = 2 ;
          AFNI_svdLAS2( mm , nn , aa , ww , uu , vv ) ;  /* svdlib.c */
          SVDVerbosity = 0 ;
@@ -789,12 +792,12 @@ void svd_double( int m, int n, double *a, double *s, double *u, double *v )
          err /= (m*n) ;
          fprintf(stderr," newer avg err=%g %s" ,
                  err ,
-                 (err >= 1.e-5*amag || !IS_GOOD_FLOAT(err)) ? "**BAD**" : "**OK**" ) ;
+                 (err >= 1.e-5*amag || !IS_GOOD_FLOAT(err)) ? "**BAD** :-(" : "**OK** :-)" ) ;
        } else {
-         fprintf(stderr," new avg error=%g **OK**",err) ;
+         fprintf(stderr," new avg error=%g **OK** :-)",err) ;
        }
+       fprintf(stderr,"\n\n") ;
      }
-     fprintf(stderr,"\n\n") ;
    }
 #endif
 
@@ -817,18 +820,22 @@ void svd_double( int m, int n, double *a, double *s, double *u, double *v )
      qsort_doubleint( n , sv , iv ) ;
      if( u != NULL ){
        double *cc = (double *)calloc(sizeof(double),m*n) ;
+#pragma omp critical
        (void)memcpy( cc , u , sizeof(double)*m*n ) ;
        for( jj=0 ; jj < n ; jj++ ){
          kk = iv[jj] ;  /* where the new jj-th col came from */
+#pragma omp critical
          (void)memcpy( u+jj*m , cc+kk*m , sizeof(double)*m ) ;
        }
        free((void *)cc) ;
      }
      if( v != NULL ){
        double *cc = (double *)calloc(sizeof(double),n*n) ;
+#pragma omp critical
        (void)memcpy( cc , v , sizeof(double)*n*n ) ;
        for( jj=0 ; jj < n ; jj++ ){
          kk = iv[jj] ;
+#pragma omp critical
          (void)memcpy( v+jj*n , cc+kk*n , sizeof(double)*n ) ;
        }
        free((void *)cc) ;
@@ -877,6 +884,7 @@ void svd_double_ata( int m, int n, double *a, double *s, double *u, double *v )
    /* copy ata into the output place for V */
 
    if( v != NULL ){
+#pragma omp critical
      (void)memcpy( v , ata , sizeof(double)*n*n ) ;
    }
 

@@ -112,9 +112,10 @@ int check_matrix_condition( matrix xdata , char *xname )
 /*---------------------------------------------------------------------------*/
 /*! For voxel loop progress report. */
 
+static int vn=0 ;
 static void vstep_print(void)
 {
-   static char xx[10] = "0123456789" ; static int vn=0 ;
+   static char xx[10] = "0123456789" ;
    fprintf(stderr , "%c" , xx[vn%10] ) ;
    if( vn%10 == 9) fprintf(stderr,".") ;
    vn++ ;
@@ -2642,7 +2643,7 @@ STATUS("make GLTs from matrix file") ;
      rim = mri_new_vol( nx,ny,nz , MRI_float ) ;
      rim->dx = dx ; rim->dy = dy ; rim->dz = dz ; rar = MRI_FLOAT_PTR(rim) ;
 
-     if( vstep ) fprintf(stderr,"++ REML voxel loop: ") ;
+     if( vstep ){ fprintf(stderr,"++ REML voxel loop: ") ; vn = 0 ; }
 
   if( maxthr <= 1 ){   /**--------- serial computation (no threads) ---------**/
     int ss,rv,vv,ssold,ii,kbest ;
@@ -2708,16 +2709,18 @@ STATUS("make GLTs from matrix file") ;
 
     vvar = (int *)malloc(sizeof(int)*nmask) ;
     for( vv=ii=0 ; vv < nvox ; vv++ ) if( INMASK(vv) ) vvar[ii++] = vv ;
-    if( vstep ) fprintf(stderr,"start %d OpenMP threads",maxthr) ;
+    if( vstep ){ fprintf(stderr,"start %d OpenMP threads ",maxthr) ; vn = 0 ; }
 
 #ifdef USE_OMP
   AFNI_OMP_START ;
 #pragma omp parallel
   {
-    int ss,vv,rv,ii,kbest , ithr ;
+    int ss,vv,rv,ii,kbest , ithr , qstep ;
     float *iv ; vector y ;  /* private arrays for each thread */
     MTYPE *ws ;
     FILE *mfp=NULL ;
+
+    qstep = vstep / maxthr ;
 
 #pragma omp critical (MALLOC)
  {
@@ -2734,7 +2737,7 @@ STATUS("make GLTs from matrix file") ;
 #pragma omp for
      for( rv=0 ; rv < nmask ; rv++ ){
        vv = vvar[rv] ;
-       if( ithr == 0 && vstep && rv%666==333 ) fprintf(stderr,".") ;
+       if( ithr == 0 && qstep && rv%qstep==1 ) vstep_print() ;
 #pragma omp critical (MEMCPY)
  {
        if( inset_mrv != NULL ){
@@ -2970,7 +2973,7 @@ STATUS("setting up Rglt") ;
 
      /* ss = slice index, rv = VECTIM index, vv = voxel index */
 
-     if( vstep ) fprintf(stderr,"++ GLSQ voxel loop: ") ;
+     if( vstep ){ fprintf(stderr,"++ GLSQ voxel loop: ") ; vn = 0 ; }
      for( ss=-1,rv=vv=0 ; vv < nvox ; vv++ ){
        if( vstep && vv%vstep==vstep-1 ) vstep_print() ;
        if( !INMASK(vv) ) continue ;
@@ -2993,6 +2996,7 @@ STATUS("setting up Rglt") ;
              The purpose of doing it this way is to save memory space.  ======*/
 
        if( ss > ssold ){                                   /* at a new slice! */
+         STATUS("new slice") ;
          if( ssold >= 0 ) reml_collection_destroy( RCsli[ssold] , 1 ) ;
          if( RCsli[ss] == NULL ){              /* create this slice setup now */
            if( verb > 1 && vstep ) fprintf(stderr,"+") ;
@@ -3017,6 +3021,7 @@ STATUS("setting up Rglt") ;
          MTYPE aaa = RCsli[ss]->abot + ia * RCsli[ss]->da;
          MTYPE bbb = RCsli[ss]->bbot + ib * RCsli[ss]->db;
 
+         STATUS("new setup?") ;
          RCsli[ss]->rs[jj] = REML_setup_one( Xsli[ss] , tau , aaa,bbb ) ;
          for( kk=0 ; kk < glt_num ; kk++ )     /* make sure GLTs are included */
            REML_add_glt_to_one( RCsli[ss]->rs[jj] , glt_mat[kk] ) ;
@@ -3037,6 +3042,7 @@ STATUS("setting up Rglt") ;
                 bb2 = whitened residuals    (ntime)
                       (sum of squares of bb2 = bbsumq = noise variance) ------*/
 
+         sprintf(sslab,"%s %d", "fitting" ,vv); STATUS(sslab) ;
          (void)REML_func( &y , RCsli[ss]->rs[jj] , RCsli[ss]->X , RCsli[ss]->Xs ,
                           bbar , &bbsumq ) ;
 
@@ -3086,6 +3092,7 @@ STATUS("setting up Rglt") ;
            for( kk=0 ; kk < glt_num ; kk++ ){
              gin = glt_ind[kk] ; if( gin == NULL ) continue ; /* skip this'n */
              nr = gin->nrow ;
+sprintf(sslab,"%s %d %d", "Rbuckt glt" ,vv,kk); STATUS(sslab) ;
              gv = REML_compute_gltstat( ddof , &y , &qq5 , bbsumq ,
                                         RCsli[ss]->rs[jj], RCsli[ss]->rs[jj]->glt[kk],
                                         glt_mat[kk] , glt_smat[kk] ,
@@ -3309,7 +3316,7 @@ STATUS("setting up Rglt") ;
 
      /* rv = VECTIM index, vv = voxel index */
 
-     if( vstep ) fprintf(stderr,"++ OLSQ voxel loop: ") ;
+     if( vstep ){ fprintf(stderr,"++ OLSQ voxel loop: ") ; vn = 0 ; }
      for( rv=vv=0 ; vv < nvox ; vv++ ){
        if( vstep && vv%vstep==vstep-1 ) vstep_print() ;
        if( !INMASK(vv) ) continue ;
