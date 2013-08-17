@@ -1,5 +1,6 @@
-afni (0.20130813~dfsg.1-2) unstable; urgency=low
+afni (0.20130815~dfsg.1-1) neurodebian; urgency=low
 
+  * Fresh upstream snapshot
   * debian/rules -- AFNI_BUILD_WITH_LESSTIF2:BOOL=OFF to actually build
     against Open Motif as we thought we were doing since 2010 ;)
 
