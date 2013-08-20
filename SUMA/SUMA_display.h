@@ -513,7 +513,7 @@ void SUMA_cb_SetDrawROI_SaveWhat(Widget w, XtPointer data, XtPointer call_data);
 void SUMA_response(Widget widget, XtPointer client_data, XtPointer call_data);
 int SUMA_PauseForUser(Widget parent, char *question, 
                       SUMA_WINDOW_POSITION pos, XtAppContext    *app,
-                      int withpause);
+                      int withpause, float timeoutsec);
 int SUMA_ForceUser_YesNo(Widget parent, char *question, int default_ans, SUMA_WINDOW_POSITION pos);
 int AskUser(Widget parent, char *question, char *ans1, char *ans2, int default_ans);
 char * SUMA_ClassOf(int c);
@@ -542,6 +542,9 @@ int SUMA_NodeNeighborAlongScreenDirection(SUMA_SurfaceViewer *sv,
 SUMA_Boolean SUMA_World2ScreenCoords (SUMA_SurfaceViewer *sv, int N_List, 
                               double *WorldList, double *ScreenList, int *Quad, 
                               SUMA_Boolean ApplyXform);
+SUMA_Boolean SUMA_World2ScreenCoordsF (
+                     SUMA_SurfaceViewer *sv, int N_List, float *WorldList, 
+                     float *ScreenList, int *Quad, SUMA_Boolean ApplyXform);
 SUMA_Boolean SUMA_DrawWindowLine(SUMA_SurfaceViewer *sv, int x0, int y0, 
                                                 int x1, int y1, int meth);
 void SUMA_cb_SetDrawROI_WhatDist(Widget widget, XtPointer client_data, 
