@@ -632,7 +632,7 @@ Last-Update: 2010-09-21
 +  edt_geomcon.c edt_floatize.c)
 +
 +SET(SUMA_SRC
-+  suma_datasets.c suma_algorithms.c)
++  suma_datasets.c suma_algorithms.c suma_utils.c)
 +
 +SET(CS_SRC
 +  cs_sort_fi.c cs_sort_di.c cs_symeig.c cs_sort_ii.c cs_sort_ff.c
@@ -1432,7 +1432,7 @@ Last-Update: 2010-09-21
 +
 +  FOREACH(program ${PROGRAMS})
 +    ADD_EXECUTABLE(${program} ${program}.c)
-+    TARGET_LINK_LIBRARIES(${program} ${AFNI_LIBS} tracktools ${GSL_LIBRARY} ${GTS_LIBRARIES})
++    TARGET_LINK_LIBRARIES(${program} ${AFNI_LIBS} ${SUMA_LIBS} tracktools ${GSL_LIBRARY} ${GTS_LIBRARIES})
 +  ENDFOREACH(program)
 +
 +  INSTALL(TARGETS tracktools ${PROGRAMS}
