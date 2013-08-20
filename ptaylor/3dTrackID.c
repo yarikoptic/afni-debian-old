@@ -22,6 +22,7 @@
 #include <TrackIO.h>
 #include <DoTrackit.h>
 
+#include "suma_suma.h"
 
 void usage_TrackID(int detail) 
 {
@@ -237,6 +238,7 @@ int main(int argc, char *argv[]) {
 	if (argc == 1) { usage_TrackID(1); exit(0); }
 	iarg = 1;
 	while( iarg < argc && argv[iarg][0] == '-' ){
+
 		if( strcmp(argv[iarg],"-help") == 0 || 
 			 strcmp(argv[iarg],"-h") == 0 ) {
 			usage_TrackID(strlen(argv[iarg])>3 ? 2:1);
@@ -443,8 +445,121 @@ int main(int argc, char *argv[]) {
 			
 			iarg++ ; continue ;
 		}
+      
+      
+      if ( strcmp(argv[iarg],"-gdset_toy") == 0 ) {
+         float x[3]={-40, 38, 4.7};
+         float y[3]={-27, -34, 14.4};
+         float z[3]={26, 41, 55};
+            /* alternate coordinate specification */
+         float xyz[9]={ x[0], y[0], z[0], x[1], y[1], z[1], x[2], y[2], z[2]};
+         float **mv=NULL;
+         int i,j,k=0;
+         char **labs, *NameOut;
+         SUMA_DSET *gset=NULL;
+         TAYLOR_TRACT *tt=NULL;
+         TAYLOR_BUNDLE *tb=NULL;
+         TAYLOR_NETWORK *net=NULL;
+         int onexyz = 1; /* set to 1 to specify coords by xyz triplets 
+                            in demo. 0 to specify x,y, and z as separate
+                            vectors */
 
+         INFO_message("A demonstration for creating/writing graph dset\n"
+                      "The vast majority of this content is for creating\n"
+                      "dummy data.\n"
+                      "Non dummy sections are marked with -->\n");
 
+         /* Create 2 matrices and some matrix labels */
+               mv = (float **)calloc(2, sizeof(float*));
+               for (i=0; i<2; ++i) mv[i] = (float *)calloc(9, sizeof(float));
+               labs = (char **)calloc(2, sizeof(char*));
+               for (i=0; i<2; ++i) labs[i]=calloc(64, sizeof(char));
+
+               for (i=0; i<2; ++i) {
+                  for (j=0; j<9; ++j) {
+                     mv[i][j] = k++;
+                  }
+                  sprintf(labs[i],"Label Of Matrix %d", i);
+               }
+         
+         /* --> Create a graph dataset out of these two matrices */
+               gset = SUMA_FloatVec_to_GDSET(mv, 2, 9, "full", labs, 
+                                             NULL, NULL, NULL);
+         
+         /* --> Now add the XYZ of each graph point, two ways are possible*/
+               if (onexyz) { /* for when your ROI centroid coords 
+                                and in one vector of XYZ triplets */
+                  if (!(SUMA_AddGDsetNodeListElement(gset, NULL,
+                                                  xyz, NULL, NULL, 3))) {
+                     ERROR_message("Failed to add node list");
+                     exit(1);  
+                  }                                     
+               } else {
+                  if (!(SUMA_AddGDsetNodeListElement(gset, NULL,
+                                                  x, y, z, 3))) {
+                     ERROR_message("Failed to add node list");
+                     exit(1);     
+                  }
+               }
+
+         /* Create some dummy bundles representing edge 1-2=5, or 2-1=7*/
+               tb = NULL; net = NULL; tt = NULL;
+               tt = (TAYLOR_TRACT *)calloc(1, sizeof(TAYLOR_TRACT));
+               tt->id=77; tt->N_pts3=12; 
+               tt->pts = (float *)calloc(tt->N_pts3,sizeof(float));
+               tt->pts[0]=x[1]; tt->pts[1]=y[1]; tt->pts[2]=z[1];
+               tt->pts[3]=22;   tt->pts[4]=36;   tt->pts[5]=40;
+               tt->pts[6]=22;   tt->pts[7]=33;   tt->pts[8]=49;
+               tt->pts[9]=x[2]; tt->pts[10]=y[2];tt->pts[11]=z[2];
+               tb = AppCreateBundle(tb, 1, tt);
+               tt = Free_Tracts(tt, 1);
+               /* put another track in */
+               tt = (TAYLOR_TRACT *)calloc(1, sizeof(TAYLOR_TRACT));
+               tt->id=78; tt->N_pts3=12; 
+               tt->pts = (float *)calloc(tt->N_pts3,sizeof(float));
+               tt->pts[0]=x[1]; tt->pts[1]=y[1]; tt->pts[2]=z[1];
+               tt->pts[3]=23;   tt->pts[4]=35;   tt->pts[5]=42;
+               tt->pts[6]=20;   tt->pts[7]=32;   tt->pts[8]=51;
+               tt->pts[9]=x[2]; tt->pts[10]=y[2];tt->pts[11]=z[2];
+               tb = AppCreateBundle(tb, 1, tt);
+               tt = Free_Tracts(tt, 1);
+               /* add it to network */
+               net = AppAddBundleToNetwork(net, &tb, 5, 7, NULL);
+               /* make another one for edge 0-1=1 and 1-0=3*/
+               tt = (TAYLOR_TRACT *)calloc(1, sizeof(TAYLOR_TRACT));
+               tt->id=77; tt->N_pts3=15; 
+               tt->pts = (float *)calloc(tt->N_pts3,sizeof(float));
+               tt->pts[0]=x[0]; tt->pts[1]=y[0];  tt->pts[2]=z[0];
+               tt->pts[3]=5;    tt->pts[4]=12;    tt->pts[5]=17;
+               tt->pts[6]=16;   tt->pts[7]=13;    tt->pts[8]=12;
+               tt->pts[9]=20;   tt->pts[10]=16;   tt->pts[11]=16;
+               tt->pts[12]=x[1];tt->pts[13]=y[1]; tt->pts[14]=z[1];
+               tb = AppCreateBundle(tb, 1, tt);
+               tt = Free_Tracts(tt, 1);
+               /* add bundle to network */
+               net = AppAddBundleToNetwork(net, &tb, 1, 3, NULL);
+
+         /* --> Now put network in graph dset */
+               NI_add_to_group(gset->ngr, Network_2_NIgr(net, 1));
+
+         /* --> Write the graph dataset */
+               NameOut = SUMA_WriteDset_ns ("toy", gset, SUMA_ASCII_NIML, 1, 0);
+               if (!NameOut && !SUMA_IS_DSET_STDXXX_FORMAT(SUMA_ASCII_NIML)) { 
+                  ERROR_message("Failed to write dataset."); exit(1); 
+               } else {
+                  if (NameOut) SUMA_free(NameOut); NameOut = NULL;      
+               }
+         
+         
+         /* cleanup for good manners */
+            for(i=0;i<2; ++i) free(mv[i]); free(mv);
+            for(i=0;i<2; ++i) free(labs[i]); free(labs);
+            Free_Network(net); net = NULL;
+         
+         INFO_message("All done. Demo graph dset is called toy.niml.dset");   
+         exit(0);
+      }
+      
 		ERROR_message("Bad option '%s'\n",argv[iarg]) ;
 		suggest_best_prog_option(argv[0], argv[iarg]);
 		exit(1);
@@ -674,7 +789,7 @@ int main(int argc, char *argv[]) {
 		INFO_message("Begin tracking...");
 	}
 
-	tb = AppCreateBundle(NULL, 0, NULL, insetFA); // start bundle
+	tb = AppCreateBundle(NULL, 0, NULL); // start bundle
 	id = 0;
 	for( k=0 ; k<Dim[2] ; k++ ) 
 		for( j=0 ; j<Dim[1] ; j++ ) 
@@ -817,7 +932,7 @@ int main(int argc, char *argv[]) {
       
 								// by now, we *know* if we're keeping this or not.
 								if( KEEPIT == 1 ) {
-									tb = AppCreateBundle(tb, 1, tt, NULL); 
+									tb = AppCreateBundle(tb, 1, tt); 
 									tt = Free_Tracts(tt, 1);
         
 									READS_in = totlen;
