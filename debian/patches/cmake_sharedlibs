@@ -858,7 +858,7 @@ Last-Update: 2010-09-21
 +  DESTINATION ${AFNI_INSTALL_SCRIPT_DIR} COMPONENT Runtime)
 --- /dev/null
 +++ b/SUMA/CMakeLists.txt
-@@ -0,0 +1,237 @@
+@@ -0,0 +1,238 @@
 +PROJECT(SUMA)
 +
 +##
@@ -928,6 +928,7 @@ Last-Update: 2010-09-21
 +  ${AFNI_LIBS}
 +  ${RICKR_LIBS}
 +  ${WARP_LIBS}
++  ${TRACKTOOLS_LIBS}
 +  SUMA
 +  ${THREEDEDGE_LIBS}
 +  ${OPENGL_LIBRARIES}
