@@ -1,11 +1,11 @@
-afni (0.20130819~dfsg.1-1) neurodebian; urgency=low
+afni (0.20130821~dfsg.1-1) neurodebian; urgency=low
 
   * Fresh upstream snapshot
     - bulk of changes for graph datasets support
     - @DO.example could now be used in automated mode without interaction
       with users (-auto_test)
 
- -- Yaroslav Halchenko <debian@onerussian.com>  Tue, 20 Aug 2013 11:22:00 -0400
+ -- Yaroslav Halchenko <debian@onerussian.com>  Wed, 21 Aug 2013 11:33:06 -0400
 
 afni (0.20130815~dfsg.1-1) neurodebian; urgency=low
 
