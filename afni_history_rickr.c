@@ -49,6 +49,21 @@
 
 afni_history_struct rickr_history[] = {
 
+ { 20,  Aug, 2013, RCR, "afni_proc.py", MINOR, TYPE_NEW_OPT,
+   "added -regress_RSFS, to run 3dRSFC",
+   "Would run 3dRSFC per run on errts, to bandpass and compute parameters."
+ } ,
+
+ { 20,  Aug, 2013, RCR, "afni_proc.py", MICRO, TYPE_MODIFY,
+   "make 3dAutomask the default EPI strip method",
+   "Suggested by D Glen.  I should have done so in the first place."
+ } ,
+
+ { 20,  Aug, 2013, RCR, "afni_system_check.py", MICRO, TYPE_ENHANCE,
+   "update do search_path_dirs/show_found_in_path",
+   NULL
+ } ,
+
  { 14,  Aug, 2013, RCR, "afni_system_check.py", MINOR, TYPE_ENHANCE,
    "removed '_' from PYTHON_PATH; note any /sw/bin/python* files",
    NULL
