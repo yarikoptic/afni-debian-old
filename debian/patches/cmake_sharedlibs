@@ -937,7 +937,7 @@ Last-Update: 2010-09-21
 +
 +ADD_LIBRARY(SUMA ${LIBSUMA_SRCS})
 +TARGET_LINK_LIBRARIES(SUMA ${OPENGL_LIBRARIES} ${GLUT_LIBRARIES}
-+   ${MOTIF_LIBRARIES} mrix mri rickr)
++   ${MOTIF_LIBRARIES} mrix mri rickr tracktools)
 +# need to link against GLw if not included in the library
 +IF(NOT AFNI_BUILD_LOCAL_GLW)
 +  TARGET_LINK_LIBRARIES(SUMA ${GLW_LIBRARY})
