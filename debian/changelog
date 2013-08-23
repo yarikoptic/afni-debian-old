@@ -4,8 +4,17 @@ afni (0.20130821~dfsg.1-1) neurodebian; urgency=low
     - bulk of changes for graph datasets support
     - @DO.example could now be used in automated mode without interaction
       with users (-auto_test)
+  * debian/control
+    - recommend afni-atlases
+  * debian/patches
+    - cmake_sharedlibs:
+      - do not bother with -D*_STAND_ALONE -- not used by upstream since a while
+      - fix building of inspec, quickspec, CreateIcosahedron, MapIcosahedron
+      - drop binaries not provided by upstream: SUMA_FreeSurfer,
+        SUMA_SureFit, SUMA_Ply_Read, SUMA_Map_SurfacetoSurface, ShowCmap --
+        their functionality is within the library and exposed by other binaries
 
- -- Yaroslav Halchenko <debian@onerussian.com>  Wed, 21 Aug 2013 11:33:06 -0400
+ -- Yaroslav Halchenko <debian@onerussian.com>  Thu, 22 Aug 2013 22:05:21 -0400
 
 afni (0.20130815~dfsg.1-1) neurodebian; urgency=low
 

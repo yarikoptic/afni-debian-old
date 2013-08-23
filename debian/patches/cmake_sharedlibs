@@ -858,7 +858,7 @@ Last-Update: 2010-09-21
 +  DESTINATION ${AFNI_INSTALL_SCRIPT_DIR} COMPONENT Runtime)
 --- /dev/null
 +++ b/SUMA/CMakeLists.txt
-@@ -0,0 +1,238 @@
+@@ -0,0 +1,177 @@
 +PROJECT(SUMA)
 +
 +##
@@ -954,7 +954,9 @@ Last-Update: 2010-09-21
 +  SurfMeasures FSread_annot SampBias volume_render 3dSurfMask SurfToSurf
 +  ROIgrow AnalyzeTrace DriveSuma SurfDist SpharmReco SpharmDeco SurfDsetInfo
 +  SurfLocalStat SurfFWHM NikoMap SurfInfo 3dSurf2Vol SurfRetinoMap ParseName
-+  RestSym SurfExtrema 3dinfill 3dHist HalloSuma)
++  RestSym SurfExtrema 3dinfill 3dHist HalloSuma
++  inspec quickspec
++  CreateIcosahedron MapIcosahedron)
 +
 +# automatically add targets for all programs following to frequently used
 +# naming scheme
@@ -979,48 +981,8 @@ Last-Update: 2010-09-21
 +LIST(APPEND PROGRAMS SUMA_Read_SpecFile)
 +
 +ADD_EXECUTABLE(CompareSurfaces SUMA_compare_surfaces.c)
-+SET_TARGET_PROPERTIES(CompareSurfaces PROPERTIES COMPILE_FLAGS -DSUMA_compare_surfaces_STAND_ALONE)
 +LIST(APPEND PROGRAMS CompareSurfaces)
 +
-+
-+# reusing SUMA_surface_IO.c
-+ADD_EXECUTABLE(SUMA_FreeSurfer SUMA_Surface_IO.c)
-+LIST(APPEND PROGRAMS SUMA_FreeSurfer)
-+
-+ADD_EXECUTABLE(SUMA_SureFit SUMA_Surface_IO.c)
-+LIST(APPEND PROGRAMS SUMA_SureFit)
-+
-+ADD_EXECUTABLE(SUMA_Ply_Read SUMA_Surface_IO.c)
-+LIST(APPEND PROGRAMS SUMA_Ply_Read)
-+
-+
-+# reusing SUMA_SphericalMapping.c
-+ADD_EXECUTABLE(CreateIcosahedron SUMA_SphericalMapping.c)
-+LIST(APPEND PROGRAMS CreateIcosahedron)
-+
-+ADD_EXECUTABLE(SUMA_Map_SurfacetoSurface SUMA_SphericalMapping.c)
-+LIST(APPEND PROGRAMS SUMA_Map_SurfacetoSurface)
-+
-+ADD_EXECUTABLE(MapIcosahedron SUMA_SphericalMapping.c)
-+LIST(APPEND PROGRAMS MapIcosahedron)
-+
-+
-+# reusing SUMA_Load_Surface_Object.c
-+ADD_EXECUTABLE(inspec SUMA_Load_Surface_Object.c)
-+LIST(APPEND PROGRAMS inspec)
-+
-+ADD_EXECUTABLE(quickspec SUMA_Load_Surface_Object.c)
-+LIST(APPEND PROGRAMS quickspec)
-+
-+
-+# error: too few arguments to function 'SUMA_disp_vecdmat'
-+#ADD_EXECUTABLE(SUMA_SurfNorm SUMA_SurfNorm.c)
-+#SET_TARGET_PROPERTIES(SUMA_SurfNorm PROPERTIES COMPILE_FLAGS -DSUMA_SurfNorm_STAND_ALONE)
-+#LIST(APPEND PROGRAMS SUMA_SurfNorm)
-+
-+ADD_EXECUTABLE(ShowCmap SUMA_xColBar.c)
-+SET_TARGET_PROPERTIES(ShowCmap PROPERTIES COMPILE_FLAGS -DSUMA_SHOW_CMAP_STAND_ALONE)
-+LIST(APPEND PROGRAMS ShowCmap)
 +
 +# Source files missing
 +#ADD_EXECUTABLE(resolvitivity SUMA_resolvitivity.c)
@@ -1033,7 +995,7 @@ Last-Update: 2010-09-21
 +LIST(APPEND PROGRAMS Surf2VolCoord)
 +
 +#error: too few arguments to function 'Debug_Move'
-+#ADD_EXECUTABLE(toy_circle SUMA_toy_circle.c)
++#ADD_EXECUTABLE(toy_circle SUMA_toy_circle.c SUMA_SurfWarp.c)
 +#LIST(APPEND PROGRAMS toy_circle)
 +
 +ADD_EXECUTABLE(path_optimize SUMA_path_optimize.c SUMA_SurfWarp.c)
@@ -1064,29 +1026,6 @@ Last-Update: 2010-09-21
 +  TARGET_LINK_LIBRARIES(${program} ${SUMA_LIBS})
 +ENDFOREACH(program)
 +
-+#
-+# Customize some of the targets generated above
-+#
-+FOREACH(program
-+  MakeColorMap ScaleToMap SurfaceMetrics ConvertSurface
-+  ROI2dataset SurfClust IsoSurface SurfQual ConvexHull FSread_annot SampBias
-+  CreateIcosahedron MapIcosahedron inspec quickspec)
-+  SET_TARGET_PROPERTIES(${program} PROPERTIES
-+                        COMPILE_FLAGS -DSUMA_${program}_STAND_ALONE)
-+ENDFOREACH(program)
-+
-+# pretty much the same again but for programms with 'SUMA_' prefix
-+FOREACH(program
-+  SUMA_Read_SpecFile SUMA_FreeSurfer SUMA_SureFit SUMA_Ply_Read
-+  SUMA_Map_SurfacetoSurface SUMA_Load_Surface_Object
-+  SUMA_Homer SUMA_inflate_compare )
-+  SET_TARGET_PROPERTIES(${program} PROPERTIES
-+                        COMPILE_FLAGS -D${program}_STAND_ALONE)
-+ENDFOREACH(program)
-+
-+# more customization not following any standard naming scheme
-+SET_TARGET_PROPERTIES(SurfPatch PROPERTIES COMPILE_FLAGS -DSUMA_getPatch_STANDALONE)
-+SET_TARGET_PROPERTIES(3dSkullStrip PROPERTIES COMPILE_FLAGS -DSUMA_BrainWrap_STANDALONE)
 +SET_TARGET_PROPERTIES(volume_render PROPERTIES COMPILE_FLAGS -DDO_VOLUME_MAIN)
 +
 +

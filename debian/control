@@ -53,7 +53,7 @@ Description: toolkit for analyzing and visualizing functional MRI data
 
 Package: afni-common
 Architecture: all
-Depends: python, tcsh,
+Depends: python, tcsh, afni-atlases,
          ${shlibs:Depends}, ${misc:Depends}
 Recommends: python-mdp, python-nibabel
 Description: miscellaneous scripts and data files for AFNI

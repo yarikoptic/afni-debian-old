@@ -80,7 +80,7 @@ override_dh_auto_test:
 	dh_auto_test --builddirectory=$(DEB_BUILDDIR)
 	dh_auto_test --builddirectory=$(DEB_BUILDDIR_STATIC)
 	: # Just to verify that previous fixes on linking are inplace
-	set -e; for b in 3dSkullStrip SUMA_Map_SurfacetoSurface; do \
+	set -e; for b in 3dSkullStrip; do \
 		ldd $(DEB_BUILDDIR)/SUMA/$$b | grep '=>.*lib3DEdge.so'; \
 		ldd $(DEB_BUILDDIR)/SUMA/$$b | grep '=>.*libSUMA.so'; \
 	done
@@ -128,9 +128,12 @@ get-orig-source:
 # under different names (e.g. R_io.so -> librio.so)
 test-missing:
 	@cat ../linux_openmp_64.filelist \
-    | grep -v -e README -e '\.a$$' -e 'meica\.libs' -e 'index.html.2012' \
+    | grep -v \
+      -e README -e '\.a$$' -e 'meica\.libs' -e 'index.html.201' \
+      -e OLD_AFNI \
       -e '^\./\(demo.*\.niml\.do\|qhull\|rbox\|qdelaunay\|[cd]jpeg\|nifti1_test\|nifti_\(tool\|stats\)\|gifti_tool\|mpeg_encode\)$$' \
       -e '^\./\(plug_3dsvm.so\|3dsvm\)$$' \
+      -e '^\./.*\.\(pyc\|a\)$$' \
       -e '^\./volpack\.h$$' -e 'AFNI\.....rc' \
       -e '^\./R_io.so$$' \
     | while read f; do \
