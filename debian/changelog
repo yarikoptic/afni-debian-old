@@ -19,6 +19,7 @@ afni (0.20130821~dfsg.1-1) neurodebian; urgency=low
     - debian_paths:
       - search for images in SUMA_LoadImageNIDOnel under reasonable for images
         locations instead of PATH.  Fixed 'funstuff' paths in demo*.niml.do files.
+      - specify path to READMEs to be under /usr/share/doc/afni-common
 
  -- Yaroslav Halchenko <debian@onerussian.com>  Thu, 22 Aug 2013 22:05:21 -0400
 
