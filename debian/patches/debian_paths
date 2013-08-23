@@ -102,3 +102,74 @@ Last-Update: 2010-09-29
  
           if( gss != NULL ){                               /* got at least one */
              gss->parent = NULL ;                          /* parentize them */
+--- a/SUMA/SUMA_CreateDO.c
++++ b/SUMA/SUMA_CreateDO.c
+@@ -6110,6 +6110,9 @@ SUMA_Boolean SUMA_DrawGSegmentDO (SUMA_G
+ SUMA_Boolean SUMA_LoadImageNIDOnel(NI_element *nel)
+ {
+    static char FuncName[]={"SUMA_LoadImageNIDOnel"};
++   static char ImagesPATH[]={"/usr/share/afni/pics:/usr/share/afni:"
++                             "/usr/share/pixmaps:/usr/share/images:"
++                             "/usr/share/images/desktop-base"};
+    MRI_IMAGE *im=NULL;
+    int ir, ic, i1d, i1df, imx, i1d3, i1d4;
+    byte *rgb = NULL, *imar=NULL;
+@@ -6130,7 +6133,10 @@ SUMA_Boolean SUMA_LoadImageNIDOnel(NI_el
+    
+    if (! (fname = SUMA_copy_string(NI_get_attribute(nel,"filename"))) )
+       SUMA_RETURN(NOPE);
+-   if (!SUMA_search_file(&fname, NULL)) { /* can't find it */ 
++   /* Debian: It is not sensible to search for images among PATHs, thus
++      providing alternative paths were to expect images on standard deployments
++   */
++   if (!SUMA_search_file(&fname, ImagesPATH)) { /* can't find it */ 
+       SUMA_free(fname); fname = NULL;
+       SUMA_RETURN(NOPE);
+    }
+--- a/demo.fixed.niml.do
++++ b/demo.fixed.niml.do
+@@ -59,7 +59,7 @@ v_align = 'top'
+ /T>
+ <I
+ coord = '1 0 0.9'
+-filename = 'funstuff/face_alexmartin2.jpg'
++filename = 'pics/face_alexmartin2.jpg'
+ h_align = 'right'
+ v_align = 'bot'
+ />
+@@ -74,7 +74,7 @@ frame_coords = "
+ 0.0 1.0 1
+ 1.0 1.0 1
+ 1.0 0.0 1"
+-filename = "funstuff/face_afniman.jpg"
++filename = "pics/face_afniman.jpg"
+ />
+ <S
+ node = '0'
+--- a/demo.mobile.niml.do
++++ b/demo.mobile.niml.do
+@@ -17,7 +17,7 @@ text = "Node 0"
+ />
+ <I
+ node = "10"
+-filename = "funstuff/face_hamepark.jpg"
++filename = "pics/face_hamepark.jpg"
+ />
+ <Tex
+ target = "FRAME"
+@@ -26,7 +26,7 @@ frame_coords = "
+ 200.0 240.0 260
+ 240.0 240.0 260
+ 240.0 200.0 260"
+-filename = "funstuff/face_sumabucks.jpg"
++filename = "pics/face_sumabucks.jpg"
+ />
+ <S
+ node = '0'
+@@ -40,5 +40,5 @@ slices = '20'
+ mix_mode = "decal"
+ coord_gen = "sphere"
+ target = "ALL_SURFS"
+-filename = "funstuff/face_daveperlman.jpg"
++filename = "pics/face_daveperlman.jpg"
+ />
