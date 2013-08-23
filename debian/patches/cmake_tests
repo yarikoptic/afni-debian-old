@@ -54,27 +54,34 @@
 +ADD_TEST(do.examples ../../tests/xvfb-driver @DO.examples -auto_test)
 --- /dev/null
 +++ b/tests/xvfb-driver
-@@ -0,0 +1,20 @@
-+#!/bin/sh
-+set -eu
+@@ -0,0 +1,27 @@
++#!/bin/bash
++set -u
 +
 +srcdir=$(readlink -f `dirname $0`/..)
-+buildir=$(readlink -f $PWD/..)
++builddir=$(readlink -f $PWD/..)
 +tempdir=`mktemp -d`
 +
 +cleanup() { rm -r "$tempdir"; }
 +trap 'cleanup' EXIT HUP
 +
-+echo "I: buildir=$buildir  srcdir=$srcdir tempdir=$tempdir"
++echo "I: builddir=$builddir  srcdir=$srcdir tempdir=$tempdir"
 +cd $tempdir
-+PATH=$buildir:$buildir/SUMA:$srcdir:$PATH \
++PATH=$builddir:$builddir/SUMA:$srcdir:$PATH \
 +	xvfb-run --auto-servernum --server-num=20 -s "-screen 0 1024x768x24 -ac +extension GLX +render -noreset" \
 +	"$@" 2>&1 | tee __outputlog.txt
++code=${PIPESTATUS[0]}
 +
-+if grep -q Error __*log.txt; then
-+	echo "I: Test failed due to presence of Error messages" >&2
++if [ "$code" != "0" ]; then
++	echo "E: Testing $@ failed. Exit code was $code"
 +	exit 1
 +fi
++
++if grep -q Error __*log.txt; then
++	echo "E: Testing $@ failed due to presence of Error messages" >&2
++	exit 1
++fi
++
 --- a/3DEdge/src/CMakeLists.txt
 +++ b/3DEdge/src/CMakeLists.txt
 @@ -11,3 +11,17 @@ INSTALL(TARGETS 3DEdge

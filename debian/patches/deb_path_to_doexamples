@@ -11,7 +11,7 @@
 -   cp $spath/../demo.fixed.niml.do ./fixed.niml.do
 -   cp $spath/../demo.mobile.niml.do ./mobile.niml.do
 -endif
-+foreach dopath ($spath $spath/.. /usr/share/doc/afni-common/examples)
++foreach dopath ($spath $spath/.. $spath/../.. /usr/share/doc/afni-common/examples)
 +   if ( -f $dopath/demo.fixed.niml.do) then
 +     cp $dopath/demo.fixed.niml.do ./fixed.niml.do
 +     cp $dopath/demo.mobile.niml.do ./mobile.niml.do

@@ -5,6 +5,7 @@ Maintainer: NeuroDebian Team <team@neuro.debian.net>
 Uploaders: Michael Hanke <mih@debian.org>, Yaroslav Halchenko <debian@onerussian.com>,
            Alex Waite <Alexqw85@gmail.com>
 Build-Depends: cmake (>= 2.6.4), debhelper (>= 7.0.50~),
+               hardening-includes,
                libmotif-dev,
                libnifti1-dev | libnifti-dev,
                libvolpack1-dev | libvolpack-dev,
@@ -28,7 +29,8 @@ Build-Depends: cmake (>= 2.6.4), debhelper (>= 7.0.50~),
                x11proto-print-dev,
                matlab-support-dev,
                xmhtml1-dev | xmhtml-dev,
-               r-base-core
+               r-base-core,
+               xvfb, xauth, libgl1-mesa-dri,
 Standards-Version: 3.9.4
 Homepage: http://afni.nimh.nih.gov
 Vcs-Browser: http://git.debian.org/?p=pkg-exppsy/afni.git
