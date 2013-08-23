@@ -69,7 +69,7 @@ Last-Update: 2010-09-21
 +SET(AFNI_INSTALL_POEMS_DIR "funstuff" CACHE PATH
 +    "Directory to install poems into")
 +SET(AFNI_INSTALL_HTML_DIR "html" CACHE PATH
-+    "Directory to install poems into")
++    "Directory to install html documentation into")
 +SET(AFNI_INSTALL_ATLAS_DIR "atlases" CACHE PATH
 +    "Directory to install atlases (and related information) into")
 +SET(AFNI_SHOWOFF "${CMAKE_SYSTEM}" CACHE STRING
@@ -859,7 +859,7 @@ Last-Update: 2010-09-21
 +  DESTINATION ${AFNI_INSTALL_SCRIPT_DIR} COMPONENT Runtime)
 --- /dev/null
 +++ b/SUMA/CMakeLists.txt
-@@ -0,0 +1,177 @@
+@@ -0,0 +1,176 @@
 +PROJECT(SUMA)
 +
 +##
@@ -1028,7 +1028,6 @@ Last-Update: 2010-09-21
 +ENDFOREACH(program)
 +
 +SET_TARGET_PROPERTIES(volume_render PROPERTIES COMPILE_FLAGS -DDO_VOLUME_MAIN)
-+
 +
 +#
 +# Install targets
@@ -1409,17 +1408,12 @@ Last-Update: 2010-09-21
 +  DESTINATION ${AFNI_INSTALL_SCRIPT_DIR} COMPONENT Runtime)
 --- /dev/null
 +++ b/3DEdge/src/CMakeLists.txt
-@@ -0,0 +1,18 @@
+@@ -0,0 +1,13 @@
 +PROJECT(3DEdge)
 +
 +SET(SOURCES
-+ connexe.c convert.c extrema.c iopnm.c recbuffer.c recline.c
++ connexe.c convert.c extrema.c iopnm.c recbuffer.c recline.c zcross.c
 +)
-+
-+SET(TESTS
-+ test-edges.c test-edges-pnm.c test-hyster-pnm.c
-+)
-+# TODO: should we build/run them at build time?
 +
 +ADD_LIBRARY(3DEdge ${SOURCES})
 +# TARGET_LINK_LIBRARIES(3DEdge m)
