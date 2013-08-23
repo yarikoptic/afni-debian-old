@@ -9,4 +9,5 @@ unmod_f2c
 fixes
 up_3rd_no_RefreshHTML_AtEvent
 debian_paths
+deb_path_to_doexamples
 cmake_sharedlibs

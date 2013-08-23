@@ -13,6 +13,9 @@ afni (0.20130821~dfsg.1-1) neurodebian; urgency=low
       - drop binaries not provided by upstream: SUMA_FreeSurfer,
         SUMA_SureFit, SUMA_Ply_Read, SUMA_Map_SurfacetoSurface, ShowCmap --
         their functionality is within the library and exposed by other binaries
+    - deb_path_to_doexamples:
+      - find .do examples on Debian installations among docs
+      - exit with code 1 if those could not be found
 
  -- Yaroslav Halchenko <debian@onerussian.com>  Thu, 22 Aug 2013 22:05:21 -0400
 
