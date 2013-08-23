@@ -1,0 +1,31 @@
+--- /dev/null
++++ b/CMakeLists_tests.txt
+@@ -0,0 +1,7 @@
++enable_testing()
++
++add_test( testdsetio testdsetio )
++
++ADD_EXECUTABLE(testdsetio SUMA/SUMA_TestDsetIO.c)
++# TODO: for some reason  ${SUMA_LIBS}) are not in effect
++TARGET_LINK_LIBRARIES(testdsetio afni_warp SUMA 3DEdge segtools ${AFNI_LIBS})
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -25,6 +25,9 @@ OPTION(AFNI_BUILD_CORELIBS_ONLY
+ OPTION(AFNI_BUILD_WITH_LESSTIF2
+        "Build using lesstif2, otherwise with OpenMotif"
+        ON)
++OPTION(AFNI_BUILD_TESTS
++       "Enable testing and build available tests"
++       OFF)
+ 
+ #
+ # Install destinations
+@@ -300,4 +303,8 @@ IF(NOT AFNI_BUILD_CORELIBS_ONLY)
+   ADD_SUBDIRECTORY(faces)
+   ADD_SUBDIRECTORY(poems)
+ 
++  IF(AFNI_BUILD_TESTS)
++	INCLUDE(CMakeLists_tests.txt)
++  ENDIF(AFNI_BUILD_TESTS)
++
+ ENDIF(NOT AFNI_BUILD_CORELIBS_ONLY)

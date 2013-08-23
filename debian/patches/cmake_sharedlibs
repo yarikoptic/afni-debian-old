@@ -20,7 +20,7 @@ Author: Michael Hanke <michael.hanke@gmail.com>, Bernd Feige <bernd.feige@unikli
 Last-Update: 2010-09-21
 --- /dev/null
 +++ b/CMakeLists.txt
-@@ -0,0 +1,302 @@
+@@ -0,0 +1,303 @@
 +PROJECT(AFNI)
 +
 +cmake_minimum_required(VERSION 2.6)
@@ -48,6 +48,7 @@ Last-Update: 2010-09-21
 +OPTION(AFNI_BUILD_WITH_LESSTIF2
 +       "Build using lesstif2, otherwise with OpenMotif"
 +       ON)
++
 +#
 +# Install destinations
 +#
