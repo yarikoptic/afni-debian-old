@@ -14,6 +14,9 @@ Testing
 =======
 * 3DEdge comes with some basic tests, would be nice to build/execute
 
+  require data files to be provided
+  see http://afni.nimh.nih.gov/afni/community/board/read.php?1,142220,142220#msg-142220
+
 * Failed to open plugin /usr/lib/afni/plugins/plug_retroicor.so -- /usr/lib/afni/plugins/plug_retroicor.so: undefined symbol: RIC_CalcVoxelMeans
 
 * Test using crafted and stock AFNI scripts
@@ -26,26 +29,6 @@ Testing
 
    the only catch that it also shows a resultant image which needs to
    be closed somehow...
-
-    PATH=$PWD:$PATH @DO.examples also work somewhat...
-
-   actually the ultimate
-
-    > echo -e "#\!/bin/sh\nsleep 1\necho 1\n" >| prompt_user; chmod a+x prompt_user
-    > PATH=$PWD:$PATH xvfb-run --auto-servernum --server-num=20 -s "-screen 0 1024x768x24 -ac +extension GLX +render -noreset" @DO.examples 2>&1 | tee output.log
-
-   looks quite promising
-
-    > grep -A2 Error output.log
-    Error SUMA_Read_SpecFile: File __donut.spec does not exist or cannot be read.
-    --     Error SUMA_IO_args_2_spec (/tmp/buildd/afni-0.20130813~dfsg.1/SUMA/SUMA_Load_Surface_Object.c:5791):
-    Failed to read SpecFile
-    --     Error Main_SUMA_SurfaceMetrics (/tmp/buildd/afni-0.20130813~dfsg.1/SUMA/SUMA_SurfaceMetrics.c:567):
-    No surfaces found.
-    ** THD_open_1D(__vec.TriNormSeg.1D): can't open file
-
-   so it is a matter of looking either these are legit and/or
-   packaging or my fault of not waiting for user input.
 
 Missing installations
 =====================
