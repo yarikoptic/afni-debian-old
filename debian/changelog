@@ -8,8 +8,9 @@ afni (0.20130821~dfsg.1-1) neurodebian; urgency=low
     - recommend afni-atlases
   * debian/rules
     - explicitly include hardening.make and adjust LDFLAGS and CFLAGS
-      instead of replying on "magic" of DEB_BUILD_HARDENING which seems to
-      not play with ccache nicely all the times
+      instead of relying on "magic" of DEB_BUILD_HARDENING which seems to
+      not play with ccache nicely all the times.  Also exclude -fPIE since
+      conflicts with -fPIC when gcc < 4.8
   * debian/patches
     - cmake_sharedlibs:
       - do not bother with -D*_STAND_ALONE -- not used by upstream since a while

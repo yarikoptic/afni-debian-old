@@ -20,15 +20,20 @@ gitver = $(shell [ -x /usr/bin/git ] && git log -n 1 --oneline $$(git merge-base
 # get install locations for matlab packages
 include /usr/share/matlab/debian/defs.make
 
+# filter-out below are to get a set of uniq (not already listed)
+# options to avoid cmdline clutter.  -fPIE -pie are manually filtered out
+# to prevent FTBFS on wheezy/jessie with gcc 4.7 which can't handle having
+# both -fPIE and -fPIC added by cmake
+#
 # TODO plugins do not handle this well
-LDFLAGS = $(shell dpkg-buildflags --get LDFLAGS) -Wl,--allow-shlib-undefined
-LDFLAGS+=$(HARDENING_LDFLAGS)
+DPKGLDFLAGS = $(shell dpkg-buildflags --get LDFLAGS) -Wl,--allow-shlib-undefined
+LDFLAGS = $(filter-out $(DPKGLDFLAGS) -fPIE -pie, $(HARDENING_LDFLAGS)) $(DPKGLDFLAGS)
 export LDFLAGS
 
 # need to do it after inclusion of cmake class to get the flag
 # appended after -Wall
-CFLAGS = $(shell dpkg-buildflags --get CFLAGS) -Wno-unused
-CFLAGS+=$(HARDENING_CFLAGS)
+DPKGCFLAGS = $(shell dpkg-buildflags --get CFLAGS) -Wno-unused
+CFLAGS = $(filter-out $(DPKGCFLAGS) -fPIE, $(HARDENING_CFLAGS)) $(DPKGCFLAGS)
 export CFLAGS
 
 # what are we doing this for
