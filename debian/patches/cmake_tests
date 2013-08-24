@@ -84,7 +84,7 @@
 +
 --- a/3DEdge/src/CMakeLists.txt
 +++ b/3DEdge/src/CMakeLists.txt
-@@ -11,3 +11,17 @@ INSTALL(TARGETS 3DEdge
+@@ -11,3 +11,20 @@ INSTALL(TARGETS 3DEdge
    RUNTIME DESTINATION ${AFNI_INSTALL_BIN_DIR} COMPONENT Runtime
    LIBRARY DESTINATION ${AFNI_INSTALL_LIB_DIR} COMPONENT Runtime
    ARCHIVE DESTINATION ${AFNI_INSTALL_LIB_DIR} COMPONENT Development)
@@ -92,6 +92,9 @@
 +#
 +# Tests
 +#
++IF(AFNI_BUILD_TESTS)
++  ENABLE_TESTING()
++ENDIF(AFNI_BUILD_TESTS)
 +
 +SET(TESTS
 + test-edges test-edges-pnm test-hyster-pnm
