@@ -54,7 +54,7 @@
 +ADD_TEST(do.examples ../../tests/xvfb-driver @DO.examples -auto_test)
 --- /dev/null
 +++ b/tests/xvfb-driver
-@@ -0,0 +1,27 @@
+@@ -0,0 +1,29 @@
 +#!/bin/bash
 +set -u
 +
@@ -67,6 +67,8 @@
 +
 +echo "I: builddir=$builddir  srcdir=$srcdir tempdir=$tempdir"
 +cd $tempdir
++ln -s $srcdir/faces pics
++
 +PATH=$builddir:$builddir/SUMA:$srcdir:$PATH \
 +	xvfb-run --auto-servernum --server-num=20 -s "-screen 0 1024x768x24 -ac +extension GLX +render -noreset" \
 +	"$@" 2>&1 | tee __outputlog.txt

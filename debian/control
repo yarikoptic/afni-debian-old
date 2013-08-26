@@ -31,6 +31,7 @@ Build-Depends: cmake (>= 2.6.4), debhelper (>= 7.0.50~),
                xmhtml1-dev | xmhtml-dev,
                r-base-core,
                xvfb, xauth, libgl1-mesa-dri,
+               tcsh, libjpeg-progs,
 Standards-Version: 3.9.4
 Homepage: http://afni.nimh.nih.gov
 Vcs-Browser: http://git.debian.org/?p=pkg-exppsy/afni.git
