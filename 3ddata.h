@@ -4642,7 +4642,7 @@ typedef struct {
      (nam)->nvec  = (nvc) ;                                       \
      (nam)->nvals = (nvl) ;                                       \
      (nam)->ivec  = (int *)  calloc(sizeof(int)  ,(nvc)) ;        \
-     (nam)->fvec  = (float *)calloc(sizeof(float),(nvc)*(nvl)) ;  \
+     (nam)->fvec  = (float *)calloc(sizeof(float)*(nvc),(nvl)) ;  \
  } while(0)
 
 #undef  ISVALID_VECTIM
@@ -4650,7 +4650,7 @@ typedef struct {
  ( (mv) != NULL && (mv)->ivec != NULL && (mv)->fvec != NULL )
 
 #undef  VECTIM_PTR
-#define VECTIM_PTR(mv,j) ((mv)->fvec + (j)*(mv)->nvals)
+#define VECTIM_PTR(mv,j) ((mv)->fvec + (size_t)(j)*(size_t)(mv)->nvals)
 
 #undef  VECTIM_extract
 #define VECTIM_extract(mv,j,aa) \
@@ -4863,8 +4863,8 @@ extern FD_brick ** THD_setup_bricks( THD_3dim_dataset * ) ;
 
 extern FD_brick * THD_oriented_brick( THD_3dim_dataset *, char *) ; /* 07 Dec 2001 */
 
-extern int thd_floatscan  ( int , float *   ) ; /* 30 Jul 1999 */
-extern int thd_complexscan( int , complex * ) ; /* 14 Sep 1999 */
+extern int thd_floatscan  ( size_t , float *   ) ; /* 30 Jul 1999 */
+extern int thd_complexscan( size_t , complex * ) ; /* 14 Sep 1999 */
 
 #undef floatfix
 #ifdef isfinite
