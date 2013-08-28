@@ -1,5 +1,6 @@
-afni (0.20130821~dfsg.1-2) UNRELEASED; urgency=low
+afni (0.20130827~dfsg.1-1) neurodebian; urgency=low
 
+  * New upstream snapshot: bulk of fixes and enhancements
   * debian/control
     - add tcsh, libjpeg-progs to build-depends -- needed for testing
       @DO.examples
@@ -7,7 +8,7 @@ afni (0.20130821~dfsg.1-2) UNRELEASED; urgency=low
     - tests/xvfb-driver -- link faces as pics under a temporary test directory
       so that @DO.examples has it available when afni is not yet installed
 
- -- Yaroslav Halchenko <debian@onerussian.com>  Mon, 26 Aug 2013 12:58:03 -0400
+ -- Yaroslav Halchenko <debian@onerussian.com>  Wed, 28 Aug 2013 11:24:14 -0400
 
 afni (0.20130821~dfsg.1-1) neurodebian; urgency=low
 
