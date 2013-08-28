@@ -43,7 +43,30 @@
 
 afni_history_struct rwcox_history[] = {
 /*=====BELOW THIS LINE=====*/
-  { 15 , AUG , 2013 , RWC , "cs_symeig" , MICRO , TYPE_BUG_FIX ,
+  { 27 , AUG , 2013 , RWC , "Continuing vectim saga" , MICRO , TYPE_MODIFY ,
+   "More 64 bit fixes" ,
+   "A few more 64 bit fixes in various MRI_vectim using codes.  Also, change\n"
+   "the nvox field in MRI_IMAGE to int64_t.  However, generally allowing for\n"
+   "more than 2G voxels in a 3D volume will be a very grueling change to\n"
+   "make in thousands of places!" } ,
+
+ { 26 , AUG , 2013 , RWC , "3dREMLfit" , MINOR , TYPE_BUG_FIX ,
+   "Program crashes or gets bad answers on very large datasets" ,
+   "Problem: with a vectim, the pointer to the k-th voxel time series array\n"
+   "(of length nvals) is calculated as\n"
+   "  ptr = base + k * nvals\n"
+   "where k and nvals are ints.  But with gcc, the k*nvals value is then\n"
+   "computed in 32 bit arithmetic before being added to the 64 bit pointer\n"
+   "'base'.  Not good when you pass the 2,147,483,647-th voxel -- that is,\n"
+   "if the vectim is over 8 Gbytes.  With the Intel icc, it apparently works\n"
+   "OK -- bravo for Intel.  Anyhoo, by casting k and nvals to size_t, this\n"
+   "problem goes away.  For now." } ,
+
+ { 23 , AUG , 2013 , RWC , "3dTproject" , MINOR , TYPE_MODIFY ,
+   "Add catenation, for RCR" ,
+   NULL } ,
+
+ { 15 , AUG , 2013 , RWC , "cs_symeig" , MICRO , TYPE_BUG_FIX ,
    "Modify backup for svd_double failure" ,
    "gcc-compiled source for eispack SVD function sometimes gives wrong\n"
    "results.  The backup code for this also sometimes fails.  So I modified\n"
