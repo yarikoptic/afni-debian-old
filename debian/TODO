@@ -17,8 +17,6 @@ Testing
   require data files to be provided
   see http://afni.nimh.nih.gov/afni/community/board/read.php?1,142220,142220#msg-142220
 
-* Failed to open plugin /usr/lib/afni/plugins/plug_retroicor.so -- /usr/lib/afni/plugins/plug_retroicor.so: undefined symbol: RIC_CalcVoxelMeans
-
 * Test using crafted and stock AFNI scripts
 
  - if we get AFNI_data6, we could excercise @DriveAfni simply by

@@ -1,3 +1,15 @@
+afni (0.20130827~dfsg.1-2) unstable; urgency=low
+
+  * debian/patches:
+    - cmake_sharedlibs:
+      - include retroicor.c functionality into libmri.so to be shared by
+        tools and plugins -- resolves "Failed to open plugin
+        /usr/lib/afni/plugins/plug_retroicor.so" upon AFNI startup.
+    - cmake_tests:
+      - basic test to verify that AFNI starts without reporting any failure
+
+ -- Yaroslav Halchenko <debian@onerussian.com>  Fri, 30 Aug 2013 18:04:14 -0400
+
 afni (0.20130827~dfsg.1-1) neurodebian; urgency=low
 
   * New upstream snapshot: bulk of fixes and enhancements
