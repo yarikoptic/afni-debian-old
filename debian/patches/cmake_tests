@@ -30,7 +30,7 @@
  ENDIF(NOT AFNI_BUILD_CORELIBS_ONLY)
 --- /dev/null
 +++ b/tests/CMakeLists.txt
-@@ -0,0 +1,21 @@
+@@ -0,0 +1,25 @@
 +PROJECT(TESTS)
 +#
 +# Tests -- building/running is aggregated within a separate directory
@@ -49,12 +49,16 @@
 +ADD_EXECUTABLE(testdsetio ../SUMA/SUMA_TestDsetIO.c)
 +TARGET_LINK_LIBRARIES(testdsetio afni_warp SUMA 3DEdge segtools ${AFNI_LIBS})
 +
++ADD_TEST(afni:start ../../tests/xvfb-driver afni -com "OPEN_WINDOW axialimage; SAVE_JPEG axialimage test1; QUIT")
++
 +# TODO: figure out how to reference it correctly, or just copy to this
 +# target tests/ build directory
 +ADD_TEST(do.examples ../../tests/xvfb-driver @DO.examples -auto_test)
++
++
 --- /dev/null
 +++ b/tests/xvfb-driver
-@@ -0,0 +1,29 @@
+@@ -0,0 +1,36 @@
 +#!/bin/bash
 +set -u
 +
@@ -69,7 +73,8 @@
 +cd $tempdir
 +ln -s $srcdir/faces pics
 +
-+PATH=$builddir:$builddir/SUMA:$srcdir:$PATH \
++AFNI_DETACH=NO AFNI_SYSTEM_AFNIRC=/dev/null \
++AFNI_PLUGINPATH=$builddir PATH=$builddir:$builddir/SUMA:$srcdir:$PATH \
 +	xvfb-run --auto-servernum --server-num=20 -s "-screen 0 1024x768x24 -ac +extension GLX +render -noreset" \
 +	"$@" 2>&1 | tee __outputlog.txt
 +code=${PIPESTATUS[0]}
@@ -79,8 +84,14 @@
 +	exit 1
 +fi
 +
++cmd="$@"
 +if grep -q Error __*log.txt; then
-+	echo "E: Testing $@ failed due to presence of Error messages" >&2
++	echo "E: Testing '$cmd' failed due to presence of Error messages" >&2
++	exit 1
++fi
++
++if grep -q '^Failed to' __*log.txt; then
++	echo "E: Testing '$cmd' failed due to presence of 'Failed to ...' messages" >&2
 +	exit 1
 +fi
 +
