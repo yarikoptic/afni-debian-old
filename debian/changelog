@@ -1,5 +1,7 @@
-afni (0.20130827~dfsg.1-2) unstable; urgency=low
+afni (0.20130830~dfsg.1-1) neurodebian; urgency=low
 
+  * Fresh upstream snapshot: some enhancements and even more holidays to
+    celebrate
   * debian/patches:
     - cmake_sharedlibs:
       - include retroicor.c functionality into libmri.so to be shared by
@@ -10,7 +12,7 @@ afni (0.20130827~dfsg.1-2) unstable; urgency=low
 
  -- Yaroslav Halchenko <debian@onerussian.com>  Fri, 30 Aug 2013 18:04:14 -0400
 
-afni (0.20130827~dfsg.1-1) neurodebian; urgency=low
+afni (0.20130827~dfsg.1-1) UNRELEASED; urgency=low
 
   * New upstream snapshot: bulk of fixes and enhancements
   * debian/control
