@@ -451,7 +451,7 @@ Last-Update: 2010-09-21
 +TARGET_LINK_LIBRARIES(3dmaxima ${AFNI_LIBS})
 +LIST(APPEND PROGRAMS 3dmaxima)
 +
-+ADD_EXECUTABLE(3dretroicor 3dretroicor.c retroicor.c)
++ADD_EXECUTABLE(3dretroicor 3dretroicor.c)
 +TARGET_LINK_LIBRARIES(3dretroicor ${AFNI_LIBS})
 +LIST(APPEND PROGRAMS 3dretroicor)
 +
@@ -555,7 +555,7 @@ Last-Update: 2010-09-21
 +  DESTINATION ${AFNI_INSTALL_SCRIPT_DIR} COMPONENT Runtime)
 --- /dev/null
 +++ b/CMakeLists_libs.txt
-@@ -0,0 +1,210 @@
+@@ -0,0 +1,211 @@
 +##
 +## This file is to be included in the toplevel CMakeLists.txt
 +##
@@ -593,7 +593,8 @@ Last-Update: 2010-09-21
 +  mri_dicom_stuff.c mri_check.c mri_allzero.c mri_subset.c mri_to_fvect.c
 +  mri_genalign_util.c rcmat.c dmat44.c mri_rbfinterp.c matrix.c
 +  gifti_choice.c zfun.c cs_pv.c cs_sort_iv.c cs_sort_d misc_math.c
-+  mri_genARMA11.c mri_catvol.c mri_polyfit.c mri_nwarp.c mri_extract.c)
++  mri_genARMA11.c mri_catvol.c mri_polyfit.c mri_nwarp.c mri_extract.c
++  retroicor.c)
 +
 +SET(THD_SRC
 +  thd_atr.c thd_dsetto1D.c thd_initalldir.c thd_reconpar.c thd_auxdata.c
