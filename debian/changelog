@@ -5,6 +5,9 @@ afni (0.20130830~dfsg.1-2) unstable; urgency=low
       - add SUMA_gts_insert.c to libSUMAGTS and link SurfMesh against it
       - absorb librickr into libmri -- upstream dropped separate librickr
         as of 0.20080129~dfsg.1.
+      - absorb libafni_warp into libmri -- upstream does "the same" and
+        if split -- there is a circular dependency between afni_warp and
+        mri forbidding robust building/linking
       - link lib3DEdge against m, and segtools and tracktools against mri
   * debian/rules:
     - remove explicit -Wl,--allow-shlib-undefined which was introduced
