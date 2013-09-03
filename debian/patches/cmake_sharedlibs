@@ -20,7 +20,7 @@ Author: Michael Hanke <michael.hanke@gmail.com>, Bernd Feige <bernd.feige@unikli
 Last-Update: 2010-09-21
 --- /dev/null
 +++ b/CMakeLists.txt
-@@ -0,0 +1,298 @@
+@@ -0,0 +1,300 @@
 +PROJECT(AFNI)
 +
 +cmake_minimum_required(VERSION 2.6)
@@ -227,6 +227,9 @@ Last-Update: 2010-09-21
 +FIND_LIBRARY(GSL_LIBRARY "gsl")
 +IF(GSL_LIBRARY)
 +  INCLUDE_DIRECTORIES(${GSL_INC})
++  # forcing --no-as-needed  since gsl is usually not linked against gslcblas
++  # but some systems have --as-needed by default
++  SET(GSL_LIBRARIES  "-Wl,--no-as-needed" gsl gslcblas)
 +ENDIF(GSL_LIBRARY)
 +
 +##
@@ -253,8 +256,7 @@ Last-Update: 2010-09-21
 +# settings
 +SET(FILE_PERMISSIONS OWNER_READ OWNER_WRITE GROUP_READ WORLD_READ)
 +
-+# core libs pretty much everythings has to be linked against
-+SET(SEGTOOLS_LIBS ${AFNI_LIBS} segtools ${GSL_LIBRARIES})
++SET(SEGTOOLS_LIBS segtools)
 +SET(AFNI_LIBS
 +   mri mrix coxplot
 +   ${VOLPACK_LIBRARY} ${NETCDF_LIBRARY} ${MOTIF_LIBRARIES}
@@ -532,7 +534,7 @@ Last-Update: 2010-09-21
 +IF(GSL_LIBRARY)
 +  MESSAGE(STATUS "Found GSL library, compiling 'balloon'")
 +  ADD_EXECUTABLE(balloon balloon.c)
-+  TARGET_LINK_LIBRARIES(balloon gsl gslcblas m)
++  TARGET_LINK_LIBRARIES(balloon ${GSL_LIBRARIES} m)
 +  LIST(APPEND PROGRAMS balloon)
 +ENDIF(GSL_LIBRARY)
 +
@@ -1065,7 +1067,7 @@ Last-Update: 2010-09-21
 +  MESSAGE(STATUS "Found GSL library, compiling segtools")
 +  SET(SOURCES thd_segtools_fNM.c cluster_floatNOMASK.c)
 +  ADD_LIBRARY(segtools ${SOURCES})
-+  TARGET_LINK_LIBRARIES(segtools gsl gslcblas mri)
++  TARGET_LINK_LIBRARIES(segtools mri ${GSL_LIBRARIES})
 +  SET(PROGRAMS fit_onesign Aclustering 3dfit_onesign 3dkmeans)
 +
 +  ADD_EXECUTABLE(fit_onesign fit_onesign.c)
@@ -1358,14 +1360,14 @@ Last-Update: 2010-09-21
 +  MESSAGE(STATUS "Found GSL and GTS libraries, compiling tracktools")
 +  SET(SOURCES DoTrackit.c TrackIO.c rsfc.c)
 +  ADD_LIBRARY(tracktools ${SOURCES})
-+  TARGET_LINK_LIBRARIES(tracktools gsl gslcblas gts mri)
++  TARGET_LINK_LIBRARIES(tracktools gts mri ${GSL_LIBRARIES})
 +  SET(PROGRAMS
 +    3dTrackID 3dProbTrackID 3dDWUncert 3dReHo 3dRSFC map_TrackID 3dROIMaker
 +    3dMatch 3dNetCorr)
 +
 +  FOREACH(program ${PROGRAMS})
 +    ADD_EXECUTABLE(${program} ${program}.c)
-+    TARGET_LINK_LIBRARIES(${program} ${AFNI_LIBS} ${SUMA_LIBS} tracktools ${GSL_LIBRARY} ${GTS_LIBRARIES})
++    TARGET_LINK_LIBRARIES(${program} ${AFNI_LIBS} ${SUMA_LIBS} tracktools ${GSL_LIBRARIES} ${GTS_LIBRARIES})
 +  ENDFOREACH(program)
 +
 +  INSTALL(TARGETS tracktools ${PROGRAMS}

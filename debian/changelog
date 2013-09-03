@@ -9,6 +9,10 @@ afni (0.20130830~dfsg.1-2) neurodebian; urgency=low
         if split -- there is a circular dependency between afni_warp and
         mri forbidding robust building/linking
       - link lib3DEdge against m, and segtools and tracktools against mri
+      - make SEGTOOLS_LIBS list only segtools
+      - enforce --no-as-needed ld flag while building segtools due to libgsl
+        not linking against libgslcblas thus failing to build with --as-needed
+        which is defauilt on Ubuntus
     - cmake_tests
       - disable 3dedge test requiring data (waiting on upstream)
       - xvfb-driver -- allow to specify # of errors expected, so we
@@ -20,7 +24,7 @@ afni (0.20130830~dfsg.1-2) neurodebian; urgency=low
     - add -Wl,--no-undefined for exe and shared linker flags
     - do not ignore tests failures
 
- -- Yaroslav Halchenko <debian@onerussian.com>  Mon, 02 Sep 2013 23:25:49 -0400
+ -- Yaroslav Halchenko <debian@onerussian.com>  Tue, 03 Sep 2013 13:12:23 -0400
 
 afni (0.20130830~dfsg.1-1) neurodebian; urgency=low
 
