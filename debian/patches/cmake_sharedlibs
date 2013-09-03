@@ -944,7 +944,7 @@ Last-Update: 2010-09-21
 +
 +ADD_LIBRARY(SUMA ${LIBSUMA_SRCS})
 +TARGET_LINK_LIBRARIES(SUMA ${OPENGL_LIBRARIES} ${GLUT_LIBRARIES}
-+   ${MOTIF_LIBRARIES} mrix mri tracktools)
++   ${MOTIF_LIBRARIES} mrix mri tracktools ${THREEDEDGE_LIBS})
 +# need to link against GLw if not included in the library
 +IF(NOT AFNI_BUILD_LOCAL_GLW)
 +  TARGET_LINK_LIBRARIES(SUMA ${GLW_LIBRARY})
@@ -1072,7 +1072,7 @@ Last-Update: 2010-09-21
 +  MESSAGE(STATUS "Found GSL library, compiling segtools")
 +  SET(SOURCES thd_segtools_fNM.c cluster_floatNOMASK.c)
 +  ADD_LIBRARY(segtools ${SOURCES})
-+  TARGET_LINK_LIBRARIES(segtools gsl gslcblas)
++  TARGET_LINK_LIBRARIES(segtools gsl gslcblas mri)
 +  SET(PROGRAMS fit_onesign Aclustering 3dfit_onesign 3dkmeans)
 +
 +  ADD_EXECUTABLE(fit_onesign fit_onesign.c)
@@ -1365,7 +1365,7 @@ Last-Update: 2010-09-21
 +  MESSAGE(STATUS "Found GSL and GTS libraries, compiling tracktools")
 +  SET(SOURCES DoTrackit.c TrackIO.c rsfc.c)
 +  ADD_LIBRARY(tracktools ${SOURCES})
-+  TARGET_LINK_LIBRARIES(tracktools gsl gslcblas gts)
++  TARGET_LINK_LIBRARIES(tracktools gsl gslcblas gts mri)
 +  SET(PROGRAMS
 +    3dTrackID 3dProbTrackID 3dDWUncert 3dReHo 3dRSFC map_TrackID 3dROIMaker
 +    3dMatch 3dNetCorr)
@@ -1416,7 +1416,7 @@ Last-Update: 2010-09-21
 +)
 +
 +ADD_LIBRARY(3DEdge ${SOURCES})
-+# TARGET_LINK_LIBRARIES(3DEdge m)
++TARGET_LINK_LIBRARIES(3DEdge m)
 +
 +INSTALL(TARGETS 3DEdge
 +  RUNTIME DESTINATION ${AFNI_INSTALL_BIN_DIR} COMPONENT Runtime
