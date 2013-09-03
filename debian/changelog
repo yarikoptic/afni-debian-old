@@ -9,6 +9,11 @@ afni (0.20130830~dfsg.1-2) unstable; urgency=low
         if split -- there is a circular dependency between afni_warp and
         mri forbidding robust building/linking
       - link lib3DEdge against m, and segtools and tracktools against mri
+    - cmake_tests
+      - disable 3dedge test requiring data (waiting on upstream)
+      - xvfb-driver -- allow to specify # of errors expected, so we
+        could already test @DO.examples which should have 1 error
+        on exit
   * debian/rules:
     - remove explicit -Wl,--allow-shlib-undefined which was introduced
       awaiting for a fix to #624156 long RIP.

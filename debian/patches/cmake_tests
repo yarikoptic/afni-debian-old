@@ -10,7 +10,7 @@
  
  #
  # Install destinations
-@@ -277,6 +280,10 @@ ELSE(AFNI_BUILD_LOCAL_GIFTI)
+@@ -273,6 +276,10 @@ ELSE(AFNI_BUILD_LOCAL_GIFTI)
    ENDIF(GIFTI_LIBRARY)
  ENDIF(AFNI_BUILD_LOCAL_GIFTI)
  
@@ -21,7 +21,7 @@
  # everything that is not necessary for corelibs
  IF(NOT AFNI_BUILD_CORELIBS_ONLY)
    ADD_SUBDIRECTORY(rickr)
-@@ -299,4 +306,6 @@ IF(NOT AFNI_BUILD_CORELIBS_ONLY)
+@@ -295,4 +302,6 @@ IF(NOT AFNI_BUILD_CORELIBS_ONLY)
    ADD_SUBDIRECTORY(faces)
    ADD_SUBDIRECTORY(poems)
  
@@ -53,14 +53,36 @@
 +
 +# TODO: figure out how to reference it correctly, or just copy to this
 +# target tests/ build directory
-+ADD_TEST(do.examples ../../tests/xvfb-driver @DO.examples -auto_test)
++ADD_TEST(do.examples ../../tests/xvfb-driver -e 1 @DO.examples -auto_test)
 +
 +
 --- /dev/null
 +++ b/tests/xvfb-driver
-@@ -0,0 +1,36 @@
+@@ -0,0 +1,59 @@
 +#!/bin/bash
 +set -u
++
++# Parse cmdline
++
++CLOPTS=`getopt -o e: --long errors: -n 'xvfb-driver' -- "$@"`
++if [ $? != 0 ] ; then
++    echo "Terminating..." >&2
++    exit 1
++fi
++eval set -- "$CLOPTS"
++
++# Defaults
++errors=0						# # of errors expected
++
++while true ; do
++    case "$1" in
++        -e|--errors) shift; errors=$1; shift;;
++        --) shift ; break ;;
++        *) echo "Internal error! ($1)"; exit 1;;
++    esac
++done
++
++# Deduce paths
 +
 +srcdir=$(readlink -f `dirname $0`/..)
 +builddir=$(readlink -f $PWD/..)
@@ -85,8 +107,9 @@
 +fi
 +
 +cmd="$@"
-+if grep -q Error __*log.txt; then
-+	echo "E: Testing '$cmd' failed due to presence of Error messages" >&2
++errors_=`grep -q Error __*log.txt|wc -l`
++if [ $errors -ne $errors_ ]; then
++	echo "E: Testing '$cmd' failed due to presence of $errors_ Error messages when $errors were expected" >&2
 +	exit 1
 +fi
 +
@@ -97,7 +120,7 @@
 +
 --- a/3DEdge/src/CMakeLists.txt
 +++ b/3DEdge/src/CMakeLists.txt
-@@ -11,3 +11,20 @@ INSTALL(TARGETS 3DEdge
+@@ -11,3 +11,22 @@ INSTALL(TARGETS 3DEdge
    RUNTIME DESTINATION ${AFNI_INSTALL_BIN_DIR} COMPONENT Runtime
    LIBRARY DESTINATION ${AFNI_INSTALL_LIB_DIR} COMPONENT Runtime
    ARCHIVE DESTINATION ${AFNI_INSTALL_LIB_DIR} COMPONENT Development)
@@ -110,7 +133,9 @@
 +ENDIF(AFNI_BUILD_TESTS)
 +
 +SET(TESTS
-+ test-edges test-edges-pnm test-hyster-pnm
++ # Requires data files -- still waiting on upstream to provide
++ # test-edges
++ test-edges-pnm test-hyster-pnm
 +)
 +
 +FOREACH(test ${TESTS})
