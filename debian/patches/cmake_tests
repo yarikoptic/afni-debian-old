@@ -30,7 +30,7 @@
  ENDIF(NOT AFNI_BUILD_CORELIBS_ONLY)
 --- /dev/null
 +++ b/tests/CMakeLists.txt
-@@ -0,0 +1,25 @@
+@@ -0,0 +1,26 @@
 +PROJECT(TESTS)
 +#
 +# Tests -- building/running is aggregated within a separate directory
@@ -47,24 +47,25 @@
 +ADD_TEST(testdsetio testdsetio)
 +
 +ADD_EXECUTABLE(testdsetio ../SUMA/SUMA_TestDsetIO.c)
-+TARGET_LINK_LIBRARIES(testdsetio afni_warp SUMA 3DEdge segtools ${AFNI_LIBS})
++TARGET_LINK_LIBRARIES(testdsetio SUMA 3DEdge segtools ${AFNI_LIBS})
 +
-+ADD_TEST(afni:start ../../tests/xvfb-driver afni -com "OPEN_WINDOW axialimage; SAVE_JPEG axialimage test1; QUIT")
++ADD_TEST(afni:start ../../tests/xvfb-driver -- afni -com "OPEN_WINDOW axialimage; SAVE_JPEG axialimage test1; QUIT")
 +
 +# TODO: figure out how to reference it correctly, or just copy to this
 +# target tests/ build directory
-+ADD_TEST(do.examples ../../tests/xvfb-driver -e 1 @DO.examples -auto_test)
++# Allow for 1 error and 2 failures reported -- due to the ones upon exit
++ADD_TEST(do.examples ../../tests/xvfb-driver -e 1 -f 2 -- @DO.examples -auto_test)
 +
 +
 --- /dev/null
 +++ b/tests/xvfb-driver
-@@ -0,0 +1,59 @@
+@@ -0,0 +1,62 @@
 +#!/bin/bash
 +set -u
 +
 +# Parse cmdline
 +
-+CLOPTS=`getopt -o e: --long errors: -n 'xvfb-driver' -- "$@"`
++CLOPTS=`getopt -o e:,f: --long errors:,failures: -n 'xvfb-driver' -- "$@"`
 +if [ $? != 0 ] ; then
 +    echo "Terminating..." >&2
 +    exit 1
@@ -73,10 +74,12 @@
 +
 +# Defaults
 +errors=0						# # of errors expected
++failures=0						# # of reported failures expected
 +
 +while true ; do
 +    case "$1" in
 +        -e|--errors) shift; errors=$1; shift;;
++        -f|--failures) shift; failures=$1; shift;;
 +        --) shift ; break ;;
 +        *) echo "Internal error! ($1)"; exit 1;;
 +    esac
@@ -107,14 +110,15 @@
 +fi
 +
 +cmd="$@"
-+errors_=`grep -q Error __*log.txt|wc -l`
++errors_=`grep Error __*log.txt|wc -l`
 +if [ $errors -ne $errors_ ]; then
 +	echo "E: Testing '$cmd' failed due to presence of $errors_ Error messages when $errors were expected" >&2
 +	exit 1
 +fi
 +
-+if grep -q '^Failed to' __*log.txt; then
-+	echo "E: Testing '$cmd' failed due to presence of 'Failed to ...' messages" >&2
++failures_=`grep '^Failed to' __*log.txt| wc -l`
++if [ $failures -ne $failures_ ]; then
++	echo "E: Testing '$cmd' failed due to presence of $failures_ 'Failed to ...' messages when $failures were expected" >&2
 +	exit 1
 +fi
 +
