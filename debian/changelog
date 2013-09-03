@@ -1,4 +1,4 @@
-afni (0.20130830~dfsg.1-2) unstable; urgency=low
+afni (0.20130830~dfsg.1-2) neurodebian; urgency=low
 
   * debian/patches:
     - cmake_sharedlibs
@@ -20,7 +20,7 @@ afni (0.20130830~dfsg.1-2) unstable; urgency=low
     - add -Wl,--no-undefined for exe and shared linker flags
     - do not ignore tests failures
 
- -- Yaroslav Halchenko <debian@onerussian.com>  Mon, 02 Sep 2013 21:07:20 -0400
+ -- Yaroslav Halchenko <debian@onerussian.com>  Mon, 02 Sep 2013 23:25:49 -0400
 
 afni (0.20130830~dfsg.1-1) neurodebian; urgency=low
 
