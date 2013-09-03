@@ -20,7 +20,7 @@ Author: Michael Hanke <michael.hanke@gmail.com>, Bernd Feige <bernd.feige@unikli
 Last-Update: 2010-09-21
 --- /dev/null
 +++ b/CMakeLists.txt
-@@ -0,0 +1,303 @@
+@@ -0,0 +1,302 @@
 +PROJECT(AFNI)
 +
 +cmake_minimum_required(VERSION 2.6)
@@ -260,7 +260,6 @@ Last-Update: 2010-09-21
 +   ${VOLPACK_LIBRARY} ${NETCDF_LIBRARY} ${MOTIF_LIBRARIES}
 +   ${F2C_LIBRARY} ${XMHTML_LIBRARY} ${JPEG_LIBRARY} m)
 +SET(WARP_LIBS afni_warp ${AFNI_CORE_LIBS})
-+SET(RICKR_LIBS rickr ${WARP_LIBS} ${AFNI_CORE_LIBS})
 +# Expanding "core" AFNI libs with warp libs to provide
 +# complete namespace coverage for most of the cases
 +SET(AFNI_LIBS ${AFNI_CORE_LIBS} ${WARP_LIBS})
@@ -413,7 +412,7 @@ Last-Update: 2010-09-21
 +FOREACH(program
 +  3dAllineate 3dSpatNorm whereami 3dSegment 3dABoverlap 3daxialize adwarp)
 +  ADD_EXECUTABLE(${program} ${program}.c)
-+  TARGET_LINK_LIBRARIES(${program} ${AFNI_LIBS} ${WARP_LIBS} ${RICKR_LIBS})
++  TARGET_LINK_LIBRARIES(${program} ${AFNI_LIBS} ${WARP_LIBS})
 +  LIST(APPEND PROGRAMS ${program})
 +ENDFOREACH(program)
 +
@@ -502,7 +501,7 @@ Last-Update: 2010-09-21
 +SET_SOURCE_FILES_PROPERTIES(afni_pcor_update.c
 +                            PROPERTIES COMPILE_FLAGS "-DDTYPE=float")
 +ADD_EXECUTABLE(afni ${AFSRC})
-+TARGET_LINK_LIBRARIES(afni ${AFNI_LIBS} ${WARP_LIBS} ${RICKR_LIBS} -ldl)
++TARGET_LINK_LIBRARIES(afni ${AFNI_LIBS} ${WARP_LIBS} -ldl)
 +LIST(APPEND PROGRAMS afni)
 +
 +
@@ -555,7 +554,7 @@ Last-Update: 2010-09-21
 +  DESTINATION ${AFNI_INSTALL_SCRIPT_DIR} COMPONENT Runtime)
 --- /dev/null
 +++ b/CMakeLists_libs.txt
-@@ -0,0 +1,211 @@
+@@ -0,0 +1,218 @@
 +##
 +## This file is to be included in the toplevel CMakeLists.txt
 +##
@@ -660,6 +659,10 @@ Last-Update: 2010-09-21
 +  niml_struct.c niml_dataset.c niml_vector.c niml_stat.c niml_dtable.c
 +  niml_sucker.c)
 +
++# These belong to rickr/ but no longer compose its own library
++SET(RICKR_SRC
++  r_idisp.c r_misc.c r_new_resam_dset.c)
++
 +# These reside in eispack/
 +CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/eispack/eis_svd.c
 +               ${CMAKE_CURRENT_BINARY_DIR}/eis_svd_slow.c COPYONLY)
@@ -691,6 +694,9 @@ Last-Update: 2010-09-21
 +FOREACH(src ${NIML_SRC})
 +  LIST(APPEND MRILIB_SOURCES "niml/${src}")
 +ENDFOREACH(src)
++FOREACH(src ${RICKR_SRC})
++  LIST(APPEND MRILIB_SOURCES "rickr/${src}")
++ENDFOREACH(src)
 +FOREACH(src ${EIS_SRC})
 +  LIST(APPEND MRILIB_SOURCES "eispack/${src}")
 +ENDFOREACH(src)
@@ -710,7 +716,7 @@ Last-Update: 2010-09-21
 +#
 +ADD_LIBRARY(mri ${MRILIB_SOURCES})
 +TARGET_LINK_LIBRARIES(mri ${X11_Xt_LIB} ${VOLPACK_LIBRARY} ${NETCDF_LIBRARY}
-+                          ${F2C_LIBRARY} giftiio nifticdf niftiio m rickr)
++                          ${F2C_LIBRARY} giftiio nifticdf niftiio m)
 +# if libmri doesn't have niftilib built-in, we need to link against it
 +IF(NOT AFNI_BUILD_LOCAL_NIFTICLIBS)
 +  TARGET_LINK_LIBRARIES(mri nifticdf niftiio)
@@ -860,7 +866,7 @@ Last-Update: 2010-09-21
 +  DESTINATION ${AFNI_INSTALL_SCRIPT_DIR} COMPONENT Runtime)
 --- /dev/null
 +++ b/SUMA/CMakeLists.txt
-@@ -0,0 +1,176 @@
+@@ -0,0 +1,175 @@
 +PROJECT(SUMA)
 +
 +##
@@ -928,7 +934,6 @@ Last-Update: 2010-09-21
 +
 +SET(SUMA_LIBS
 +  ${AFNI_LIBS}
-+  ${RICKR_LIBS}
 +  ${WARP_LIBS}
 +  ${TRACKTOOLS_LIBS}
 +  SUMA
@@ -939,7 +944,7 @@ Last-Update: 2010-09-21
 +
 +ADD_LIBRARY(SUMA ${LIBSUMA_SRCS})
 +TARGET_LINK_LIBRARIES(SUMA ${OPENGL_LIBRARIES} ${GLUT_LIBRARIES}
-+   ${MOTIF_LIBRARIES} mrix mri rickr tracktools)
++   ${MOTIF_LIBRARIES} mrix mri tracktools)
 +# need to link against GLw if not included in the library
 +IF(NOT AFNI_BUILD_LOCAL_GLW)
 +  TARGET_LINK_LIBRARIES(SUMA ${GLW_LIBRARY})
@@ -1247,20 +1252,14 @@ Last-Update: 2010-09-21
 +  DESTINATION ${AFNI_INSTALL_SCRIPT_DIR} COMPONENT Runtime)
 --- /dev/null
 +++ b/rickr/CMakeLists.txt
-@@ -0,0 +1,33 @@
+@@ -0,0 +1,27 @@
 +PROJECT(rickr)
-+
-+SET(SOURCES r_idisp.c r_misc.c r_new_resam_dset.c)
-+
-+ADD_LIBRARY(rickr ${SOURCES})
-+# Leads to circular dependecy since afni_warp -> mri -> ricr
-+#TARGET_LINK_LIBRARIES(rickr afni_warp)
 +
 +IF(NOT AFNI_BUILD_CORELIBS_ONLY)
 +  SET(PROGRAMS 3dresample file_tool Dimon serial_helper column_cat)
 +
 +  ADD_EXECUTABLE(3dresample 3dresample.c)
-+  TARGET_LINK_LIBRARIES(3dresample ${AFNI_LIBS} ${WARP_LIBS} ${RICKR_LIBS})
++  TARGET_LINK_LIBRARIES(3dresample ${AFNI_LIBS})
 +
 +  ADD_EXECUTABLE(file_tool file_tool.c fields.c)
 +  TARGET_LINK_LIBRARIES(file_tool ${AFNI_LIBS}) # Just for ge4_header
