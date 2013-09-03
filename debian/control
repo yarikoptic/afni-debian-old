@@ -30,7 +30,7 @@ Build-Depends: cmake (>= 2.6.4), debhelper (>= 7.0.50~),
                matlab-support-dev,
                xmhtml1-dev | xmhtml-dev,
                r-base-core,
-               xvfb, xauth, libgl1-mesa-dri,
+               xvfb, xauth, libgl1-mesa-dri, mesa-utils,
                tcsh, libjpeg-progs,
 Standards-Version: 3.9.4
 Homepage: http://afni.nimh.nih.gov

@@ -10,7 +10,7 @@
  
  #
  # Install destinations
-@@ -275,6 +278,10 @@ ELSE(AFNI_BUILD_LOCAL_GIFTI)
+@@ -272,6 +275,10 @@ ELSE(AFNI_BUILD_LOCAL_GIFTI)
    ENDIF(GIFTI_LIBRARY)
  ENDIF(AFNI_BUILD_LOCAL_GIFTI)
  
@@ -21,7 +21,7 @@
  # everything that is not necessary for corelibs
  IF(NOT AFNI_BUILD_CORELIBS_ONLY)
    ADD_SUBDIRECTORY(rickr)
-@@ -297,4 +304,6 @@ IF(NOT AFNI_BUILD_CORELIBS_ONLY)
+@@ -294,4 +301,6 @@ IF(NOT AFNI_BUILD_CORELIBS_ONLY)
    ADD_SUBDIRECTORY(faces)
    ADD_SUBDIRECTORY(poems)
  
@@ -30,7 +30,7 @@
  ENDIF(NOT AFNI_BUILD_CORELIBS_ONLY)
 --- /dev/null
 +++ b/tests/CMakeLists.txt
-@@ -0,0 +1,26 @@
+@@ -0,0 +1,28 @@
 +PROJECT(TESTS)
 +#
 +# Tests -- building/running is aggregated within a separate directory
@@ -55,6 +55,8 @@
 +# target tests/ build directory
 +# Allow for 1 error and 2 failures reported -- due to the ones upon exit
 +ADD_TEST(do.examples ../../tests/xvfb-driver -e 1 -f 2 -- @DO.examples -auto_test)
++SET_TESTS_PROPERTIES(do.examples PROPERTIES LABELS GLX)
++
 +
 +
 --- /dev/null
