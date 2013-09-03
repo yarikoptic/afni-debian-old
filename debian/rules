@@ -95,8 +95,8 @@ override_dh_auto_build:
 
 override_dh_auto_test:
 	: # if any come - but ignore failures for now -- need test data files + absent Error msg for DO.example
-	dh_auto_test --builddirectory=$(DEB_BUILDDIR) || :
-	dh_auto_test --builddirectory=$(DEB_BUILDDIR_STATIC) || :
+	dh_auto_test --builddirectory=$(DEB_BUILDDIR)
+	dh_auto_test --builddirectory=$(DEB_BUILDDIR_STATIC)
 	: # Just to verify that previous fixes on linking are inplace
 	set -e; for b in 3dSkullStrip; do \
 		ldd $(DEB_BUILDDIR)/SUMA/$$b | grep '=>.*lib3DEdge.so'; \
