@@ -56,9 +56,10 @@ Description: toolkit for analyzing and visualizing functional MRI data
 
 Package: afni-common
 Architecture: all
-Depends: python, tcsh, afni-atlases,
+Depends: python, tcsh,
          ${shlibs:Depends}, ${misc:Depends}
-Recommends: python-mdp, python-nibabel
+Recommends: python-mdp, python-nibabel,
+         afni-atlases,
 Description: miscellaneous scripts and data files for AFNI
  AFNI is an environment for processing and displaying functional MRI data.
  It provides a complete analysis toolchain, including 3D cortical surface
