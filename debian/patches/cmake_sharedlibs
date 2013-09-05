@@ -20,7 +20,7 @@ Author: Michael Hanke <michael.hanke@gmail.com>, Bernd Feige <bernd.feige@unikli
 Last-Update: 2010-09-21
 --- /dev/null
 +++ b/CMakeLists.txt
-@@ -0,0 +1,300 @@
+@@ -0,0 +1,303 @@
 +PROJECT(AFNI)
 +
 +cmake_minimum_required(VERSION 2.6)
@@ -258,8 +258,11 @@ Last-Update: 2010-09-21
 +
 +SET(SEGTOOLS_LIBS segtools)
 +SET(AFNI_LIBS
-+   mri mrix coxplot
-+   ${VOLPACK_LIBRARY} ${NETCDF_LIBRARY} ${MOTIF_LIBRARIES}
++   # Link to -lXm before -lXt mri is linked to. Even with explicit
++   # order it is not guaranteed to be in effect if --as-needed
++   -Wl,--no-as-needed ${MOTIF_LIBRARIES} -Wl,--as-needed
++   mrix mri coxplot
++   ${VOLPACK_LIBRARY} ${NETCDF_LIBRARY}
 +   ${F2C_LIBRARY} ${XMHTML_LIBRARY} ${JPEG_LIBRARY} m)
 +
 +# Showoff
@@ -738,7 +741,7 @@ Last-Update: 2010-09-21
 +SET(IMSRC
 +  display.c imseq.c bbox.c xim.c xutil.c LiteClue.c thd_xwebber.c)
 +ADD_LIBRARY(mrix ${IMSRC})
-+TARGET_LINK_LIBRARIES(mrix ${X11_LIBRARIES} ${MOTIF_LIBRARIES} mri coxplot XmHTML)
++TARGET_LINK_LIBRARIES(mrix ${MOTIF_LIBRARIES} ${X11_LIBRARIES} mri coxplot XmHTML)
 +
 +#
 +# librio
@@ -862,7 +865,7 @@ Last-Update: 2010-09-21
 +  DESTINATION ${AFNI_INSTALL_SCRIPT_DIR} COMPONENT Runtime)
 --- /dev/null
 +++ b/SUMA/CMakeLists.txt
-@@ -0,0 +1,174 @@
+@@ -0,0 +1,177 @@
 +PROJECT(SUMA)
 +
 +##
@@ -938,8 +941,11 @@ Last-Update: 2010-09-21
 +  ${SEGTOOLS_LIBS})
 +
 +ADD_LIBRARY(SUMA ${LIBSUMA_SRCS})
-+TARGET_LINK_LIBRARIES(SUMA ${OPENGL_LIBRARIES} ${GLUT_LIBRARIES}
-+   ${MOTIF_LIBRARIES} mrix mri tracktools ${THREEDEDGE_LIBS} segtools)
++TARGET_LINK_LIBRARIES(SUMA
++   # -lXm should be loaded before e.g. Xt which is linked to by mri etc
++   -Wl,--no-as-needed ${MOTIF_LIBRARIES} -Wl,--as-needed
++   ${OPENGL_LIBRARIES} ${GLUT_LIBRARIES}
++   mrix mri tracktools ${THREEDEDGE_LIBS} segtools)
 +# need to link against GLw if not included in the library
 +IF(NOT AFNI_BUILD_LOCAL_GLW)
 +  TARGET_LINK_LIBRARIES(SUMA ${GLW_LIBRARY})
@@ -1089,7 +1095,7 @@ Last-Update: 2010-09-21
 +ENDIF(GSL_LIBRARY)
 --- /dev/null
 +++ b/coxplot/CMakeLists.txt
-@@ -0,0 +1,23 @@
+@@ -0,0 +1,25 @@
 +PROJECT(coxplot)
 +
 +SET(SOURCES
@@ -1106,7 +1112,9 @@ Last-Update: 2010-09-21
 +)
 +
 +ADD_LIBRARY(coxplot ${SOURCES})
-+TARGET_LINK_LIBRARIES(coxplot ${X11_LIBRARIES} ${X11_Xt_LIB} ${MOTIF_LIBRARIES}
++TARGET_LINK_LIBRARIES(coxplot
++   ${MOTIF_LIBRARIES}
++   ${X11_LIBRARIES} ${X11_Xt_LIB}
 +   ${F2C_LIBRARY} m mri)
 +
 +INSTALL(TARGETS coxplot

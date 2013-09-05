@@ -2,10 +2,16 @@ afni (0.20130830~dfsg.1-3) neurodebian; urgency=low
 
   * debian/control
     - afni-atlases should be in Recommends not Depends
+  * debian/patches
+    - cmake_sharedlibs
+      - MOTIF library (libXm) must be linked before other X libraries (Xt
+        in particular).  Therefore placing it first among
+        TARGET_LINK_LIBRARIES and disabling --as-needed for this linkage while
+        (re)enabling it right after
 
  -- Yaroslav Halchenko <debian@onerussian.com>  Wed, 04 Sep 2013 09:16:08 -0400
 
-afni (0.20130830~dfsg.1-2) neurodebian; urgency=low
+afni (0.20130830~dfsg.1-2) UNRELEASED; urgency=low
 
   * debian/patches:
     - cmake_sharedlibs
