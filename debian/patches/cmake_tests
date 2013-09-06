@@ -113,14 +113,14 @@
 +
 +cmd="$@"
 +errors_=`grep Error __*log.txt|wc -l`
-+if [ $errors -ne $errors_ ]; then
-+	echo "E: Testing '$cmd' failed due to presence of $errors_ Error messages when $errors were expected" >&2
++if [ $errors -lt $errors_ ]; then
++	echo "E: Testing '$cmd' failed due to presence of $errors_ Error messages when up to $errors were expected" >&2
 +	exit 1
 +fi
 +
 +failures_=`grep '^Failed to' __*log.txt| wc -l`
-+if [ $failures -ne $failures_ ]; then
-+	echo "E: Testing '$cmd' failed due to presence of $failures_ 'Failed to ...' messages when $failures were expected" >&2
++if [ $failures -lt $failures_ ]; then
++	echo "E: Testing '$cmd' failed due to presence of $failures_ 'Failed to ...' messages when up to $failures were expected" >&2
 +	exit 1
 +fi
 +

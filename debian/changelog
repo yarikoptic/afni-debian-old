@@ -1,8 +1,13 @@
 afni (0.20130903~dfsg.1-1) neurodebian; urgency=low
 
   * Fresh upstream snapshot
+  * debian/patches
+    - cmake_tests
+  	  - switch to have 'up to' specified # of "Error" and "Failed to "
+        messages.  Should "fix" build on i686 13.04 build where no SUMA error
+        gets reported upon exit
 
- -- Yaroslav Halchenko <debian@onerussian.com>  Fri, 06 Sep 2013 08:22:30 -0400
+ -- Yaroslav Halchenko <debian@onerussian.com>  Fri, 06 Sep 2013 08:29:02 -0400
 
 afni (0.20130830~dfsg.1-3) neurodebian; urgency=low
 
