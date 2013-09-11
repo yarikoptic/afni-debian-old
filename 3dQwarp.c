@@ -195,7 +195,7 @@ MRI_IMAGE * mri_weightize( MRI_IMAGE *im, int acod, int ndil, float aclip, float
 
 static THD_3dim_dataset *qset = NULL ;
 
-#undef  USE_SAVER
+#define USE_SAVER
 #ifdef  USE_SAVER
 void Qsaver(char *lab, MRI_IMAGE *im)
 {
@@ -465,6 +465,16 @@ void Qhelp(void)
     " -pear        = Use strict Pearson correlation for matching.\n"
     "               * Not usually recommended, since the 'clipped Pearson' method\n"
     "                 used by default will reduce the impact of outlier values.\n"
+#if 0
+    " -localstat   = Normally, the correlation being optimized is computed globally\n"
+    "                (over the entire volume).  With this option, the correlation is\n"
+    "                computed over only the patch being worked on at any given moment.\n"
+    "               * If you use '-verb', you'll see that the cost functional (negative\n"
+    "                 of the correlation) decreases as the program progresses.  With\n"
+    "                 '-localstat', this continual decrease will not happen, and the\n"
+    "                 reported cost will go up and down as the patches vary.  However,\n"
+    "                 the program will still give a good match (one hopes and prays).\n"
+#endif
     "\n"
     " -noneg       = Replace negative values in either input volume with 0.\n"
     "               * If there ARE negative input values, and you do NOT use -noneg,\n"
@@ -1018,11 +1028,14 @@ int main( int argc , char *argv[] )
      }
 #endif
 
-#ifdef USE_SAVER
      if( strcasecmp(argv[nopt],"-qsave") == 0 ){
-       qsave = 1 ; nopt++ ; continue ;
-     }
+#ifndef USE_SAVER
+       WARNING_message("-qsave option is not compiled into this copy of 3dQwarp :-(") ;
+#else
+       qsave = 1 ;
 #endif
+       nopt++ ; continue ;
+     }
 
      if( strcasecmp(argv[nopt],"-noXdis") == 0 ){
        flags |= NWARP_NOXDIS_FLAG ; nopt++ ; continue ;
@@ -1124,6 +1137,10 @@ int main( int argc , char *argv[] )
        meth = GA_MATCH_PEARSON_SCALAR ; nopt++ ; continue ;
      }
 
+     if( strcasecmp(argv[nopt],"-localstat") == 0 ){  /* 09 Sep 2013 */
+       Hlocalstat = 1 ; nopt++ ; continue ;
+     }
+
      ERROR_exit("Totally bogus option '%s'",argv[nopt]) ;
    }
 
@@ -1141,6 +1158,11 @@ int main( int argc , char *argv[] )
 STATUS("check for errors") ;
 
    nbad = 0 ;
+
+   if( Hlocalstat && meth != GA_MATCH_PEARCLP_SCALAR && meth != GA_MATCH_PEARSON_SCALAR ){
+     Hlocalstat = 0 ;
+     INFO_message("the cost functional choice disables -localstat") ;
+   }
 
    if( flags == NWARP_NODISP_FLAG ){
      ERROR_message("too many -no?dis flags ==> nothing to warp!") ; nbad++ ;
@@ -1539,7 +1561,7 @@ STATUS("output warped dataset") ;
 
 #ifdef  USE_SAVER
    if( qset != NULL && DSET_NVALS(qset) > 1 ){
-     EDIT_dset_items( qset , ADN_ntt , DSET_NVALS(qset) , ADN_none ) ;
+     EDIT_dset_items( qset , ADN_ntt , DSET_NVALS(qset) , ADN_ttdel , 1.0f , ADN_none ) ;
      DSET_write(qset) ; WROTE_DSET(qset) ; DSET_delete(qset) ;
    }
 #endif
