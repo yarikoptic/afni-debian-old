@@ -1701,7 +1701,7 @@ afni_src.tgz:
 	$(CP) -pr gifsicledir qhulldir f2cdir mpeg_encodedir                     ./afni_src
 	$(CP) -pr 3DEdge netcdf-3.5.0 jpeg-6b niml Makefile_* nifti dlcompat     ./afni_src
 	$(CP) -pr SUMA svm matlab rickr faces poems gifti ni_test_? README.*     ./afni_src
-	$(CP) -pr XmHTML html                                                    ./afni_src
+	$(CP) -pr XmHTML html other_builds                                       ./afni_src
 	chmod -R ugo+rw                                                          ./afni_src
 	$(TAR) cf - afni_src | $(GZIP) -9v > afni_src.tgz
 	$(RM) -r ./afni_src
@@ -2177,7 +2177,7 @@ models: model_constant.$(SO) model_linear.$(SO) model_quadratic.$(SO)  \
         model_michaelis_menton.$(SO) model_linplusort.$(SO)            \
         model_zero.$(SO) model_demri_3.$(SO) model_expr2.$(SO)         \
         model_conv_diffgamma.$(SO) model_expMEMRI.$(SO)                \
-        model_expMEMRI3.$(SO)
+        model_expMEMRI3.$(SO) model_conv_cosine4.$(SO)
 
 # Contributed plugins go last, since they might not compile well
 
