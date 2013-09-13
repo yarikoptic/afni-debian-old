@@ -5,8 +5,10 @@ afni (0.20130912~dfsg.1-1) neurodebian; urgency=low
     - deb_path_to_doexamples - removed (upstream now)
     - cmake_sharedlibs - add model_conv_cosine4
     - debian_paths - refreshed
+    - cmake_tests - SUMA should not spit our errors now, thus
+      make do.examples test more stringent
 
- --
+ -- Yaroslav Halchenko <debian@onerussian.com>  Fri, 13 Sep 2013 10:04:55 -0400
 
 afni (0.20130903~dfsg.1-1) neurodebian; urgency=low
 
