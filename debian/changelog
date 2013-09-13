@@ -1,3 +1,13 @@
+afni (0.20130912~dfsg.1-1) neurodebian; urgency=low
+
+  * Fresh upstream snapshot
+  * debian/patches
+    - deb_path_to_doexamples - removed (upstream now)
+    - cmake_sharedlibs - add model_conv_cosine4
+    - debian_paths - refreshed
+
+ --
+
 afni (0.20130903~dfsg.1-1) neurodebian; urgency=low
 
   * Fresh upstream snapshot

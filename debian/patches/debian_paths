@@ -70,7 +70,7 @@ Last-Update: 2010-09-29
        if(wami_verb() > 1) 
 --- a/afni.c
 +++ b/afni.c
-@@ -5027,12 +5027,31 @@ ENTRY("AFNI_read_inputs") ;
+@@ -5028,12 +5028,31 @@ ENTRY("AFNI_read_inputs") ;
        /*-- 20 Dec 2001: Try to read a "global" session --*/
        /*-- 11 May 2002: Move read global session up here --*/
  
@@ -104,7 +104,7 @@ Last-Update: 2010-09-29
              gss->parent = NULL ;                          /* parentize them */
 --- a/SUMA/SUMA_CreateDO.c
 +++ b/SUMA/SUMA_CreateDO.c
-@@ -6110,6 +6110,9 @@ SUMA_Boolean SUMA_DrawGSegmentDO (SUMA_G
+@@ -7341,6 +7341,9 @@ SUMA_Boolean SUMA_DrawGSegmentDO (SUMA_G
  SUMA_Boolean SUMA_LoadImageNIDOnel(NI_element *nel)
  {
     static char FuncName[]={"SUMA_LoadImageNIDOnel"};
@@ -114,7 +114,7 @@ Last-Update: 2010-09-29
     MRI_IMAGE *im=NULL;
     int ir, ic, i1d, i1df, imx, i1d3, i1d4;
     byte *rgb = NULL, *imar=NULL;
-@@ -6130,7 +6133,10 @@ SUMA_Boolean SUMA_LoadImageNIDOnel(NI_el
+@@ -7361,7 +7364,10 @@ SUMA_Boolean SUMA_LoadImageNIDOnel(NI_el
     
     if (! (fname = SUMA_copy_string(NI_get_attribute(nel,"filename"))) )
        SUMA_RETURN(NOPE);
@@ -175,7 +175,7 @@ Last-Update: 2010-09-29
  />
 --- a/thd_getpathprogs.c
 +++ b/thd_getpathprogs.c
-@@ -364,7 +364,9 @@ THD_string_array * THD_get_all_afni_exec
+@@ -479,7 +479,9 @@ THD_string_array * THD_get_all_afni_exec
  THD_string_array * THD_get_all_afni_readmes(void )
  {
     THD_string_array *outar=NULL, *elist=NULL;
@@ -185,7 +185,7 @@ Last-Update: 2010-09-29
     int N_af, N_afni=strlen("afni"), iaf=0, ii=0, *isrt=NULL, N_key=0;
     char scomm[256]={""};
     
-@@ -377,9 +379,9 @@ THD_string_array * THD_get_all_afni_read
+@@ -492,9 +494,9 @@ THD_string_array * THD_get_all_afni_read
     }
     
     /* remove afni from the end to get the path */
@@ -197,7 +197,7 @@ Last-Update: 2010-09-29
     
     /* Now get all readmes under af */
     N_key = strlen(key);
-@@ -387,7 +389,7 @@ THD_string_array * THD_get_all_afni_read
+@@ -502,7 +504,7 @@ THD_string_array * THD_get_all_afni_read
     for (ii=0, iaf=0; ii<elist->num ; ii++ ){
        etr = THD_trailname( elist->ar[ii] , 0 ) ; 
        if (!THD_is_directory(elist->ar[ii]) &&
