@@ -1876,12 +1876,11 @@ int SUMA_filexists (char *f_name)
       If no search path is given, then path from user's environment is searched.
    If file is found, old name is freed and new one put in its place.
 */
-
 int SUMA_search_file(char **fnamep, char *epath) 
 {
    static char FuncName[]={"SUMA_search_file"};
    SUMA_PARSED_NAME *pn = NULL;
-   char dname[THD_MAX_NAME], ename[THD_MAX_NAME], *elocal=NULL;
+   char dname[THD_MAX_NAME], ename[THD_MAX_NAME], *elocal=NULL, *af=NULL;
    int epos=0, ll=0, ii=0, id = 0, imode=1;
    
    SUMA_ENTRY;
@@ -1915,9 +1914,22 @@ int SUMA_search_file(char **fnamep, char *epath)
    #endif
    
    /* Now work the path (based on code form get_atlas function */
-   if (!epath)    epath = getenv("PATH") ;
-   if( epath == NULL ) SUMA_RETURN(NOPE) ; /* nothing left to do */
-
+   if (!epath) {
+      #if 0 /* overkill, as Yaroslav Halchenko pointed out*/
+         epath = getenv("PATH") ;
+         if( epath == NULL ) SUMA_RETURN(NOPE) ; /* nothing left to do */
+      #else
+         /* Search in AFNI's standard locations */
+         af = find_afni_file(*fnamep, 0);
+         if (af[0] != '\0') {
+            SUMA_free(*fnamep); 
+            *fnamep = SUMA_copy_string(af);
+            SUMA_RETURN(1);
+         } 
+      #endif
+      SUMA_RETURN(NOPE); /* miserable pathless failure */
+   }
+   
    /*----- copy path list into local memory -----*/
 
    ll = strlen(epath) ;
@@ -3572,7 +3584,7 @@ SUMA_Boolean SUMA_Set_Sub_String(char **cs, char *sep, int ii, char *str)
    static char FuncName[]={"SUMA_Set_Sub_String"};
    NI_str_array *nisa=NULL;
    char *s = NULL, act[64];
-   SUMA_Boolean LocalHead = NOPE;
+   SUMA_Boolean LocalHead = YUP;
    
    SUMA_ENTRY;
    
@@ -3586,7 +3598,7 @@ SUMA_Boolean SUMA_Set_Sub_String(char **cs, char *sep, int ii, char *str)
    }  
    sprintf(act,"c%d",ii);
    nisa = SUMA_NI_decode_string_list( *cs , sep );
-   /* SUMA_LHv("act: >>%s<< >>%s<< >>%s<< >>%s<<\n", act, *cs, sep, str); */
+   /*SUMA_LHv("act: >>%s<< >>%s<< >>%s<< >>%s<<\n", act, *cs, sep, str);*/ 
    nisa = SUMA_NI_str_array(nisa,str,act);
    SUMA_free(*cs); 
    *cs = SUMA_NI_str_ar_2_comp_str(nisa, sep);

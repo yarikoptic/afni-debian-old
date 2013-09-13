@@ -65,6 +65,46 @@
 
 afni_history_struct ziad_history[] = {
 /*=====BELOW THIS LINE=====*/
+ { 12, Sep , 2013 , ZSS , "suma-general" , MINOR , TYPE_MODIFY,
+   "Added possibilty to store network tracts in external file for graph dsets",
+   "See 3dProbTrackID's -gdset_toy for an illustration.\n"
+   "Some small changes were made to ptaylor/ files to allow for this.\n"
+ },
+
+ { 11, Sep , 2013 , ZSS , "suma-general" , MINOR , TYPE_MODIFY,
+   "Small changes to make Yaroslav's Debian tests work better",
+   "Changes to @DO.examples to fit Debian installations\n"
+   "Changed SUMA_search_file to avoid searching entire path and\n"
+   "focus on AFNI specific regions instead.\n"
+   "Made DriveSuma's kill_suma command less onerous.\n"
+ },
+
+ { 11, Sep , 2013 , ZSS , "suma-general" , MINOR , TYPE_NEW_OPT,
+   "Allow for surface specification with symbolic notation",
+   "Option -i now can parse strings like: ld60:MNI_N27:l:smoothwm\n"
+   "to load surfaces from template volumes that would be stored \n"
+   "in the afni data directory (see THD_datadir()).\n"
+   "Also the -spec option can now take such symbolic notation\n"
+ },
+
+ { 11, Sep , 2013 , ZSS , "apsearch" , MICRO , TYPE_NEW_OPT,
+   "Added -afni_data_dir to get the location of the data directory",
+   NULL
+ },
+
+ { 5, Sep , 2013 , ZSS , "3dSeg" , MICRO , TYPE_BUG_FIX,
+   "Fixed crash happening after write operation in 3dSeg",
+   "The problem happened when a dataset is written with a byte\n"
+   "order that differs from the original one. Under this scenario\n"
+   "the dataset gets purged from memory by the writing function.\n"
+   "Kudos to Isaac Schwabacher for doggedly pursuing the bug.\n"
+ },
+ 
+ { 3, Sep , 2013 , ZSS , "suma" , MICRO , TYPE_NEW_OPT,
+   "Text annotation of graph dset representation with shadows.",
+   NULL
+ },
+ 
  { 3, Sep , 2013 , ZSS , "MapIcosahedron" , MICRO , TYPE_BUG_FIX,
    "Program was crashing with message about binSearch failing.",
    "Problem was caused by recent changes to binSearch that forced\n"
