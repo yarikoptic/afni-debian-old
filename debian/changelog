@@ -1,3 +1,12 @@
+afni (0.20130912~dfsg.1-2) neurodebian; urgency=low
+
+  * debian/rules
+    - disable -D_FORTIFY_SOURCE=2 until upstream resolves code with undefined
+      sprintf behavior 
+      (http://afni.nimh.nih.gov/afni/community/board/read.php?1,142574,142574#msg-142574)
+
+ -- Yaroslav Halchenko <debian@onerussian.com>  Thu, 19 Sep 2013 22:42:55 -0400
+
 afni (0.20130912~dfsg.1-1) neurodebian; urgency=low
 
   * Fresh upstream snapshot

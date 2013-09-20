@@ -14,6 +14,8 @@ gitver = $(shell [ -x /usr/bin/git ] && git log -n 1 --oneline $$(git merge-base
 #      binary
 # export DEB_BUILD_HARDENING=1
 #
+# Do not fortify until upstream takes care about undefined behavior of sprintf(buf, ..., buf)
+DEB_BUILD_HARDENING_FORTIFY := 0
 # instead explicitly add those flags if provided
 -include /usr/share/hardening-includes/hardening.make
 
