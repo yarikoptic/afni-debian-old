@@ -492,6 +492,13 @@ void Qhelp(void)
     "                 progressively larger with each level of refinement.\n"
     "                 Thus, warping results will vary from earlier instances\n"
     "                 of 3dQwarp.\n"
+    "               * The progressive increase in the penalty at higher levels\n"
+    "                 means that the 'cost function' can actually look like the\n"
+    "                 alignment is getting worse when the levels change.\n"
+    "               * IF you wish to turn off this progression, for whatever\n"
+    "                 reason (e.g., to keep compatibility with older results),\n"
+    "                 use the option '-penold'.  To be completely compatible with\n"
+    "                 the older 3dQwarp, you'll also have to use '-penfac 0.2'.\n"
     " -useweight   = Normally, each voxel in the automask of the base dataset\n"
     "                counts the same.  With '-useweight', each voxel is weighted\n"
     "                by the intensity of the (blurred) base image.  This makes\n"
@@ -1137,6 +1144,10 @@ int main( int argc , char *argv[] )
        nopt++ ; continue ;
      }
 
+     if( strcasecmp(argv[nopt],"-penold") == 0 ){
+       Hpen_old = 1 ; nopt++ ; continue ;
+     }
+
      if( strcasecmp(argv[nopt],"-prefix") == 0 ){
        if( ++nopt >= argc ) ERROR_exit("need arg after -prefix") ;
        prefix = strdup(argv[nopt]) ; nopt++ ; continue ;
@@ -1438,7 +1449,10 @@ STATUS("load datasets") ;
      zeropad = (pad_xm > 0 || pad_xp > 0 ||
                 pad_ym > 0 || pad_yp > 0 || pad_zm > 0 || pad_zp > 0) ;
 
-     if( zeropad ) qsave = 0 ;  /* too much trouble to do both */
+     if( zeropad && qsave ){  /* too much trouble to do both */
+       INFO_message("-qsave is turned off because zero-padding is happening!") ;
+       qsave = 0 ;
+     }
 
      if( zeropad ){
        if( Hverb )
