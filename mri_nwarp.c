@@ -4507,8 +4507,9 @@ static int Hqonly   = 0 ;  /* 27 Jun 2013 */
 
 static int Hnx=0,Hny=0,Hnz=0,Hnxy=0,Hnxyz=0 ;  /* dimensions of base image */
 
-static float Hcost = 666.666f ;
-static float Hpenn = 0.0f ;
+static float Hcost  = 666.666f ;
+static float Hpenn  = 0.0f ;
+static float Hcostt = 0.0f ;
 
 static int Hverb = 1 ;
 
@@ -5621,6 +5622,7 @@ double IW3D_scalar_costfun( int npar , double *dpar )
      for( ii=0 ; ii < npar ; ii++ ) fprintf(stderr," %g",dpar[ii]) ;
      fprintf(stderr,"\n") ;
    }
+   Hcostt = cost ;
 
    if( Hpen_use ){
      Hpenn = HPEN_penalty() ; cost += Hpenn ;  /* penalty is saved in Hpenn */
@@ -6083,9 +6085,9 @@ ENTRY("IW3D_improve_warp") ;
 
    if( Hverb > 1 ){
      ININFO_message(
-       "     %s patch %03d..%03d %03d..%03d %03d..%03d : cost:%g iter=%d : energy=%.3f:%.3f pen=%g",
+       "     %s patch %03d..%03d %03d..%03d %03d..%03d : cost:%g iter=%d : energy=%.3f:%.3f pen=%g pure=%g",
                      (Hbasis_code == MRI_QUINTIC) ? "quintic" : "  cubic" ,
-                           ibot,itop, jbot,jtop, kbot,ktop , Hcost  , iter , jt,st , Hpenn ) ;
+                           ibot,itop, jbot,jtop, kbot,ktop , Hcost  , iter , jt,st , Hpenn , Hcostt ) ;
    } else if( Hverb == 1 && (Hlev_now<=2 || lrand48()%(Hlev_now*Hlev_now*Hlev_now/9)==0) ){
      fprintf(stderr,".") ;
    }
@@ -6199,8 +6201,8 @@ ENTRY("IW3D_warpomatic") ;
    levs = MAX(1,Hlev_start) ;
    for( lev=levs ; lev <= Hlev_end && !levdone ; lev++ ){
 
-     flev = (Hpen_old) ? 1.0f : powf( (float)lev , 0.666f ) ; ;
-     Hpen_fff = Hpen_fac * MIN(6.66f,flev) ;  /* 20 Sep 2013 */
+     flev = (Hpen_old) ? 1.0f : powf( (float)(lev-levs+1) , 0.333f ) ; ;
+     Hpen_fff = Hpen_fac * MIN(2.22f,flev) ;  /* 20 Sep 2013 */
 
      /* compute width of rectangles at this level */
 
@@ -6280,8 +6282,8 @@ ENTRY("IW3D_warpomatic") ;
      nsup  = SUPERHARD(lev) ? 2 : 1 ;
 
      if( Hverb > 1 )
-       ININFO_message("  .........  lev=%d xwid=%d ywid=%d zwid=%d Hfac=%g %s %s [clock=%s]" ,
-                      lev,xwid,ywid,zwid,Hfactor , (levdone   ? "FINAL"  : "\0") ,
+       ININFO_message("  .........  lev=%d xwid=%d ywid=%d zwid=%d Hfac=%g penfac=%g %s %s [clock=%s]" ,
+                      lev,xwid,ywid,zwid,Hfactor,Hpen_fff , (levdone   ? "FINAL"  : "\0") ,
                                                    (nlevr > 1 ? "WORKHARD" : "\0") ,
                       nice_time_string(NI_clock_time()) ) ;
      else if( Hverb == 1 )
@@ -7696,8 +7698,8 @@ ENTRY("IW3D_warpomatic_plusminus") ;
    levs = MAX(1,Hlev_start) ;
    for( lev=levs ; lev <= Hlev_end && !levdone ; lev++ ){
 
-     flev = (Hpen_old) ? 1.0f : powf( (float)lev , 0.666f ) ; ;
-     Hpen_fff = Hpen_fac * MIN(6.66f,flev) ;  /* 20 Sep 2013 */
+     flev = (Hpen_old) ? 1.0f : powf( (float)(lev-levs+1) , 0.333f ) ; ;
+     Hpen_fff = Hpen_fac * MIN(2.22f,flev) ;  /* 20 Sep 2013 */
 
      /* compute width of rectangles at this level */
 
@@ -7777,8 +7779,8 @@ ENTRY("IW3D_warpomatic_plusminus") ;
      nsup  = SUPERHARD(lev) ? 2 : 1 ;
 
      if( Hverb > 1 )
-       ININFO_message("  ........ +-lev=%d xwid=%d ywid=%d zwid=%d Hfac=%g %s %s" ,
-                      lev,xwid,ywid,zwid,Hfactor , (levdone   ? "FINAL"  : "\0") ,
+       ININFO_message("  ........ +-lev=%d xwid=%d ywid=%d zwid=%d Hfac=%g penfac=%g %s %s" ,
+                      lev,xwid,ywid,zwid,Hfactor,Hpen_fff , (levdone   ? "FINAL"  : "\0") ,
                                                    (nlevr > 1 ? "WORKHARD" : "\0") ) ;
      else if( Hverb == 1 )
        fprintf(stderr,"lev=%d patch=%dx%dx%d: ",lev,xwid,ywid,zwid) ;
