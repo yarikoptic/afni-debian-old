@@ -47,13 +47,103 @@ static float noline = 0 ;
 void plot_ts_dobox( float a ){ tsbox = a ; }
 void plot_ts_noline( int a ){ noline = a ; }
 
-static void plot_onebox( float xx , float yy ){
+static void plot_one_diamond( float xx , float yy )
+{
    float x , y ;
    plotpak_zzphys( xx , yy , &x , &y ) ;
    plotpak_phline( x+tsbox , y       , x       , y+tsbox ) ;
    plotpak_phline( x       , y+tsbox , x-tsbox , y       ) ;
    plotpak_phline( x-tsbox , y       , x       , y-tsbox ) ;
    plotpak_phline( x       , y-tsbox , x+tsbox , y       ) ;
+}
+
+static void plot_one_hexagon( float xx , float yy )
+{
+   float x , y , da=0.5f*tsbox , db=0.866f*tsbox ;
+   plotpak_zzphys( xx , yy , &x , &y ) ;
+   plotpak_phline( x    , y+tsbox    , x-db , y+tsbox-da ) ;
+   plotpak_phline( x-db , y+tsbox-da , x-db , y-tsbox+da ) ;
+   plotpak_phline( x-db , y-tsbox+da , x    , y-tsbox    ) ;
+   plotpak_phline( x    , y-tsbox    , x+db , y-tsbox+da ) ;
+   plotpak_phline( x+db , y-tsbox+da , x+db , y+tsbox-da ) ;
+   plotpak_phline( x+db , y+tsbox-da , x    , y+tsbox    ) ;
+}
+
+static void plot_one_square( float xx , float yy )
+{
+   float x , y ;
+   plotpak_zzphys( xx , yy , &x , &y ) ;
+   plotpak_phline( x-tsbox , y-tsbox , x+tsbox , y-tsbox ) ;
+   plotpak_phline( x+tsbox , y-tsbox , x+tsbox , y+tsbox ) ;
+   plotpak_phline( x+tsbox , y+tsbox , x-tsbox , y+tsbox ) ;
+   plotpak_phline( x-tsbox , y+tsbox , x-tsbox , y-tsbox ) ;
+}
+
+static void plot_one_utriang( float xx , float yy )
+{
+   float x , y , da=0.5f*tsbox , db=0.866f*tsbox ;
+   plotpak_zzphys( xx , yy , &x , &y ) ;
+   plotpak_phline( x    , y+tsbox , x-db , y-da    ) ;
+   plotpak_phline( x-db , y-da    , x+db , y-da    ) ;
+   plotpak_phline( x+db , y-da    , x    , y+tsbox ) ;
+}
+
+static void plot_one_dtriang( float xx , float yy )
+{
+   float x , y , da=0.5f*tsbox , db=0.866f*tsbox ;
+   plotpak_zzphys( xx , yy , &x , &y ) ;
+   plotpak_phline( x    , y-tsbox , x-db , y+da    ) ;
+   plotpak_phline( x-db , y+da    , x+db , y+da    ) ;
+   plotpak_phline( x+db , y+da    , x    , y-tsbox ) ;
+}
+
+#undef  CIRCNUM
+#define CIRCNUM 16
+static float circc[CIRCNUM+1] , circs[CIRCNUM+1] ;
+
+static void circ_setup(void)
+{
+   static int circdone=0 ; int ii ;
+   if( circdone ) return ;
+   for( ii=0 ; ii < CIRCNUM+1 ; ii++ ){
+     circc[ii] = cosf(2.0f*3.141592f*ii/(float)CIRCNUM) ;
+     circs[ii] = sinf(2.0f*3.141592f*ii/(float)CIRCNUM) ;
+   }
+   circdone = 1 ;
+}
+
+static void plot_one_circle( float xx , float yy )
+{
+   float x , y ; int ii ;
+   circ_setup() ;
+   plotpak_zzphys( xx , yy , &x , &y ) ;
+   for( ii=0 ; ii < CIRCNUM ; ii++ )
+     plotpak_phline( x+tsbox*circc[ii], y+tsbox*circs[ii], x+tsbox*circc[ii+1], y+tsbox*circs[ii+1] ) ;
+}
+
+static void plot_one_stellar( float xx , float yy )
+{
+   float x , y , dt=0.5f*tsbox ; int ii ;
+   circ_setup() ;
+   plotpak_zzphys( xx , yy , &x , &y ) ;
+   for( ii=0 ; ii < CIRCNUM ; ii+=2 ){
+     plotpak_phline( x+tsbox*circc[ii], y+tsbox*circs[ii], x+dt*circc[ii+1], y+dt*circs[ii+1] ) ;
+     plotpak_phline( x+dt*circc[ii+1], y+dt*circs[ii+1], x+tsbox*circc[ii+2], y+tsbox*circs[ii+2] ) ;
+   }
+}
+
+static void plot_onebox( float xx , float yy , int kk )
+{
+   switch( kk%7 ){  /* choose box shape depending on which curve is being plotted */
+     default:
+     case 0:  plot_one_diamond(xx,yy) ; break ;
+     case 1:  plot_one_circle (xx,yy) ; break ;
+     case 2:  plot_one_utriang(xx,yy) ; break ;
+     case 3:  plot_one_stellar(xx,yy) ; break ;
+     case 4:  plot_one_square (xx,yy) ; break ;
+     case 5:  plot_one_dtriang(xx,yy) ; break ;
+     case 6:  plot_one_hexagon(xx,yy) ; break ;
+   }
 }
 
 /*----------------------------------------------------------------------*/
@@ -506,12 +596,15 @@ MEM_plotdata * plot_ts_mem( int nx , float *x , int ny , int ymask , float **y ,
              set_color_memplot( ccc[jj%NCLR][0] , ccc[jj%NCLR][1] , ccc[jj%NCLR][2] ) ;
              set_thick_memplot( 1.234f*THIK ) ;
              if( use_ddd ) plotpak_setlin(ddd[jj%NCLR]) ;
-             plotpak_line( xotop+0.008 , yv , xotop+0.042 , yv ) ;
+             plotpak_line( xotop+0.008 , yv , xotop+0.041 , yv ) ;
              if( use_ddd ) plotpak_setlin(1) ;
+             if( tsbox > 0.0f ){
+               set_thick_memplot(thik); plot_onebox(xotop+0.008,yv,jj ); plot_onebox(xotop+0.041,yv,jj );
+             }
              set_color_memplot( 0.0 , 0.0 , 0.0 ) ;
              sz = (strlen(nam_yyy[jj]) <= 10) ? 12 : 9 ;
              set_thick_memplot( thik*sz/13.9f ) ;
-             plotpak_pwritf( xotop+0.048 , yv , nam_yyy[jj] , sz , 0 , -1 ) ;
+             plotpak_pwritf( xotop+0.049 , yv , nam_yyy[jj] , sz , 0 , -1 ) ;
              yv -= 0.05 ;
            }
          }
@@ -551,8 +644,8 @@ MEM_plotdata * plot_ts_mem( int nx , float *x , int ny , int ymask , float **y ,
          } else {
            ixtop = nx ;
          }
+         yy = y[jj] ;
          if( !noline ){
-           yy = y[jj] ;
            if( use_ddd ) plotpak_setlin(ddd[jj%NCLR]) ;
            for( ii=1 ; ii < ixtop ; ii++ ){
               if( xx[ii-1] < WAY_BIG && xx[ii] < WAY_BIG &&
@@ -568,7 +661,7 @@ MEM_plotdata * plot_ts_mem( int nx , float *x , int ny , int ymask , float **y ,
              if( noline != 2 ||
                  ( xx[ii] >= xbot && xx[ii] <= xtop &&
                    yy[ii] >= ybot && yy[ii] <= ytop   ) )
-             plot_onebox( xx[ii] , yy[ii] ) ;
+             plot_onebox( xx[ii] , yy[ii] , jj ) ;
            }
            set_thick_memplot( THIK ) ;
          }
@@ -592,13 +685,15 @@ MEM_plotdata * plot_ts_mem( int nx , float *x , int ny , int ymask , float **y ,
                set_thick_memplot( 1.234f*THIK ) ;
                yv = 0.7*yhh + 0.3*yll ;
                if( use_ddd ) plotpak_setlin(ddd[jj%NCLR]) ;
-               plotpak_line( xotop+0.008 , yv , xotop+0.042 , yv ) ;
+               plotpak_line( xotop+0.008 , yv , xotop+0.041 , yv ) ;
                if( use_ddd ) plotpak_setlin(1) ;
-               set_thick_memplot( thik ) ;
+               if( tsbox > 0.0f ){
+                 set_thick_memplot(thik); plot_onebox(xotop+0.008,yv,jj ); plot_onebox(xotop+0.041,yv,jj );
+               }
                set_color_memplot( 0.0 , 0.0 , 0.0 ) ;
                sz = (strlen(nam_yyy[jj]) <= 10) ? 12 : 9 ;
                set_thick_memplot( thik*sz/13.9f ) ;
-               plotpak_pwritf( xotop+0.048 , yv , nam_yyy[jj] , sz , 0 , -1 ) ;
+               plotpak_pwritf( xotop+0.049 , yv , nam_yyy[jj] , sz , 0 , -1 ) ;
             }
          }
       }
@@ -658,8 +753,8 @@ MEM_plotdata * plot_ts_mem( int nx , float *x , int ny , int ymask , float **y ,
          } else {
            ixtop = nx ;
          }
+         yy = y[jj] ;
          if( !noline ){
-           yy = y[jj] ;
            if( use_ddd ) plotpak_setlin(ddd[jj%NCLR]) ;
            for( ii=1 ; ii < ixtop ; ii++ ){
               if( xx[ii-1] < WAY_BIG && xx[ii] < WAY_BIG &&
@@ -675,7 +770,7 @@ MEM_plotdata * plot_ts_mem( int nx , float *x , int ny , int ymask , float **y ,
              if( noline != 2 ||
                  ( xx[ii] >= xbot    && xx[ii] <= xtop    &&
                    yy[ii] >= ylo[jj] && yy[ii] <= yhi[jj]    ) )
-               plot_onebox( xx[ii] , yy[ii] ) ;
+               plot_onebox( xx[ii] , yy[ii] , jj ) ;
            }
          }
 
