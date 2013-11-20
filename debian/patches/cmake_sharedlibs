@@ -20,7 +20,7 @@ Author: Michael Hanke <michael.hanke@gmail.com>, Bernd Feige <bernd.feige@unikli
 Last-Update: 2010-09-21
 --- /dev/null
 +++ b/CMakeLists.txt
-@@ -0,0 +1,303 @@
+@@ -0,0 +1,311 @@
 +PROJECT(AFNI)
 +
 +cmake_minimum_required(VERSION 2.6)
@@ -285,21 +285,29 @@ Last-Update: 2010-09-21
 +  MESSAGE(STATUS "Using local GIFTI sources")
 +  ADD_SUBDIRECTORY(gifti)
 +
-+  # tell everybody that we have GIFTI
-+  ADD_DEFINITIONS(-DHAVE_GIFTI)
 +  INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}/gifti)
 +  SET(AFNI_HAVE_GIFTI TRUE)
 +# or if there is a system lib
 +ELSE(AFNI_BUILD_LOCAL_GIFTI)
 +  FIND_LIBRARY(GIFTI_LIBRARY giftiio)
 +  IF(GIFTI_LIBRARY)
-+    MESSAGE(STATUS "Found libgiftiio, compiling with GIFTI support")
++    FIND_PATH(GIFTI_INCLUDE_DIR gifti_io.h
++              PATHS /usr/include /usr/local/include
++              PATH_SUFFIXES gifti giftilib
++              DOC "Gifti headers location")
++    INCLUDE_DIRECTORIES(${GIFTI_INCLUDE_DIR})
++    MESSAGE(STATUS "Found libgiftiio, compiling with GIFTI support using headers under ${GIFTI_INCLUDE_DIR}")
 +    SET(AFNI_HAVE_GIFTI TRUE)
 +  ELSE(GIFTI_LIBRARY)
 +    MESSAGE(STATUS "No libgiftiio found, compiling without GIFTI support")
 +    SET(AFNI_HAVE_GIFTI FALSE)
 +  ENDIF(GIFTI_LIBRARY)
 +ENDIF(AFNI_BUILD_LOCAL_GIFTI)
++
++# tell now everybody that we have GIFTI if we do have it
++IF(AFNI_HAVE_GIFTI)
++  ADD_DEFINITIONS(-DHAVE_GIFTI)
++ENDIF(AFNI_HAVE_GIFTI)
 +
 +# everything that is not necessary for corelibs
 +IF(NOT AFNI_BUILD_CORELIBS_ONLY)
@@ -555,7 +563,7 @@ Last-Update: 2010-09-21
 +  DESTINATION ${AFNI_INSTALL_SCRIPT_DIR} COMPONENT Runtime)
 --- /dev/null
 +++ b/CMakeLists_libs.txt
-@@ -0,0 +1,216 @@
+@@ -0,0 +1,220 @@
 +##
 +## This file is to be included in the toplevel CMakeLists.txt
 +##
@@ -734,6 +742,10 @@ Last-Update: 2010-09-21
 +IF(NOT AFNI_BUILD_LOCAL_NIFTICLIBS)
 +  TARGET_LINK_LIBRARIES(mri nifticdf niftiio)
 +ENDIF(NOT AFNI_BUILD_LOCAL_NIFTICLIBS)
++
++IF(NOT AFNI_BUILD_LOCAL_GIFTI)
++  TARGET_LINK_LIBRARIES(mri giftiio)
++ENDIF(NOT AFNI_BUILD_LOCAL_GIFTI)
 +
 +#
 +# libmrix
