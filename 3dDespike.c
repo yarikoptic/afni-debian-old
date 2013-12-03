@@ -165,7 +165,7 @@ int main( int argc , char *argv[] )
    int     verb=1 ;
 
    int     do_NEW = 0 ;   /* 29 Nov 2013 */
-   MRI_IMAGE *NEW_psinv ;
+   MRI_IMAGE *NEW_psinv=NULL ;
 
    /*----- Read command line -----*/
 
@@ -179,7 +179,8 @@ int main( int argc , char *argv[] )
              "\n"
              "Method:\n"
              " * L1 fit a smooth-ish curve to each voxel time series\n"
-             "    [see -corder option for description of the curve].\n"
+             "    [see -corder option for description of the curve]\n"
+             "    [see -NEW option for a different & faster fitting method]\n"
              " * Compute the MAD of the difference between the curve and\n"
              "    the data time series (the residuals).\n"
              " * Estimate the standard deviation 'sigma' of the residuals\n"
@@ -227,9 +228,23 @@ int main( int argc , char *argv[] )
              "                one previous and the first one after.\n"
              "                Note that the c1 cut value is not used here.\n"
              "\n"
-             " -NEW       = use the 'new' method for computing the fit, which\n"
-             "              should be faster than the L1 method; the results\n"
-             "              are similar but NOT identical.\n"
+             " -NEW       = Use the 'new' method for computing the fit, which\n"
+             "              should be faster than the L1 method for long time\n"
+             "              series (200+ time points); however, the results\n"
+             "              are similar but NOT identical. [29 Nov 2013]\n"
+             "              * You can also make the program use the 'new'\n"
+             "                method by setting the environment variable\n"
+             "                  AFNI_3dDespike_NEW\n"
+             "                to the value YES; as in\n"
+             "                  setenv AFNI_3dDespike_NEW YES  (csh)\n"
+             "                  export AFNI_3dDespike_NEW=YES  (bash)\n"
+             "              * If this variable is set to YES, you can turn off\n"
+             "                the '-NEW' processing by using the '-OLD' option.\n"
+             "          -->>* For time series more than 500 points long, the\n"
+             "                '-OLD' algorithm is tremendously slow.  You should\n"
+             "                use the '-NEW' algorith in such cases.\n"
+             "             ** At some indeterminate point in the future, the '-NEW'\n"
+             "                method will become the default!\n"
              "\n"
              "Caveats:\n"
              "* Despiking may interfere with image registration, since head\n"
@@ -254,6 +269,8 @@ int main( int argc , char *argv[] )
 
    /** parse options **/
 
+   if( AFNI_yesenv("AFNI_3dDespike_NEW") ) do_NEW = 1 ;  /* 29 Nov 2013 */
+
    iarg = 1 ;
    while( iarg < argc && argv[iarg][0] == '-' ){
 
@@ -266,6 +283,9 @@ int main( int argc , char *argv[] )
 
       if( strcmp(argv[iarg],"-NEW") == 0 ){       /* 29 Nov 2013 */
         do_NEW = 1 ; iarg++ ; continue ;
+      }
+      if( strcmp(argv[iarg],"-OLD") == 0 ){
+        do_NEW = 0 ; iarg++ ; continue ;
       }
 
       /** -localedit **/
@@ -346,7 +366,7 @@ int main( int argc , char *argv[] )
    if( corder > 0 && 4*corder+2 > nuse ){
      ERROR_exit("-corder %d is too big for NT=%d",corder,nvals) ;
    } else if( corder < 0 ){
-     corder = rint(nuse/30.0) ; if( corder > 50 ) corder = 50 ;
+     corder = rint(nuse/30.0) ; if( corder > 50 && !do_NEW ) corder = 50 ;
      if( verb ) INFO_message("using %d time points => -corder %d",nuse,corder) ;
    } else {
      if( verb ) INFO_message("-corder %d set from command line",corder) ;
@@ -488,6 +508,9 @@ int main( int argc , char *argv[] )
 
    if( do_NEW ){
      NEW_psinv = DES_get_psinv(nuse,nref,ref) ;
+     INFO_message("Procesing time series with NEW model fit algorithm") ;
+   } else {
+     INFO_message("Procesing time series with OLD model fit algorithm") ;
    }
 
    /*--- loop over voxels and do work ---*/
@@ -691,7 +714,8 @@ int main( int argc , char *argv[] )
    } /* end of loop over voxels #ii */
 
 #pragma omp critical (DESPIKE_malloc)
-   { free(fit); free(ssp); free(fitar); free(var); free(dar); free(far); }
+   { free(fit); free(ssp); free(fitar); free(var); free(dar); free(far);
+     if( do_NEW ) free(NEW_wks) ; }
 
  } /* end OpenMP */
  AFNI_OMP_END ;
@@ -701,6 +725,8 @@ int main( int argc , char *argv[] )
 #endif
 
    /*--- finish up ---*/
+
+   if( do_NEW ) mri_free(NEW_psinv) ;
 
    DSET_delete(dset) ; /* delete input dataset */
 
