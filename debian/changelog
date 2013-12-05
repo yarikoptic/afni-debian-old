@@ -9,8 +9,9 @@ afni (0.20131204~dfsg.1-1) neurodebian; urgency=low
   * Fresh upstream snapshot
   * debian/patches
     - updated for new locations
+    - up_char_cast (shared upstream) to avoid FTBFS with -Werror=format-security
 
- -- Yaroslav Halchenko <debian@onerussian.com>  Thu, 05 Dec 2013 11:03:07 -0500
+ -- Yaroslav Halchenko <debian@onerussian.com>  Thu, 05 Dec 2013 15:27:28 -0500
 
 afni (0.20130912~dfsg.1-3) neurodebian; urgency=low
 
