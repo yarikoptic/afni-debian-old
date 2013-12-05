@@ -43,7 +43,85 @@
 
 afni_history_struct rwcox_history[] = {
 /*=====BELOW THIS LINE=====*/
-  { 28 , AUG , 2013 , RWC , "3dQwarp" , MICRO , TYPE_NEW_OPT ,
+  { 4 , DEC , 2013 , RWC , "3dTproject" , MICRO , TYPE_GENERAL ,
+   "Output count of the various regressors" ,
+   NULL } ,
+
+ { 4 , DEC , 2013 , RWC , "3dDespike" , MICRO , TYPE_NEW_OPT ,
+   "Add -dilate option" ,
+   NULL } ,
+
+ { 3 , DEC , 2013 , RWC , "afni GUI" , MICRO , TYPE_MODIFY ,
+   "Add Set p-value button to Threshold slider popup menu" ,
+   NULL } ,
+
+ { 29 , NOV , 2013 , RWC , "3dDespike" , MINOR , TYPE_NEW_OPT ,
+   "add -NEW option" ,
+   "Different fitting method than L1 -- much faster, results not identical,\n"
+   "but does that matter for an ad hoc algorithm?" } ,
+
+ { 26 , NOV , 2013 , RWC , "afni" , MICRO , TYPE_GENERAL ,
+   "Modify imseq.c Image Save function" ,
+   "(a) Make 'Enter' on prefix field activate saving\n"
+   "(b) Put all widgets for multiple image save in one window -- 19 years\n"
+   "after first thinking about it!\n"
+   "\n"
+   "'Need brooks no delay, but late is better than never'" } ,
+
+ { 22 , NOV , 2013 , RWC , "3dDeconvolve" , MICRO , TYPE_GENERAL ,
+   "Modify dmUBLOCK to allow peak=1 to occur at duration X" ,
+   "By choosing Rmodel as 'dmUBLOCK(-X') -- per the request of Chen Gang." } ,
+
+ { 15 , NOV , 2013 , RWC , "3dDeconvolve" , MICRO , TYPE_NEW_OPT ,
+   "Add -stim_times_FSL option" ,
+   "Allows scripting from FSL-style timing files, as distributed by the\n"
+   "Human Connectome Project.  God Save the Queen." } ,
+
+ { 30 , OCT , 2013 , RWC , "afni" , MINOR , TYPE_MODIFY ,
+   "Add 'blowup' to image viewer saver" ,
+   "From interactive dialog AND from SAVE_xxx driver commands." } ,
+
+ { 23 , OCT , 2013 , RWC , "1dplot" , MICRO , TYPE_NEW_OPT ,
+   "Add -xtran option (to complement -ytran)" ,
+   NULL } ,
+
+ { 22 , OCT , 2013 , RWC , "1dplot" , MICRO , TYPE_BUG_FIX ,
+   "Found that -noline didn't work right with 2 or more time series!" ,
+   NULL } ,
+
+ { 21 , OCT , 2013 , RWC , "1dplot" , MICRO , TYPE_NEW_OPT ,
+   "And the -dashed option" ,
+   NULL } ,
+
+ { 21 , OCT , 2013 , RWC , "1dplot" , MINOR , TYPE_NEW_OPT ,
+   "Add -xmulti option" ,
+   "For graphing with different x-values for different y-value 1D files." } ,
+
+ { 18 , OCT , 2013 , RWC , "3dQwarp" , MICRO , TYPE_NEW_OPT ,
+   "added -weight option" ,
+   NULL } ,
+
+ { 20 , SEP , 2013 , RWC , "3dQwarp" , MICRO , TYPE_MODIFY ,
+   "Make the penalty factor get bigger with level." ,
+   NULL } ,
+
+ { 20 , SEP , 2013 , RWC , "ccalc" , MICRO , TYPE_BUG_FIX ,
+   "Fixed Ziad's stupid sprintf(buf, ... , buf) bug" ,
+   NULL } ,
+
+ { 17 , SEP , 2013 , RWC , "afni_driver.c" , MICRO , TYPE_BUG_FIX ,
+   "Fix problem with SET_PBAR_ALL +99" ,
+   "Didn't properly enforce the positivity." } ,
+
+ { 16 , SEP , 2013 , RWC , "3dQwarp" , MINOR , TYPE_MODIFY ,
+   "Add zero-padding" ,
+   "To allow for images that run right up to the edge of the volume, where\n"
+   "displacements are defined to be zero, so those parts of the volume won't\n"
+   "be warps.  Zero-padding extends the volume, which will avoid such\n"
+   "issues.  It is turned on by default, and can be turned off by '-nopad'\n"
+   "(as in 3dAllineate)." } ,
+
+ { 28 , AUG , 2013 , RWC , "3dQwarp" , MICRO , TYPE_NEW_OPT ,
    "-allinkeep option ==> keep -allineate files around" ,
    NULL } ,
 

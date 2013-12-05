@@ -65,6 +65,71 @@
 
 afni_history_struct ziad_history[] = {
 /*=====BELOW THIS LINE=====*/
+ { 27, Nov , 2013 , ZSS , "3dCM" , MINOR , TYPE_NEW_OPT,
+   "Added -roi_vals to get COM for multiple ROIs",
+   "Workhorse is THD_roi_cmass() in thd_center.c"
+ },
+
+ { 4, Nov , 2013 , ZSS , "afni-general" , MINOR , TYPE_MODIFY,
+   "Made functions transforming afni volumes to suma dsets preserve types",
+   "Formerly much was changed into floats. Affected functions include:\n"
+   "nsd_add_colms_type(), SUMA_afnidset2sumadset(), and nsd_add_sparse_data()"
+ },
+
+ { 1, Oct , 2013 , ZSS , "suma" , MINOR , TYPE_MODIFY,
+   "Made suma send filename of surface volume to AFNI",
+   "In this manner a -sv volume that is not in AFNI's\n"
+   "current session will still be loaded into the current session\n"
+   "See afni function AFNI_append_dset_to_session() and wherever it\n"
+   "is used for details" 
+ },
+
+ { 1, Oct , 2013 , ZSS , "afni" , MINOR , TYPE_MODIFY,
+   "Made AFNI seek and add to session a missing SUMA surface volume",
+   "See afni function AFNI_append_dset_to_session() and wherever it\n"
+   "is used for details. That function is under afni_plugin.c which is one\n"
+   "of the few .c files with access to the GLOBAL_library structure." 
+ },
+
+ { 1, Oct , 2013 , ZSS , "afni" , MINOR , TYPE_MODIFY,
+   "Reduced AFNI complaints of missing surface volumes and extra triangles.",
+   "These messages come up for each surface component 'nel' and are highly\n"
+   "redundant. Now messages are choked to about once every 2 seconds for \n"
+   "each message id. See whine_about_idcode() for details."
+ },
+
+ { 23, Sep , 2013 , ZSS , "suma" , MINOR , TYPE_MODIFY,
+   "Numerous updates/bug fixes for graph dset handling",
+   "Pick buffer update now synced with what viewer shows. \n"
+   "See SUMA_ADO_Flush_Pick_Buffer(). Text, whenever displayed,\n"
+   "is turned into a solid rectangle in the pick buffer to facilitate\n"
+   "selection.\n"
+   "Point radius based on value was improperly scaled, same for stippling\n"
+   "Gain arrows had a min of 1.0, now min is 0 and max 200\n"
+   "Background of text now updates along with text color when color of viewer\n"
+   "background is changed.\n"
+   "Help message for picking updated.\n"
+   "Shift+Alt+Button-3 press will now take a snapshot of the pick buffer\n"
+   "to help with debugging." 
+ },
+
+ { 16, Sep , 2013 , ZSS , "suma" , MINOR , TYPE_NEW_OPT,
+   "Switched functions of mouse buttons 1 and 2 when viewing GRAPH MATRIX",
+   "This means matrix spatial rotation would be done with button 2 and\n"
+   "shifting with button 1. Selection can also be done with button 3 whenever\n"
+   "there is no selectable surface in sight." 
+ },
+
+ { 13, Sep , 2013 , ZSS , "3dToyProg" , MICRO , TYPE_NEW_PROG,
+   "A sample program to illustrate I/O API for intrepid C programmers",
+   NULL
+ },
+
+ { 13, Sep , 2013 , ZSS , "afni-general" , MICRO , TYPE_MODIFY,
+   "Added way to specify DICOM origin in function EDIT_geometry_constructor()",
+   NULL
+ },
+
  { 12, Sep , 2013 , ZSS , "suma-general" , MINOR , TYPE_MODIFY,
    "Added possibilty to store network tracts in external file for graph dsets",
    "See 3dProbTrackID's -gdset_toy for an illustration.\n"

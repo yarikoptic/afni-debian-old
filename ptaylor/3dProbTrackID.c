@@ -1,4 +1,3 @@
-
 /* 
    Probabilistic(+deterministic) tracking, first draft at
    AFNIfication, March 2012.  using FACTID code, from Taylor,
@@ -35,7 +34,11 @@
    + groundwork for adding SUMA+matrix capabilities, new IO: @)))
    + will start voxelwise track info
 
+   Sep 2013:
+   + include better NOT mask behavior-- simpler; instead of separate mask,
+     have negative (-1) ROIs in same brik with positive ones
 */
+
 
 
 #include <stdio.h>
@@ -45,10 +48,10 @@
 #include <debugtrace.h>
 #include <mrilib.h>     
 #include <3ddata.h>     
-#include <DoTrackit.h>
 #include <time.h>
 #include <gsl/gsl_randist.h>
 #include <gsl/gsl_rng.h>
+#include <DoTrackit.h>
 #include <TrackIO.h>
 
 #include "suma_suma.h"
@@ -57,7 +60,8 @@ void usage_ProbTrackID(int detail)
 {
 	printf(
 "  \n"
-"  FACTID-based code, from Taylor, Cho, Lin and Biswal (some year!)\n"
+"  FACTID-based tractography code, from Taylor, Cho, Lin and Biswal (2012),\n"
+"  part of FATCAT (Taylor & Saad, 2013) in AFNI.\n"
 "  \n"
 "  Estimate locations of WM associated with GM ROIs, particularly between\n"
 "    pairs of GM in a network;  can process several networks in a given run.\n"
@@ -120,7 +124,12 @@ void usage_ProbTrackID(int detail)
 "        bval        :non-b=0 value (mm^2/s), e.g., 1000 (not used yet)\n"
 "\n\n"
 "  + RUNNING, need to provide:\n"
-"    -netrois ROIS   :mask(s) of ROIs- can be many subbricks!\n"
+"    -netrois ROIS   :mask(s) of ROIs- can be many subbricks! The target\n"
+"                     ROIs through which you want tracks to pass should have\n"
+"                     index values >0, and now it is possible to have\n"
+"                     NOT-ROIs, or anti-targets, which stop a propagating\n"
+"                     track... in its tracks -- these are defined per network\n"
+"                     (i.e., per subbrick) by voxels with <0.\n"
 "    -prefix  PREFIX :output file name part\n"
 "    -input   INPREF :basename of DTI volumes output by, e.g., 3dDWItoDT.\n"
 "                     NB- following volumes are currently expected:\n"
@@ -176,13 +185,10 @@ void usage_ProbTrackID(int detail)
 "                     then the threshold in the ALGO file refers to values\n"
 "                     in this map. (Then the uncertainty in FA measures does\n"
 "                     not really matter during the Monte Carlo part.)\n"
-"    -not_mask NM    :a mask of locations through which tracks cannot go.\n"
-"                     A single brik NM can be input, then to be applied to\n"
-"                     each ROIS brik, or an NM with the same number of briks\n"
-"                     as the ROIS can be input, with one NOT-mask per corre-\n"
-"                     sponding ROIS brik. (And you could pad with zero-laden\n"
-"                     NOT-masks, in the latter case.) Mask acts such that if\n"
-"                     a possible track enters it, the whole track is removed.\n"
+"    -not_mask  !NB! :THIS OPTION REMOVED in favor of allowing NOT-regions\n"
+"                     to be defined more easily in the `-netrois' input briks\n"
+"                     themselves, by voxels having to have a `-1' value. \n"
+"                     Surely much simpler?\n"
 "\n"
 "    -dump_rois TYPE :can output individual masks of ROI connections.\n"
 "                     Options for TYPE are: {DUMP | AFNI | BOTH}. Using DUMP\n"
@@ -230,10 +236,13 @@ void usage_ProbTrackID(int detail)
 "       {1,2,3}-- thus, the labels stay as small as possible (which is a \n"
 "       a legit concern since labels are 2^{ROI #}).\n"
 "\n\n"
-"  If you use this program, please reference for the tractography alg:\n"
-"    Taylor PA, Cho K-H, Lin C-P, Biswal BB (2012) Improving DTI\n"
+"  If you use this program, please reference the tractography algorithm:\n"
+"    Taylor PA, Cho K-H, Lin C-P, Biswal BB (2012). Improving DTI\n"
 "    Tractography by including Diagonal Tract Propagation. PLoS ONE\n"
-"    7(9): e43415. \n");
+"    7(9): e43415. \n"
+"    and the introductory/description paper for the FATCAT toolbox:\n"
+"    Taylor PA, Saad ZS (2013). FATCAT: (An Efficient) Functional And\n"
+"    Tractographic Connectivity Analysis Toolbox. Brain Connectivity.\n\n");
 	return;
 }
 		
@@ -249,11 +258,23 @@ int main(int argc, char *argv[]) {
 	THD_3dim_dataset *insetFA = NULL,*insetMD = NULL,*insetUC = NULL;
 	THD_3dim_dataset *mset1=NULL; 
 
+   // @#$ 
+   char ***gdset_roi_names=NULL;
+   int DEF_DTI = 1; // default mode, mainly for # of params
+   int Npars = 3; // size of final paramgrid index 2+
+   int Noutmat = 11; // number of output matrices in GRID file
+   char **ParLab=NULL; // default: {"tNTR","fNTR","mFA","sFA","mMD","sMD","mRD","sRD","mL1","sL1","tNV"}
+   SUMA_DSET *gset=NULL;
+   float ***flat_matr=NULL;
+   float *xyz=NULL;
+   char OUT_gdset[300];
+   NI_group *GDSET_netngrlink=NULL;
+   char *NAME_gdset;
+
 	THD_3dim_dataset *insetEXTRA=NULL; 
 	char *in_EXTRA="name";//[300];
 	int EXTRAFILE=0; // switch for whether other file is input as WM map
 
-	THD_3dim_dataset *insetNOTMASK=NULL; 
 	short **antimask=NULL;
 	int NOTMASK=0; // switch for whether other file is input as WM map
 	int ALLorONE=0; // switch for whether NOTMASK==N_nets
@@ -319,8 +340,8 @@ int main(int argc, char *argv[]) {
 
    int READS_in;
 	float READS_fl;
-	int end[2][3];
-	int test_ind[2];
+	// int end[2][3]; // don't need anymore ! @@##
+	// int test_ind[2];
 	int onoff[3];
 	int BreakAddCont=0;
 
@@ -392,6 +413,9 @@ int main(int argc, char *argv[]) {
    int LOG_TYPE=0; // default is OR logic
    int MINI_PROB_NM=1; // default: no mini monte carloing for det_net
 
+   int vA,vA0,vB,vB0,vB1; // will be indices along tracks in NOT-ROI checking
+   int TESTCOUNT=0;
+
    // @)) jump lesion searching stuff, to be used prob only with DETNET
    int JUMPLES=0; // switch to turn on prop check.
    float ***TROUT=NULL;
@@ -412,7 +436,7 @@ int main(int argc, char *argv[]) {
 	// ****************************************************************
 	// ****************************************************************
   
-	//	INFO_message("version: TAU");
+	//	INFO_message("version: UPSILON");
 
 	// scan args 
 	if (argc == 1) { usage_ProbTrackID(1); exit(0); }
@@ -679,25 +703,6 @@ int main(int argc, char *argv[]) {
 					(Dim[1] == DSET_NY(insetEXTRA)) &&
 					(Dim[2] == DSET_NZ(insetEXTRA))))
 				ERROR_exit("Dimensions of extra set '%s' don't match those of the DTI prop ones ('%s', etc.).",in_EXTRA, in_FA);
-			
-			iarg++ ; continue ;
-		}
-
-		if( strcmp(argv[iarg],"-not_mask") == 0) {
-			if( ++iarg >= argc ) 
-				ERROR_exit("Need argument after '-not_mask'");
-			
-			insetNOTMASK = THD_open_dataset(argv[iarg]);
-			if( (insetNOTMASK == NULL ) )
-				ERROR_exit("Can't open dataset '%s': for extra set.",argv[iarg]);
-			DSET_load(insetNOTMASK) ; CHECK_LOAD_ERROR(insetNOTMASK) ;
-			
-			NOTMASK = DSET_NVALS(insetNOTMASK); // switch on, num of briks
-
-			if( !((Dim[0] == DSET_NX(insetNOTMASK)) && 
-					(Dim[1] == DSET_NY(insetNOTMASK)) &&
-					(Dim[2] == DSET_NZ(insetNOTMASK))))
-				ERROR_exit("Dimensions of extra set '%s' don't match those of the DTI prop ones ('%s', etc.).",argv[iarg], in_FA);
 			
 			iarg++ ; continue ;
 		}
@@ -985,19 +990,45 @@ int main(int argc, char *argv[]) {
 			fclose(fout1);    
 		}
 	}
-	
-	if(NOTMASK>0){
-		if( NOTMASK == N_nets ){
-			INFO_message("Each brik of not_mask will be applied to corresponding netrois brik.");
-			ALLorONE=1; // switch on brik by brik matching
-		}
-		else if( NOTMASK == 1 )
-			INFO_message("The single not_mask will be applied to all inset briks.");
-		else
-			ERROR_exit("The number of not_mask and netrois briks must match (or not_mask have only 1 brik): here, not_mask:%d, netrois:%d",NOTMASK,N_nets);
+
+   // @#$
+   ParLab = (char **)calloc(Noutmat, sizeof(char *));
+   if( (ParLab == NULL) ) {
+      fprintf(stderr, "\n\n MemAlloc failure.\n\n");
+      exit(121);
+   }
+   if(DEF_DTI && (Noutmat==11) ) { // default for DTI 
+      ParLab[0] = strdup("tNT");
+      ParLab[1] = strdup("fNT");
+      ParLab[2] = strdup("mFA");
+      ParLab[3] = strdup("sFA");
+      ParLab[4] = strdup("mMD");
+      ParLab[5] = strdup("sMD");
+      ParLab[6] = strdup("mRD");
+      ParLab[7] = strdup("sRD");
+      ParLab[8] = strdup("mL1");
+      ParLab[9] = strdup("sL1");
+      ParLab[10] = strdup("tNV");
+
+      flat_matr = (float ***) calloc( N_nets, sizeof(float **) );
+      for ( i = 0 ; i < N_nets ; i++ ) 
+         flat_matr[i] = (float **) calloc( Noutmat, sizeof(float *) );
+      for ( i = 0 ; i < N_nets ; i++ ) 
+         for ( j = 0 ; j < Noutmat ; j++ ) 
+            flat_matr[i][j] = (float *) calloc( NROI[i]*NROI[i], sizeof(float));
+
 	}
 
-	// convert to cos of rad value for comparisons, instead of using acos()
+   gdset_roi_names = (char ***)calloc(N_nets, sizeof(char **));
+	for (i=0; i< N_nets ; i++ ) {
+      gdset_roi_names[i] = (char **)calloc(NROI[i], sizeof(char *));
+      for (j=0; j<NROI[i]; ++j) {
+         gdset_roi_names[i][j] = (char *)calloc(32, sizeof(char));
+         snprintf(gdset_roi_names[i][j],31,"N%03d:R%d", i+1, ROI_LABELS[i][j]);
+      }
+   }
+   
+   // convert to cos of rad value for comparisons, instead of using acos()
 	MaxAng = cos(CONV*MaxAngDeg); 
 
 	// for temp storage array, just a multiple of longest dimension!
@@ -1062,6 +1093,8 @@ int main(int argc, char *argv[]) {
      NmNsThr = 1; // thresh of 1 for stats stuff
 
      // @) @)))
+     //PT: This next line was commented out, but if you
+     //    choose to reuse it, sizeof() should be for (TAYLOR_BUNDLE *)
      //tb = (TAYLOR_BUNDLE **)calloc(N_nets, sizeof(TAYLOR_BUNDLE)); 
      N_bund = (int *)calloc(N_nets, sizeof(int)); 
      if( N_bund == NULL) {
@@ -1073,7 +1106,7 @@ int main(int argc, char *argv[]) {
          N_bund[i] = (NROI[i]*(NROI[i]+1))/2;
      else
        for( i=0 ; i<N_nets ; i++)
-         N_bund[i] = 1;
+         N_bund[i] = (NROI[i]*(NROI[i]+1))/2;
      
      tb = (TAYLOR_BUNDLE ***) calloc( N_nets, sizeof(TAYLOR_BUNDLE **) );
      for ( i = 0 ; i < N_nets ; i++ ) // halftri+diag notation!!!
@@ -1085,7 +1118,6 @@ int main(int argc, char *argv[]) {
      b_tags = calloc(N_nets,sizeof(b_tags)); 
      for(i=0 ; i<N_nets ; i++) 
        b_tags[i] = calloc(N_bund[i],sizeof(int)); 
-
 
      flTtot = calloc(2*ArrMax,sizeof(flTtot)); 
      for(i=0 ; i<2*ArrMax ; i++) 
@@ -1220,14 +1252,6 @@ int main(int argc, char *argv[]) {
 											 dset_or, RESAM_NN_TYPE, NULL, 1, 0);
 			DSET_delete(MASK); 
 			MASK=dsetn;
-			dsetn=NULL;
-		}
-
-		if(NOTMASK>0) {
-			dsetn = r_new_resam_dset(insetNOTMASK, NULL, 0.0, 0.0, 0.0,
-											 dset_or, RESAM_NN_TYPE, NULL, 1, 0);
-			DSET_delete(insetNOTMASK); 
-			insetNOTMASK=dsetn;
 			dsetn=NULL;
 		}
 
@@ -1388,6 +1412,10 @@ int main(int argc, char *argv[]) {
 		exit(12);
 	}
 
+   // slightly stricter now, because TrackItP includes extra endpoint
+   // on each half tract tested
+   ArrMax-= 1;
+
    // @))
    if(JUMPLES){
 
@@ -1432,11 +1460,6 @@ int main(int argc, char *argv[]) {
 						UNC[idx][3] = unc_minei_std;
 					if (UNC[idx][5]<unc_minfa_std)
 						UNC[idx][5] = unc_minfa_std;
-
-					if(NOTMASK>0) 
-						for( m=0 ; m<NOTMASK ; m++ )
-							antimask[idx][m] = (short) 
-								THD_get_voxel(insetNOTMASK,INDEX[i][j][k],m);
 					
 					// apparently, some |V1| != 1... gotta fix
 					tempvmagn = sqrt(copy_coorded[idx][0]*copy_coorded[idx][0]+
@@ -1454,8 +1477,8 @@ int main(int argc, char *argv[]) {
 						// just use the compacted list numbers via INV_LABELS
 						if( THD_get_voxel(mset1, INDEX[i][j][k], m)>0.5 )
 							MAPROI[idx][m] = INV_LABELS[m][(int) THD_get_voxel(mset1,INDEX[i][j][k],m)];
-						else
-							MAPROI[idx][m] = 0;
+						else if( THD_get_voxel(mset1, INDEX[i][j][k], m)<-0.5 )   // silly, is zero anyways... can use this to set to neg mask
+							MAPROI[idx][m] = -1;
        
 						// counter for number of kept tracks passing through
 						for( mm=0 ; mm<NROI[m] ; mm++ )
@@ -1574,9 +1597,9 @@ int main(int argc, char *argv[]) {
 	for( jj=0 ; jj<3 ; jj++ ) 
 		physin[jj] = ((float) in[jj]+LocSeed[kk][jj])*Ledge[jj];
 
-	len_forw = TrackItP(copy_coorded, in, physin, Ledge, Dim, 
-							  MinFA, MaxAng, ArrMax, Tforw, 
-							  flTforw, 1, phys_forw,INDEX2);
+	len_forw = TrackItP_NEW(copy_coorded, in, physin, Ledge, Dim, 
+                           MinFA, MaxAng, ArrMax, Tforw, 
+                           flTforw, 1, phys_forw,INDEX2);
 
 	in[0] = i; // reset, because it's changed in TrackIt func
 	in[1] = j;
@@ -1585,11 +1608,11 @@ int main(int argc, char *argv[]) {
 	for( jj=0 ; jj<3 ; jj++ ) 
 		physin[jj] = ((float) in[jj]+LocSeed[kk][jj])*Ledge[jj];
 
-	len_back = TrackItP(copy_coorded, in, physin, Ledge, Dim, 
-							  MinFA, MaxAng, ArrMax, Tback, 
-							  flTback, -1, phys_back,INDEX2);
+	len_back = TrackItP_NEW(copy_coorded, in, physin, Ledge, Dim, 
+                           MinFA, MaxAng, ArrMax, Tback, 
+                           flTback, -1, phys_back,INDEX2);
 
-	totlen = len_forw+len_back-1; // b/c of overlap of starts
+	totlen = len_forw+len_back-1; // b/c of overlap of starts; includes 2ends
 	totlen_phys = phys_forw[0] + phys_back[0];
 
 	if( totlen_phys >= MinL ) {
@@ -1600,12 +1623,17 @@ int main(int argc, char *argv[]) {
 			rr = len_back-n-1; // read in backward
 			for(m=0;m<3;m++)
 				Ttot[rr][m] = Tback[n][m];
+         
 		}
 		for( n=1 ; n<len_forw ; n++) { // skip first->overlap
 			rr = n+len_back-1; // put after
 			for(m=0;m<3;m++)
 				Ttot[rr][m] = Tforw[n][m];
 		}
+
+      vB0 = ( Ttot[totlen-1][0]<0 ) ? totlen-2 : totlen-1;
+      //printf("%d\t%f\t\t%d\t%d\n",totlen,totlen_phys,Ttot[0][0],Ttot[totlen-1][0]);
+
 
       if(DETNET){ // @) for now, have sep mirroring option to above
         // glue together for simpler notation later
@@ -1620,58 +1648,56 @@ int main(int argc, char *argv[]) {
 				flTtot[rr][m] = flTforw[n][m];
         }
       }
+      // at this point now, both 0- and trL-th index have `test index'
+      // locations in them; these are not `tract' locs themselves, but
+      // voxels to check in terms of connections.
+      // if the locations are `bad'-- either tract went back on itself,
+      // or tried to walk out of brain data set array, then a -1 is
+      // stored there, so we check against that before looking at that
+      // index.
+      
+		for( hh=0 ; hh<N_nets ; hh++) { ////////////// ##@@ start of new work
+         // allow checking for NOT masks, which map MAPROI[][]=-1
+         // if running through a not mask, split tract up
+         // walk through once, all the way, per network
 
+         // initialize for this network.
+         // first, check if initial ends are bad--
+         // would have negative value from TrackItP only if 
+         // some badness had happened.
 
-		// <<So close and orthogonal condition>>:
-		// test projecting ends, to see if they abut ROI.  
-		// first, default choice, just retest known ends as default
-		test_ind[0] = INDEX2[Ttot[0][0]][Ttot[0][1]][Ttot[0][2]];
-		test_ind[1] = 
-			INDEX2[Ttot[totlen-1][0]][Ttot[totlen-1][1]][Ttot[totlen-1][2]]; 
-		for(m=0;m<3;m++) { //actual projected ends
-			end[1][m] = 2*Ttot[totlen-1][m]-Ttot[totlen-2][m];
-			end[0][m] = 2*Ttot[0][m]-Ttot[1][m];
-		}
-		// make sure ok to test, then test, if->switch
-		for( m=0 ; m<2 ; m++) 
-			if( (end[m][0]>=0) && (end[m][1]>=0) && 
-				 (end[m][2]>=0) && (end[m][0]<Dim[0]) && 
-				 (end[m][1]<Dim[1]) && (end[m][2]<Dim[2]) )
-				if( INDEX2[end[m][0]][end[m][1]][end[m][2]] != 0 )
-					test_ind[m] =  INDEX2[end[m][0]][end[m][1]][end[m][2]];
+         vB = ( Ttot[0][0]<0 ) ? -1 : -2;
+         vB1 = 0; 
 
-		for( hh=0 ; hh<N_nets ; hh++) {
-			for( n=0 ; n<=MAXNROI ; n++)
-				list_rois[n] = temp_list[n] = 0;
-			KEEP_GOING=1; // switch if there's anti-masking
-			// have to go all the way through each track 
-			// checking every vox for intersections
-			for( n=0 ; n<totlen ; n++) {
-				rr = INDEX2[Ttot[n][0]][Ttot[n][1]][Ttot[n][2]];
-				if(NOTMASK>0) 
-					NM = CheckNotMask(rr,hh,antimask,ALLorONE);
-				if(NM) {// if NOTMASK==0, this is always off; other, test
-					KEEP_GOING=0;
-					break;
-				}
-				else if( MAPROI[rr][hh]>0) 
-					list_rois[MAPROI[rr][hh]]=1;
-			}
-			// actually test if the ends, extra condition
-			if(KEEP_GOING) {
-				if(MAPROI[test_ind[0]][hh]>0) {
-					if(NOTMASK>0) 
-						NM = CheckNotMask(test_ind[0],hh,antimask,ALLorONE);
-					if(!NM)
-						list_rois[MAPROI[test_ind[0]][hh]]=1;
-				}
-				if(MAPROI[test_ind[1]][hh]>0){
-					if(NOTMASK>0) 
-						NM = CheckNotMask(test_ind[1],hh,antimask,ALLorONE);
-					if(!NM)
-						list_rois[MAPROI[test_ind[1]][hh]]=1;
-				}
-			
+         while( vB+vB1 < vB0  ){ // go until hitting a NOT or penult vox
+            // clear list of ROIs
+            for( n=0 ; n<=MAXNROI ; n++)
+               list_rois[n] = temp_list[n] = 0;
+            
+            // literal start and finishes
+            vA0 = vB+2; // for `checking' purposes
+            // this starts at either 1 or where we ended+2
+            vA = ( vA0==0 ) ? 1 : vA0 ; // for writing/out purposes
+            for( n=vA0 ; n<=vB0 ; n++) {
+               rr = INDEX2[Ttot[n][0]][Ttot[n][1]][Ttot[n][2]];
+               if( MAPROI[rr][hh]>0 )
+                  list_rois[MAPROI[rr][hh]]=1;
+               else if( MAPROI[rr][hh]<0 ) 
+                  break;
+            }
+
+            // keep track of where'd we gotten, as `last good voxel'
+            // whether we made it all the way through track, or ran
+            // into a NOTvox; max vB here should be vB0 still.
+            if( (n==totlen) ) {
+               vB = totlen-2;
+               vB1 = 1; // check extra one
+            }
+            else {
+               vB = n-1;
+               vB1 = 0;
+            }
+
 				// now, for this track, record 
 				// first, write shorter list of which ones were hit
 				m = 0;
@@ -1689,48 +1715,42 @@ int main(int argc, char *argv[]) {
 				if( m>0) {
 					if( (ONLY_BT==0) || (m==1) ) {
 
-                 trL = 0; // @) counter of len of flTtot
-                 for( mm=0 ; mm<totlen ; mm++) { // @@@
+                  trL = 0; // @) counter of len of flTtot
+                  for( mm=vA ; mm<=vB ; mm++) { // @@@
                                        
-                    // @) keep both float loc and ind
-                    if(DETNET){
-                      for( uu=0 ; uu<3 ; uu++) {
-                        cutTot[trL][uu] = flTtot[mm][uu];
-                        cutTotI[trL][uu] = Ttot[mm][uu];
-                      }
-                      trL++;
-                    }
-
-							rr = INDEX2[Ttot[mm][0]][Ttot[mm][1]][Ttot[mm][2]];// @@@
-							//if(NOTMASK>0)
-							//	NM = CheckNotMask(rr,hh,antimask,ALLorONE);
-							//if(!NM) {
-							for( bb=0 ; bb<m ; bb++)
-								for( cc=0 ; cc<m ; cc++) { // only individual, or keep all
-									NETROI[rr][hh][temp_list[bb]][temp_list[cc]]+=1;
-									if(NETROI[rr][hh][temp_list[bb]][temp_list[cc]]==NmNsThr) 
-										ss=ScoreTrackGrid(Param_grid,
-																INDEX[Ttot[mm][0]][Ttot[mm][1]][Ttot[mm][2]],
-																hh, temp_list[cc],temp_list[bb], 
-																insetFA,insetMD,insetL1);
-								}
-							//	}
-						}// @@@
-                                         
-                 if(DETNET && (trL>0) && !LOG_TYPE){
-                   // @) if created, it will be kept
-                   tt[hh] = Create_Tract(trL, cutTot, 0, 
-                                         NULL, id[hh], insetFA); ++id[hh]; 
-
-
-                   tb[hh][0] = AppCreateBundle(tb[hh][0], 1, tt[hh]); 
-                   tt[hh] = Free_Tracts(tt[hh], 1);
+                     // @) keep both float loc and ind
+                     if(DETNET){
+                        for( uu=0 ; uu<3 ; uu++) {
+                           cutTot[trL][uu] = flTtot[mm][uu];
+                           cutTotI[trL][uu] = Ttot[mm][uu];
+                        }
+                        trL++;
+                     }
+                    
+                     rr = INDEX2[Ttot[mm][0]][Ttot[mm][1]][Ttot[mm][2]];// @@@
+                     for( bb=0 ; bb<m ; bb++)
+                        for( cc=0 ; cc<m ; cc++) { // only individual, or keep all
+                           NETROI[rr][hh][temp_list[bb]][temp_list[cc]]+=1;
+                           if(NETROI[rr][hh][temp_list[bb]][temp_list[cc]]==NmNsThr) 
+                              ss=ScoreTrackGrid(Param_grid,
+                                                INDEX[Ttot[mm][0]][Ttot[mm][1]][Ttot[mm][2]],
+                                                hh, temp_list[cc],temp_list[bb], 
+                                                insetFA,insetMD,insetL1);
+                        }
+                     //	}
+                  }// @@@
+                 
+                  if(DETNET && (trL>0) && !LOG_TYPE){
+                     // @) if created, it will be kept
+                     tt[hh] = Create_Tract_NEW(0,trL-1, cutTot,id[hh], insetFA); ++id[hh]; 
+                     tb[hh][0] = AppCreateBundle(tb[hh][0], 1, tt[hh]); 
+                     tt[hh] = Free_Tracts(tt[hh], 1);
                    
-                   ss = SimpleWriteDetNetTr(fout0[hh], INDEX, insetFA,
-                                            insetMD, insetL1,
-                                            cutTot, cutTotI, trL,
-                                            TV_switch, Dim, Ledge);
-                 }
+                     ss = SimpleWriteDetNetTr(fout0[hh], INDEX, insetFA,
+                                              insetMD, insetL1,
+                                              cutTot, cutTotI, trL,
+                                              TV_switch, Dim, Ledge);
+                  }
                  
 					} // end of 'if only_bt or m==1'
 					else{
@@ -1738,22 +1758,20 @@ int main(int argc, char *argv[]) {
 						// have options for the pairwise connectors
 
 						// DIAGONAL
-						for( mm=0 ; mm<totlen ; mm++) {
-							rr = INDEX2[Ttot[mm][0]][Ttot[mm][1]][Ttot[mm][2]];
-							//if(NOTMASK>0)
-							//	NM = CheckNotMask(rr,hh,antimask,ALLorONE);
-							//if(!NM) {
-							for( bb=0 ; bb<m ; bb++) {
-								vv = temp_list[bb];
-								NETROI[rr][hh][vv][vv]+=1;
-								if(NETROI[rr][hh][vv][vv]==NmNsThr)
-									ss=ScoreTrackGrid(Param_grid,
-															INDEX[Ttot[mm][0]][Ttot[mm][1]][Ttot[mm][2]],
-															hh, vv,vv, 
-															insetFA,insetMD,insetL1);
-							}
+						for( mm=vA ; mm<=vB ; mm++) {
+                        rr = INDEX2[Ttot[mm][0]][Ttot[mm][1]][Ttot[mm][2]];
+                        for( bb=0 ; bb<m ; bb++) {
+                           vv = temp_list[bb];
+                           NETROI[rr][hh][vv][vv]+=1;
+                           if(NETROI[rr][hh][vv][vv]==NmNsThr)
+                              ss=ScoreTrackGrid(Param_grid,
+                                                INDEX[Ttot[mm][0]][Ttot[mm][1]][Ttot[mm][2]],
+                                                hh, vv,vv, 
+                                                insetFA,insetMD,insetL1);
+                        }
+                        //}
 						}
-						
+                  
 						// CONNECTORS: walk through mult times
 						
 						// just do unique connectors (we know that m>=2 here...)
@@ -1763,23 +1781,11 @@ int main(int argc, char *argv[]) {
 								onoff[0]=0; onoff[1]=0; onoff[2]=0;
 								BreakAddCont=0;
                         
-
-								// test pre-beginning
-								// +1 on the temp_list[] entry because the value
-								// of temp_list is an index, one less than the Label...
-								if( MAPROI[test_ind[0]][hh]==temp_list[bb]+1 )
-									onoff[0]=1;
-								if( MAPROI[test_ind[0]][hh]==temp_list[cc]+1 )
-									onoff[1]=1;
-
                         trL = 0; //counter of len of flTtot
 								// now walk through each vox, keep testing and
 								// evaluating at each step
-								for( mm=0 ; mm<totlen ; mm++) {
+								for( mm=vA0 ; mm<=vB+vB1 ; mm++) {
 									rr = INDEX2[Ttot[mm][0]][Ttot[mm][1]][Ttot[mm][2]];
-									//if(NOTMASK>0)
-									//	NM = CheckNotMask(rr,hh,antimask,ALLorONE);
-									//if(!NM) {
 									
 									if( MAPROI[rr][hh]==temp_list[bb]+1 ) { // hit 1
 										onoff[0]=1;
@@ -1808,17 +1814,18 @@ int main(int argc, char *argv[]) {
 										break;
 									}
 									
-									//printf("(%d,%d)",mm,BreakAddCont);
-									if(BreakAddCont==1) {// are in b/t
+                           // are in b/t, and not at edge; 
+                           // and can't include 0th track element
+									if( (BreakAddCont==1) && mm && (mm<totlen-1) ) {
 
-                             // @) keep both float loc and ind
-                             if(DETNET){
-                               for( uu=0 ; uu<3 ; uu++) {
-                                 cutTot[trL][uu] = flTtot[mm][uu];
-                                 cutTotI[trL][uu] = Ttot[mm][uu];
-                               }
-                               trL++;
-                             }
+                              // @) keep both float loc and ind
+                              if(DETNET){
+                                 for( uu=0 ; uu<3 ; uu++) {
+                                    cutTot[trL][uu] = flTtot[mm][uu];
+                                    cutTotI[trL][uu] = Ttot[mm][uu];
+                                 }
+                                 trL++;
+                              }
 
 										// get both sides of param_grid, b/c just testing one,
 										// and param_grid is symm
@@ -1846,9 +1853,8 @@ int main(int argc, char *argv[]) {
 
                         if(DETNET && (trL>0) && LOG_TYPE){
                           int lll;
-                           // @) if created, it will be kept
-                          tt[hh] = Create_Tract(trL, cutTot, 0, 
-                                                NULL, id[hh], insetFA); ++id[hh];
+                          // @) if created, it will be kept
+                          tt[hh] = Create_Tract_NEW(0,trL-1, cutTot,id[hh], insetFA); ++id[hh]; 
                           lll = temp_list[cc]+temp_list[bb]*NROI[hh]; // sq matr coor
                           lll -= (temp_list[bb]*(temp_list[bb]+1))/2; // fix for tridiag.
                           //if(lll>N_bund[hh])
@@ -1864,15 +1870,16 @@ int main(int argc, char *argv[]) {
                         
 							} // end of cc
 					} // end of an else
-				}// end of 'if m>0'
+				
 			
-				//will just have be symm
-				// this will fill in UHT part of matrix 
-				// store as values in range 1...NROI
-				for( mm=0 ; mm<m ; mm++)
-					for( nn=0 ; nn<m ; nn++) { 
-						Prob_grid[hh][ temp_list[mm] ][ temp_list[nn] ]+= 1;
-					}
+               //will just have be symm
+               // this will fill in UHT part of matrix 
+               // store as values in range 1...NROI
+               for( mm=0 ; mm<m ; mm++)
+                  for( nn=0 ; nn<m ; nn++) { 
+                     Prob_grid[hh][ temp_list[mm] ][ temp_list[nn] ]+= 1;
+                  }
+            }// end of 'if m>0'
 			}
 		}
 	}
@@ -1880,6 +1887,7 @@ int main(int argc, char *argv[]) {
 	} // end of Monte Carlo loop
 	
    if(DETNET){
+
      for( i=0 ; i<N_nets ; i++){
        fclose(fout0[i]); // !important to do...
        k=0;
@@ -1897,11 +1905,21 @@ int main(int argc, char *argv[]) {
          }
      }
      
+     // @#$
+     //     for( i=0 ; i<N_nets ; i++){
+     //for (j=0; j<N_bund[i]; j++) {
+     //  tnet[i] = AppAddBundleToNetwork(tnet[i], &(tb[i][j]), 
+     //                                  b_tags[i][j], -1, insetFA); 
      for( i=0 ; i<N_nets ; i++){
-       for (j=0; j<N_bund[i]; j++) {
-         tnet[i] = AppAddBundleToNetwork(tnet[i], &(tb[i][j]), 
-                                         b_tags[i][j], -1, insetFA); 
-       }
+        ii = 0;
+        for (j=0; j<NROI[i]; j++) 
+           for (k=j; k<NROI[i]; k++) {
+              jj = j*NROI[i] + k;
+              kk = j + k*NROI[i];
+              tnet[i] = AppAddBundleToNetwork(tnet[i], &(tb[i][ii]), 
+                                              jj,kk, insetFA); 
+              ii+=1;
+        }
      }
      
      for( i=0 ; i<N_nets ; i++){
@@ -1983,10 +2001,52 @@ int main(int argc, char *argv[]) {
 				}
 				fprintf(fout1,"\n");    
 			}
-
 			fclose(fout1);
-		}
 
+         // @#$ recapitulate *.grid files
+         if( DEF_DTI) {
+            for( i=0 ; i<NROI[k] ; i++ ) 
+               for( j=0 ; j<NROI[k] ; j++ ) {
+                  flat_matr[k][0][i*NROI[k]+j] = Prob_grid[k][i][j];
+                  flat_matr[k][1][i*NROI[k]+j] = Prob_grid[k][i][j]*1.0/Numtract;
+                  for( m=0 ; m<9 ; m++) 
+                     flat_matr[k][2+m][i*NROI[k]+j] = Param_grid[k][i][j][m];
+               }
+            gset = SUMA_FloatVec_to_GDSET(flat_matr[k], Noutmat, NROI[k]*NROI[k], 
+                                          "full", ParLab, 
+                                          NULL, NULL, NULL);
+
+            if( xyz = THD_roi_cmass(mset1, k, ROI_LABELS[k]+1, NROI[k]) ) {
+               if (!(SUMA_AddGDsetNodeListElement(gset, NULL,
+                                                  xyz, NULL, NULL, 
+                                               gdset_roi_names[k], NROI[k]))) {
+                  ERROR_message("Failed to add node list");
+                  exit(1);  
+               }
+               free(xyz);
+            } 
+            else {
+               ERROR_message("Failed in THD_roi_cmass"); exit(1);
+            }
+
+            sprintf(OUT_gdset,"%s_%03d",prefix,k+1);
+            GDSET_netngrlink = 
+               Network_link(SUMA_FnameGet(OUT_gdset, "f",NULL));
+            NI_add_to_group(gset->ngr, GDSET_netngrlink);
+            NAME_gdset = SUMA_WriteDset_ns (OUT_gdset,
+                                         gset, SUMA_ASCII_NIML, 1, 0);
+            if (!NAME_gdset && !SUMA_IS_DSET_STDXXX_FORMAT(SUMA_ASCII_NIML)) { 
+               ERROR_message("Failed to write dataset."); exit(1); 
+            } else {
+               if (NAME_gdset) SUMA_free(NAME_gdset); NAME_gdset = NULL;      
+            }
+            SUMA_FreeDset(gset);
+            gset=NULL;
+
+         }
+         
+      }
+      
 		// in order to threshold the `overall' (`0th') map;
 		// individual ones already have
 		// been above, just by how they were created
@@ -2003,7 +2063,7 @@ int main(int argc, char *argv[]) {
 		i = WriteBasicProbFiles(N_nets, Ndata, Nvox, prefix, 
 										insetFA,TV_switch,voxel_order,
 										NROI, NETROI,mskd,INDEX2,Dim,
-										dsetn,argc,argv);
+										dsetn,argc,argv,ROI_LABELS);
 		if(DUMP_TYPE>=0)
 			i = WriteIndivProbFiles(N_nets,Ndata,Nvox,Prob_grid,
 											prefix,insetFA,
@@ -2015,7 +2075,7 @@ int main(int argc, char *argv[]) {
 		
 	
 
-		//	INFO_message("Brainwide total number of tracts found = %d",Numtract);
+      //INFO_message("Brainwide total number of tracts found = %d",Numtract);
 	}
 	else{
 		INFO_message(" No Tracts Found!!!");
@@ -2046,6 +2106,22 @@ int main(int argc, char *argv[]) {
 	// ************************************************************
 	// ************************************************************
 	
+   for( i=0 ; i<Noutmat ; i++)  free(ParLab[i]);
+   free(ParLab);
+   for ( i = 0 ; i < N_nets ; i++ ) {
+      for (j = 0; j < NROI[i]; ++j) 
+         free(gdset_roi_names[i][j]);
+      free(gdset_roi_names[i]);
+   }
+   free(gdset_roi_names);
+   
+   for ( i = 0 ; i < N_nets ; i++ ) 
+      for ( j = 0 ; j < Noutmat ; j++ ) 
+         free(flat_matr[i][j]);
+   for ( i = 0 ; i < N_nets ; i++ ) 
+      free(flat_matr[i]);
+   free(flat_matr);
+   
 	DSET_delete(insetFA);
 	DSET_delete(insetMD);
 	DSET_delete(insetL1);
@@ -2054,7 +2130,6 @@ int main(int argc, char *argv[]) {
 	DSET_delete(insetV3);
 	DSET_delete(mset1);
   	DSET_delete(insetEXTRA);
-  	DSET_delete(insetNOTMASK);
 
 	free(prefix);
 	free(insetV1);
@@ -2065,7 +2140,6 @@ int main(int argc, char *argv[]) {
   	free(insetMD);
 	free(mset1);
   	free(insetEXTRA);
-  	free(insetNOTMASK);
 
    DSET_delete(MASK);
    free(MASK);

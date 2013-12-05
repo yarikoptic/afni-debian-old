@@ -839,7 +839,7 @@ SUMA_MX_VEC * SUMA_MxVecRand(SUMA_VARTYPE tp, int N_dims, int *dims, SUMA_MX_VEC
          for (i=0; i<vi->N_vals; ++i) mxvd1(vi, i) = (double)rand()/(double)RAND_MAX;
          break; 
       default:
-         SUMA_S_Err("Type not supported");
+         SUMA_S_Err("MxVec Type not supported");
          vi = SUMA_FreeMxVec(vi);
          break;
    }  
@@ -2759,6 +2759,46 @@ int SUMA_iswordin_ci ( const char *sbig, const char *ssub)
    SUMA_RETURN(ans);
    
 } 
+
+int SUMA_wordswap_ci ( const char *sbig, const char *ssub, 
+                       const char *sswap, char *sout)
+{
+   static char FuncName[]={"SUMA_wordswap_ci"};
+   char *sbigc, *ssubc, *sswapc, *sfn=NULL;
+   int ans, i, n, k;
+   
+   SUMA_ENTRY;
+   sbigc = SUMA_copy_string((char *)sbig);
+   ssubc = SUMA_copy_string((char *)ssub);
+   sswapc = SUMA_copy_string((char *)sswap);
+  
+   SUMA_TO_LOWER(sbigc);
+   SUMA_TO_LOWER(ssubc);
+   SUMA_TO_LOWER(sswapc);
+   
+   ans = SUMA_iswordin (sbigc, ssubc);
+   k = 0;
+   if (ans) {
+      sfn = strstr(sbigc, ssubc);
+      i = 0;
+      while (i < (int)(sfn-sbigc)) { sout[k++] = sbigc[i++]; }/* Copy to swap */
+      if (sswapc) {
+         n = 0;
+         while (n < strlen(sswapc)) { sout[k++] = sswapc[n++]; }
+      }
+      i += strlen(ssub);
+      while (i < strlen(sbigc)) { sout[k++] = sbigc[i++]; } /* Copy left over */
+      sout[k] = '\0';
+   }
+   
+   if (sbigc) SUMA_free(sbigc); sbigc = NULL;
+   if (sswapc) SUMA_free(sswapc); sswapc = NULL;
+   if (ssubc) SUMA_free(ssubc); ssubc = NULL;
+   
+   SUMA_RETURN(ans);
+   
+} 
+
 /*!
    \brief case insensitive version of SUMA_iswordsame 
 */
@@ -5688,7 +5728,7 @@ int *SUMA_z_dqsort_nsc (int *x , int nx )
 }/*SUMA_z_dqsort_nsc*/
    
    
-/*--------------------- Matrix Sorting functions Begin -----------------------------------*/
+/*--------------------- Matrix Sorting functions Begin ------------------------*/
    
 typedef struct {
       float *x;
@@ -5743,12 +5783,14 @@ int * SUMA_fqsortrow (float **X , int nr, int nc  )
    SUMA_ENTRY;
 
    /* allocate for the structure */
-   Z_Q_fStrct = (SUMA_QSORTROW_FLOAT *) SUMA_calloc(nr, sizeof (SUMA_QSORTROW_FLOAT));
+   Z_Q_fStrct = (SUMA_QSORTROW_FLOAT *) 
+                  SUMA_calloc(nr, sizeof (SUMA_QSORTROW_FLOAT));
    I = (int *) SUMA_calloc (nr,sizeof(int));
    
    if (!Z_Q_fStrct || !I)
       {
-      fprintf(SUMA_STDERR,"Error %s: Failed to allocate for Z_Q_fStrct || I\n", FuncName);
+      fprintf(SUMA_STDERR,
+              "Error %s: Failed to allocate for Z_Q_fStrct || I\n", FuncName);
       SUMA_RETURN (NULL);
       }
 
@@ -5760,7 +5802,8 @@ int * SUMA_fqsortrow (float **X , int nr, int nc  )
       }
 
    /* sort the structure by comparing the rows in X */
-   qsort(Z_Q_fStrct, nr, sizeof(SUMA_QSORTROW_FLOAT), (int(*) (const void *, const void *)) compare_SUMA_QSORTROW_FLOAT);
+   qsort(Z_Q_fStrct, nr, sizeof(SUMA_QSORTROW_FLOAT), 
+         (int(*) (const void *, const void *)) compare_SUMA_QSORTROW_FLOAT);
 
    /* recover the index table */
    for (k=0; k < nr; ++k) 
@@ -9864,44 +9907,38 @@ float * SUMA_Convexity_Engine (float *NL, int N_N, float *NNL,
 
 char * SUMA_pad_str ( char *str, char pad_val , int pad_ln , int opt)
 {/*SUMA_pad_str*/
-    static char FuncName[]={"SUMA_pad_str"};
-   int lo,i;
-    char *strp , *buf1;
+   static char FuncName[]={"SUMA_pad_str"};
+   int lo,i, nb1;
+   char *strp , *buf1;
 
    SUMA_ENTRY;
 
-    assert (str);
+   assert (str);
 
-    lo = (int)strlen(str);
+   lo = (int)strlen(str);
 
    buf1 = (char *)SUMA_calloc (pad_ln-lo+2,sizeof (char));
    strp = (char *)SUMA_calloc (pad_ln+lo+2,sizeof (char));
 
-   for (i=0;i<pad_ln-lo;++i)
-       {
-          if (i == 0) sprintf (buf1,"%c",pad_val);
-             else sprintf (buf1,"%s%c",buf1,pad_val);
-
-       }
-    if (opt == 0)
+   nb1 = 0;
+   for (i=0;i<pad_ln-lo;++i) {
+      buf1[nb1++]=pad_val;
+   }
+   buf1[nb1] = '\0'; 
+   if (opt == 0)
        sprintf (strp,"%s%s",buf1,str);
-    else if (opt == 1)
-       {
-          sprintf (strp,"%s%s",str,buf1);
+   else if (opt == 1) {
+      sprintf (strp,"%s%s",str,buf1);
+   } else {
+      SUMA_S_Err("Wrong opt paramter, only (0,1) allowed\n");
+      SUMA_free(strp);
+      SUMA_free(buf1);
+      SUMA_RETURN (NULL);
+   }
 
-      }         
-       else 
-          {
-             fprintf (SUMA_STDERR, "Error %s: Wrong opt paramter, only (0,1) allowed\n", FuncName);
-             SUMA_free(strp);
-            SUMA_free(buf1);
-            SUMA_RETURN (NULL);
-          }
+   SUMA_free(buf1);
 
-    SUMA_free(buf1);
-
-    SUMA_RETURN (strp);
-
+   SUMA_RETURN (strp);
 }/*SUMA_pad_str*/
 
 

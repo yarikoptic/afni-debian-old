@@ -2567,7 +2567,8 @@ SUMA_Boolean SUMA_readFSannot (char *f_name,
    
 */
 
-float * SUMA_readFScurv (char *f_name, int *nrows, int *ncols, SUMA_Boolean rowmajor, SUMA_Boolean SkipCoords)   
+float * SUMA_readFScurv (char *f_name, int *nrows, int *ncols, 
+                         SUMA_Boolean rowmajor, SUMA_Boolean SkipCoords)   
 {
    static char FuncName[]={"SUMA_readFScurv"};
    MRI_IMAGE *im = NULL;
@@ -2581,10 +2582,11 @@ float * SUMA_readFScurv (char *f_name, int *nrows, int *ncols, SUMA_Boolean rowm
    
    /* check for existence */
 	if (!SUMA_filexists(f_name)) {
-		fprintf(SUMA_STDERR,"Error %s: File %s does not exist or cannot be read.\n", FuncName, f_name);
+		SUMA_S_Errv("File %s does not exist or cannot be read.\n", f_name);
 		SUMA_RETURN (NULL);
 	}else if (LocalHead) {
-		fprintf(SUMA_STDERR,"%s: File %s exists and will be read.\n", FuncName, f_name);
+		fprintf(SUMA_STDERR,"%s: File %s exists and will be read.\n", 
+              FuncName, f_name);
 	}
    
    if (SkipCoords) *ncols = 2;
@@ -2596,161 +2598,75 @@ float * SUMA_readFScurv (char *f_name, int *nrows, int *ncols, SUMA_Boolean rowm
    }
 
 
-   #if 0
-      /* thought is had the number of nodes at the top ! */
-      /* start reading */
-	   fs_file = fopen (f_name,"r");
-	   if (fs_file == NULL) {
-         SUMA_SL_Err ("Could not open input file");
-         SUMA_RETURN (v);
-	   }
+   /* now load the input data */
+   SUMA_LH("Reading file...");
+   im = mri_read_1D (f_name);
 
-	   /* read first character and check if it is a comment */
-	   ex = fscanf (fs_file,"%c",&c);
-	   if (c == '#') {
-		   if (LocalHead) fprintf (SUMA_STDOUT, "%s: Found comment\n", FuncName); 
+   if (!im) {
+      SUMA_SL_Err("Failed to read 1D file");
+      SUMA_RETURN(NULL);
+   }
 
-         /*skip till next line */
-		   cnt = 0;
-		   while (ex != EOF && c != '\n') {
-			   ex = fscanf (fs_file,"%c",&c);
-			   if (cnt < SUMA_MAX_STRING_LENGTH-2) {
-				   sprintf(comment, "%s%c", comment, c);
-				   ++cnt;
-			   } else {
-				   fprintf(SUMA_STDERR,"Error %s: Too long a comment in curvature file, increase SUMA_MAX_STRING_LENGTH\n", FuncName);
-				   SUMA_RETURN (NOPE);
-			   }
-		   }
-	   }
+   far = MRI_FLOAT_PTR(im);
+   nvec = im->nx;
+   ncol = im->ny;
+   /* data in column major order at this point */
 
+   if (!nvec) {
+      SUMA_SL_Err("Empty file");
+      SUMA_RETURN(NULL);
+   }
 
-	   /* read in the number of nodes */
-	   ex = fscanf(fs_file, "%d", nrows);
+   if (ncol != 5) {
+      SUMA_SL_Err("Must have 5 columns in data file.");
+      mri_free(im); im = NULL;   /* done with that baby */
+      SUMA_RETURN(NULL);
+   }
 
-      if (*nrows <= 0) {
-         SUMA_SL_Crit("Trouble parsing curvature file.\nNull or negative number of nodes\n");
-         SUMA_RETURN(NULL);
-      }
+   *nrows = nvec;
 
-	   if (LocalHead) fprintf (SUMA_STDOUT, "%s: Allocating for data (%dx%d) \n", FuncName, *nrows, *ncols);
+   SUMA_LHv("Allocating for data (%dx%d) \n", *nrows, *ncols);
 
-      v = (float *) SUMA_calloc(*nrows * *ncols, sizeof(float));
-      if (!v) {
-         SUMA_SL_Crit("Failed to allocate for v");
-         SUMA_RETURN(v);
-      }
+   v = (float *) SUMA_calloc(*nrows * *ncols, sizeof(float));
 
-      if (LocalHead) fprintf (SUMA_STDOUT, "%s: Parsing file...\n", FuncName);
+   if (!v) {
+      SUMA_SL_Crit("Failed to allocate for v");
+      SUMA_RETURN(v);
+   }
 
-      if (rowmajor) {
-         cnt = 0;
-	      if (*ncols == 5) {
-            while (ex != EOF && cnt < *nrows) {
-		         id = *ncols * cnt;
-		         ex = fscanf(fs_file, "%f %f %f %f %f", &(v[id]), &(v[id+1]),&(v[id+2]), &(v[id+3]), &(v[id+4]) );
-		         ++cnt;
-	         }
-         } else {
-            while (ex != EOF && cnt < *nrows) {
-		         id = *ncols * cnt;
-		         ex = fscanf(fs_file, "%f %f %f %f %f", &(v[id]), &jnk, &jnk, &jnk, &(v[id+1]) );
-		         ++cnt;
-	         }
-         } 
+   if (LocalHead) fprintf (SUMA_STDOUT, "%s: Parsing file...\n", FuncName);
 
+   if (rowmajor) {
+	   if (*ncols == 5) {
+         SUMA_LH("RowMajor, All Coords");
+         for (i=0; i< *nrows; ++i) {
+            id = *ncols*i;
+            v[id] = far[i];
+            v[id+1] = far[i+*nrows];
+            v[id+2] = far[i+2 * *nrows];
+            v[id+3] = far[i+3 * *nrows];
+            v[id+4] = far[i+4 * *nrows];
+         }   
       } else {
-         cnt = 0;
-	      if (*ncols == 5) {
-            while (ex != EOF && cnt < *nrows) {
-		         ex = fscanf(fs_file, "%f %f %f %f %f", &(v[cnt]), &(v[cnt+ *nrows]),&(v[cnt+ 2 * *nrows]), &(v[cnt+ 3 * *nrows]), &(v[cnt+ 4 * *nrows]));
-		         ++cnt;
-	         }
-         } else if (*nrows == 2) {
-            while (ex != EOF && cnt < *nrows) {
-		         ex = fscanf(fs_file, "%f %f %f %f %f", &(v[cnt]), &jnk, &jnk, &jnk, &(v[cnt+ *nrows]));
-		         ++cnt;
-	         }
-         } else {
-
+         SUMA_LH("RowMajor, Skipping Coords");
+         for (i=0; i< *nrows; ++i) {
+            id = *ncols*i;
+            v[id] = far[i];
+            v[id+1] = far[i+4 * *nrows];
          }
-      }
+      } 
+   } else {
+	   if (*ncols == 5) {
+         SUMA_LH("ColMajor, All Coords");
+         for (i=0; i<*ncols * *nrows; ++i) v[i] = far[i];
+      } else if (*ncols == 2) {
+         SUMA_LH("ColMajor, Skipping Coords");
+         for (i=0; i<*nrows; ++i) v[i] = far[i];
+         for (i=*nrows; i< 2 * *nrows; ++i) v[i] = far[i+3 * *nrows];
+      } 
+   }
+   mri_free(im); im = NULL; far = NULL;
 
-      if (cnt != *nrows) {
-		   fprintf(SUMA_STDERR,"Error %s: Expected %d rows, %d read.\n", FuncName, *nrows, cnt);
-		   SUMA_free(v); v = NULL;
-         SUMA_RETURN (NULL);
-	   }
-   #else 
-      /* now load the input data */
-      SUMA_LH("Reading file...");
-      im = mri_read_1D (f_name);
-
-      if (!im) {
-         SUMA_SL_Err("Failed to read 1D file");
-         SUMA_RETURN(NULL);
-      }
-
-      far = MRI_FLOAT_PTR(im);
-      nvec = im->nx;
-      ncol = im->ny;
-      /* data in column major order at this point */
-
-      if (!nvec) {
-         SUMA_SL_Err("Empty file");
-         SUMA_RETURN(NULL);
-      }
-
-      if (ncol != 5) {
-         SUMA_SL_Err("Must have 5 columns in data file.");
-         mri_free(im); im = NULL;   /* done with that baby */
-         SUMA_RETURN(NULL);
-      }
-      
-      *nrows = nvec;
-      
-      if (LocalHead) fprintf (SUMA_STDOUT, "%s: Allocating for data (%dx%d) \n", FuncName, *nrows, *ncols);
-
-      v = (float *) SUMA_calloc(*nrows * *ncols, sizeof(float));
-      
-      if (!v) {
-         SUMA_SL_Crit("Failed to allocate for v");
-         SUMA_RETURN(v);
-      }
-
-      if (LocalHead) fprintf (SUMA_STDOUT, "%s: Parsing file...\n", FuncName);
-
-      if (rowmajor) {
-	      if (*ncols == 5) {
-            SUMA_LH("RowMajor, All Coords");
-            for (i=0; i< *nrows; ++i) {
-               id = *ncols*i;
-               v[id] = far[i];
-               v[id+1] = far[i+*nrows];
-               v[id+2] = far[i+2 * *nrows];
-               v[id+3] = far[i+3 * *nrows];
-               v[id+4] = far[i+4 * *nrows];
-            }   
-         } else {
-            SUMA_LH("RowMajor, Skipping Coords");
-            for (i=0; i< *nrows; ++i) {
-               id = *ncols*i;
-               v[id] = far[i];
-               v[id+1] = far[i+4 * *nrows];
-            }
-         } 
-      } else {
-	      if (*ncols == 5) {
-            SUMA_LH("ColMajor, All Coords");
-            for (i=0; i<*ncols * *nrows; ++i) v[i] = far[i];
-         } else if (*ncols == 2) {
-            SUMA_LH("ColMajor, Skipping Coords");
-            for (i=0; i<*nrows; ++i) v[i] = far[i];
-            for (i=*nrows; i< 2 * *nrows; ++i) v[i] = far[i+3 * *nrows];
-         } 
-      }
-      mri_free(im); im = NULL; far = NULL;
-   #endif
    SUMA_RETURN(v);
 }
 
@@ -5507,7 +5423,7 @@ SUMA_DRAWN_ROI **SUMA_MultiColumnsToDrawnROI(
          }
          break;
       default:
-         SUMA_S_Err("Bad function input. Have %d cols\n"
+         SUMA_S_Err("Bad function input. Have cols\n"
                       "Accepting only 1, 2, 4, and 5\n");
          break;
    }
@@ -6214,7 +6130,7 @@ SUMA_DSET *SUMA_ROIv2Grpdataset (SUMA_DRAWN_ROI** ROIv, int N_ROIv,
                          N_NodesTotal - N_NodesTotal_u , N_NodesTotal);
 
          N_NodesTotal = N_NodesTotal_u; N_NodesTotal_u = 0;
-         SUMA_SLP_Warn(report);
+         SUMA_SLP_Warn("%s", report);
       }
    }
    
@@ -6821,14 +6737,15 @@ NI_element *SUMA_ROIv2dataset (SUMA_DRAWN_ROI** ROIv, int N_ROIv,
                          N_NodesTotal - N_NodesTotal_u , N_NodesTotal);
 
          N_NodesTotal = N_NodesTotal_u; N_NodesTotal_u = 0;
-         SUMA_SLP_Warn(report);
+         SUMA_SLP_Warn("%s",report);
       }
    }
 
    if (Pad_to > 0) {
       SUMA_LH("Padding to desired length");
       if (Pad_to < MaxIndex) {
-         SUMA_SL_Err("ROI contains node index > padding limit\nNo padding done.");
+         SUMA_SL_Err("ROI contains node index > padding limit\n"
+                     "No padding done.");
          if (NodesTotal) SUMA_free(NodesTotal); NodesTotal = NULL;
          if (LabelsTotal) SUMA_free(LabelsTotal); LabelsTotal = NULL;
          SUMA_RETURN(NULL);
@@ -6938,7 +6855,7 @@ void SUMA_SaveSOascii (char *filename, void *data)
       if (SaveSO_data) SUMA_free(SaveSO_data); SaveSO_data = NULL;
       SUMA_RETURNe;
    }
-   SUMA_LH(newname);
+   SUMA_LH("%s", newname);
    /* check for filename existence */
    if (SUMA_filexists (newname)) {
       answer = SUMA_ForceUser_YesNo (SUMAg_SVv[0].X->TOPLEVEL, 
@@ -6960,7 +6877,7 @@ void SUMA_SaveSOascii (char *filename, void *data)
          if (SaveSO_data) SUMA_free(SaveSO_data); SaveSO_data = NULL;
          SUMA_RETURNe;
       }
-      SUMA_LH(newname);
+      SUMA_LH("%s",newname);
       /* check for filename existence */
       if (SUMA_filexists (newname)) {
          answer = SUMA_ForceUser_YesNo (SUMAg_SVv[0].X->TOPLEVEL, 
@@ -6983,7 +6900,7 @@ void SUMA_SaveSOascii (char *filename, void *data)
          if (SaveSO_data) SUMA_free(SaveSO_data); SaveSO_data = NULL;
          SUMA_RETURNe;
       }
-      SUMA_LH(newname);
+      SUMA_LH("%s", newname);
       /* check for filename existence */
       if (SUMA_filexists (newname)) {
          answer = SUMA_ForceUser_YesNo (SUMAg_SVv[0].X->TOPLEVEL, 
@@ -7003,62 +6920,77 @@ void SUMA_SaveSOascii (char *filename, void *data)
 
    if (newname) SUMA_free(newname);newname = NULL;
    newname = SUMA_Extension(newprefix, ".1D.xyz", NOPE);  
-   if (LocalHead) fprintf (SUMA_STDERR,"%s: Preparing to write .1D.xyz %s.\n", FuncName, newname); 
+   SUMA_LH("Preparing to write .1D.xyz %s.\n", newname); 
    Fout = fopen(newname, "w");
    if (Fout == NULL) {
-      fprintf(SUMA_STDERR, "Error %s: Could not open file %s for writing.\n", FuncName, newname);
+      SUMA_S_Err("Could not open file %s for writing.\n", newname);
       if (SaveSO_data) SUMA_free(SaveSO_data); SaveSO_data = NULL;
       SUMA_RETURNe;
    }
 
-   fprintf(Fout, "#FileContents = Node coordinates\n#RowFormat = X Y Z\n#N_Nodes = %d\n#Source = SUMA, surface %s (idcode: %s)\n",
-          SaveSO_data->SO->N_Node, SaveSO_data->SO->Label, SaveSO_data->SO->idcode_str);
+   fprintf(Fout, "#FileContents = Node coordinates\n"
+                 "#RowFormat = X Y Z\n"
+                 "#N_Nodes = %d\n"
+                 "#Source = SUMA, surface %s (idcode: %s)\n",
+          SaveSO_data->SO->N_Node, 
+          SaveSO_data->SO->Label, SaveSO_data->SO->idcode_str);
    for (ii=0; ii < SaveSO_data->SO->N_Node; ++ii) {
       id = ND * ii;
-      fprintf(Fout, "%f\t%f\t%f\n", \
-         SaveSO_data->SO->NodeList[id], SaveSO_data->SO->NodeList[id+1],SaveSO_data->SO->NodeList[id+2]);
+      fprintf(Fout, "%f\t%f\t%f\n",
+         SaveSO_data->SO->NodeList[id], 
+         SaveSO_data->SO->NodeList[id+1],SaveSO_data->SO->NodeList[id+2]);
    }
    fclose (Fout);
 
    if (newname) SUMA_free(newname);newname = NULL;
    newname = SUMA_Extension(newprefix, ".1D.tri", NOPE);  
-   if (LocalHead) fprintf (SUMA_STDERR,"%s: Preparing to write .1D.tri %s.\n", FuncName, newname); 
+   SUMA_LH("Preparing to write .1D.tri %s.\n", newname); 
    Fout = fopen(newname, "w");
    if (Fout == NULL) {
-      fprintf(SUMA_STDERR, "Error %s: Could not open file %s for writing.\n", FuncName, newname);
+      SUMA_S_Err("Could not open file %s for writing.\n", newname);
       if (SaveSO_data) SUMA_free(SaveSO_data); SaveSO_data = NULL;
       SUMA_RETURNe;
    }
    
-   fprintf(Fout, "#FileContents = Triangles\n#RowFormat = n1 n2 n3\n#N_Tri = %d\n#Source = SUMA, surface %s (idcode: %s)\n",
-          SaveSO_data->SO->N_FaceSet, SaveSO_data->SO->Label, SaveSO_data->SO->idcode_str);
+   fprintf(Fout, "#FileContents = Triangles\n"
+                 "#RowFormat = n1 n2 n3\n"
+                 "#N_Tri = %d\n"
+                 "#Source = SUMA, surface %s (idcode: %s)\n",
+          SaveSO_data->SO->N_FaceSet, SaveSO_data->SO->Label, 
+          SaveSO_data->SO->idcode_str);
    for (ii=0; ii < SaveSO_data->SO->N_FaceSet; ++ii) {
       ip = NP * ii;
-      fprintf(Fout, "%d\t%d\t%d\n", \
-         SaveSO_data->SO->FaceSetList[ip], SaveSO_data->SO->FaceSetList[ip+1],SaveSO_data->SO->FaceSetList[ip+2]);
+      fprintf(Fout, "%d\t%d\t%d\n",
+         SaveSO_data->SO->FaceSetList[ip], 
+         SaveSO_data->SO->FaceSetList[ip+1],SaveSO_data->SO->FaceSetList[ip+2]);
    }
    fclose (Fout);
 
    if (newname) SUMA_free(newname);newname = NULL;
    newname = SUMA_Extension(newprefix, ".1D.col", NOPE);  
-   if (LocalHead) fprintf (SUMA_STDERR,"%s: Preparing to write .1D.col %s.\n", FuncName, newname); 
+   SUMA_LH("Preparing to write .1D.col %s.\n", newname); 
    Fout = fopen(newname, "w");
    if (Fout == NULL) {
-      fprintf(SUMA_STDERR, "Error %s: Could not open file %s for writing.\n", FuncName, newname);
+      SUMA_S_Err("Could not open file %s for writing.\n", newname);
       if (SaveSO_data) SUMA_free(SaveSO_data); SaveSO_data = NULL;
       SUMA_RETURNe;
    }
-    glar_ColorList = SUMA_GetColorList (SaveSO_data->sv, SaveSO_data->SO->idcode_str);
+    glar_ColorList = 
+      SUMA_GetColorList (SaveSO_data->sv, SaveSO_data->SO->idcode_str);
     if (!glar_ColorList) {
       fprintf(SUMA_STDERR, "Error %s: NULL glar_ColorList. BAD.\n", FuncName);
       if (SaveSO_data) SUMA_free(SaveSO_data); SaveSO_data = NULL;
       SUMA_RETURNe;
     }
-   fprintf(Fout, "#FileContents = Node Colors\n#RowFormat = n R G B\n#N_Nodes = %d\n#Source = SUMA, surface %s (idcode: %s)\n",
-          SaveSO_data->SO->N_Node, SaveSO_data->SO->Label, SaveSO_data->SO->idcode_str);
+   fprintf(Fout, "#FileContents = Node Colors\n"
+                 "#RowFormat = n R G B\n"
+                 "#N_Nodes = %d\n"
+                 "#Source = SUMA, surface %s (idcode: %s)\n",
+          SaveSO_data->SO->N_Node, SaveSO_data->SO->Label, 
+          SaveSO_data->SO->idcode_str);
    for (ii=0; ii < SaveSO_data->SO->N_Node; ++ii) {
       ip = 4 * ii;
-      fprintf(Fout, "%d\t%f\t%f\t%f\n", \
+      fprintf(Fout, "%d\t%f\t%f\t%f\n",
          ii, glar_ColorList[ip], glar_ColorList[ip+1], glar_ColorList[ip+2]);
    }
    fclose (Fout);
@@ -7192,7 +7124,7 @@ SUMA_Boolean SUMA_SaveDrawnROI_1D (char *filename, SUMA_SurfaceObject *SO,
    if (SaveWhat == SW_DrawROI_SaveWhatThis) {
       if (!SUMA_Write_DrawnROI_1D (&DrawnROI, 1, filename)) {
          sprintf(stmp,"Failed to write %s", filename);
-         SUMA_SLP_Err(stmp);
+         SUMA_SLP_Err("%s",stmp);
          SUMA_RETURN(NOPE);
       }
    }else if (SaveWhat == SW_DrawROI_SaveWhatRelated){
@@ -7204,7 +7136,7 @@ SUMA_Boolean SUMA_SaveDrawnROI_1D (char *filename, SUMA_SurfaceObject *SO,
       }
       if (!SUMA_Write_DrawnROI_1D (ROIv, N_ROI, filename)) {
          sprintf(stmp,"Failed to write %s", filename);
-         SUMA_SLP_Err(stmp);
+         SUMA_SLP_Err("%s",stmp);
          SUMA_RETURN(NOPE);
       }
         
@@ -7235,7 +7167,7 @@ SUMA_Boolean SUMA_SaveDrawnROINIML (char *filename, SUMA_SurfaceObject *SO,
    if (SaveWhat == SW_DrawROI_SaveWhatThis) {
       if (!SUMA_Write_DrawnROI_NIML (&DrawnROI, 1, filename, Format)) {
          sprintf(stmp,"Failed to write %s", filename);
-         SUMA_SLP_Err(stmp);
+         SUMA_SLP_Err("%s",stmp);
          SUMA_RETURN(NOPE);
       }
    }else if (SaveWhat == SW_DrawROI_SaveWhatRelated){
@@ -7247,7 +7179,7 @@ SUMA_Boolean SUMA_SaveDrawnROINIML (char *filename, SUMA_SurfaceObject *SO,
       }
       if (!SUMA_Write_DrawnROI_NIML (ROIv, N_ROI, filename, Format)) {
          sprintf(stmp,"Failed to write %s", filename);
-         SUMA_SLP_Err(stmp);
+         SUMA_SLP_Err("%s",stmp);
          SUMA_RETURN(NOPE);
       }
         
@@ -7301,7 +7233,7 @@ SUMA_Boolean SUMA_Write_DrawnROI_NIML (SUMA_DRAWN_ROI **ROIv, int N_ROI,
 
    sprintf(stmp,"file:%s", filename);
    newname = SUMA_Extension(stmp, ".niml.roi", NOPE); 
-   SUMA_LH(newname);
+   SUMA_LH("%s",newname);
    ns = NI_stream_open( newname , "w" ) ;
 
    /* write the various ROIs */
@@ -7591,7 +7523,7 @@ SUMA_Boolean SUMA_Write_DrawnROI_1D (SUMA_DRAWN_ROI **ROIv, int N_ROI,
       SUMA_RETURN(NOPE);
    }
    
-   SUMA_LH(newname);
+   SUMA_LH("%s",newname);
 
    fout = fopen(newname,"w");
    if (!fout) {

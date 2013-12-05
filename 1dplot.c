@@ -91,6 +91,16 @@ void usage_1dplot(int detail)
      "               overall plot size.  The standard box size is 0.006.\n"
      "               Example with a bigger box:\n"
      "                 1dplot -DAFNI_1DPLOT_BOXSIZE=0.01 -box A.1D\n"
+     "             * The box shapes are different for different time\n"
+     "               series columns.  At present, there is no way to\n"
+     "               control which shape is used for what column\n"
+     "               (unless you modify the source code, that is).\n"
+     "             * You can set environment variable AFNI_1DPLOT_RANBOX\n"
+     "               to YES to get the '-noline' boxes plotted in a\n"
+     "               pseudo-random order, so that one particular color\n"
+     "               doesn't dominate just because it is last in the\n"
+     "               plotting order; for example:\n"
+     "        1dplot -DAFNI_1DPLOT_RANBOX=YES -one -x X.1D -noline Y1.1D Y2.1D Y3.1D\n"
      "\n"
      "           ** The '-norm' options below can be useful for\n"
      "               plotting data with different value ranges on\n"
@@ -112,6 +122,27 @@ void usage_1dplot(int detail)
      "            ** '-x' will override -dx and -xzero; -xaxis still works\n"
      "\n"
      " -xl10 X.1D = Use log10(X.1D) as the X axis.\n"
+     "\n"
+     " -xmulti X1.1D X2.1D ...\n"
+     "              This new [Oct 2013] option allows you to plot different\n"
+     "              columns from the data with different values along the\n"
+     "              x-axis.  You can supply one or more 1D files after the\n"
+     "              '-xmulti' option.  The columns from these files are\n"
+     "              catenated, and then the first xmulti column is used as\n"
+     "              as x-axis values for the first data column plotted, the\n"
+     "              second xmulti column gives the x-axis values for the\n"
+     "              second data column plotted, and so on.\n"
+     "           ** The command line arguments after '-xmulti' are taken\n"
+     "              as 1D filenames to read, until an argument starts with\n"
+     "              a '-' character -- this would either be another option,\n"
+     "              or just a single '-' to separate the xmulti 1D files\n"
+     "              from the data files to be plotted.\n"
+     "           ** If you don't provide enough xmulti columns for all the\n"
+     "              data files, the last xmulti column will be re-used.\n"
+     "           ** Useless but fun example:\n"
+     "               1deval -num 100 -expr '(i-i)+z+gran(0,6)' > X1.1D\n"
+     "               1deval -num 100 -expr '(i-i)+z+gran(0,6)' > X2.1D\n"
+     "               1dplot -one -box -xmulti X1.1D X2.1D - X2.1D X1.1D\n"
      "\n"
      " -dx xx     = Spacing between points on the x-axis is 'xx'\n"
      "                [default = 1] SYNONYMS: '-dt' and '-del'\n"
@@ -189,6 +220,9 @@ void usage_1dplot(int detail)
      "                   time series in distinct ways inside 1dplot).\n"
      "                 * '-ytran' is applied BEFORE the various '-norm' options.\n"
      "\n"
+     " -xtran 'expr'    = Similar, but for the x-axis.\n"
+     "                  ** Applies to '-xmulti' , '-x' , or the default x-axis.\n"
+     "\n"
      " -xaxis b:t:n:m  = Set the x-axis to run from value 'b' to\n"
      "                   value 't', with 'n' major divisions and\n"
      "                   'm' minor tic marks per major division.\n"
@@ -228,6 +262,13 @@ void usage_1dplot(int detail)
      "                   thickness used for plotting a little larger.\n"
      "                   [An alternative to using '-DAFNI_1DPLOT_THIK=...']\n"
      " -THICK          = Twice the power of '-thick' at no extra cost!!\n"
+     "\n"
+     " -dashed codes   = Plot dashed lines between data points.  The 'codes'\n"
+     "                   are a colon-separated list of dash values, which\n"
+     "                   can be 1 (solid), 2 (longer dashes), or 3 (shorter dashes).\n"
+     "                ** Example: '-dashed 1:2:3' means to plot the first time\n"
+     "                   series with solid lines, the second with long dashes,\n"
+     "                   and the third with short dashes.\n"
      "\n"
      " -Dname=val      = Set environment variable 'name' to 'val'\n"
      "                   for this run of the program only:\n"
@@ -414,6 +455,7 @@ int main( int argc , char *argv[] )
    int skip_x11=0 , imsave=0 ; char *imfile=NULL ;
    int do_norm=0 ;   /* 26 Mar 2008 */
    char *ytran=NULL; /* 16 Jun 2009 */
+   char *xtran=NULL; /* 23 Oct 2013 */
    char autotitle[512]={""}; /* 23 March 2009 */
    float tsbox=0.0f , boxsiz ; int noline=0 ;
 
@@ -438,6 +480,7 @@ int main( int argc , char *argv[] )
      if( strcasecmp(argv[ii],"-help") == 0 ){ skip_x11 = 1; break; }
    }
    if( argc == 1 ) skip_x11 = 1 ;  /* this is because Ziad is trouble */
+   /** set_opacity_memplot( 0.666f ) ; **/
 
    if( !skip_x11 ){
      for( ii=1 ; ii < argc ; ii++ ){
@@ -536,6 +579,10 @@ int main( int argc , char *argv[] )
        ytran = strdup(argv[++iarg]) ; iarg++ ; continue ;
      }
 
+     if( strcmp(argv[iarg],"-xtran") == 0 ){   /* 23 Oct 2013 */
+       xtran = strdup(argv[++iarg]) ; iarg++ ; continue ;
+     }
+
      if( strcmp(argv[iarg],"-nopush") == 0 ){  /* 12 Mar 2003 */
        plot_ts_xypush( 0 , 0 ) ;
        iarg++ ; continue ;
@@ -627,6 +674,37 @@ int main( int argc , char *argv[] )
         /* 23 Aug 2006: skip next arg if it is "-" */
         if( iarg < argc && strcmp(argv[iarg],"-") == 0 ) iarg++ ;
         continue ;
+     }
+
+     if( strcmp(argv[iarg],"-xmulti") == 0 || strcmp(argv[iarg],"-multix") == 0 ){  /* 21 Oct 2013 */
+        MRI_IMAGE *qim ; float *qar ; int qq ;
+        if( iarg == argc-1 ) ERROR_exit("need argument after option %s",argv[iarg]) ;
+        while( ++iarg < argc && argv[iarg][0] != '-' ){
+          qim = mri_read_1D( argv[iarg] ) ;
+          if( qim == NULL || qim->nx < 2 )
+            ERROR_exit("can't read -xmulti file '%s'",argv[iarg]) ;
+          qar = MRI_FLOAT_PTR(qim) ;
+          for( qq=0 ; qq < qim->ny ; qq++ )
+            plot_ts_add_sepx( qim->nx , qar + qq*qim->nx ) ;
+          mri_free(qim) ;
+        }
+        if( iarg < argc && strcmp(argv[iarg],"-") == 0 ) iarg++ ;
+        continue ;
+     }
+
+     if( strcmp(argv[iarg],"-dashed") == 0 || strcmp(argv[iarg],"-dash") == 0 ){
+       int ddd[99] ; int ii , nd=0 ;
+       if( ++iarg < argc && isdigit(argv[iarg][0]) ){
+         char *cpt , *dpt=argv[iarg] ;
+         while(1){
+           ddd[nd] = (int)strtod(dpt,&cpt) ; nd++ ;
+           if( *cpt != '\0' ) dpt = cpt+1 ; else break ;
+         }
+         iarg++ ;
+       } else {
+         nd = 99 ; for( ii=0 ; ii < 99 ; ii++ ) ddd[ii] = 2 ;
+       }
+       plot_ts_setdash(nd,ddd) ; continue ;
      }
 
      if( strcmp(argv[iarg],"-volreg") == 0 ){
@@ -1211,6 +1289,14 @@ int main( int argc , char *argv[] )
         for( ii=0 ; ii < nx ; ii++ ) xar[ii] = log10(fabs(xar[ii])) ;
    }
 
+   if( xtran != NULL ){
+     int ss , ns , *ls ; float **sx ;
+     ss = PARSER_1dtran( xtran , nx , xar[ii] ) ;
+     if( ss <= 0 ) ERROR_exit("Can't evaluate -xtran expression '%s'",xtran) ;
+     plot_ts_fetch_sepx( &ns , &ls , &sx ) ;
+     for( ss=0 ; ss < ns ; ss++ ) PARSER_1dtran( xtran , ls[ss] , sx[ss] ) ;
+   }
+
    plot_ts_dobox(tsbox) ; plot_ts_noline(noline) ; /* 23 May 2011 */
 
    /*--- start X11 ---*/
@@ -1229,6 +1315,8 @@ int main( int argc , char *argv[] )
    { MEM_plotdata *mp ;
      int ymask = (sep) ? TSP_SEPARATE_YBOX : 0 ;
      if (sepscl) ymask = ymask | TSP_SEPARATE_YSCALE;
+
+     /* mri_draw_opacity(0.666f) ; */
 
      mp = plot_ts_mem( nx,xar , nts,ymask,yar ,
                        xlabel , ylabel , title , yname ) ;

@@ -6,7 +6,7 @@
 	threshold to make GM-ROIs; then that latter and make into ROIs for
 	tractography (most likely prob. tractography to define WM-ROIs)
 
-	Inflation/detection for voxels sharing face/edge, but not only
+	Inflation/detection for voxels sharing face/edge, but not for only
 	vertex.
 
 	Dec. 2012: 
@@ -16,6 +16,9 @@
 
 	Jan. 2013:
 	     csf_skel option
+
+   Sept. 2013:
+        allow negative ROIs to be used in refset
 */
 
 
@@ -27,6 +30,7 @@
 #include <mrilib.h>    
 #include <rsfc.h>    
 #include <3ddata.h>    
+#include <gsl/gsl_rng.h>
 #include "DoTrackit.h"
 
 #define DEP (1)              // search rad of defining ROIs
@@ -37,7 +41,8 @@ void usage_ROIMaker(int detail)
 {
 	printf(
 "\n"
-"  ROIMaker, written by PA Taylor (Nov, 2012).\n\n"
+"  ROIMaker, written by PA Taylor (Nov, 2012), part of FATCAT (Taylor & Saad,\n"
+"  2013) in AFNI.\n\n"
 "  THE GENERAL PURPOSE of this code is to create a labelled set of ROIs from\n"
 "  input data. It was predominantly written with a view of aiding the process\n"
 "  of combining functional and tractographic/structural data. Thus, one might\n"
@@ -87,7 +92,9 @@ void usage_ROIMaker(int detail)
 "                       with multiple REFSET ROIs, then the former is split\n"
 "                       amongst the latter-- overlap regions get labelled \n"
 "                       first, and then REFSET labels grow to cover the INSET\n"
-"                       ROI in question.\n"
+"                       ROI in question.  NB: it is possible to utilize\n"
+"                       negative-valued ROIs (voxels =-1) to represent NOT-\n"
+"                       regions for tracking, for example.\n"
 "     -volthr   MINVOL :integer number representing minimum size a cluster of\n"
 "                       voxels must have in order to remain a GM ROI after \n"
 "                       the values have been thresholded.  Number might be\n"
@@ -128,18 +135,23 @@ void usage_ROIMaker(int detail)
 "                       It's also useful to ensure that the output *_GMI*\n"
 "                       ROI masks stay within the brain-- this probably won't\n"
 "                       often matter too much.\n"
+"                       For an N-brick inset, one can input an N- or 1-brick\n"
+"                       mask.\n"
 "\n"
 "  + EXAMPLE:\n"
 "      3dROIMaker -inset CORR_VALUES+orig. -thresh 0.6 -prefix ROI_MAP \\\n"
 "            -volthr 100 -inflate 2 -wm_skel WM_T1+orig. -skel_stop .\n"
 "\n"
-"\n");
+"  If you use this program, please reference the introductory/description\n"
+"  paper for the FATCAT toolbox:\n"
+"    Taylor PA, Saad ZS (2013). FATCAT: (An Efficient) Functional And\n"
+"    Tractographic Connectivity Analysis Toolbox. Brain Connectivity.\n\n");
 	return;
 }
 
 
 int main(int argc, char *argv[]) {
-	int i,j,k,m,ii,jj,kk,mm,bb,n;
+	int i,j,k,m,ii,jj,kk,mm,bb,n,aaa;
 	int X,Y,Z;
 	int iarg=0;
 	THD_3dim_dataset *inset=NULL;
@@ -198,6 +210,10 @@ int main(int argc, char *argv[]) {
 	int *NROI_GM=NULL,*INVROI_GM=NULL;
 	int ***COUNT_GM=NULL;
 
+   int *RESCALES=NULL; // will be used if negative values in refset mask
+   short int **temp_ref=NULL; // for holding rescaled values
+   THD_3dim_dataset *set_REFSCAL=NULL;
+   float dum1[1]={0},dum2[1]={0};
 
 	mainENTRY("3dROIMaker"); machdep(); 
   
@@ -207,7 +223,7 @@ int main(int argc, char *argv[]) {
 	// ****************************************************************
 	// ****************************************************************
 
-	//INFO_message("version: NU");
+	//INFO_message("version: OMICRON");
 	Dim = (int *)calloc(4,sizeof(int));
 
 	// scan args
@@ -355,7 +371,7 @@ int main(int argc, char *argv[]) {
 		if( strcmp(argv[iarg],"-mask") == 0 ){
 			iarg++ ; if( iarg >= argc ) 
 							ERROR_exit("Need argument after '-mask'");
-			HAVE_MASK=1;
+			// HAVE_MASK=1;
 
 			sprintf(in_mask,"%s", argv[iarg]); 
 			MASK = THD_open_dataset(in_mask) ;
@@ -363,7 +379,8 @@ int main(int argc, char *argv[]) {
 				ERROR_exit("Can't open time series dataset '%s'.",in_mask);
 
 			DSET_load(MASK); CHECK_LOAD_ERROR(MASK);
-			
+			HAVE_MASK = DSET_NVALS(MASK);
+
 			iarg++ ; continue ;
 		}
 
@@ -390,6 +407,26 @@ int main(int argc, char *argv[]) {
 			 voxel_order[2] != ORIENT_typestr[insetREF->daxes->zzorient][0] )
 			ERROR_exit("Refset orientation is not %s like the inset.",voxel_order);
 	}
+
+   if(HAVE_MASK) {
+		if((Dim[0] != DSET_NX(MASK)) || (Dim[1] != DSET_NY(MASK)) ||
+			(Dim[2] != DSET_NZ(MASK)) )
+			ERROR_exit("The xyz-dimensions of mask and inset don't match");
+		
+		if( Dim[3] == HAVE_MASK )
+			INFO_message("Each subrik of mask will be applied to corresponding inset brik.");
+      else if( HAVE_MASK == 1)
+         INFO_message("Will apply single mask to the multiple inset briks.");
+		else
+			ERROR_exit("The number of mask briks must be either one or match the number of  inset briks.  Here: here, mask=%d, inset=%d",HAVE_MASK,Dim[3]);
+
+		if( voxel_order[0] != ORIENT_typestr[MASK->daxes->xxorient][0] ||
+			 voxel_order[1] != ORIENT_typestr[MASK->daxes->yyorient][0] ||
+			 voxel_order[2] != ORIENT_typestr[MASK->daxes->zzorient][0] )
+			ERROR_exit("Mask orientation is not %s like the inset.",voxel_order);
+	}
+
+
 	
 	if(HAVESKEL) {
 		if((Dim[0] != DSET_NX(insetSKEL)) || (Dim[1] != DSET_NY(insetSKEL)) ||
@@ -511,13 +548,17 @@ int main(int argc, char *argv[]) {
 
 	// STEP 1: go through brik by brik to apply thresholding -> prod bin mask
 	for( m=0 ; m< Dim[3] ; m++ ) {
+      if( HAVE_MASK>1 ) // allow multiple mask briks
+         aaa = m;
+      else
+         aaa = 0;
 		idx = 0;
 		// should preserve relative ordering of data
 		for( k=0 ; k<Dim[2] ; k++ ) 
 			for( j=0 ; j<Dim[1] ; j++ ) 
 				for( i=0 ; i<Dim[0] ; i++ ) {
 					if( (HAVE_MASK==0) || 
-						 (HAVE_MASK && ( THD_get_voxel(MASK,idx,0)>0 ) ) )
+						 (HAVE_MASK && ( THD_get_voxel(MASK,idx,aaa)>0 ) ) )
 						if( THD_get_voxel(inset,idx,m) > THR  ) 
 							if( !TRIM_OFF_WM || (TRIM_OFF_WM && !SKEL[i][j][k]) )
 								if( !HAVE_CSFSKEL 
@@ -553,9 +594,13 @@ int main(int argc, char *argv[]) {
 	ROI_LABELS_pre = calloc( Dim[3],sizeof(ROI_LABELS_pre));  
 	for(i=0 ; i<Dim[3] ; i++) 
 		ROI_LABELS_pre[i] = calloc(2*N_thr[i],sizeof(int));
+   // always make, for ease of code use later; if no refset given, it
+   // just stays as 0s.  By definition, if HAVEREF>0, then HAVEREF==Dim[3],
+   // so this definition works
+   RESCALES = (int *)calloc(Dim[3], sizeof(int)); 
 
-	if( (list1 == NULL) || (ROI_LABELS_pre == NULL)
-		 ) { 
+	if( (list1 == NULL) || (ROI_LABELS_pre == NULL) 
+		 || (RESCALES == NULL) ) { 
 		fprintf(stderr, "\n\n MemAlloc failure.\n\n");
 		exit(15);
 	}		
@@ -641,14 +686,61 @@ int main(int argc, char *argv[]) {
 		NROI_REF = (int *)calloc(HAVEREF, sizeof(int)); 
 		NROI_REF_b = (int *)calloc(HAVEREF, sizeof(int)); // for counting
 		INVROI_REF = (int *)calloc(HAVEREF, sizeof(int)); 
+      temp_ref = calloc( HAVEREF,sizeof(temp_ref));  // XYZ components
+      for(i=0 ; i<HAVEREF ; i++) 
+         temp_ref[i] = calloc( Nvox,sizeof(short int) ); 
+
 		if( (NROI_REF == NULL) || (NROI_REF == NULL) || (NROI_REF_b == NULL) 
-			 ) {
+			 || (temp_ref == NULL) ) {
 			fprintf(stderr, "\n\n MemAlloc failure.\n\n");
 			exit(122);
 		}
 		
+      // NEW: allow for having `antimask'/negative/NOT-ROIs by simple
+      // rescaling up of REFSET values, if there's a negative present;
+      // then do normal labelling, and then rescale down again.
+		for( i=0 ; i<HAVEREF ; i++) {
+         THD_subbrick_minmax(insetREF, i, 1,&dum1[0], &dum2[0]);
+         if( dum1[0]<0 )//??inset-->fixed
+            RESCALES[i] = 1 - ((int) dum1[0]);
+         //printf("\n%d\t%d --> refscal=%d",(int) dum1[0], 
+         //       (int) dum2[0], RESCALES[i]);
+      }
+
+      // rescale values as necessary
+      for( m=0 ; m<Dim[3] ; m++ ) {
+			idx=0;
+			for( k=0 ; k<Dim[2] ; k++ ) 
+				for( j=0 ; j<Dim[1] ; j++ ) 
+					for( i=0 ; i<Dim[0] ; i++ ) {
+						if( THD_get_voxel(insetREF,idx,m)>0.5 ||
+                      THD_get_voxel(insetREF,idx,m)<-0.5 ) {
+                     temp_ref[m][idx] = (short int) 
+                        THD_get_voxel(insetREF,idx,m);
+                     if( RESCALES[m] )
+                        temp_ref[m][idx]+= RESCALES[m];
+                  }
+                  idx++;
+               }
+      }
+      set_REFSCAL = EDIT_empty_copy( insetREF ) ; 
+      EDIT_dset_items(set_REFSCAL,
+							 ADN_datum_all , MRI_short , 
+							 ADN_none ) ;
+
+      for( m=0 ; m<Dim[3] ; m++ ) {
+         EDIT_substitute_brick(set_REFSCAL, m, MRI_short, temp_ref[m]);
+         temp_ref[m]=NULL; // to not get into trouble...
+      }
+      free(temp_ref);
+
+      for( i=0 ; i<HAVEREF ; i++) {
+         THD_subbrick_minmax(set_REFSCAL, i, 1,&dum1[0], &dum2[0]);
+         //printf("\nREFSCAL[%d] %d\t%d",i,(int) dum1[0],(int) dum2[0]);
+      }
+      
 		for( i=0 ; i<HAVEREF ; i++) 
-			INVROI_REF[i] = (int) THD_subbrick_max(insetREF, i, 1);//??inset-->fixed
+			INVROI_REF[i] = (int) THD_subbrick_max(set_REFSCAL, i, 1);//??inset-->fixed
 		
 		ROI_LABELS_REF = calloc( HAVEREF,sizeof(ROI_LABELS_REF));  
 		for(i=0 ; i<HAVEREF ; i++) 
@@ -663,7 +755,7 @@ int main(int argc, char *argv[]) {
 		
 		// Step 3A-2: find out the labels in the ref, organize them
 		//            both backwards and forwards.
-		bb = ViveLeRoi(insetREF, 
+		bb = ViveLeRoi(set_REFSCAL,
 							ROI_LABELS_REF, INV_LABELS_REF, 
 							NROI_REF,       INVROI_REF);
 		if( bb != 1)
@@ -708,10 +800,10 @@ int main(int argc, char *argv[]) {
 			for( k=0 ; k<Dim[2] ; k++ ) 
 				for( j=0 ; j<Dim[1] ; j++ ) 
 					for( i=0 ; i<Dim[0] ; i++ ) {
-						if( THD_get_voxel(insetREF,idx,m)>0 ) {
+						if( THD_get_voxel(set_REFSCAL,idx,m)>0 ) {
 							// for ease/shortcut, define X, the compact form of
 							// the refROI label index, and Y, the inset ROI smallval
-							X = INV_LABELS_REF[m][(int) THD_get_voxel(insetREF,idx,m)];
+							X = INV_LABELS_REF[m][(int) THD_get_voxel(set_REFSCAL,idx,m)];
 							N_refvox_R[m][X]+=1;
 							if( DATA[i][j][k][m]>0 ) {
 								Y = DATA[i][j][k][m] - N_thr[m];
@@ -814,8 +906,8 @@ int main(int argc, char *argv[]) {
 									relab_vox[m]++;
 								}
 								else if( (OLAP_RI[m][ii][Y][1]==4) &&
-											(THD_get_voxel(insetREF,idx,m)>0) ) {// relabel
-									DATA[i][j][k][m] = THD_get_voxel(insetREF,idx,m);
+											(THD_get_voxel(set_REFSCAL,idx,m)>0) ) {// relabel
+									DATA[i][j][k][m] = THD_get_voxel(set_REFSCAL,idx,m);
 									relab_vox[m]++;
 									break;
 								}
@@ -927,7 +1019,8 @@ int main(int argc, char *argv[]) {
 		for( k=0 ; k<Dim[2] ; k++ ) 
 			for( j=0 ; j<Dim[1] ; j++ ) 
 				for( i=0 ; i<Dim[0] ; i++ ) {
-					temp_arr[m][idx] = DATA[i][j][k][m];
+               if( DATA[i][j][k][m] )// account for neg values rescaled
+                  temp_arr[m][idx] = DATA[i][j][k][m]-RESCALES[m];
 					idx+=1;
 				}
 		EDIT_substitute_brick(outsetGM, m, MRI_short, temp_arr[m]); 
@@ -1029,9 +1122,13 @@ int main(int argc, char *argv[]) {
 													(0 <= j+jj) && (j+jj < Dim[1]) && 
 													(0 <= k+kk) && (k+kk < Dim[2])) {
 													idx = THREE_TO_IJK(i+ii,j+jj,k+kk,Dim[0],Dim[0]*Dim[1]);
+                                       if( HAVE_MASK>1 )
+                                          aaa = m;
+                                       else
+                                          aaa = 0;
 													if( (HAVE_MASK==0) || 
 														 (HAVE_MASK && 
-														  ( THD_get_voxel(MASK,idx,0)>0 ) ) ) {
+														  ( THD_get_voxel(MASK,idx,aaa)>0 ) ) ) {
 														
 														// grow if ngb=0; give temp value
 														// of -[value it will have]
@@ -1091,7 +1188,8 @@ int main(int argc, char *argv[]) {
 		for( k=0 ; k<Dim[2] ; k++ ) 
 			for( j=0 ; j<Dim[1] ; j++ ) 
 				for( i=0 ; i<Dim[0] ; i++ ) {
-					temp_arr2[m][idx] = DATA[i][j][k][m];
+               if( DATA[i][j][k][m] )
+                  temp_arr2[m][idx] = DATA[i][j][k][m]-RESCALES[m];
 					idx+=1;
 				}
 		EDIT_substitute_brick(outsetGMI, m, MRI_short, temp_arr2[m]); 
@@ -1172,8 +1270,12 @@ int main(int argc, char *argv[]) {
 		free(NROI_REF_b);
 		free(INVROI_REF);
 		free(EXTRA_LAB);
+      
+      free(set_REFSCAL);
+      DSET_delete(set_REFSCAL);
 	}
-	
+	free(RESCALES);
+
 	for( i=0 ; i<Dim[3] ; i++) {
 		for ( j = 0 ; j<NROI_GM[i]+1 ; j++ ) 
 			free(COUNT_GM[i][j]);

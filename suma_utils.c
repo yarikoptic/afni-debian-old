@@ -1855,11 +1855,11 @@ int SUMA_filexists (char *f_name)
    
    SUMA_ENTRY;
 
-    outfile = fopen (f_name,"r");
+   outfile = fopen (f_name,"r");
+   /*fprintf(stderr,"%s %p\n", f_name, outfile);*/
    if (outfile == NULL) {
        SUMA_RETURN(0); 
-   }
-    else {
+   } else {
        fclose (outfile); 
    }
     
@@ -1882,14 +1882,17 @@ int SUMA_search_file(char **fnamep, char *epath)
    SUMA_PARSED_NAME *pn = NULL;
    char dname[THD_MAX_NAME], ename[THD_MAX_NAME], *elocal=NULL, *af=NULL;
    int epos=0, ll=0, ii=0, id = 0, imode=1;
+   SUMA_Boolean LocalHead = NOPE;
    
    SUMA_ENTRY;
    
    /* does it exist? */
    if ( SUMA_filexists(*fnamep) ) {
+      SUMA_LH("Found file %s as named", *fnamep);
       SUMA_RETURN(1); /* all is well */
    }
    
+   SUMA_LH("Searching for variations on %s", *fnamep);
    #if defined SUMA_COMPILED
    /* else, the hard work, first check with cwd options 
    for suma programs*/
@@ -2238,7 +2241,7 @@ int SUMA_NumStringUnits (char *s, int marktip)
    }
  
    /* now look for unit string */
-   SUMA_LH((s+nd));
+   SUMA_LH("%s",(s+nd));
    unt = SUMA_NO_NUM_UNITS;
    if (0) ; /* order of following else ifs matters */
    else if (!strncmp((s+nd), "mm", 2)) 
@@ -2256,6 +2259,7 @@ int SUMA_strtod(char *n, double *valp)
    char *stp=NULL;
    SUMA_Boolean LocalHead = NOPE;
    
+   SUMA_ENTRY;
    if (!n || !valp) SUMA_RETURN(0);
    
    errno = 0;
@@ -2714,7 +2718,7 @@ char * SUMA_append_extension(char *s1, char *s2)
    if (s2 && s2[0] == '.') ++s2;
    
    /* put them together */
-   RETURN(SUMA_append_replace_string(s1c, s2, ".", 1));
+   SUMA_RETURN(SUMA_append_replace_string(s1c, s2, ".", 1));
 }
 
 /*!
@@ -3584,7 +3588,7 @@ SUMA_Boolean SUMA_Set_Sub_String(char **cs, char *sep, int ii, char *str)
    static char FuncName[]={"SUMA_Set_Sub_String"};
    NI_str_array *nisa=NULL;
    char *s = NULL, act[64];
-   SUMA_Boolean LocalHead = YUP;
+   SUMA_Boolean LocalHead = NOPE;
    
    SUMA_ENTRY;
    
@@ -4095,7 +4099,9 @@ static ENV_SPEC envlist[] = {
       "sub-brick selectors.\n",
       "SUMA_ArrowFieldSelectorTrigger",
       "200" }, 
-   {  "Use symmetric Intensity range by default (YES or NO)\n",
+   {  "Use symmetric Intensity range at startup? Valid options are:\n"
+      " YES or NO: For your preference if no decision is made by the software\n"
+      " FYES or FNO: To force your preference and keep software from deciding\n",
       "SUMA_Sym_I_Range",
       "YES" }, 
    {  "Set auto Intensity range by default (YES or NO)\n",
@@ -4114,7 +4120,18 @@ static ENV_SPEC envlist[] = {
    {  "Put surface controllers in same window\n"
       "Choose from YES or NO",
       "SUMA_SameSurfCont",
-      "NO" }, 
+      "YES" },
+   {  "Adjust offset of Surface Viewers as they are first open\n"
+      "Choose from AUTO or provide two X Y offsets.",
+      "SUMA_WindowOffset",
+      "Auto" },
+   {  "Lock views across viewers\n"
+      "Choose from YES or NO.",
+      "SUMA_LockViewers",
+      "YES" },
+   {  "Set colormap for volumes, choose any of the standard list",
+      "SUMA_VO_ColorMap",
+      "ngray20" },
    {  NULL, NULL, NULL  }
 };
       
@@ -4189,7 +4206,7 @@ int SUMA_EnvEquals(char *env, char *sval, byte ci, char *sep)
    if (sval == NULL) SUMA_RETURN(0);
    if (LocalHead) 
       fprintf(SUMA_STDERR,
-              "%s: eee %s, sval %s, sep %s\n", FuncName, eee, sval, sep);
+           "%s: eee %s, sval %s, sep %s\n", FuncName, eee, sval, sep?sep:"NULL");
    if (!sep) {
       if (ci) SUMA_RETURN(!(strcasecmp(eee,sval)));
       else SUMA_RETURN(!(strcmp(eee,sval)));
@@ -4503,7 +4520,9 @@ int SUMA_ibinFind( int *indexList, int N_node, int target) {
    \brief creates a reordered version of a vector 
    yr = SUMA_reorder(y, isort, N_isort);
    
-   \param y (int *) vector
+   \param y (int *) vector, if y is NULL what 
+                    you get back in yr is a copy
+                    of isort. 
    \param isort (int *) vector containing sorting order
    \param N_isort (int ) number of elements in isort
    \return yr (int *) reordered version of y where:
@@ -4521,9 +4540,31 @@ int *SUMA_reorder(int *y, int *isort, int N_isort)
    
    SUMA_ENTRY;
    
-   if (!y || !isort || N_isort <= 0) SUMA_RETURN(yr);
+   if (!isort || N_isort <= 0) SUMA_RETURN(yr);
    
    yr = (int *)SUMA_calloc( N_isort, sizeof(int));
+   if (!yr) SUMA_RETURN(yr);
+   
+   if (!y) for (i=0; i<N_isort; ++i) yr[i] = isort[i];
+   else for (i=0; i<N_isort; ++i) yr[i] = y[isort[i]];
+   
+   SUMA_RETURN(yr);
+}
+
+/* Careful to only free returned pointer after 
+calling function is done with it. Do not free
+individual strings in returned pointer */
+char **SUMA_sreorder(char **y, int *isort, int N_isort)
+{
+   static char FuncName[]={"SUMA_sreorder"};
+   int i = 0;
+   char **yr = NULL;
+   
+   SUMA_ENTRY;
+   
+   if (!y || !isort || N_isort <= 0) SUMA_RETURN(yr);
+   
+   yr = (char  **)SUMA_calloc( N_isort, sizeof(char*));
    if (!yr) SUMA_RETURN(yr);
    
    for (i=0; i<N_isort; ++i) yr[i] = y[isort[i]];

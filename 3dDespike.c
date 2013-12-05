@@ -23,6 +23,126 @@ static INLINE float mytanh( float x )
   return (ex-exi)/(ex+exi) ;
 }
 
+/*============================================================================*/
+/***************** The following stuff was added 29 Nov 2013 ******************/
+/*----------------------------------------------------------------------------*/
+
+#undef  SWAP
+#define SWAP(x,y) (temp=x,x=y,y=temp)
+
+#undef  SORT2
+#define SORT2(a,b) if(a>b) SWAP(a,b)
+
+/*--- fast median of 9 values ---*/
+
+static INLINE float median9f(float *p)
+{
+    register float temp ;
+    SORT2(p[1],p[2]) ; SORT2(p[4],p[5]) ; SORT2(p[7],p[8]) ;
+    SORT2(p[0],p[1]) ; SORT2(p[3],p[4]) ; SORT2(p[6],p[7]) ;
+    SORT2(p[1],p[2]) ; SORT2(p[4],p[5]) ; SORT2(p[7],p[8]) ;
+    SORT2(p[0],p[3]) ; SORT2(p[5],p[8]) ; SORT2(p[4],p[7]) ;
+    SORT2(p[3],p[6]) ; SORT2(p[1],p[4]) ; SORT2(p[2],p[5]) ;
+    SORT2(p[4],p[7]) ; SORT2(p[4],p[2]) ; SORT2(p[6],p[4]) ;
+    SORT2(p[4],p[2]) ; return(p[4]) ;
+}
+#undef SORT2
+#undef SWAP
+
+/*--- get the local median and MAD of values vec[j-4 .. j+4] ---*/
+
+#undef  mead9
+#define mead9(j)                                               \
+ { float qqq[9] ; int jj = (j)-4 ;                             \
+   if( jj < 0 ) jj = 0; else if( jj+8 >= num ) jj = num-9;     \
+   qqq[0] = vec[jj+0]; qqq[1] = vec[jj+1]; qqq[2] = vec[jj+2]; \
+   qqq[3] = vec[jj+3]; qqq[4] = vec[jj+4]; qqq[5] = vec[jj+5]; \
+   qqq[6] = vec[jj+6]; qqq[7] = vec[jj+7]; qqq[8] = vec[jj+8]; \
+   med    = median9f(qqq);     qqq[0] = fabsf(qqq[0]-med);     \
+   qqq[1] = fabsf(qqq[1]-med); qqq[2] = fabsf(qqq[2]-med);     \
+   qqq[3] = fabsf(qqq[3]-med); qqq[4] = fabsf(qqq[4]-med);     \
+   qqq[5] = fabsf(qqq[5]-med); qqq[6] = fabsf(qqq[6]-med);     \
+   qqq[7] = fabsf(qqq[7]-med); qqq[8] = fabsf(qqq[8]-med);     \
+   mad    = median9f(qqq); }
+
+/*-------------------------------------------------------------------------*/
+/*! Remove spikes from a time series, in a very simplistic way.
+    Return value is the number of spikes that were squashed [RWCox].
+*//*-----------------------------------------------------------------------*/
+
+int DES_despike9( int num , float *vec , float *wks )
+{
+   int ii , nsp ; float *zma,*zme , med,mad,val ;
+
+   if( num < 9 || vec == NULL ) return 0 ;
+
+   zme = wks ; zma = zme + num ;
+
+   for( ii=0 ; ii < num ; ii++ ){
+     mead9(ii) ; zme[ii] = med ; zma[ii] = mad ;
+   }
+   mad = qmed_float(num,zma) ;
+   if( mad <= 0.0f ){ if( wks == NULL ) free(zme); return 0; }  /* should not happen */
+   mad *= 6.789f ;  /* threshold value */
+
+   for( nsp=ii=0 ; ii < num ; ii++ )
+     if( fabsf(vec[ii]-zme[ii]) > mad ){ vec[ii] = zme[ii]; nsp++; }
+
+   return nsp ;
+}
+#undef mead9
+
+/*----------------------------------------------------------------------------*/
+
+int DES_workspace_size( int ntim, int nref )
+{
+   return 2*ntim ;
+}
+
+/*----------------------------------------------------------------------------*/
+
+float DES_solve( MRI_IMAGE *psinv , float *z , float *coef , float *wks )
+{
+   float *psar , *iar , zi ; int ii,jj , ntim,nref ;
+
+   ntim = psinv->ny ;
+   nref = psinv->nx ;
+   psar = MRI_FLOAT_PTR(psinv) ;
+
+   /* step 1: despike the data the simplistic way */
+
+   (void) DES_despike9( ntim , z , wks ) ;
+
+   /* least squares solve the equations with the modified data */
+
+   for( jj=0 ; jj < nref ; jj++ ) coef[jj] = 0.0f ;
+
+   for( ii=0 ; ii < ntim ; ii++ ){
+     iar = psar + ii*nref ; zi = z[ii] ;
+     for( jj=0 ; jj < nref ; jj++ ) coef[jj] += iar[jj]*zi ;
+   }
+
+   return 0.0f ;
+}
+
+/*----------------------------------------------------------------------------*/
+
+MRI_IMAGE * DES_get_psinv( int ntim , int nref , float **ref )
+{
+   MRI_IMAGE *refim , *psinv ; float *refar , *jar ; int ii , jj ;
+
+   refim = mri_new(ntim,nref,MRI_float) ;
+   refar = MRI_FLOAT_PTR(refim) ;
+   for( jj=0 ; jj < nref ; jj++ ){
+     jar = refar + jj*ntim ;
+     for( ii=0 ; ii < ntim ; ii++ ) jar[ii] = ref[jj][ii] ;
+   }
+   mri_matrix_psinv_svd(1) ;
+   psinv = mri_matrix_psinv(refim,NULL,0.0f) ;
+   mri_free(refim) ;
+   return psinv ;
+}
+
 /*----------------------------------------------------------------------*/
 
 int main( int argc , char *argv[] )
@@ -44,6 +164,11 @@ int main( int argc , char *argv[] )
    int     localedit=0 ;  /* 04 Apr 2007 */
    int     verb=1 ;
 
+   int     do_NEW = 0 ;   /* 29 Nov 2013 */
+   MRI_IMAGE *NEW_psinv=NULL ;
+   int     dilate = 4 ;   /* 04 Dec 2013 */
+   int     ctim   = 0 ;
+
    /*----- Read command line -----*/
 
    AFNI_SETUP_OMP(0) ;  /* 24 Jun 2013 */
@@ -56,7 +181,8 @@ int main( int argc , char *argv[] )
              "\n"
              "Method:\n"
              " * L1 fit a smooth-ish curve to each voxel time series\n"
-             "    [see -corder option for description of the curve].\n"
+             "    [see -corder option for description of the curve]\n"
+             "    [see -NEW option for a different & faster fitting method]\n"
              " * Compute the MAD of the difference between the curve and\n"
              "    the data time series (the residuals).\n"
              " * Estimate the standard deviation 'sigma' of the residuals\n"
@@ -95,6 +221,8 @@ int main( int argc , char *argv[] )
              " -nomask    = Process all voxels\n"
              "               [default=use a mask of high-intensity voxels, ]\n"
              "               [as created via '3dAutomask -dilate 4 dataset'].\n"
+             " -dilate nd = Dilate 'nd' times (as in 3dAutomask).  The default\n"
+             "               value of 'nd' is 4.\n"
              " -q[uiet]   = Don't print '++' informational messages.\n"
              "\n"
              " -localedit = Change the editing process to the following:\n"
@@ -104,11 +232,31 @@ int main( int argc , char *argv[] )
              "                one previous and the first one after.\n"
              "                Note that the c1 cut value is not used here.\n"
              "\n"
+             " -NEW       = Use the 'new' method for computing the fit, which\n"
+             "              should be faster than the L1 method for long time\n"
+             "              series (200+ time points); however, the results\n"
+             "              are similar but NOT identical. [29 Nov 2013]\n"
+             "              * You can also make the program use the 'new'\n"
+             "                method by setting the environment variable\n"
+             "                  AFNI_3dDespike_NEW\n"
+             "                to the value YES; as in\n"
+             "                  setenv AFNI_3dDespike_NEW YES  (csh)\n"
+             "                  export AFNI_3dDespike_NEW=YES  (bash)\n"
+             "              * If this variable is set to YES, you can turn off\n"
+             "                the '-NEW' processing by using the '-OLD' option.\n"
+             "          -->>* For time series more than 500 points long, the\n"
+             "                '-OLD' algorithm is tremendously slow.  You should\n"
+             "                use the '-NEW' algorith in such cases.\n"
+             "             ** At some indeterminate point in the future, the '-NEW'\n"
+             "                method will become the default!\n"
+             "\n"
              "Caveats:\n"
              "* Despiking may interfere with image registration, since head\n"
              "   movement may produce 'spikes' at the edge of the brain, and\n"
              "   this information would be used in the registration process.\n"
              "   This possibility has not been explored or calibrated.\n"
+             "* [LATER] Actually, it seems like the registration problem\n"
+             "   does NOT happen, and in fact, despiking seems to help!\n"
              "* Check your data visually before and after despiking and\n"
              "   registration!\n"
              "   [Hint: open 2 AFNI controllers, and turn Time Lock on.]\n"
@@ -125,6 +273,8 @@ int main( int argc , char *argv[] )
 
    /** parse options **/
 
+   if( AFNI_yesenv("AFNI_3dDespike_NEW") ) do_NEW = 1 ;  /* 29 Nov 2013 */
+
    iarg = 1 ;
    while( iarg < argc && argv[iarg][0] == '-' ){
 
@@ -133,6 +283,13 @@ int main( int argc , char *argv[] )
       }
       if( strncmp(argv[iarg],"-v",2) == 0 ){
         verb++ ; iarg++ ; continue ;
+      }
+
+      if( strcmp(argv[iarg],"-NEW") == 0 ){       /* 29 Nov 2013 */
+        do_NEW = 1 ; iarg++ ; continue ;
+      }
+      if( strcmp(argv[iarg],"-OLD") == 0 ){
+        do_NEW = 0 ; iarg++ ; continue ;
       }
 
       /** -localedit **/
@@ -145,6 +302,15 @@ int main( int argc , char *argv[] )
 
       if( strcmp(argv[iarg],"-nomask") == 0 ){
         nomask = 1 ; iarg++ ; continue ;
+      }
+
+      /** dilation count [04 Dec 2013] **/
+
+      if( strcmp(argv[iarg],"-dilate") == 0 ){
+        dilate = (int)strtod(argv[++iarg],NULL) ;
+             if( dilate <=  0 ) dilate = 1 ;
+        else if( dilate >  99 ) dilate = 99 ;
+        iarg++ ; continue ;
       }
 
       /** output dataset prefix **/
@@ -213,7 +379,7 @@ int main( int argc , char *argv[] )
    if( corder > 0 && 4*corder+2 > nuse ){
      ERROR_exit("-corder %d is too big for NT=%d",corder,nvals) ;
    } else if( corder < 0 ){
-     corder = rint(nuse/30.0) ; if( corder > 50 ) corder = 50 ;
+     corder = rint(nuse/30.0) ; if( corder > 50 && !do_NEW ) corder = 50 ;
      if( verb ) INFO_message("using %d time points => -corder %d",nuse,corder) ;
    } else {
      if( verb ) INFO_message("-corder %d set from command line",corder) ;
@@ -226,10 +392,16 @@ int main( int argc , char *argv[] )
 
    if( !nomask ){
      mask = THD_automask( dset ) ;
-     for( ii=0 ; ii < 4 ; ii++ )
+     if( verb ){
+       ii = THD_countmask( DSET_NVOX(dset) , mask ) ;
+       INFO_message("%d voxels in the automask [out of %d in dataset]",ii,DSET_NVOX(dset)) ;
+     }
+     for( ii=0 ; ii < dilate ; ii++ )
        THD_mask_dilate( DSET_NX(dset), DSET_NY(dset), DSET_NZ(dset), mask, 3 ) ;
-     ii = THD_countmask( DSET_NVOX(dset) , mask ) ;
-     if( verb ) INFO_message("%d voxels in the mask [out of %d in dataset]",ii,DSET_NVOX(dset)) ;
+     if( verb ){
+       ii = THD_countmask( DSET_NVOX(dset) , mask ) ;
+       INFO_message("%d voxels in the dilated automask [out of %d in dataset]",ii,DSET_NVOX(dset)) ;
+     }
    } else {
      if( verb ) INFO_message("processing all %d voxels in dataset",DSET_NVOX(dset)) ;
    }
@@ -317,7 +489,6 @@ int main( int argc , char *argv[] )
    for( jj=0 ; jj < nref ; jj++ )
      ref[jj] = (float *) malloc( sizeof(float) * nuse ) ;
 
-
    /* r(t) = 1 */
 
    for( iv=0 ; iv < nuse ; iv++ ) ref[0][iv] = 1.0 ;
@@ -352,6 +523,15 @@ int main( int argc , char *argv[] )
      jj++ ;
    }
 
+   /****** setup for the NEW solution method [29 Nov 2013] ******/
+
+   if( do_NEW ){
+     NEW_psinv = DES_get_psinv(nuse,nref,ref) ;
+     INFO_message("Procesing time series with NEW model fit algorithm") ;
+   } else {
+     INFO_message("Procesing time series with OLD model fit algorithm") ;
+   }
+
    /*--- loop over voxels and do work ---*/
 
 #define Laplace_t2p(val) ( 1.0 - nifti_stat2cdf( (val), 15, 0.0, 1.4427 , 0.0 ) )
@@ -373,7 +553,7 @@ int main( int argc , char *argv[] )
     INFO_message("%d slices to process",DSET_NZ(dset)) ;
    }
    kzold  = -1 ;
-   nspike =  0 ; nbig = 0 ; nproc = 0 ;
+   nspike =  0 ; nbig = 0 ; nproc = 0 ; ctim = NI_clock_time() ;
 
  AFNI_OMP_START ;
 #pragma omp parallel if( nxyz > 6666 )
@@ -381,6 +561,7 @@ int main( int argc , char *argv[] )
    float *far , *dar , *var , *fitar , *ssp , *fit , *zar ;
    short *sar , *qar ; byte *tar ;
    float fsig , fq , cls , snew , val ;
+   float *NEW_wks=NULL ;
 
 #pragma omp critical (DESPIKE_malloc)
   { far   = (float *) malloc( sizeof(float) * nvals ) ;
@@ -389,6 +570,7 @@ int main( int argc , char *argv[] )
     fitar = (float *) malloc( sizeof(float) * nvals ) ;
     ssp   = (float *) malloc( sizeof(float) * nvals ) ;
     fit   = (float *) malloc( sizeof(float) * nref  ) ;
+    if( do_NEW ) NEW_wks = (float *)malloc(sizeof(float)*DES_workspace_size(nuse,nref)) ;
   }
 
 #ifdef USE_OMP
@@ -441,7 +623,10 @@ int main( int argc , char *argv[] )
 
       /*** solve for L1 fit ***/
 
-      cls = cl1_solve( nuse , nref , far , ref , fit,0 ) ; /* the slow part */
+      if( do_NEW )
+        cls = DES_solve( NEW_psinv , far , fit , NEW_wks ) ; /* 29 Nov 2013 */
+      else
+        cls = cl1_solve( nuse , nref , far , ref , fit,0 ) ; /* the slow part */
 
       if( cls < 0.0f ){                      /* fit failed! */
 #if 0
@@ -548,7 +733,8 @@ int main( int argc , char *argv[] )
    } /* end of loop over voxels #ii */
 
 #pragma omp critical (DESPIKE_malloc)
-   { free(fit); free(ssp); free(fitar); free(var); free(dar); free(far); }
+   { free(fit); free(ssp); free(fitar); free(var); free(dar); free(far);
+     if( do_NEW ) free(NEW_wks) ; }
 
  } /* end OpenMP */
  AFNI_OMP_END ;
@@ -556,8 +742,18 @@ int main( int argc , char *argv[] )
 #ifdef USE_OMP
    if( verb ) fprintf(stderr,"\n") ;
 #endif
+   ctim = NI_clock_time() - ctim ;
+   INFO_message( "Elapsed despike time = %s" , nice_time_string(ctim) ) ;
+   if( ctim > 345678 && !do_NEW )
+     ININFO_message("That was SLOW -- try the '-NEW' option for a speedup") ;
+
+#ifdef USE_OMP
+   if( verb ) fprintf(stderr,"\n") ;
+#endif
 
    /*--- finish up ---*/
+
+   if( do_NEW ) mri_free(NEW_psinv) ;
 
    DSET_delete(dset) ; /* delete input dataset */
 
@@ -584,5 +780,5 @@ int main( int argc , char *argv[] )
      DSET_delete(tset) ;
    }
 
-   exit(0) ;
+   exit( THD_get_write_error_count() ) ;
 }

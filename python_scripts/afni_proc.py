@@ -385,12 +385,16 @@ g_history = """
     4.01 Aug 20, 2013: make 3dAutomask the default EPI strip method
     4.02 Aug 20, 2013: added -regress_RSFC, to run 3dRSFC
                        (requires updated 3dRSFC, for input sub-brick selection)
+    4.03 Sep 19, 2013: added help for -regress_RSFC, including example 10b.
+    4.04 Oct 31, 2013: restrict blur estimation to uncensored TRs
+    4.05 Nov 01, 2013: let all-1 input for extents mask vary per run
+                       (TRs may vary per run)
 """
 
-g_version = "version 4.02, Aug 20, 2013"
+g_version = "version 4.05, November 1, 2013"
 
 # version of AFNI required for script execution
-g_requires_afni = "16 Aug 2013" # for 3dRSFC update
+g_requires_afni = "31 Oct 2013" # for 3dRSFC update
 
 # ----------------------------------------------------------------------
 # dictionary of block types and modification functions
@@ -1860,7 +1864,7 @@ class SubjProcSream:
         self.write_text('# return to parent directory\n'
                         'cd ..\n\n')
 
-        self.write_text('echo "execution finished: `date`"\n')
+        self.write_text('echo "execution finished: `date`"\n\n')
 
         opt = self.user_opts.find_opt('-no_proc_command')
         if not opt:

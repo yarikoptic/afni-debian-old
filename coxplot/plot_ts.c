@@ -25,6 +25,9 @@ static float ccc[NCLR_MAX][3] = {
   { 0.7 , 0.6 , 0.0 } ,
 } ;
 
+static int use_ddd = 0 ;
+static int ddd[NCLR_MAX] = { 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1 } ;
+
 static int NCLR = 6 ;
 static int dont_init_colors=0 ;
 
@@ -44,13 +47,123 @@ static float noline = 0 ;
 void plot_ts_dobox( float a ){ tsbox = a ; }
 void plot_ts_noline( int a ){ noline = a ; }
 
-static void plot_onebox( float xx , float yy ){
+static void plot_one_diamond( float xx , float yy )
+{
    float x , y ;
    plotpak_zzphys( xx , yy , &x , &y ) ;
    plotpak_phline( x+tsbox , y       , x       , y+tsbox ) ;
    plotpak_phline( x       , y+tsbox , x-tsbox , y       ) ;
    plotpak_phline( x-tsbox , y       , x       , y-tsbox ) ;
    plotpak_phline( x       , y-tsbox , x+tsbox , y       ) ;
+}
+
+static void plot_one_hexagon( float xx , float yy )
+{
+   float x , y , da=0.5f*tsbox , db=0.866f*tsbox ;
+   plotpak_zzphys( xx , yy , &x , &y ) ;
+   plotpak_phline( x    , y+tsbox    , x-db , y+tsbox-da ) ;
+   plotpak_phline( x-db , y+tsbox-da , x-db , y-tsbox+da ) ;
+   plotpak_phline( x-db , y-tsbox+da , x    , y-tsbox    ) ;
+   plotpak_phline( x    , y-tsbox    , x+db , y-tsbox+da ) ;
+   plotpak_phline( x+db , y-tsbox+da , x+db , y+tsbox-da ) ;
+   plotpak_phline( x+db , y+tsbox-da , x    , y+tsbox    ) ;
+}
+
+static void plot_one_square( float xx , float yy )
+{
+   float x , y ;
+   plotpak_zzphys( xx , yy , &x , &y ) ;
+   plotpak_phline( x-tsbox , y-tsbox , x+tsbox , y-tsbox ) ;
+   plotpak_phline( x+tsbox , y-tsbox , x+tsbox , y+tsbox ) ;
+   plotpak_phline( x+tsbox , y+tsbox , x-tsbox , y+tsbox ) ;
+   plotpak_phline( x-tsbox , y+tsbox , x-tsbox , y-tsbox ) ;
+}
+
+static void plot_one_utriang( float xx , float yy )
+{
+   float x , y , da=0.5f*tsbox , db=0.866f*tsbox ;
+   plotpak_zzphys( xx , yy , &x , &y ) ;
+   plotpak_phline( x    , y+tsbox , x-db , y-da    ) ;
+   plotpak_phline( x-db , y-da    , x+db , y-da    ) ;
+   plotpak_phline( x+db , y-da    , x    , y+tsbox ) ;
+}
+
+static void plot_one_dtriang( float xx , float yy )
+{
+   float x , y , da=0.5f*tsbox , db=0.866f*tsbox ;
+   plotpak_zzphys( xx , yy , &x , &y ) ;
+   plotpak_phline( x    , y-tsbox , x-db , y+da    ) ;
+   plotpak_phline( x-db , y+da    , x+db , y+da    ) ;
+   plotpak_phline( x+db , y+da    , x    , y-tsbox ) ;
+}
+
+#undef  CIRCNUM
+#define CIRCNUM 16
+static float circc[CIRCNUM+1] , circs[CIRCNUM+1] ;
+
+static void circ_setup(void)
+{
+   static int circdone=0 ; int ii ;
+   if( circdone ) return ;
+   for( ii=0 ; ii < CIRCNUM+1 ; ii++ ){
+     circc[ii] = cosf(2.0f*3.141592f*ii/(float)CIRCNUM) ;
+     circs[ii] = sinf(2.0f*3.141592f*ii/(float)CIRCNUM) ;
+   }
+   circdone = 1 ;
+}
+
+static void plot_one_circle( float xx , float yy )
+{
+   float x , y ; int ii ;
+   circ_setup() ;
+   plotpak_zzphys( xx , yy , &x , &y ) ;
+   for( ii=0 ; ii < CIRCNUM ; ii++ )
+     plotpak_phline( x+tsbox*circc[ii], y+tsbox*circs[ii], x+tsbox*circc[ii+1], y+tsbox*circs[ii+1] ) ;
+}
+
+static void plot_one_stellar( float xx , float yy )
+{
+   float x , y , dt=0.5f*tsbox ; int ii ;
+   circ_setup() ;
+   plotpak_zzphys( xx , yy , &x , &y ) ;
+   for( ii=0 ; ii < CIRCNUM ; ii+=2 ){
+     plotpak_phline( x+tsbox*circc[ii], y+tsbox*circs[ii], x+dt*circc[ii+1], y+dt*circs[ii+1] ) ;
+     plotpak_phline( x+dt*circc[ii+1], y+dt*circs[ii+1], x+tsbox*circc[ii+2], y+tsbox*circs[ii+2] ) ;
+   }
+}
+
+static void plot_onebox( float xx , float yy , int kk )
+{
+   switch( kk%7 ){  /* choose box shape depending on which curve is being plotted */
+     default:
+     case 0:  plot_one_diamond(xx,yy) ; break ;
+     case 1:  plot_one_circle (xx,yy) ; break ;
+     case 2:  plot_one_utriang(xx,yy) ; break ;
+     case 3:  plot_one_stellar(xx,yy) ; break ;
+     case 4:  plot_one_square (xx,yy) ; break ;
+     case 5:  plot_one_dtriang(xx,yy) ; break ;
+     case 6:  plot_one_hexagon(xx,yy) ; break ;
+   }
+}
+/*---------------------------------------------------------------------------*/
+
+static int ts_gcd( int m , int n )    /* Euclid's Greatest Common Denominator */
+{
+  while( m > 0 ){
+    if( n > m ){ int t=m; m=n; n=t; } /* swap */
+    m -= n ;
+  }
+  return n ;
+}
+
+/*---------------------------------------------------------------------------*/
+
+static int ts_find_relprime( int n )  /* find number relatively prime to n */
+{
+   int dj , n5=n/5 ;
+   if( n5 < 2 ) return 1 ;
+   for( dj=n5 ; ts_gcd(n,dj) > 1 ; dj++ ) ; /*nada*/
+   return dj ;
 }
 
 /*----------------------------------------------------------------------*/
@@ -167,6 +280,18 @@ void plot_ts_setcolors( int ncol , float *rrr , float *ggg , float *bbb )
 
 /*-----------------------------------------------------------------------*/
 
+void plot_ts_setdash( int ndash , int *code )
+{
+   int ii ;
+   if( ndash <= 0 || code == NULL ){ use_ddd = 0 ; return ; }
+   if( ndash > NCLR_MAX ) ndash = NCLR_MAX ;
+   for( ii=0 ; ii < ndash ; ii++ ) ddd[ii] = code[ii] ;
+   use_ddd = 1 ;
+   return ;
+}
+
+/*-----------------------------------------------------------------------*/
+
 void plot_ts_setTHIK( float thk )  /* for lines */
 {
         if( thk < 0.001f ) THIK = 0.001f ;
@@ -233,6 +358,65 @@ void plot_ts_clear_vbox(void)
    vbox = NULL ; nvbox = 0 ; return ;
 }
 
+/*-----------------------------------------------------------------------*/
+
+static int    nsepx = 0 ;
+static int   *lsepx = NULL ;
+static float **sepx = NULL ;
+
+static float sepx_bot=-1.0f , sepx_top=1.0f ;
+
+void plot_ts_fetch_sepx( int *ns , int **ls , float ***sx )
+{
+   if( ns != NULL ) *ns = nsepx ;
+   if( ls != NULL ) *ls = lsepx ;
+   if( sx != NULL ) *sx =  sepx ;
+}
+
+void plot_ts_clear_sepx(void)
+{
+   if( lsepx != NULL ){ free(lsepx) ; lsepx = NULL ; }
+   if( nsepx > 0 && sepx != NULL ){
+     int kk ;
+     for( kk=0 ; kk < nsepx ; kk++ ) free(sepx[kk]) ;
+     free(sepx) ; sepx = NULL ;
+   }
+   nsepx = 0 ; return ;
+}
+
+void plot_ts_add_sepx( int lx , float *x )
+{
+   int kk ;
+
+   if( lx < 2 || x == NULL ) return ;
+   lsepx = (int *   )realloc( lsepx , sizeof(int)    *(nsepx+1) ) ;
+    sepx = (float **)realloc(  sepx , sizeof(float *)*(nsepx+1) ) ;
+    sepx[nsepx] = (float *)malloc( sizeof(float)*lx ) ;
+   lsepx[nsepx] = lx ;
+   for( kk=0 ; kk < lx ; kk++ ) sepx[nsepx][kk] = x[kk] ;
+   nsepx++ ; return ;
+}
+
+static void plot_ts_sepx_getstats(void)
+{
+   int ss , ii ; float bb , tt ;
+
+   if( nsepx <= 0 || lsepx == NULL || sepx == NULL ) return ;
+
+   bb = tt = sepx[0][0] ;
+   for( ss=0 ; ss < nsepx ; ss++ ){
+     for( ii=0 ; ii < lsepx[ss] ; ii++ ){
+       if( sepx[ss][ii] < bb ) bb = sepx[ss][ii] ;
+       if( sepx[ss][ii] > tt ) tt = sepx[ss][ii] ;
+     }
+   }
+   if( bb < tt ){
+     sepx_bot = bb ; sepx_top = tt ;
+   } else {
+     sepx_bot = bb-1.0f ; sepx_top = bb+1.0f ;
+   }
+}
+
 /*-----------------------------------------------------------------------
   Plot some timeseries data into an in-memory plot structure, which
   must be displayed later in some fashion.
@@ -244,6 +428,8 @@ void plot_ts_clear_vbox(void)
 
   27 Jan 1999: all routines are modified to leave the plotpak_set()
                transform for the data at box #0 as the last setting
+
+  21 Oct 2013: if global variable nsepx > 0, then the x[] axis is ignored
 -------------------------------------------------------------------------*/
 
 MEM_plotdata * plot_ts_mem( int nx , float *x , int ny , int ymask , float **y ,
@@ -251,10 +437,10 @@ MEM_plotdata * plot_ts_mem( int nx , float *x , int ny , int ymask , float **y ,
                             char **nam_yyy )
 {
    int ii , jj , np , nnax,nnay , mmax,mmay ;
-   float *xx , *yy=NULL ;
+   float *xx=NULL , *yy=NULL ;
    float xbot,xtop , ybot,ytop , pbot,ptop , xobot,xotop,yobot,yotop ;
    char str[32] ;
-   int yall , ysep ;
+   int yall , ysep , ixtop ;
    float *ylo , *yhi , yll,yhh ;
    MEM_plotdata *mp ;
    float xb1,xb2,yb1,yb2 ; int iv ;
@@ -268,7 +454,11 @@ MEM_plotdata * plot_ts_mem( int nx , float *x , int ny , int ymask , float **y ,
 
    /*-- make up an x-axis if none given --*/
 
-   if( x == NULL ){
+   if( nsepx > 0 ){
+     plot_ts_sepx_getstats() ;
+     xbot = sepx_bot ;
+     xtop = sepx_top ;
+   } else if( x == NULL ){
       xx = (float *) malloc( sizeof(float) * nx ) ;
       for( ii=0 ; ii < nx ; ii++ ) xx[ii] = ii ;
       xbot = 0 ; xtop = nx-1 ;
@@ -402,6 +592,10 @@ MEM_plotdata * plot_ts_mem( int nx , float *x , int ny , int ymask , float **y ,
 
    create_memplot_surely( "tsplot" , 1.3 ) ;
    set_thick_memplot( thik ) ;  /* for labels */
+#if 0
+   thth = get_opacity_memplot() ;
+   if( thth != 1.0f ) set_opacity_memplot(thth) ;
+#endif
 
    /*-- plot labels, if any --*/
 
@@ -432,6 +626,20 @@ MEM_plotdata * plot_ts_mem( int nx , float *x , int ny , int ymask , float **y ,
    /*-- plot all on same vertical scale --*/
 
    if( yall ){
+#define ADDTO_SBOX(xv,yv,qq) do{ if( nsbox == asbox ){                                      \
+                                   asbox += 64 ;                                             \
+                                   xsbox = (float *)realloc(xsbox,sizeof(float)*asbox) ;      \
+                                   ysbox = (float *)realloc(ysbox,sizeof(float)*asbox) ;       \
+                                   jsbox = (int *  )realloc(jsbox,sizeof(float)*asbox) ;        \
+                                 }                                                               \
+                                 xsbox[nsbox] = (xv); ysbox[nsbox] = (yv); jsbox[nsbox++] = (qq); \
+                             } while(0)
+      int do_sbox=0, nsbox=0, asbox=0, *jsbox=NULL ; float *xsbox=NULL, *ysbox=NULL ;
+
+      if( noline && tsbox > 0.0f && ny > 1 ){
+        char *eee = getenv("AFNI_1DPLOT_RANBOX") ;
+        if( eee != NULL && (*eee == 'Y' || *eee == 'y') ) do_sbox = 1 ;
+      }
 
       /* do name labels at right? */
 
@@ -442,11 +650,16 @@ MEM_plotdata * plot_ts_mem( int nx , float *x , int ny , int ymask , float **y ,
            if( STGOOD(nam_yyy[jj]) ){
              set_color_memplot( ccc[jj%NCLR][0] , ccc[jj%NCLR][1] , ccc[jj%NCLR][2] ) ;
              set_thick_memplot( 1.234f*THIK ) ;
-             plotpak_line( xotop+0.008 , yv , xotop+0.042 , yv ) ;
+             if( use_ddd ) plotpak_setlin(ddd[jj%NCLR]) ;
+             plotpak_line( xotop+0.008 , yv , xotop+0.041 , yv ) ;
+             if( use_ddd ) plotpak_setlin(1) ;
+             if( tsbox > 0.0f ){
+               set_thick_memplot(thik); plot_onebox(xotop+0.008,yv,jj ); plot_onebox(xotop+0.041,yv,jj );
+             }
              set_color_memplot( 0.0 , 0.0 , 0.0 ) ;
              sz = (strlen(nam_yyy[jj]) <= 10) ? 12 : 9 ;
              set_thick_memplot( thik*sz/13.9f ) ;
-             plotpak_pwritf( xotop+0.048 , yv , nam_yyy[jj] , sz , 0 , -1 ) ;
+             plotpak_pwritf( xotop+0.049 , yv , nam_yyy[jj] , sz , 0 , -1 ) ;
              yv -= 0.05 ;
            }
          }
@@ -480,26 +693,54 @@ MEM_plotdata * plot_ts_mem( int nx , float *x , int ny , int ymask , float **y ,
          set_thick_memplot( thth ) ;
          set_color_memplot( ccc[jj%NCLR][0] , ccc[jj%NCLR][1] , ccc[jj%NCLR][2] ) ;
 
+         if( nsepx > 0 ){
+           int qq = jj ; if( qq >= nsepx ) qq = nsepx-1 ;
+           xx = sepx[qq] ; ixtop = lsepx[qq] ; if( ixtop > nx ) ixtop = nx ;
+         } else {
+           ixtop = nx ;
+         }
+         yy = y[jj] ;
          if( !noline ){
-           yy = y[jj] ;
-           for( ii=1 ; ii < nx ; ii++ ){
+           if( use_ddd ) plotpak_setlin(ddd[jj%NCLR]) ;
+           for( ii=1 ; ii < ixtop ; ii++ ){
               if( xx[ii-1] < WAY_BIG && xx[ii] < WAY_BIG &&
                   yy[ii-1] < WAY_BIG && yy[ii] < WAY_BIG   )
                 plotpak_line( xx[ii-1] , yy[ii-1] , xx[ii] , yy[ii] ) ;
            }
+           if( use_ddd ) plotpak_setlin(1) ;
          }
 
          if( tsbox > 0.0f ){
-           set_thick_memplot( thik ) ;
-           for( ii=0 ; ii < nx ; ii++ ){
+           if( !do_sbox) set_thick_memplot( thik ) ;
+           for( ii=0 ; ii < ixtop ; ii++ ){
              if( noline != 2 ||
                  ( xx[ii] >= xbot && xx[ii] <= xtop &&
                    yy[ii] >= ybot && yy[ii] <= ytop   ) )
-             plot_onebox( xx[ii] , yy[ii] ) ;
+             if( do_sbox ) ADDTO_SBOX (xx[ii],yy[ii],jj) ;
+             else          plot_onebox(xx[ii],yy[ii],jj) ;
            }
            set_thick_memplot( THIK ) ;
          }
       }
+
+      if( do_sbox && nsbox > 0 ){  /* 24 Oct 2013 */
+        int qq , ss , ds ;
+        set_thick_memplot( thik ) ;
+        ds = (4*nsbox)/5 ;
+        for( qq=0 ; qq < ds ; qq++ ){
+          ss = lrand48() % nsbox ; jj = jsbox[ss] ; if( jj < 0 ) continue ;
+          set_color_memplot( ccc[jj%NCLR][0] , ccc[jj%NCLR][1] , ccc[jj%NCLR][2] ) ;
+          plot_onebox(xsbox[ss],ysbox[ss],jj) ; jsbox[ss] = -1 ;
+        }
+        ds = ts_find_relprime(nsbox) ;
+        for( qq=0,ss=nsbox/7 ; qq < nsbox ; qq++,ss=(ss+ds)%nsbox ){
+          jj = jsbox[ss] ; if( jj < 0 ) continue ;
+          set_color_memplot( ccc[jj%NCLR][0] , ccc[jj%NCLR][1] , ccc[jj%NCLR][2] ) ;
+          plot_onebox(xsbox[ss],ysbox[ss],jj) ; jsbox[ss] = -1 ;
+        }
+        free(jsbox) ; free(ysbox) ; free(xsbox) ;
+      }
+
       set_thick_memplot( thik ) ;
       set_color_memplot( 0.0 , 0.0 , 0.0 ) ;
 
@@ -518,12 +759,16 @@ MEM_plotdata * plot_ts_mem( int nx , float *x , int ny , int ymask , float **y ,
                set_color_memplot( ccc[jj%NCLR][0] , ccc[jj%NCLR][1] , ccc[jj%NCLR][2] ) ;
                set_thick_memplot( 1.234f*THIK ) ;
                yv = 0.7*yhh + 0.3*yll ;
-               plotpak_line( xotop+0.008 , yv , xotop+0.042 , yv ) ;
-               set_thick_memplot( thik ) ;
+               if( use_ddd ) plotpak_setlin(ddd[jj%NCLR]) ;
+               plotpak_line( xotop+0.008 , yv , xotop+0.041 , yv ) ;
+               if( use_ddd ) plotpak_setlin(1) ;
+               if( tsbox > 0.0f ){
+                 set_thick_memplot(thik); plot_onebox(xotop+0.008,yv,jj ); plot_onebox(xotop+0.041,yv,jj );
+               }
                set_color_memplot( 0.0 , 0.0 , 0.0 ) ;
                sz = (strlen(nam_yyy[jj]) <= 10) ? 12 : 9 ;
                set_thick_memplot( thik*sz/13.9f ) ;
-               plotpak_pwritf( xotop+0.048 , yv , nam_yyy[jj] , sz , 0 , -1 ) ;
+               plotpak_pwritf( xotop+0.049 , yv , nam_yyy[jj] , sz , 0 , -1 ) ;
             }
          }
       }
@@ -546,8 +791,8 @@ MEM_plotdata * plot_ts_mem( int nx , float *x , int ny , int ymask , float **y ,
              set_color_memplot( vbox[iv].rr , vbox[iv].gg , vbox[iv].bb ) ;
              xb1 = vbox[iv].x1 ; xb2 = vbox[iv].x2 ;
              yb1 = ylo[jj]     ; yb2 = yhi[jj]     ;
-             zzphys_(&xb1,&yb1); zzphys_(&xb2,&yb2); 
-             plotfrect_memplot( xb1,yb1 , xb2,yb2 ) ;
+             zzphys_(&xb1,&yb1); zzphys_(&xb2,&yb2);
+             plotfrect_memplot( xb1,yb1 , xb2,yb2 );
            }
          }
 
@@ -577,22 +822,30 @@ MEM_plotdata * plot_ts_mem( int nx , float *x , int ny , int ymask , float **y ,
          if( jj >= thik_n1 && jj <= thik_n2 ) thth = thik_12 ;
          set_thick_memplot( thth ) ;
 
+         if( nsepx > 0 ){
+           int qq = jj ; if( qq >= nsepx ) qq = nsepx-1 ;
+           xx = sepx[qq] ; ixtop = lsepx[qq] ; if( ixtop > nx ) ixtop = nx ;
+         } else {
+           ixtop = nx ;
+         }
+         yy = y[jj] ;
          if( !noline ){
-           yy = y[jj] ;
-           for( ii=1 ; ii < nx ; ii++ ){
+           if( use_ddd ) plotpak_setlin(ddd[jj%NCLR]) ;
+           for( ii=1 ; ii < ixtop ; ii++ ){
               if( xx[ii-1] < WAY_BIG && xx[ii] < WAY_BIG &&
                   yy[ii-1] < WAY_BIG && yy[ii] < WAY_BIG   )
                 plotpak_line( xx[ii-1] , yy[ii-1] , xx[ii] , yy[ii] ) ;
            }
            set_thick_memplot( thik ) ;
+           if( use_ddd ) plotpak_setlin(1) ;
          }
 
          if( tsbox > 0.0f ){
-           for( ii=0 ; ii < nx ; ii++ ){
+           for( ii=0 ; ii < ixtop ; ii++ ){
              if( noline != 2 ||
                  ( xx[ii] >= xbot    && xx[ii] <= xtop    &&
                    yy[ii] >= ylo[jj] && yy[ii] <= yhi[jj]    ) )
-               plot_onebox( xx[ii] , yy[ii] ) ;
+               plot_onebox( xx[ii] , yy[ii] , jj ) ;
            }
          }
 
@@ -606,7 +859,7 @@ MEM_plotdata * plot_ts_mem( int nx , float *x , int ny , int ymask , float **y ,
    set_color_memplot( 0.0 , 0.0 , 0.0 ) ;
    plot_ts_clear_vbox() ;
 
-   if( xx != x ) free(xx) ;
+   if( nsepx == 0 && xx != x ) free(xx) ;
    free(ylo) ; free(yhi) ;
 
    mp = get_active_memplot() ;

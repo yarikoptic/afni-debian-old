@@ -457,6 +457,10 @@ static byte *gmask = NULL ;             /* 03 Feb 2009 -- global mask array */
 static bytevec *statmask = NULL ;       /* 15 Jul 2010 -- ditto */
 static char    *statmask_name = NULL ;
 
+/** for -stim_times_FSL [15 Nov 2013] **/
+
+MRI_IMAGE * convert_FSL_to_fvect( MRI_IMAGE *fslim , int do_amp1 ) ;
+
 /*---------- Typedefs for basis function expansions of the IRF ----------*/
 
 #include "parser.h"   /* for EXPR, et cetera */
@@ -1496,19 +1500,105 @@ void display_help_menu(int detail)
     " For some graphs of what dmBLOCK regressors look like, see             \n"
     "   http://afni.nimh.nih.gov/pub/dist/doc/misc/Decon/AMregression.pdf   \n"
     " and/or try the following command:                                     \n"
-    "    3dDeconvolve -nodata 350 1 -polort -1 -num_stimts 1 \\             \n"
-    "                 -stim_times_AM1 1 q.1D 'dmBLOCK'       \\             \n"
+    "    3dDeconvolve -nodata 350 1 -polort -1 -num_stimts 1 \\\n"
+    "                 -stim_times_AM1 1 q.1D 'dmBLOCK'       \\\n"
     "                 -x1D stdout: | 1dplot -stdin -thick -thick            \n"
     " where file q.1D contains the single line                              \n"
     "   10:1 40:2 70:3 100:4 130:5 160:6 190:7 220:8 250:9 280:30           \n"
     " Change 'dmBLOCK' to 'dmBLOCK(1)' and see how the matrix plot changes. \n"
     "                                                                       \n"
+    " **************** Further notes on dmBLOCK [Nov 2013] **************** \n"
+    "                                                                       \n"
+    " Basically (IMHO), there are 2 rational choices to use:                \n"
+    "                                                                       \n"
+    "   (a) 'dmUBLOCK' = allow the amplitude of the response model to       \n"
+    "                    vary with the duration of the stimulus; getting    \n"
+    "                    larger with larger durations; for durations longer \n"
+    "                    than about 15s, the amplitude will become 1.       \n"
+    "               -->> This choice is equivalent to 'dmUBLOCK(0)', but    \n"
+    "                    is NOT equivalent to 'dmBLOCK(0)' due to the       \n"
+    "                    historical scaling issue alluded to above.         \n"
+    "                                                                       \n"
+    "   (b) 'dmUBLOCK(1)' = all response models will get amplitude 1,       \n"
+    "                       no matter what the duration of the stimulus.    \n"
+    "                  -->> This choice is equivalent to 'dmBLOCK(1)'.      \n"
+    "                                                                       \n"
+    " Some users have expressed the desire to allow the amplitude to        \n"
+    " vary with duration, as in case (a), BUT to specify the duration       \n"
+    " at which the amplitude goes to 1.  This desideratum has now been      \n"
+    " implemented, and provides the case below:                             \n"
+    "                                                                       \n"
+    "   (a1) 'dmUBLOCK(-X)' = set the amplitude to be 1 for a duration      \n"
+    "                         of 'X' seconds; e.g., 'dmBLOCK(-5)' means     \n"
+    "                         that a stimulus with duration 5 gets          \n"
+    "                         amplitude 1, shorter durations get amplitudes \n"
+    "                         smaller than 1, and longer durations get      \n"
+    "                         amplitudes larger than 1.                     \n"
+    "                    -->> Please note that 'dmBLOCK(-X)' is NOT the     \n"
+    "                         same as this case (a1), and in fact it        \n"
+    "                         has no meaning.                               \n"
+    "                                                                       \n"
+    " I hope this clarifies things and makes your life simpler, happier,    \n"
+    " and more carefree.  (If not, please blame Gang Chen, not me.)         \n"
+    "                                                                       \n"
+    " An example to clarify the difference between these cases:             \n"
+    "    3dDeconvolve -nodata 350 1 -polort -1 -num_stimts 3 \\\n"
+    "                 -stim_times_AM1 1 q.1D 'dmUBLOCK'      \\\n"
+    "                 -stim_times_AM1 2 q.1D 'dmUBLOCK(1)'   \\\n"
+    "                 -stim_times_AM1 3 q.1D 'dmUBLOCK(-4)'  \\\n"
+    "                 -x1D stdout: |                         \\\n"
+    "     1dplot -stdin -thick                               \\\n"
+    "            -ynames 'dmUBLOCK' 'dmUB(1)' 'dmUB(-4)'                    \n"
+    " where file q.1D contains the single line                              \n"
+    "   10:1 60:2 110:4 160:10 210:20 260:30                                \n"
+    " Note how the 'dmUBLOCK(-4)' curve (green) peaks at 1 for the 3rd      \n"
+    " stimulus, and peaks at larger values for the later (longer) blocks.   \n"
+    " Whereas the 'dmUBLOCK' curve (black) peaks at 1 at only the longest   \n"
+    " blocks, and the 'dmUBLOCK(1)' curve (red) peaks at 1 for ALL blocks.  \n"
+    " ********************************************************************* \n"
+    "                                                                       \n"
+    "[-stim_times_FSL k tname Rmodel]                                       \n"
+    "   This option allows you to input FSL-style 3-column timing files,    \n"
+    "   where each line corresponds to one stimulus event/block; the        \n"
+    "   line '40 20 1' means 'stimulus starts at 40 seconds, lasts for      \n"
+    "   20 seconds, and is given amplitude 1'.  Since In this format,       \n"
+    "   each stimulus can have a different duration and get a different     \n"
+    "   response amplitude, the 'Rmodel' must be one of the 'dm'            \n"
+    "   duration-modulated options above ['dmUBLOCK(1)' is probably the     \n"
+    "   most useful].  The amplitude modulation is taken to be like         \n"
+    "   '-stim_times_AM1', where the given amplitude in the 'tname' file    \n"
+    "   multiplies the basic response shape.                                \n"
+    " *** We DO NOT advocate the use of this '_FSL' option, but it's here   \n"
+    "     to make some scripting easier for some (unfortunate) people.      \n"
+    " *** The results of 3dDeconvolve (or 3dREMLfit) cannot be expected     \n"
+    "     to be exactly the same as FSL FEAT, since the response model      \n"
+    "     shapes are different, among myriad other details.                 \n"
+    " *** You can also use '-stim_times_FS1' to indicate that the           \n"
+    "     amplitude factor in the 'tname' file should be ignored and        \n"
+    "     replaced with '1' in all cases.                                   \n"
+    " *** FSL FEAT only analyzes contiguous time series -- nothing like     \n"
+    "     '-concat' allowing for multiple EPI runs is possible in FSL       \n"
+    "     (AFAIK).  So the FSL stimulus time format doesn't allow for       \n"
+    "     this possibility.  In 3dDeconvolve, you can get around this       \n"
+    "     problem by using a line consisting of '* * *' to indicate the     \n"
+    "     break between runs, as in the example below:                      \n"
+    "         1 2 3                                                         \n"
+    "         4 5 6                                                         \n"
+    "         * * *                                                         \n"
+    "         7 8 9                                                         \n"
+    "     that indicates 2 runs, the first of which has 2 stimuli and       \n"
+    "     the second of which has just 1 stimulus.  If there is a run       \n"
+    "     that has NO copies of this type of stimulus, then you would       \n"
+    "     use two '* * *' lines in succession.                              \n"
+    "     Of course, a file using the '* * *' construction will NOT be      \n"
+    "     compatible with FSL!                                              \n"
+    "                                                                       \n"
     "[-stim_times_IM k tname Rmodel]                                        \n"
     "   Similar, but each separate time in 'tname' will get a separate      \n"
     "   regressor; 'IM' means 'Individually Modulated' -- that is, each     \n"
-    "   event will get its own amplitude(s).  Presumably you will collect   \n"
-    "   these many amplitudes afterwards and do some sort of statistics     \n"
-    "   on them.                                                            \n"
+    "   event will get its own amplitude estimated.  Presumably you will    \n"
+    "   collect these many amplitudes afterwards and do some sort of        \n"
+    "   statistics or analysis on them.                                     \n"
     " *N.B.: Each time in the 'tname' file will get a separate regressor.   \n"
     "        If some time is outside the duration of the imaging run(s),    \n"
     "        or if the response model for that time happens to hit only     \n"
@@ -1529,7 +1619,7 @@ void display_help_menu(int detail)
     "   the times to be considered as global or local for '-stim_times'     \n"
     "   options that are AFTER the '-local_times' or '-global_times'.       \n"
     " ** Using one of these options (most commonly, '-local_times') is      \n"
-    "    very highly recommended.                                           \n"
+    "    VERY highly recommended.                                           \n"
     "                                                                       \n"
     "[-stim_times_millisec]                                                 \n"
     " This option scales all the times in any '-stim_times_*' option by     \n"
@@ -2624,8 +2714,9 @@ void get_options
       /*-----  -stim_times k sname rtype [10 Aug 2004]  -----*/
 
       if( strncmp(argv[nopt],"-stim_times",11) == 0 ){
-        char *suf = argv[nopt]+11 , *sopt=argv[nopt] ;
+        char *suf = argv[nopt]+11 , *sopt=argv[nopt] , *model=NULL ;
         int nc=0,vdim=0,vmod=0 ; MRI_IMAGE *tim ;
+        int do_FSL=0 ;
 
         nopt++ ;
 
@@ -2635,8 +2726,12 @@ void get_options
             strcmp(suf,"_AM1") != 0 &&
             strcmp(suf,"_AM2") != 0 &&
             strcmp(suf,"_AMx") != 0 &&
-            strcmp(suf,"_IM" ) != 0   )
+            strcmp(suf,"_IM" ) != 0 &&
+            strcmp(suf,"_FSL") != 0 &&
+            strcmp(suf,"_FS1") != 0   )
           ERROR_exit("Unrecognized -stim_times variant: '%s' [nopt=%d]",sopt,nopt) ;
+
+        do_FSL = ( strcmp(suf,"_FSL") == 0 || strcmp(suf,"_FS1") == 0 ) ;
 
         if( nopt+2 >= argc )
           ERROR_exit("need 3 arguments after %s [nopt=%d]",sopt,nopt) ;
@@ -2665,17 +2760,31 @@ void get_options
           ERROR_exit("'%s %d' can't read file '%s' [nopt=%d]\n",
                      sopt , ival , argv[nopt] , nopt ) ;
 
+        if( do_FSL && basis_times[k]->vdim > 1 )
+          ERROR_exit("'%s %d' file '%s' does not have correct FSL format [nopt=%d]",
+                     sopt , ival , argv[nopt] , nopt ) ;
+
         if( basis_times[k]->vdim == 1 ){      /* scalar image */
           basis_times[k]->vdim = 0 ;
-          basis_times[k]->kind = MRI_float ;  /* convert to float type */
+          basis_times[k]->kind = MRI_float ;  /* mark as pure float type */
           tim = basis_times[k] ;
         } else {
           tim = mri_fvect_subimage( basis_times[k] , 0 ) ; /* extract times */
         }
 
+        if( do_FSL && tim->nx > 1 ){
+          MRI_IMAGE *qim = mri_new(1,tim->ny,MRI_float) ;
+          float     *qar = MRI_FLOAT_PTR(qim) , *tar = MRI_FLOAT_PTR(tim) ;
+          int qq ;
+          for( qq=0 ; qq < tim->ny ; qq++ ) qar[qq] = tar[qq*tim->nx] ;
+          tim = qim ;
+        }
+
         /* check number of reasonable times */
 
         nc = mri_counter( tim , 0.0f , big_time ) ;
+
+        if( tim != basis_times[k] ) mri_free(tim) ;
 
         if( nc == 0 )  /* 0 is okay, < 0 is not   26 Jul 2007 [rickr] */
           WARNING_message("'%s %d' didn't read any good times from file '%s'",
@@ -2684,8 +2793,6 @@ void get_options
           ERROR_exit("'%s %d' couldn't read valid times from file '%s' [nopt=%d]",
                      sopt , ival , argv[nopt] , nopt ) ;
 
-        if( tim != basis_times[k] ) mri_free(tim) ;
-
         /** case: 1 number per time point: -stim_times **/
 
         if( *suf == '\0' ){
@@ -2693,7 +2800,6 @@ void get_options
           if( basis_times[k]->vdim > 0 )
             ERROR_exit("'%s %d' file '%s' has %d auxiliary values per time point [nopt=%d]",
                        sopt , ival , argv[nopt] , basis_times[k]->vdim-1 , nopt ) ;
-
 
         /** case: 1 or more numbers per time point: -stim_times_IM **/
 
@@ -2728,6 +2834,24 @@ void get_options
               "'%s %d %s' has %d auxiliary values per time point",
               sopt , ival , argv[nopt] , vdim-1 ) ;
 
+        } else if( do_FSL ){  /* 14 Nov 2013: FSL-like input */
+
+          MRI_IMAGE *newbt ;
+
+          /** mangle FSL 3 column input into a
+              -stim_times_AM1 format for dmUBLOCK = time:amplitude:duration **/
+
+          if( basis_times[k]->nx > 3 )
+            WARNING_message("'%s %d' file '%s' has more than 3 columns per row -- these will be ignored [nopt=%d]",
+                            sopt , ival , argv[nopt] , nopt ) ;
+
+          newbt = convert_FSL_to_fvect( basis_times[k] , strcmp(suf,"_FS1")==0 ) ;
+          if( newbt == NULL )
+            ERROR_exit("'%s %d' file '%s' -- can't convert from FSL format for some reason [nopt=%d]",
+                       sopt , ival , argv[nopt] , nopt ) ;
+
+          mri_free(basis_times[k]) ; basis_times[k] = newbt ; vdim = 3 ;
+
         } else {  /* should not happen */
 
           ERROR_exit("Unknown -stim_times type of option: '%s' [nopt=%d]",sopt,nopt) ;
@@ -2739,12 +2863,17 @@ void get_options
             = # of nonlinear function parameters from timing file **/
 
         nopt++ ;
-
-        basis_stim[k] = basis_parser( argv[nopt] ) ;
+        model = argv[nopt] ;
+        if( do_FSL && strncmp(model,"dm",2) != 0 ){
+          WARNING_message("'%s %d' file '%s' -- model '%s' is not of 'dm' type -- replacing with 'dmUBLOCK(1)'",
+                          sopt , ival , argv[nopt-1] , model ) ;
+          model = "dmUBLOCK(1)" ;
+        }
+        basis_stim[k] = basis_parser(model) ;
 
         if( basis_stim[k] == NULL )
           ERROR_exit("'%s %d': don't understand basis function model '%s' [nopt=%d]",
-                     sopt , ival , argv[nopt] , nopt ) ;
+                     sopt , ival , model , nopt ) ;
 
         /** Allow for vfun parameters to basis function [05 Dec 2008], **/
         /** and then vmod = number of amplitude modulation parameters. **/
@@ -2763,7 +2892,7 @@ void get_options
             ERROR_exit(
               "'%s %d': basis function model '%s' uses %d parameters;\n"
               "    which is more than maximum allowed %d -- internal error!! [nopt=%d]" ,
-              sopt , ival , argv[nopt] ,
+              sopt , ival , model ,
               basis_stim[k]->vfun , BASIS_MAX_VFUN , nopt ) ;
 
           basis_stim[k]->vmod = vmod = vdim - 1 - basis_stim[k]->vfun ;
@@ -2772,13 +2901,13 @@ void get_options
             ERROR_exit(
               "'%s %d': basis function model '%s' uses %d parameters,\n"
               "    more than the %d found in timing file '%s' [nopt=%d]" ,
-              sopt , ival , argv[nopt] ,
+              sopt , ival , model ,
               basis_stim[k]->vfun , vdim-1 , argv[nopt-1] , nopt ) ;
 
           INFO_message(
             "'%s %d': basis function model '%s' uses %d parameters,\n"
             "    out of the %d found in timing file '%s'" ,
-            sopt , ival , argv[nopt] ,
+            sopt , ival , model ,
             basis_stim[k]->vfun , vdim-1 , argv[nopt-1] ) ;
 
         } else if( vdim > 1 ){  /* vfun is 0, so all params are amplitudes */
@@ -2815,7 +2944,7 @@ void get_options
             ERROR_exit("'%s %d %s' needs %d functional parameters but has %d [nopt=%d]",
                        sopt,ival,argv[nopt-1],basis_stim[k]->vfun,vdim-1, nopt ) ;
 
-        } else if( strcmp(suf,"_AM1") == 0 ){
+        } else if( strcmp(suf,"_AM1") == 0 || do_FSL ){
                                                       /* amplitude */
           basis_stim[k]->type = BASIS_MODULATED_MONO; /* modulation */
 
@@ -10053,7 +10182,14 @@ ENTRY("read_glt_matrix") ;
          if( fpt == NULL ) fpt = strchr(buf,'|') ;
          if( fpt != NULL ) *fpt = '\0' ;
          fvv = SYM_expand_ranges( ncol-1 , nSymStim,SymStim , buf ) ;
-         if( fvv == NULL || fvv->nvec < 1 ) continue ;
+         if( fvv == NULL || fvv->nvec < 1 ) {
+            /* skip any empty row, else fail      17 Oct 2013 [rickr] */
+            if( fpt ) WARNING_message("skipping empty SYM row at posn %d of %s",
+                                      (int)(fpt-fdup)+4, fname);
+            else ERROR_exit("failing on empty SYM");
+            buf = fpt+1;
+            continue ;
+         }
          far = (float **)realloc((void *)far , sizeof(float *)*(nr+fvv->nvec)) ;
          for( iv=0 ; iv < fvv->nvec ; iv++ ) far[nr++] = fvv->fvar[iv].ar ;
          free((void *)fvv->fvar) ; free((void *)fvv) ;
@@ -10358,18 +10494,27 @@ static float basis_block_hrf4( float tt , float TT )
   return (float)w ;
 }
 
-/*--------------------------------------------------------------------------*/
-
+/*----------------------------------------------------------------------------*/
+/* for BLOCK4, dmBLOCK4, and dmUBLOCK4:
+    t    = time of evaluation
+    T    = duration
+    peak =      if( peak >  0 ) ==> arrange so peak amplitude of curve is 'peak'
+           else if( peak == 0 ) ==> let amplitude come from duration, and
+                                      amplitude(duration=big) = 1
+           else if( peak <  0 ) ==> let amplitude come from duration, with
+                                      amplitude(duration=-peak) = 1
+*//*--------------------------------------------------------------------------*/
 
 static float basis_block4_NEW( float t, float T, float peak, float junk, void *q )
 {
    float w , tp , pp , TT ;
 
-   w = basis_block_hrf4(t,T) ;
+   w = basis_block_hrf4(t,T) ; /* function value, but need to alter amplitude */
 
    if( w > 0.0f ){
-     if( peak != 0.0f ){ TT = T ; }
-     else              { TT = 99.9f ; peak = 1.0f ; }
+          if( peak >  0.0f ){ TT = T ; }
+     else if( peak == 0.0f ){ TT = 99.9f ; peak = 1.0f ; }
+     else                   { TT = -peak ; peak = 1.0f ; }
      tp = TPEAK4(TT) ; pp = basis_block_hrf4(tp,TT) ;
      if( pp > 0.0f ) w *= peak / pp ;
    }
@@ -10453,8 +10598,9 @@ static float basis_block5_NEW( float t, float T, float peak, float junk, void *q
    w = basis_block_hrf5(t,T) ;
 
    if( w > 0.0f ){
-     if( peak != 0.0f ){ TT = T ; }
-     else              { TT = 99.9f ; peak = 1.0f ; }
+          if( peak >  0.0f ){ TT = T ; }
+     else if( peak == 0.0f ){ TT = 99.9f ; peak = 1.0f ; }
+     else                   { TT = -peak ; peak = 1.0f ; }
      tp = TPEAK5(TT) ; pp = basis_block_hrf5(tp,TT) ;
      if( pp > 0.0f ) w *= peak / pp ;
    }
@@ -12270,4 +12416,56 @@ static int check_matrix_condition( matrix xdata , char *xname )
     }
 
     free((void *)ev) ; return bad ;
+}
+
+/*----------------------------------------------------------------------------*/
+/* Function to convert FSL style stim times image of 3 columns
+   to -stim_times_AM1 style of vector image.
+   Note that the input (and output) are row major.  In the input,
+   each row is one stimulus time; unlike FSL, the file can specify times
+   for more than one run -- runs are separated by a row of '*'.
+   In the output, each row is one run, and each entry has 3 values
+   (vdim==3): time,amplitude,duration.
+*//*--------------------------------------------------------------------------*/
+
+MRI_IMAGE * convert_FSL_to_fvect( MRI_IMAGE *fslim , int do_amp1 )
+{
+   int ncol , nrun , qq,qf,qd , nfx,nfy , irun,itim ;
+   MRI_IMAGE *nbt ;
+   float *far , *nbar , stim,sdur,samp ;
+
+   if( fslim == NULL || fslim->vdim > 0 ) return NULL ;
+
+   nfx = fslim->nx ;  /* number of values per row, should be 3 */
+   nfy = fslim->ny ;  /* number of rows in input file */
+
+   far = MRI_FLOAT_PTR(fslim) ;
+
+   /* count number of runs (separated by rows of * = bigger than big_time) */
+
+   for( ncol=nrun=qq=qf=0 ; qq < nfy ; qq++ ){
+     if( far[qq*nfx] > big_time ){
+       nrun++ ; qd = qq-qf ; ncol = MAX(qd,ncol) ; qf = qq+1 ;
+     }
+   }
+   nrun++ ; qd = nfy-qf ; ncol = MAX(qd,ncol) ;
+
+#undef  NBP
+#define NBP(ir,ic) (nbar + 3*((ir)*ncol+(ic)) )
+
+   nbt  = mri_new_fvectim( ncol , nrun , 1 , 3 ) ;
+   nbar = (float *)nbt->im ;
+   for( qq=0 ; qq < 3*ncol*nrun ; qq++ ) nbar[qq] = basis_filler ;
+
+   for( irun=qq=0,qf=-1 ; qq < nfy ; qq++ ){
+     stim = far[qq*nfx] ;
+     if( stim > big_time ){ irun++ ; qf = qq ; continue ; }
+     sdur = (nfx < 2)            ? 0.1f : far[qq*nfx+1] ;
+     samp = (nfx < 3 || do_amp1) ? 1.0f : far[qq*nfx+2] ;
+     NBP(irun,qq-qf-1)[0] = stim ;
+     NBP(irun,qq-qf-1)[1] = samp ;
+     NBP(irun,qq-qf-1)[2] = sdur ;
+   }
+
+   return nbt ;
 }

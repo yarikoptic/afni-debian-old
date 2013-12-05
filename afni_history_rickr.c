@@ -49,6 +49,124 @@
 
 afni_history_struct rickr_history[] = {
 
+ {  4,  Dec, 2013, RCR, "@afni.run.me", MINOR, TYPE_NEW_PROG,
+   "download and execute afni:/pub/dist/bin/misc/afni_runme script",
+   NULL
+ } ,
+
+ {  4,  Dec, 2013, RCR, "@update.afni.binaries", MINOR, TYPE_BUG_FIX,
+   "fixed ac++ condition",
+   NULL
+ } ,
+
+ {  4,  Dec, 2013, RCR, "afni_runme", MINOR, TYPE_NEW_PROG,
+   "added this (Ziad's) script to sysadmin/scripts",
+   NULL
+ } ,
+
+ {  3,  Dec, 2013, RCR, "@update.afni.binaries", MINOR, TYPE_NEW_OPT,
+   "added -prog_list for Ziad",
+   NULL
+ } ,
+
+ { 12,  Nov, 2013, RCR, "3dTfitter", MICRO, TYPE_ENHANCE,
+   "added help example for PPI analysis",
+   NULL
+ } ,
+
+ { 5,  Nov, 2013, RCR, "@update.afni.binaries", MICRO, TYPE_BUG_FIX,
+   "watch out of 'afni -ver' crashing because of missing libraries",
+   "Trap check of $package, since it is included with $status.\n"
+   "Thanks to CC Yen for noting the error."
+ } ,
+
+ { 5,  Nov, 2013, RCR, "@FindAfniDsetPath", MICRO, TYPE_ENHANCE,
+   "check AFNI_ATLAS_PATH and $HOME/.afni/atlases for datasets",
+   NULL
+ } ,
+
+ { 1,  Nov, 2013, RCR, "@update.afni.binaries", MICRO, TYPE_MODIFY,
+   "OS X now defaults to 10.7_Intel package",
+   NULL
+ } ,
+
+ { 1,  Nov, 2013, RCR, "afni_proc.py", MINOR, TYPE_MODIFY,
+   "let all-1 input for extents mask vary per run (for diff # TRs)",
+   NULL
+ } ,
+
+ { 31,  Oct, 2013, RCR, "afni_proc.py", MINOR, TYPE_MODIFY,
+   "restrict blur estimation to uncensored TRs",
+   NULL
+ } ,
+
+ { 31,  Oct, 2013, RCR, "1d_tool.py", MINOR, TYPE_NEW_OPT,
+   "added -show_trs_run",
+   "This will be used by afni_proc.py to restrict TRs for blur estimation\n"
+   "to those that were not censored, per run."
+ } ,
+
+ { 30,  Oct, 2013, RCR, "gen_group_command.py", MINOR, TYPE_ENHANCE,
+   "added -keep_dirent_pre, to expand subject ID to directory entry prefix",
+   "Requested by  P Molfese."
+ } ,
+
+ { 24,  Oct, 2013, RCR, "gen_ss_review_scripts.py", MICRO, TYPE_ENHANCE,
+   "output global correlation, and DoF info from review_basic",
+   NULL
+ } ,
+
+ { 17,  Oct, 2013, RCR, "3dDeconvolve", MICRO, TYPE_BUG_FIX,
+   "avoid infinite loop on empty SYM: or SYM: rows",
+   NULL
+ } ,
+
+ { 30,  Sep, 2013, RCR, "unix_tutorial", MINOR, TYPE_ENHANCE,
+   "updates to installs/unix_commands/scripts/basic_*/bin/*",
+   "These are for the 2 Dec 2013 bootcamp."
+ } ,
+
+ { 26,  Sep, 2013, RCR, "afni-general", MICRO, TYPE_BUG_FIX,
+   "added more .h files to install_lib for compiling outside of afni_src",
+   "Added rcmat.h, misc_math.h, thd_atlas.h, thd_ttatlas_query.h\n"
+   "and thd_ttatlas_CA_EZ.h."
+ } ,
+
+ { 19,  Sep, 2013, RCR, "afni_proc.py", MINOR, TYPE_ENHANCE,
+   "allow regress_polort -1; added help for -regress_RSFC",
+   NULL
+ } ,
+
+ { 19,  Sep, 2013, RCR, "afni-general", MINOR, TYPE_MODIFY,
+   "allow AFNI_COMPRESSOR to init decompression tool between gzip/pigz",
+   NULL
+ } ,
+
+ { 19,  Sep, 2013, RCR, "afni-general", MINOR, TYPE_NEW_OPT,
+   "show label->sub-brick index conversion via AFNI_SHOW_LABEL_TO_INDEX",
+   NULL
+ } ,
+
+ { 19,  Sep, 2013, RCR, "afni", MINOR, TYPE_NEW_OPT,
+   "added options -get_processed_env[_afni] and -global_opts",
+   NULL
+ } ,
+
+ { 17,  Sep, 2013, RCR, "mpeg_encode", MICRO, TYPE_MODIFY,
+   "on fatal error, print message; added stdlib.h for free()/exit() protos",
+   "Thanks to TheChymera (Message Board) for mentioning compile warnings."
+ } ,
+
+ { 13,  Sep, 2013, RCR, "3dNLfim", MICRO, TYPE_BUG_FIX,
+   "report an error instead of crashing if no -input is given",
+   "This allows for getting individual signal help without the crash.\n"
+ } ,
+
+ { 13,  Sep, 2013, RCR, "model_conv_cosine4", MICRO, TYPE_ENHANCE,
+   "updated help with a usage example",
+   NULL
+ } ,
+
  { 12,  Sep, 2013, RCR, "afni-general", MICRO, TYPE_GENERAL,
    "added SYSTEM_NAME to Makefile.linux_ubuntu_12_64",
    NULL

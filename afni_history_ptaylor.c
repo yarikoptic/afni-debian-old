@@ -67,6 +67,51 @@ afni_history_struct ptaylor_history[] = {
 /*=====BELOW THIS LINE=====*/
 
 
+
+{ 28, Oct , 2013 , PT , "3dROIMaker" , MINOR , TYPE_MODIFY,
+  "Allow multiple-brick masks.",
+  "For N-brick data set, can input either 1- or N-brick mask."
+},
+
+{ 28, Oct , 2013 , PT , "3dMatch" , MINOR , TYPE_BUG_FIX,
+  "Fixed subbrick labelling oddity.",
+  "For some reason, subbrick selection with [i] was getting confused"
+  "with i-th label (which was an integer). Solved by prefixing label"
+  "designation with a short string of useful letters."
+},
+
+{ 24, Oct , 2013 , PT , "3dROIMaker" , MINOR , TYPE_BUG_FIX,
+  "Fix segmentation error when not using -refset.",
+  "Fixed error in defining/freeing a certain array."
+},
+
+{ 26, Sep , 2013 , PT , "3dProbTrackID" , MINOR , TYPE_MODIFY,
+  "Improving ease of NOT-mask ROI inclusion and (internal) track handling.",
+  "Instead of separate ROI NOT-masks, uses can build in ANTI-ROIs with"
+  "negative-valued (=-1) voxels."
+  "Under the hood track handling: smoother checking of track ends, as well as"
+  "of possibly breaking up tracks in event of NOT regions; simpler passing"
+  "to track bundles, as well."
+},
+
+{ 26, Sep , 2013 , PT , "3dROIMaker" , MINOR , TYPE_MODIFY,
+  "Allow negative ROIs in refset.",
+  "This is useful/necessary for handling new NOT-mask regionality in network"
+  "files for tracking."
+},
+
+{ 26, Sep , 2013 , PT , "DoTrackit.c" , MINOR , TYPE_MODIFY,
+  "Improving ease of NOT-mask ROI inclusion and (internal) track handling.",
+  "This is useful/necessary for handling new NOT-mask regionality in network"
+  "files for tracking; think it just streamlines various processing, as well."
+},
+
+{ 26, Sep , 2013 , PT , "TrackIO.c" , MINOR , TYPE_MODIFY,
+  "Improving ease of track handling.",
+  "Updated TrackCreate function, which has simpler inputs from 3dProbTrackID"
+  "now; outputs unchanged."
+},
+
 { 26, Aug , 2013 , PT , "DoTrackit.c" , MINOR , TYPE_BUG_FIX,
   "Fix handling of non-RPI datasets.",
   "No ostensible output change, except to not produce an error message.\n"

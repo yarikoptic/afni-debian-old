@@ -28,7 +28,7 @@ greeting.MVM <- function ()
           ================== Welcome to 3dMVM ==================          
    AFNI Group Analysis Program with Multivariate Linear Modeling Approach
 #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-Version 2.0.0, Aug 27, 2013
+Version 2.0.3, Nov 30, 2013
 Author: Gang Chen (gangchen@mail.nih.gov)
 Website - http://afni.nimh.nih.gov/sscc/gangc/MVM.html
 SSCC/NIMH, National Institutes of Health, Bethesda MD 20892
@@ -44,7 +44,7 @@ help.MVM.opts <- function (params, alpha = TRUE, itspace='   ', adieu=FALSE) {
           ================== Welcome to 3dMVM ==================          
     AFNI Group Analysis Program with Multi-Variate Modeling Approach
 #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-Version 2.0.0, Aug 27, 2013
+Version 2.0.3, Nov 30, 2013
 Author: Gang Chen (gangchen@mail.nih.gov)
 Website - http://afni.nimh.nih.gov/sscc/gangc/MVM.html
 SSCC/NIMH, National Institutes of Health, Bethesda MD 20892
@@ -373,7 +373,7 @@ read.MVM.opts.batch <- function (args=NULL, verb = 0) {
              sep = '\n'
              ) ),
 
-     '-dataTable' = apl(n=c(1, 10000), d=NA, h = paste(
+     '-dataTable' = apl(n=c(1, 1000000), d=NA, h = paste(
    "-dataTable TABLE: List the data structure with a header as the first line.",
    "         NOTE: this option has to occur last; that is, no other options are",
    "         allowed thereafter. Each line should end with a backslash except for",
@@ -386,8 +386,7 @@ read.MVM.opts.batch <- function (args=NULL, verb = 0) {
    "         can be specified with sub-brick selector(square brackets [] within",
    "         quotes) specified with a number oflabel. Unequal number of subjects",
    "         across groups is allowed, butsituations with missing data for a",
-   "         within-subject factor are betterhandled with 3dLME.",
-   "         handled with 3dLME.\n", 
+   "         within-subject factor are better handled with 3dLME.\n", 
              sep = '\n'
                      ) ),
 
@@ -1022,8 +1021,8 @@ if(lop$num_glt>0) for(ii in 1:lop$num_glt)
 
 # DFs for F-stat
 F_DF <- vector('list', nF)
-for(ii in 1:nFu) if(is.na(lop$mVar) & is.na(lop$wsVars))
-   F_DF[[ii]] <- c(uvfm[ii, 'Df'], " ", uvfm[1+nF, 'Df']) else
+for(ii in 1:nFu) if(is.na(lop$mVar) & is.na(lop$wsVars)) # between-subjects variables only
+   F_DF[[ii]] <- c(uvfm[ii, 'Df'], uvfm[nF+1, 'Df']) else # having within-subject factor
    F_DF[[ii]] <- c(unname(uvfm$anova[ii,'num Df']), unname(uvfm$anova[ii,'den Df'])) # skip the intercept: ii+1
 
 if(nFsc > 0) for(ii in 1:nFsc) F_DF[[nFu+ii]] <- c(numDF[ii], denDF[ii])
@@ -1144,6 +1143,12 @@ if (lop$nNodes>1) {
 #      cat("Z slice ", kk, "done: ", format(Sys.time(), "%D %H:%M:%OS3"), "\n")
 #   stopCluster(cl)
 #}
+
+# avoid overflow
+Top <- 100
+out[is.nan(out)] <- 0
+out[out > Top] <- Top  
+out[out < (-Top)] <- -Top  
 
 ###############################
 #if(is.na(lop$mVar)) {

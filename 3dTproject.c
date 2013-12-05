@@ -37,6 +37,7 @@ typedef struct {
 
 #define CEN_ZERO 1
 #define CEN_KILL 2
+#define CEN_FILT 3
 
 int   TPR_verb   = 0 ;
 char *TPR_prefix = NULL ;
@@ -98,6 +99,13 @@ void TPR_help_the_pitiful_user(void)
    "                                      ==> output datset is same length as input\n"
    "                       ++ mode = KILL ==> remove those time points\n"
    "                                      ==> output dataset is shorter than input\n"
+#if 0
+   "                       ++ mode = FILT ==> censored values are replaced by\n"
+   "                                          neigbhoring (in time) non-censored values,\n"
+   "                                          BEFORE any projections, and then the\n"
+   "                                          analysis proceeds without actual removal\n"
+   "                                          of any time points -- this is for Javier.\n"
+#endif
    "                       ** The default mode is KILL !!!\n"
    "\n"
    " -concat ccc.1D      = The catenation file, as in 3dDeconvolve, containing the\n"
@@ -130,6 +138,8 @@ void TPR_help_the_pitiful_user(void)
    "                       ++ Default value is 2.\n"
    "                       ++ It makes no sense to use a value of pp greater than\n"
    "                          2, if you are bandpassing out the lower frequencies!\n"
+   "                       ++ For catenated datasets, each run gets a separate set\n"
+   "                          set of pp+1 Legendre polynomial regressors.\n"
    " -dsort fset         = Remove the 3D+time time series in dataset fset.\n"
    "                       ++ That is, 'fset' contains a different nuisance time\n"
    "                          series for each voxel (e.g., from AnatICOR).\n"
@@ -582,17 +592,19 @@ ENTRY("TPR_process_data") ;
    keep = (int *)malloc( sizeof(int) * ntkeep ) ;
    for( qq=jj=0 ; jj < nt ; jj++ ) if( tp->censar[jj] != 0.0f ) keep[qq++] = jj ;
 
-   /*----- make stopband frequency mask, count number of frequency regressors -----*/
+   INFO_message("Setting up regressors") ;
+
+   /*----- make stopband frequency mask, count number of stopband regressors -----*/
 
    if( tp->nstopband > 0 ){
-     int ib , jbot,jtop , ntt ; float fbot,ftop , dff ;
+     int ib , jbot,jtop , ntt , nbb ; float fbot,ftop , dff ;
 
      fmask = (int **) malloc(sizeof(int *)*nbl) ;
      nf    = (int *)  malloc(sizeof(int)  *nbl) ;
      df    = (float *)malloc(sizeof(float)*nbl) ;
 
      for( tt=0 ; tt < nbl ; tt++ ){    /* each run (block) is filtered separately */
-       ntt = blb[tt] - bla[tt] + 1 ;
+       ntt = blb[tt] - bla[tt] + 1 ;  nbb = 0 ;
        dff = (tp->dt > 0.0f ) ? tp->dt : DSET_TR(tp->inset) ;
        if( dff <= 0.0f ) dff = 1.0f ;
        df[tt] = 1.0f / (ntt*dff) ; dff = 0.1666666f * df[tt] ;
@@ -613,18 +625,26 @@ ENTRY("TPR_process_data") ;
          fmask[tt][0] = 0 ;
        }
 
-       /* count the frequency regressors */
+       /* count the stopband regressors */
 
-       for( jj=1 ; jj < nf[tt] ; jj++ ) if( fmask[tt][jj] ) nort_fixed += 2 ;
+       for( jj=1 ; jj < nf[tt] ; jj++ ){
+         if( fmask[tt][jj] ){ nort_fixed += 2 ; nbb += 2 ; }
+       }
 
        /* even nt ==> top is Nyquist frequency (cosine only) */
 
-       if( fmask[nf[tt]] ) nort_fixed += ( (ntt%2==0) ? 1 : 2 ) ;
+       if( fmask[nf[tt]] ){
+         jj = (ntt%2==0) ? 1 : 2 ;
+         nort_fixed += jj ; nbb += jj ;
+       }
+
+       ININFO_message("Block #%d: %d time points -- %d stopband regressors",
+                      tt , ntt , nbb ) ;
      }
 
      if( nort_fixed >= nt ){
        ERROR_message(
-         "bandpass and/or stopbands ==> %d frequency regressors == too many for %d time points!",
+         "bandpass and/or stopbands ==> %d stopband regressors == too many for %d time points!",
          nort_fixed , nt ) ;
        nbad++ ;
      }
@@ -637,26 +657,31 @@ ENTRY("TPR_process_data") ;
 
    /*-- count polort regressors (N.B.: freq=0 and const polynomial don't BOTH occur) */
 
-   if( tp->polort >= 0 ) nort_fixed += (tp->polort+1) * nbl ;  /* one set for each run */
+   if( tp->polort >= 0 ){
+     nort_fixed += (tp->polort+1) * nbl ;  /* one set for each run */
+     ININFO_message("%d Blocks * %d polynomials -- %d polort regressors",
+                    nbl , tp->polort+1 , (tp->polort+1)*nbl ) ;
+   }
 
    /*-- check ortar for good-ositiness --*/
 
    if( tp->ortar != NULL ){
-     MRI_IMAGE *qim ;
+     MRI_IMAGE *qim ; int nbb=0 ;
      for( qq=0 ; qq < IMARR_COUNT(tp->ortar) ; qq++ ){
        qim = IMARR_SUBIM(tp->ortar,qq) ;
-       nort_fixed += qim->ny ;
+       nort_fixed += qim->ny ; nbb += qim->ny ;
        if( qim->nx != nt ){
          ERROR_message("-ort file #%d (%s) is %d long, but input dataset is %d",
                        qq+1 , qim->fname , qim->nx , nt ) ;
          nbad++ ;
        }
      }
+     ININFO_message("-- %d other fixed ort regressors",nbb) ;
    }
 
    if( nort_fixed >= ntkeep ){
      ERROR_message(
-       "number of fixed regressors (%d) is too many for %d retained time points!",
+       "total number of fixed regressors (%d) is too many for %d retained time points!",
        nort_fixed , nt ) ;
      nbad++ ;
    }
@@ -678,6 +703,7 @@ ENTRY("TPR_process_data") ;
        }
      }
      nort_dsort = nort_voxel = tp->dsortar->num ;
+     ININFO_message("-- %d voxel-wise dsort regressors",nort_dsort) ;
    }
 
    if( nort_voxel > 0 && nort_fixed+nort_voxel >= ntkeep ){
@@ -924,7 +950,7 @@ AFNI_OMP_END ;
    if( tp->verb ) INFO_message("Convert results to output dataset") ;
 
    tp->outset = EDIT_empty_copy( tp->inset ) ;
-   nvout      = (tp->cenmode == CEN_ZERO) ? nt : ntkeep ;
+   nvout      = (tp->cenmode == CEN_KILL) ? ntkeep : nt ;
 
    EDIT_dset_items( tp->outset ,
                       ADN_prefix    , tp->prefix ,
@@ -1136,6 +1162,7 @@ int main( int argc , char *argv[] )
        if( ++iarg >= argc ) ERROR_exit("Need value after option '%s'",argv[iarg-1]) ;
             if( strcasecmp(argv[iarg],"KILL") == 0 ) tinp->cenmode = CEN_KILL ;
        else if( strcasecmp(argv[iarg],"ZERO") == 0 ) tinp->cenmode = CEN_ZERO ;
+       else if( strcasecmp(argv[iarg],"FILT") == 0 ) tinp->cenmode = CEN_FILT ;
        else ERROR_message("unknown value '%s' after -cenmode",argv[iarg]) ;
        iarg++ ; continue ;
      }
