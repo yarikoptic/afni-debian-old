@@ -1,6 +1,6 @@
 --- a/3ddata.h
 +++ b/3ddata.h
-@@ -3532,7 +3532,7 @@ extern float THD_fdrcurve_zqtot( THD_3di
+@@ -3624,7 +3624,7 @@ extern float THD_fdrcurve_zqtot( THD_3di
  
      Won't do anything if the dataset is locked into memory
  */

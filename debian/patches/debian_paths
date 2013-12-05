@@ -5,7 +5,7 @@ Author: Michael Hanke <michael.hanke@gmail.com>
 Last-Update: 2010-09-29
 --- a/afni_func.c
 +++ b/afni_func.c
-@@ -5796,7 +5796,7 @@ ENTRY("AFNI_tips_CB") ;
+@@ -5866,7 +5866,7 @@ ENTRY("AFNI_tips_CB") ;
       XMapRaised( XtDisplay(tips_hw->wshell) , XtWindow(tips_hw->wshell) ) ;
       EXRETURN ;
     } else if( !AFNI_noenv("AFNI_DONT_USE_HTMLWIN") ){
@@ -14,7 +14,7 @@ Last-Update: 2010-09-29
       if( fpt != NULL && *fpt != '\0' ){
         inf = (char *)malloc(sizeof(char)*(strlen(fpt)+16)) ;
         strcpy(inf,"file:") ; strcat(inf,fpt) ; free(fpt) ;
-@@ -6684,6 +6684,8 @@ ENTRY("AFNI_find_poem_files") ;
+@@ -6754,6 +6754,8 @@ ENTRY("AFNI_find_poem_files") ;
     /*----- get path to search -----*/
  
                         epath = getenv("AFNI_PLUGINPATH") ;
@@ -36,7 +36,7 @@ Last-Update: 2010-09-29
     if( epath == NULL ) epath = getenv("HOME") ;
 --- a/thd_ttatlas_query.c
 +++ b/thd_ttatlas_query.c
-@@ -596,6 +596,8 @@ char * get_atlas_dirname(void)  /* 31 Ja
+@@ -598,6 +598,8 @@ char * get_atlas_dirname(void)  /* 31 Ja
     if( !first ) return adnam ;
     first = 0 ;
                         epath = getenv("AFNI_PLUGINPATH") ;
@@ -45,7 +45,7 @@ Last-Update: 2010-09-29
     if( epath == NULL ) epath = getenv("AFNI_PLUGIN_PATH") ;
     if( epath == NULL ) epath = getenv("PATH") ;
     if( epath == NULL ) return NULL ;  /* this is bad */
-@@ -680,6 +682,8 @@ THD_3dim_dataset * get_atlas(char *epath
+@@ -682,6 +684,8 @@ THD_3dim_dataset * get_atlas(char *epath
        /*----- get path to search -----*/
  
                            epath = getenv("AFNI_PLUGINPATH") ;
@@ -54,7 +54,7 @@ Last-Update: 2010-09-29
        if( epath == NULL ) epath = getenv("AFNI_PLUGIN_PATH") ;
        if( epath == NULL ) epath = getenv("PATH") ;
        if( epath == NULL ) RETURN(dset) ;
-@@ -2131,8 +2135,11 @@ char *find_atlas_niml_file(char * nimlna
+@@ -2163,8 +2167,11 @@ char *find_atlas_niml_file(char * nimlna
     }
       
     /* okay that didn't work, try the AFNI plugin directory */
@@ -70,7 +70,7 @@ Last-Update: 2010-09-29
        if(wami_verb() > 1) 
 --- a/afni.c
 +++ b/afni.c
-@@ -5028,12 +5028,31 @@ ENTRY("AFNI_read_inputs") ;
+@@ -5050,12 +5050,31 @@ ENTRY("AFNI_read_inputs") ;
        /*-- 20 Dec 2001: Try to read a "global" session --*/
        /*-- 11 May 2002: Move read global session up here --*/
  
@@ -104,7 +104,7 @@ Last-Update: 2010-09-29
              gss->parent = NULL ;                          /* parentize them */
 --- a/SUMA/SUMA_CreateDO.c
 +++ b/SUMA/SUMA_CreateDO.c
-@@ -7341,6 +7341,9 @@ SUMA_Boolean SUMA_DrawGSegmentDO (SUMA_G
+@@ -9655,6 +9655,9 @@ byte *SUMA_WordOverlapMask(int Nwidth, i
  SUMA_Boolean SUMA_LoadImageNIDOnel(NI_element *nel)
  {
     static char FuncName[]={"SUMA_LoadImageNIDOnel"};
@@ -114,7 +114,7 @@ Last-Update: 2010-09-29
     MRI_IMAGE *im=NULL;
     int ir, ic, i1d, i1df, imx, i1d3, i1d4;
     byte *rgb = NULL, *imar=NULL;
-@@ -7361,7 +7364,10 @@ SUMA_Boolean SUMA_LoadImageNIDOnel(NI_el
+@@ -9675,7 +9678,10 @@ SUMA_Boolean SUMA_LoadImageNIDOnel(NI_el
     
     if (! (fname = SUMA_copy_string(NI_get_attribute(nel,"filename"))) )
        SUMA_RETURN(NOPE);
