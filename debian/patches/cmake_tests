@@ -112,13 +112,13 @@
 +fi
 +
 +cmd="$@"
-+errors_=`grep Error __*log.txt|wc -l`
++errors_=`grep Error __*log.txt| grep -v -e SUMA_PositionWindowRelative_current | wc -l`
 +if [ $errors -lt $errors_ ]; then
 +	echo "E: Testing '$cmd' failed due to presence of $errors_ Error messages when up to $errors were expected" >&2
 +	exit 1
 +fi
 +
-+failures_=`grep '^Failed to' __*log.txt| wc -l`
++failures_=`grep '^Failed to' __*log.txt| grep -v -e "window attributes" | wc -l`
 +if [ $failures -lt $failures_ ]; then
 +	echo "E: Testing '$cmd' failed due to presence of $failures_ 'Failed to ...' messages when up to $failures were expected" >&2
 +	exit 1
