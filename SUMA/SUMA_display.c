@@ -1694,11 +1694,32 @@ int SUMA_SnapToDisk(SUMA_SurfaceViewer *csv, int verb, int getback)
 }
 
 /* Some of these constants may not be defined in older openGLs */
+#ifndef  GL_FRAMEBUFFER_COMPLETE
+   #define GL_FRAMEBUFFER_COMPLETE -1
+#endif
+#ifndef  GL_FRAMEBUFFER_UNDEFINED
+   #define GL_FRAMEBUFFER_UNDEFINED -2
+#endif
+#ifndef  GL_FRAMEBUFFER_INCOMPLETE_MULTISAMPLE
+   #define GL_FRAMEBUFFER_INCOMPLETE_MULTISAMPLE -3
+#endif
+#ifndef  GL_FRAMEBUFFER_UNSUPPORTED
+   #define GL_FRAMEBUFFER_UNSUPPORTED -4
+#endif
 #ifndef GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT 
-   #define GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT -1
+   #define GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT -5
 #endif
 #ifndef GL_FRAMEBUFFER_INCOMPLETE_LAYER_TARGETS
-   #define GL_FRAMEBUFFER_INCOMPLETE_LAYER_TARGETS -2
+   #define GL_FRAMEBUFFER_INCOMPLETE_LAYER_TARGETS -6
+#endif
+
+/* For older openGL libs */
+GLenum DUMMY_glCheckFramebufferStatus(GLenum dumdum) {
+   return(GL_FRAMEBUFFER_COMPLETE); 
+}
+
+#ifdef SUMA_GL_NO_CHECK_FRAME_BUFFER
+   #define glCheckFramebufferStatus DUMMY_glCheckFramebufferStatus
 #endif
 
 void SUMA_display(SUMA_SurfaceViewer *csv, SUMA_DO *dov)
@@ -3163,6 +3184,10 @@ SUMA_MenuItem DsetNodeCol_Menu[] = {
    {  "Val", &xmPushButtonWidgetClass, 
       'V', NULL, NULL, 
       SUMA_cb_SetDsetNodeCol, (XtPointer) SW_SurfCont_DsetNodeColVal, NULL},
+        
+   {  "Grp", &xmPushButtonWidgetClass, 
+      'G', NULL, NULL, 
+      SUMA_cb_SetDsetNodeCol, (XtPointer) SW_SurfCont_DsetNodeColGrp, NULL},
         
    {NULL},
 };
@@ -16832,6 +16857,8 @@ int SUMA_NodeColStr2NodeColMenuItem(char *str)
        SUMA_RETURN(SW_SurfCont_DsetNodeColGray50);
    else if (!strcmp(str,"val")) 
        SUMA_RETURN(SW_SurfCont_DsetNodeColVal);
+   else if (!strcmp(str,"grp")) 
+       SUMA_RETURN(SW_SurfCont_DsetNodeColGrp);
    else {
       SUMA_S_Errv("'%s' is not a valid node color, returning White", str);
       SUMA_RETURN(SW_SurfCont_DsetNodeColWhite);
