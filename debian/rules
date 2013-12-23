@@ -126,6 +126,9 @@ override_dh_auto_install:
 	# matlab stuff -- fix permission
 	install -d debian/tmp/matlab
 	install -m 644 -t debian/tmp/matlab matlab/*
+	# remove @update.afni.* (e.g. .binaries) so it doesn't interfer
+	# with packaged installation
+	find debian/ -iname @update.afni.\* -delete
 
 
 override_dh_auto_clean:

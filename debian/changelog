@@ -1,3 +1,10 @@
+afni (0.20131204~dfsg.1-2) neurodebian; urgency=low
+
+  * Prune any @update.afni.* script (e.g. @update.afni.binaries) from
+    installation so it doesn't interfer with packaged installation
+
+ --
+
 afni (0.20131204~dfsg.1-1) neurodebian; urgency=low
 
   [ Andreas Tille ]
