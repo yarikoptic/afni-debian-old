@@ -49,6 +49,31 @@
 
 afni_history_struct rickr_history[] = {
 
+ { 27,  Dec, 2013, RCR, "file_tool", MICRO, TYPE_ENHANCE,
+   "for -show_bad_backslash, check for '\\' as the last file character",
+   NULL
+ } ,
+
+ { 27,  Dec, 2013, RCR, "gen_ss_review_scripts.py", MINOR, TYPE_ENHANCE,
+   "also output censored TRs per run, along with fractions",
+   NULL
+ } ,
+
+ { 27,  Dec, 2013, RCR, "1d_tool.py", MINOR, TYPE_NEW_OPT,
+   "added -show_tr_run_counts and -show_num_runs, for gen_ss_review_scripts.py",
+   NULL
+ } ,
+
+ { 26,  Dec, 2013, RCR, "gen_ss_review_scripts.py", MINOR, TYPE_MODIFY,
+   "max and jump to cluster max are now based on masked dset, if possible",
+   NULL
+ } ,
+
+ { 26,  Dec, 2013, RCR, "3dBrickStat", MICRO, TYPE_MODIFY,
+   "removed extra mask size output when using -mask option",
+   "Text output is the intention of the program, so limit to requested text."
+ } ,
+
  { 18,  Dec, 2013, RCR, "@update.afni.binaries", MINOR, TYPE_MODIFY,
    "if system files seem to exist in the abin directory, block update",
    "If AFNI seems to be installed in a system directory (i.e. with OS level\n"
@@ -3388,7 +3413,7 @@ afni_history_struct rickr_history[] = {
    NULL
  } ,
 
- { 22, JUL, 2009, RCR, "realtime_receiver.py", MAJOR, TYPE_NEW_PROG,
+ { 22, JUL, 2009, RCR, "realtime_receiver.py", MAJOR, TYPE_NEW_OPT,
    "python replacement for serial helper",
    "New 'data_choice' options can be added to compute_data_for_serial_port\n"
    "for sending results of a different computation to the serial port."

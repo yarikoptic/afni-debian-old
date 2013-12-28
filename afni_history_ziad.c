@@ -65,12 +65,27 @@
 
 afni_history_struct ziad_history[] = {
 /*=====BELOW THIS LINE=====*/
- { 22, Dec , 2013 , ZSS , "DriveSuma" , MINOR , TYPE_NEW_OPT,
+ { 24, Dec , 2013 , ZSS , "suma" , MICRO , TYPE_BUG_FIX,
+   "Fixed SUMA's erroneous switch of colplanes for tracts",
+   "Problem was in thoughtless use of SUMA_ADO_Overlay0() insead\n"
+   "of available curColPlane pointer in SUMA_cb_createSurfaceCont_TDO().\n"
+   "Similar changes were made to other SUMA_cb_createSurfaceCont_*() functions\n"
+   "where curColPlane must be non null at the time of controller creation.\n"
+ },
+
+ { 24, Dec , 2013 , ZSS , "InstaTract" , MINOR , TYPE_NEW_PROG,
+   "Wrote the outlines of InstaTract to eventually perform miniprob tracking",
+   "The program now talks to SUMA and receives queries from it.\n"
+   "The queries return a dummy network for now. PT will make it interface\n"
+   "with FATCAT to compute the actual tracts."
+ },
+
+ { 23, Dec , 2013 , ZSS , "DriveSuma" , MINOR , TYPE_NEW_OPT,
    "Added support for F12 key from DriveSuma",
    NULL
  },
 
- { 22, Dec , 2013 , ZSS , "suma" , MINOR , TYPE_NEW_OPT,
+ { 23, Dec , 2013 , ZSS , "suma" , MINOR , TYPE_NEW_OPT,
    "Added option to hide graph nodes when nothing is connected to them",
    NULL
  },

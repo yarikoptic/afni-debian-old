@@ -116,21 +116,21 @@ examples (very basic for now):
          1d_tool.py -infile X.xmat.1D -show_cormat
 
    7a. Output temporal derivative of motion regressors.  There are 9 runs in
-       dfile.rall.1D, and derivatives are applied per run.
+       dfile_rall.1D, and derivatives are applied per run.
 
-         1d_tool.py -infile dfile.rall.1D -set_nruns 9 \\
+         1d_tool.py -infile dfile_rall.1D -set_nruns 9 \\
                     -derivative -write motion.deriv.1D
 
    7b. Similar to 7a, but let the run lengths vary.  The sum of run lengths
        should equal the number of time points.
 
-         1d_tool.py -infile dfile.rall.1D                       \\
+         1d_tool.py -infile dfile_rall.1D                       \\
                     -set_run_lengths 64 64 64 64 64 64 64 64 64 \\
                     -derivative -write motion.deriv.rlens.1D
 
    7c. Use forward differences, instead of the default backward differences.
 
-         1d_tool.py -infile dfile.rall.1D                       \\
+         1d_tool.py -infile dfile_rall.1D                       \\
                     -set_run_lengths 64 64 64 64 64 64 64 64 64 \\
                     -forward_diff -write motion.deriv.rlens.1D
 
@@ -215,16 +215,16 @@ examples (very basic for now):
 
        a. across all runs (if runs are not known from input file)
 
-         1d_tool.py -infile dfile.rall.1D -demean -write motion.demean.a.1D
+         1d_tool.py -infile dfile_rall.1D -demean -write motion.demean.a.1D
 
        b. per run, over 9 runs of equal length
 
-         1d_tool.py -infile dfile.rall.1D -set_nruns 9      \\
+         1d_tool.py -infile dfile_rall.1D -set_nruns 9      \\
                 -demean -write motion.demean.b.1D
 
        c. per run, over 9 runs of varying length
 
-         1d_tool.py -infile dfile.rall.1D                   \\
+         1d_tool.py -infile dfile_rall.1D                   \\
                 -set_run_lengths 64 61 67 61 67 61 67 61 67 \\
                 -demean -write motion.demean.c.1D
 
@@ -301,11 +301,11 @@ examples (very basic for now):
        set of "coordinates", distances between all N choose 2 pairs are
        evaluated (brute force).
 
-        1d_tool.py -infile dfile.rall.1D -show_max_displace
+        1d_tool.py -infile dfile_rall.1D -show_max_displace
 
    15b. Similar to 15a, but do not include displacement from censored TRs.
 
-        1d_tool.py -infile dfile.rall.1D -show_max_displace \\
+        1d_tool.py -infile dfile_rall.1D -show_max_displace \\
                    -censor_infile motion_censor.1D
 
    16. Randomize a list of numbers, say, those from 1..40.
@@ -389,6 +389,33 @@ examples (very basic for now):
 
          1d_tool.py -infile dfile_rall.1D -volreg2allineate \\
                     -write allin_rall_aff12.1D
+
+   24. Show TR counts per run.
+
+        a. list the number of TRs in each run
+
+          1d_tool.py -infile X.xmat.1D -show_tr_run_counts trs
+
+        b. list the number of TRs censored in each run
+
+          1d_tool.py -infile X.xmat.1D -show_tr_run_counts trs_cen
+
+        c. list the number of TRs prior to censoring in each run
+
+          1d_tool.py -infile X.xmat.1D -show_tr_run_counts trs_no_cen
+
+        d. list the fraction of TRs censored per run
+
+          1d_tool.py -infile X.xmat.1D -show_tr_run_counts frac_cen
+
+        e. list the fraction of TRs censored in run 3
+
+          1d_tool.py -infile X.xmat.1D -show_tr_run_counts frac_cen \\
+                     -show_trs_run 3
+
+   25. Show number of runs.
+
+          1d_tool.py -infile X.xmat.1D -show_num_runs
 
 ---------------------------------------------------------------------------
 basic informational options:
@@ -732,7 +759,16 @@ general options:
    -show_max_displace           : display max displacement (from motion params)
                                   - the maximum pairwise distance (enorm)
    -show_mmms                   : display min, mean, max, stdev of columns
+   -show_num_runs               : display number of runs found
    -show_rows_cols              : display the number of rows and columns
+   -show_tr_run_counts STYLE    : display TR counts per run, according to STYLE
+                                  STYLE can be one of:
+                                     trs        : TR counts
+                                     trs_cen    : censored TR counts
+                                     trs_no_cen : TR counts, as if no censoring
+                                     frac_cen   : fractions of TRs censored
+        See example 24.
+
    -show_trs_censored STYLE     : display a list of TRs which were censored
    -show_trs_uncensored STYLE   : display a list of TRs which were not censored
                                   STYLE can be one of:
@@ -908,9 +944,12 @@ g_history = """
    1.17 May 14, 2013 - added -show_argmin/argmax
    1.18 Jun 10, 2013 - added -select_groups, -show_cormat, -volreg2allineate
    1.19 Oct 31, 2013 - added -show_trs_run
+   1.20 Dec 27, 2013
+        - added -show_tr_run_counts in various styles
+        - added -show_num_runs
 """
 
-g_version = "1d_tool.py version 1.19, Oct 31, 2013"
+g_version = "1d_tool.py version 1.20, Dec 27, 2013"
 
 
 class A1DInterface:
@@ -973,7 +1012,10 @@ class A1DInterface:
       self.show_label_ord  = 0          # show the label ordering
       self.show_labels     = 0          # show the labels
       self.show_mmms       = 0          # show min, mean, max, stdev
+      self.show_num_runs   = 0          # show the number of runs found
       self.show_rows_cols  = 0          # show the number of rows and columns
+      self.show_tr_run_counts = ''      # style variable can be in:
+                                        #   trs, trs_cen, trs_no_cen, frac_cen
       self.show_trs_censored = ''       # style variable can be in:
       self.show_trs_uncensored = ''     # style variable can be in:
                                # {'', 'comma', 'space', 'encoded', 'verbose'}
@@ -1233,8 +1275,15 @@ class A1DInterface:
       self.valid_opts.add_opt('-show_mmms', 0, [], 
                       helpstr='display min, mean, max, stdev, per column')
 
+      self.valid_opts.add_opt('-show_num_runs', 0, [], 
+                   helpstr='display the number of runs found')
+
       self.valid_opts.add_opt('-show_rows_cols', 0, [], 
                       helpstr='display the number of rows and columns')
+
+      self.valid_opts.add_opt('-show_tr_run_counts', 1, [], 
+                   acplist=['trs', 'trs_cen', 'trs_no_cen', 'frac_cen'],
+                   helpstr='display TR counts per run, in given STYLE')
 
       self.valid_opts.add_opt('-show_trs_censored', 1, [], 
                    acplist=['comma', 'space', 'encoded', 'describe', 'verbose'],
@@ -1628,6 +1677,14 @@ class A1DInterface:
          elif opt.name == '-show_rows_cols':
             self.show_rows_cols = 1
 
+         elif opt.name == '-show_num_runs':
+            self.show_num_runs = 1
+
+         elif opt.name == '-show_tr_run_counts':
+            val, err = uopts.get_string_opt('', opt=opt)
+            if err: return 1
+            self.show_tr_run_counts = val
+
          elif opt.name == '-show_trs_censored':
             val, err = uopts.get_string_opt('', opt=opt)
             if err: return 1
@@ -1875,7 +1932,11 @@ class A1DInterface:
       if self.show_mmms:
          self.adata.show_min_mean_max_stdev(verb=self.verb)
 
+      if self.show_num_runs: self.show_nruns()
+
       if self.show_rows_cols: self.adata.show_rows_cols(verb=self.verb)
+
+      if self.show_tr_run_counts  != '': self.show_TR_run_counts()
 
       if self.show_trs_censored   != '': self.show_TR_censor_list(1)
       if self.show_trs_uncensored != '': self.show_TR_censor_list(0)
@@ -1909,6 +1970,52 @@ class A1DInterface:
          if self.write_1D(self.write_file): return 1
 
       return
+
+   def show_nruns(self):
+      """display the number of runs"""
+      if self.verb > 1: pstr = 'number of runs: '
+      else:             pstr = ''
+      print '%s%s' % (pstr, self.adata.nruns)
+
+   def show_TR_run_counts(self):
+      """display list of TRs per run, according to self.show_tr_run_counts
+            can be one of: trs, trs_cen, trs_no_cen, frac_cen
+                trs        : list TR counts for all runs
+                trs_cen
+                trs_no_cen
+                frac_cen
+
+         if 0 <= self.show_trs_run <= self.adata.nruns,
+                just output for that run
+      """
+
+      rv, trs, trs_nc = self.adata.get_tr_counts()
+      if rv: return     # failure
+
+      # if desired, just get sub-list
+      if self.show_trs_run >= 0:
+         if self.show_trs_run > self.adata.nruns:
+            print '** -show_trs_run (%d) exceeds num runs (%d)' \
+                  % (self.show_trs_run, self.adata.nruns)
+            return
+
+         trs    = trs   [self.show_trs_run:self.show_trs_run+1]
+         trs_nc = trs_nc[self.show_trs_run:self.show_trs_run+1]
+
+      style = self.show_tr_run_counts
+      if style == 'trs':
+         print UTIL.int_list_string(trs, sepstr=' ')
+      elif style == 'trs_cen':
+         tlist = [trs_nc[r]-trs[r] for r in range(len(trs))]
+         print UTIL.int_list_string(tlist, sepstr=' ')
+      elif style == 'trs_no_cen':
+         print UTIL.int_list_string(trs_nc, sepstr=' ')
+      elif style == 'frac_cen':
+         tlist = [1.0-trs[r]*1.0/trs_nc[r] for r in range(len(trs))]
+         print UTIL.gen_float_list_string(tlist)
+      else:
+         print '** invalid -show_tr_run_counts STYLE %s' \
+               % self.show_tr_run_counts
 
    def show_TR_censor_list(self, censored=0):
       """output either the cencored or uncensored TR index list in the
