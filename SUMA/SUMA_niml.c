@@ -19,7 +19,7 @@ int SUMA_init_ports_assignments(SUMA_CommonFields *cf)
 {
    static char FuncName[]={"SUMA_init_ports_assignments"};
    int i;
-   float dsmw = 5*60;
+   float dsmw = 5*60, dsmwc = 5;
    char *eee=NULL;
    
    SUMA_ENTRY;
@@ -43,6 +43,20 @@ int SUMA_init_ports_assignments(SUMA_CommonFields *cf)
    } else {
       dsmw = (float)5*60;
    } 
+   eee = getenv("SUMA_DriveSumaMaxCloseWait");
+   if (eee) {
+      dsmwc = atof(eee);
+      if (dsmwc < 0 || dsmwc > 60000) {
+         SUMA_S_Warnv( 
+               "Environment variable SUMA_DriveSumaMaxCloseWait %f is invalid.\n"
+                "value must be between 0 and 60000 seconds.\n"
+                "Using default of %d\n", 
+                dsmwc, 5);
+         dsmwc = (float)5;/* wait for 5 secs */
+      }
+   } else {
+      dsmwc = (float)5;
+   } 
     
    for (i=0; i<SUMA_MAX_STREAMS; ++i) {
       cf->ns_v[i] = NULL;
@@ -50,9 +64,11 @@ int SUMA_init_ports_assignments(SUMA_CommonFields *cf)
          case SUMA_GICORR_LINE:
          case SUMA_DRIVESUMA_LINE:
             cf->ns_to[i] = (int)(dsmw*1000);  
+            cf->ns_toc[i] = (int)(dsmwc*1000);  
             break;
          default:
             cf->ns_to[i] = SUMA_WRITECHECKWAITMAX;
+            cf->ns_toc[i] = (int)(SUMA_WRITECHECKWAITMAX*1000);  
             break;
       }
       cf->ns_flags_v[i] = 0;
@@ -496,7 +512,8 @@ SUMA_Boolean SUMA_niml_call ( SUMA_CommonFields *cf, int si,
          /* contact afni */
             SUMA_SetWriteCheckWaitMax(cf->ns_to[si]);
             fprintf( SUMA_STDOUT,
-                     "%s: Contacting on %s (%d), maximum wait %.3f sec\n", 
+                     "%s: Contacting on %s (%d), maximum wait %.3f sec \n"
+            "(You can change max. wait time with env. SUMA_DriveSumaMaxWait)\n", 
                      FuncName, cf->NimlStream_v[si], si, 
                      (float)cf->ns_to[si]/1000.0);
             fflush(SUMA_STDOUT);
@@ -2220,7 +2237,7 @@ NI_element * SUMA_makeNI_CrossHair (SUMA_SurfaceViewer *sv)
    static char FuncName[]={"SUMA_makeNI_CrossHair"};
    NI_element *nel=NULL;
    float *XYZmap;
-   int I_C = -1, ip, iv4[4];
+   int I_C = -1, ip, ivsel[SUMA_N_IALTSEL_TYPES];
    SUMA_ALL_DO *ado = NULL;
    SUMA_SurfaceObject *SO;
    
@@ -2278,12 +2295,12 @@ NI_element * SUMA_makeNI_CrossHair (SUMA_SurfaceViewer *sv)
          }
 
          /* add some info about surface in question */
-         ip = SUMA_ADO_SelectedDatum(ado, (void *)iv4);
+         ip = SUMA_ADO_SelectedDatum(ado, (void *)ivsel, NULL);
          NI_SETA_INT(nel, "network_pointid", ip);
-         NI_SETA_INT(nel, "net_bundle_id", iv4[SUMA_NET_BUN]);
-         NI_SETA_INT(nel, "bundle_tract_id", iv4[SUMA_BUN_TRC]);
-         NI_SETA_INT(nel, "tract_point_id", iv4[SUMA_TRC_PNT]);
-         NI_SETA_INT(nel, "net_tract_id", iv4[SUMA_NET_TRC]);
+         NI_SETA_INT(nel, "net_bundle_id", ivsel[SUMA_NET_BUN]);
+         NI_SETA_INT(nel, "bundle_tract_id", ivsel[SUMA_BUN_TRC]);
+         NI_SETA_INT(nel, "tract_point_id", ivsel[SUMA_TRC_PNT]);
+         NI_SETA_INT(nel, "net_tract_id", ivsel[SUMA_NET_TRC]);
          NI_set_attribute(nel, "network_idcode", ADO_ID(ado));
          NI_set_attribute(nel, "surface_label", ADO_LABEL(ado));
 
@@ -2296,7 +2313,7 @@ NI_element * SUMA_makeNI_CrossHair (SUMA_SurfaceViewer *sv)
          }
 
          /* add some info about surface in question */
-         ip = SUMA_ADO_SelectedDatum(ado, (void *)iv4);
+         ip = SUMA_ADO_SelectedDatum(ado, (void *)ivsel, NULL);
          NI_add_column( nel , NI_FLOAT , sv->Ch->c_noVisX );
          break;
       case SDSET_type:
@@ -2309,7 +2326,7 @@ NI_element * SUMA_makeNI_CrossHair (SUMA_SurfaceViewer *sv)
          }
 
          /* add some info about object in question */
-         ip = SUMA_ADO_SelectedDatum(ado, NULL);
+         ip = SUMA_ADO_SelectedDatum(ado, NULL, NULL);
          NI_SETA_INT(nel, "edge_id", ip);
          NI_set_attribute(nel, "graph_idcode", ADO_ID(ado));
          NI_set_attribute(nel, "graph_label", ADO_LABEL(ado));
@@ -2323,7 +2340,7 @@ NI_element * SUMA_makeNI_CrossHair (SUMA_SurfaceViewer *sv)
          }
 
          /* add some info about object in question */
-         ip = SUMA_ADO_SelectedDatum(ado, NULL);
+         ip = SUMA_ADO_SelectedDatum(ado, (void*)ivsel, NULL);
          NI_SETA_INT(nel, "voxel_id", ip);
          NI_set_attribute(nel, "volume_idcode", ADO_ID(ado));
          NI_set_attribute(nel, "volume_label", ADO_LABEL(ado));
@@ -4100,6 +4117,7 @@ void SUMA_Wait_Till_Stream_Goes_Bad(SUMA_COMM_STRUCT *cs,
    if (WaitClose >= WaitMax) { 
       if (verb) 
          SUMA_S_Warnv("\nFailed to detect closed stream after %d ms.\n"
+         "(You can change max. wait time with env. SUMA_DriveSumaMaxCloseWait)\n"
                       "Closing shop anyway...", WaitMax);  
    }else{
       if (verb) fprintf (SUMA_STDERR,"Done.\n");
@@ -4464,7 +4482,8 @@ SUMA_Boolean SUMA_SendToSuma (SUMA_SurfaceObject *SO, SUMA_COMM_STRUCT *cs,
 
 
          /* now wait till stream goes bad */
-         SUMA_Wait_Till_Stream_Goes_Bad(cs, 1000, 5000, 1);
+         SUMA_Wait_Till_Stream_Goes_Bad(cs, 1000, 
+                                    SUMAg_CF->ns_toc[cs->istream], 1);
           
          NI_stream_close(SUMAg_CF->ns_v[cs->istream]);
          SUMAg_CF->ns_v[cs->istream] = NULL;

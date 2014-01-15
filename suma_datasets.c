@@ -11400,7 +11400,7 @@ SUMA_DSET *SUMA_LoadNimlDset (char *Name, int verb)
       }
       #endif
    } else {
-      if (!(dset = SUMA_ngr_2_dset((NI_group *)nini, 1))) {
+      if (!(dset = SUMA_ngr_2_dset((NI_group *)nini, verb))) {
          SUMA_SL_Err("Failed to go from ngr to dset");
          SUMA_RETURN(NULL);
       }
@@ -13112,7 +13112,7 @@ SUMA_Boolean SUMA_sdset_set_datum_level(SUMA_DSET *dset, SUMA_DATUM_LEVEL lvl)
    if (!dset || !dset->ngr ||
          lvl < SUMA_ELEM_DAT || lvl >= SUMA_N_LEV_DAT) return(NOPE);
    
-   NI_SET_INT(dset->ngr, "Datum_Level", lvl);
+   NI_SET_INT(dset->ngr, "Datum_Level", (int)lvl);
    return(YUP);
 }
 
@@ -13306,7 +13306,7 @@ SUMA_DSET *SUMA_afnidset2sumadset(
    }else {
       /* Keep track of HEADNAME of input */
       NI_set_attribute(ngr,"DSET_HEADNAME", DSET_HEADNAME(dset));
-      if (!(newset = SUMA_ngr_2_dset(ngr, 1))) {
+      if (!(newset = SUMA_ngr_2_dset(ngr, LocalHead))) {
          SUMA_S_Err("Failed to go from ngr to dset");
          SUMA_RETURN(newset);
       }
@@ -15359,7 +15359,7 @@ float *SUMA_GDSET_GetPointColumn_f(SUMA_DSET *dset, int *N_vals,
 char *SUMA_GDSET_Edge_Label(SUMA_DSET *dset, int isel, char *pref, char *sep)
 {
    static char FuncName[]={"SUMA_GDSET_Edge_Label"};
-   int *inde, *ind0, *ind1, i1, i2;
+   int *inde, *ind0, *ind1, i1=0, i2=0;
    char *ans=NULL;
    SUMA_Boolean LocalHead = NOPE;
    
