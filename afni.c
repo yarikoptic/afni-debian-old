@@ -1455,6 +1455,7 @@ void AFNI_sigfunc_alrm(int sig)
      "Mathesar, Activate the Omega-13!"                              ,
      "No time for pleasantries, Kyle; we have a Level 5 emergency!"  ,
      "Digitize me, Fred"                                             ,
+     "Well, nobody's perfect"                                        ,
      "Drink to me only with thine eyes, and I will drink with mine"  ,
      "O Captain, My Captain, rise up and hear the bells"             ,
      "Ever returning spring, trinity sure to me you bring"           ,
@@ -1467,20 +1468,28 @@ void AFNI_sigfunc_alrm(int sig)
      "Always forgive your enemies - nothing annoys them so much"     ,
      "A friend is one who has the same enemies as you have"          ,
      "Am I not destroying my enemies when I make friends of them?"   ,
+     "True friends will stab you in the FRONT"                       ,
+     "I am so clever I don't understand a word of what I'm saying"   ,
+     "Some cause happiness wherever they go; others whenever they go",
+     "A man who does not think for himself does not think at all"    ,
+     "The truth is rarely pure and never simple"                     ,
+     "Remember this: Everything popular is wrong"                    ,
+     "I have nothing to declare except my genius"                    ,
+     "In matters of opinion, all my adversaries are insane"          ,
      "Go to Heaven for the climate, Hell for the company"            ,
      "Am I the crazy one, or is it everyone else on Earth?"          ,
      "Be sure to put your feet in the right place, then stand firm"  ,
      "May your cupcakes always have lots of rich creamy frosting"    ,
-     "Never take a cupcake from an eel"                              ,
-     "Is it time to give your moose a bath?"                         ,
+     "Never take a chocolate cupcake from an eel"                    ,
+     "Is it time to give your moose a bubble bath?"                  ,
      "Do you prefer white chocolate or dark chocolate?"              ,
      "Is it lunchtime yet?"                                          ,
      "Meet me down the pub later"                                    ,
      "Let's blow this place and grab us some vino"                   ,
      "Let's blow this place and grab some brewskis"                  ,
      "Are you ready for a coffee break? I am"                        ,
-     "Make mine a skinny vanilla latte, if you please"               ,
-     "I'd like a nice cup of lapsang souchong about now"             ,
+     "Make mine a tall skinny vanilla latte, if you please"          ,
+     "I'd like a strong cup of lapsang souchong about now"           ,
      "What's your favorite kind of bagel?"                           ,
      "What's your favorite kind of cookie?"                          ,
      "Step slowly away from the keyboard, and remain calm"           ,
@@ -1490,7 +1499,7 @@ void AFNI_sigfunc_alrm(int sig)
      "See you in Dingboche next Christmas"                           ,
      "I'll see you at Angkor Wat at midnight next Saturday"          ,
      "Buy property on Neptune now, and avoid the rush"               ,
-     "Never buy a 3 humped camel in Samarkand"                       ,
+     "NEVER buy a 3 humped camel in Samarkand"                       ,
      "Never buy a 7 hump Wump from Gump"                             ,
      "May the odds be ever in your favor"                            ,
      "I weep for Adonais -- he is dead! Oh, weep for Adonais"        ,
@@ -1506,6 +1515,7 @@ void AFNI_sigfunc_alrm(int sig)
      "I will praise any man that will praise me"                     ,
      "If you have tears, prepare to shed them now"                   ,
 
+     "How wouldst thou worst, I wonder, than thou dost, defeat, thwart me?"           ,
      "Meet me at the Torre Pendente di Pisa on the feast of St Rainerius"             ,
      "One martini is just right; two is too many; three is never enough"              ,
      "If you can't explain it simply, you don't understand it well enough"            ,
@@ -1524,6 +1534,7 @@ void AFNI_sigfunc_alrm(int sig)
      "So now I say goodbye, but I feel sure we will meet again sometime"              ,
      "If you're anything like me, you're both smart and incredibly good looking"      ,
      "In battle we may yet meet again, though all the hosts of Mordor stand between"  ,
+     "Repeat after me: Om Mani Padme Hum, Om Mani Padme Hum, Om Mani Padme Hum ...."  ,
      "Let us therefore study the incidents of this as philosophy to learn wisdom from",
    } ;
 #undef NTOP
@@ -1561,8 +1572,14 @@ void AFNI_sigfunc_alrm(int sig)
      Three_D_View *im3d = AFNI_find_open_controller() ;
      char *eee = getenv("AFNI_SPLASH_MELT") ;
      if( eee == NULL ) eee = "?" ; else eee[0] = toupper(eee[0]) ;
-     if( im3d != NULL && eee[0] != 'N' && (eee[0] == 'Y' || lrand48()%9==0) )
+     if( im3d   != NULL  && MCW_widget_visible(im3d->vwid->top_shell) &&
+         eee[0] != 'N'   && (eee[0] == 'Y' || lrand48()%19==0)           ){
+       int jj ;
+       XMapRaised( XtDisplay(im3d->vwid->top_shell) ,
+                   XtWindow(im3d->vwid->top_shell)   ) ; /* raise controller */
+       AFNI_sleep(111);
        MCW_melt_widget( im3d->vwid->top_form ) ;
+     }
    }
 
    exit(sig);
@@ -4590,6 +4607,25 @@ if(PRINT_TRACING)
       }
       break ;
 
+      /*--- cycle global range [03 Feb 2013] ---*/
+      case isqCR_globalrange:{
+          int ig;
+          THD_cycle_image_globalrange();
+          ig = THD_get_image_globalrange();
+          THD_set_image_globalrange_env(ig);
+          ENV_globalrange_view( "AFNI_IMAGE_GLOBALRANGE" );
+      }
+      break ;
+
+      /*--- reset global range to use new environment value set elsewhere [03 Feb 2013] ---*/
+      case isqCR_resetglobalrange:{
+          int ig;
+          ig = THD_get_image_globalrange();
+          THD_set_image_globalrange_env(ig);
+          ENV_globalrange_view( "AFNI_IMAGE_GLOBALRANGE" );
+      }
+      break ;
+
    }  /* end of switch on reason for call */
 
    EXRETURN ;
@@ -5892,6 +5928,119 @@ ENTRY("AFNI_crosshair_gap_CB") ;
 
 /*------------------------------------------------------------------------*/
 
+void AFNI_time_index_set_fstep( Three_D_View *im3d , int istep )
+{
+   MCW_arrowval *av ; char lll[16] ;
+
+ENTRY("AFNI_time_index_set_fstep") ;
+
+   if( ! IM3D_OPEN(im3d) ) EXRETURN ;
+
+   if( istep < 1 ) istep = 1 ; else if( istep > 9 ) istep = 9 ;
+
+   av = im3d->vwid->imag->time_index_av ;
+
+   if( istep == 1 ) strcpy(lll, "Index ") ;
+   else             sprintf(lll,"Idx[%d]",istep) ;
+
+   MCW_set_widget_label( av->wlabel , lll ) ;
+   av->fstep = (istep == 1) ? 0.0f : (float)istep ;
+   EXRETURN ;
+}
+
+/*------------------------------------------------------------------------*/
+
+static char *yesno[2] = { "No" , "Yes" } ;
+static char *throx[3] = { "free" , " == " , " +1 " } ;
+
+void AFNI_time_index_step_CB( Widget w, XtPointer cd, int nval , void **val )
+{
+   Three_D_View *im3d = (Three_D_View *)cd ;
+   char *cpt , cmd[128] ; MCW_bbox *bb ; int ib ;
+
+ENTRY("AFNI_time_index_step_CB") ;
+
+   if( ! IM3D_OPEN(im3d) || nval != 3 || val == NULL ) EXRETURN ;
+
+   AFNI_time_index_set_fstep( im3d , (int)(intptr_t)val[0] ) ;
+
+   sprintf(cmd,"AFNI_SLAVE_FUNCTIME %s",(char *)val[1]) ;
+   (void)AFNI_setenv(cmd) ;
+
+   cpt = (char *)val[2] ;
+   bb  = im3d->vwid->func->thr_olayx_bbox ; ib = MCW_val_bbox(bb) ;
+   if( strcmp(cpt,throx[1]) == 0 ){        /* Thr = OLay */
+     if( ib != 1 ) MCW_set_bbox(bb,1) ;
+   } else if( strcmp(cpt,throx[2]) == 0 ){ /* Thr = Olay + 1 */
+     if( ib != 2 ) MCW_set_bbox(bb,2) ;
+   } else {                                /* Thr = free and wild */
+     if( ib != 0 ) MCW_set_bbox(bb,0) ;
+   }
+   AFNI_throlayx_change_CB(NULL,im3d,NULL) ;
+   EXRETURN ;
+}
+
+/*------------------------------------------------------------------------*/
+
+void AFNI_time_index_EV( Widget w , XtPointer cd ,
+                         XEvent *ev , Boolean *continue_to_dispatch )
+{
+   Three_D_View *im3d = (Three_D_View *)cd ;
+
+ENTRY("AFNI_time_index_EV") ;
+
+   if( ! IM3D_OPEN(im3d) ) EXRETURN ;
+
+   /*** handle events ***/
+
+   switch( ev->type ){
+
+     /*----- take button press -----*/
+
+     case ButtonPress:{
+       XButtonEvent *event = (XButtonEvent *)ev ;
+
+       if( event->button == Button3 ){
+         int istep = (int)im3d->vwid->imag->time_index_av->fstep ;
+         int sftin , thrin ;
+
+         if( istep < 1 ) istep = 1 ; else if( istep > 9 ) istep = 9 ;
+         sftin = ( !AFNI_noenv("AFNI_SLAVE_FUNCTIME") ) ? 1 : 0 ;
+         thrin = im3d->vinfo->thr_olayx ; if( thrin < 0 || thrin > 2 ) thrin = 0 ;
+
+         MCW_choose_stuff( im3d->vwid->imag->time_index_av->wlabel ,
+                             "Time Index Stepping" ,
+                             AFNI_time_index_step_CB , im3d ,
+                             MSTUF_INT ,     "Index Step     " , 1 , 9     , istep ,
+                             MSTUF_STRLIST , "SLAVE_FUNCTIME " , 2 , sftin , yesno ,
+                             MSTUF_STRLIST , "Thr = Olay?+1? " , 3 , thrin , throx ,
+                           MSTUF_END ) ;
+       } else if( event->button == Button4 ){
+         int istep = (int)im3d->vwid->imag->time_index_av->fstep ;
+         if( istep < 1 ) istep = 1 ; else if( istep > 9 ) istep = 9 ;
+         AFNI_time_index_set_fstep( im3d , istep-1 ) ;
+       } else if( event->button == Button5 ){
+         int istep = (int)im3d->vwid->imag->time_index_av->fstep ;
+         if( istep < 1 ) istep = 1 ; else if( istep > 9 ) istep = 9 ;
+         AFNI_time_index_set_fstep( im3d , istep+1 ) ;
+       } else {
+         (void) MCW_popup_message(
+                   im3d->vwid->imag->time_index_av->wlabel ,
+                   (event->button == Button1) ?  " \n I really wish you "
+                                                 "\n wouldn't do that! \n "
+                                              :  " \n   Why do you "
+                                                 "\n torment me so? \n "
+                 , MCW_USER_KILL | MCW_TIMER_KILL ) ;
+       }
+     }
+     break ;
+   }
+
+   EXRETURN ;
+}
+
+/*------------------------------------------------------------------------*/
+
 void AFNI_time_index_CB( MCW_arrowval *av ,  XtPointer client_data )
 {
    Three_D_View *im3d = (Three_D_View *) client_data ;
@@ -5914,9 +6063,9 @@ ENTRY("AFNI_time_index_CB") ;
      im3d->vinfo->anat_index = DSET_NVALS(im3d->anat_now) - 1 ;
    AV_assign_ival( im3d->vwid->func->anat_buck_av , im3d->vinfo->anat_index ) ;
 
-   if( ISVALID_DSET(im3d->fim_now)                                             &&
-      ( HAS_TIMEAXIS(im3d->fim_now) || AFNI_yesenv("AFNI_SLAVE_BUCKETS_TOO") ) &&
-       !AFNI_noenv("AFNI_SLAVE_FUNCTIME") ){
+   if( ISVALID_DSET(im3d->fim_now)       &&
+       DSET_NVALS(im3d->fim_now) > 1     &&
+       !AFNI_noenv("AFNI_SLAVE_FUNCTIME")  ){
 
      im3d->vinfo->fim_index = ipx ;
      if( im3d->vinfo->fim_index >= DSET_NVALS(im3d->fim_now) )
@@ -5966,6 +6115,7 @@ static char * AFNI_image_help =
  "[ = time index down 1    ] = time index up 1\n"
  "> = Page Up   = forward  1 image (e.g., slice)\n"
  "< = Page Down = backward 1 image (e.g., slice)\n"
+ "Ctrl+m = cycle through image global range settings\n"
  "o = toggle (color) overlay on/off\n"
  "u = toggle background from underlay/overlay dataset\n"
  "#/3 = toggle underlay/overlay checkerboard display\n"
@@ -6395,7 +6545,7 @@ void AFNI_redisplay_func( Three_D_View *im3d )  /* 05 Mar 2002 */
 {
 ENTRY("AFNI_redisplay_func") ;
    if( IM3D_OPEN(im3d) && IM3D_IMAGIZED(im3d) ){
-     AFNI_set_viewpoint( im3d , -1,-1,-1 , REDISPLAY_OVERLAY ) ;
+     AFNI_set_viewpoint( im3d , -1,-1,-1 , REDISPLAY_ALL ) ;
      AFNI_process_funcdisplay( im3d ) ;
    }
    EXRETURN ;
@@ -6459,6 +6609,7 @@ void AFNI_range_setter( Three_D_View *im3d , MCW_imseq *seq )
    static THD_3dim_dataset *last_ds   = NULL ;
    static int               last_ival = -1 ;
    static float             last_tc   = 0.0f ;
+   float min = 0.0, max = 0.0;
 
 ENTRY("AFNI_range_setter") ;
 
@@ -6490,14 +6641,30 @@ ENTRY("AFNI_range_setter") ;
    }
    drive_MCW_imseq( seq , isqDR_settopclip , (XtPointer)(&last_tc) ) ;
 
-   if( !AFNI_yesenv("AFNI_IMAGE_GLOBALRANGE") ){ first=1; EXRETURN ; }
+   /* if default slice-based AFNI_IMAGE_GLOBALRANGE, just return */
+   if( !THD_get_image_globalrange() ){ first=1; EXRETURN ; }
 
-   if( ISVALID_STATISTIC(ds->stats) && ISVALID_BSTAT(ds->stats->bstat[ival]) ){
-     rng[0] = ds->stats->bstat[ival].min ;
-     rng[1] = ds->stats->bstat[ival].max ;
+   if( ISVALID_STATISTIC(ds->stats)){
+     if((THD_get_image_globalrange()==1)     /* user wants sub-brick range */
+       && ISVALID_BSTAT(ds->stats->bstat[ival])){
+        rng[0] = ds->stats->bstat[ival].min ;
+        rng[1] = ds->stats->bstat[ival].max ;
+     }
+     else {         /* user wants range scaling by whole dataset */
+       if(THD_dset_minmax(ds, 1, &min, &max)) {
+        rng[0] = min ;
+        rng[1] = max ;
+       }
+       else {  /* no good dset range, so revert to sub-brick range */
+        rng[0] = ds->stats->bstat[ival].min ;
+        rng[1] = ds->stats->bstat[ival].max ;
+       }
+     }
+
+     /* first time globalrange has been set to something? */
      if( first ){
        INFO_message(
-        "AFNI_IMAGE_GLOBALRANGE is YES ==> reset image range to %g .. %g",
+   "AFNI_IMAGE_GLOBALRANGE is no longer slice-based ==> reset image range to %g .. %g",
         rng[0],rng[1] ) ;
        first = 0 ;
      }
@@ -6506,6 +6673,62 @@ ENTRY("AFNI_range_setter") ;
 
    drive_MCW_imseq( seq , isqDR_setrange , (XtPointer) rng ) ;
    EXRETURN ;
+}
+
+/*-----------------------------------------------------------------------*/
+/* reset globalrange - called by environment GUI and plugout driver */
+void ENV_globalrange_view( char *vname ) /* no longer static definition */
+{
+   Three_D_View *im3d ;
+   int ii , gbr ;
+   char sgr_str[64];
+
+   /* reset image_globalrange */
+   THD_set_image_globalrange(-1);
+#if 0
+   sprintf(sgr_str,"AFNI_IMAGE_GLOBALRANGE=%s",vname);
+printf("setting env %s\n",sgr_str);
+   AFNI_setenv(sgr_str);
+#endif
+
+   gbr = THD_get_image_globalrange(); /* resets from environment variable setting */
+
+   for( ii=0 ; ii < MAX_CONTROLLERS ; ii++ ){
+     im3d = GLOBAL_library.controllers[ii] ;
+     if( ! IM3D_OPEN(im3d) ) continue ;
+     if( gbr ){
+       AFNI_range_setter( im3d , im3d->s123 ) ;
+       AFNI_range_setter( im3d , im3d->s231 ) ;
+       AFNI_range_setter( im3d , im3d->s312 ) ;
+       drive_MCW_imseq( im3d->s123 , isqDR_display , (XtPointer)(-1) ) ;
+       drive_MCW_imseq( im3d->s231 , isqDR_display , (XtPointer)(-1) ) ;
+       drive_MCW_imseq( im3d->s312 , isqDR_display , (XtPointer)(-1) ) ;
+     } else {
+       drive_MCW_imseq( im3d->s123 , isqDR_setrange , (XtPointer)NULL ) ;
+       drive_MCW_imseq( im3d->s231 , isqDR_setrange , (XtPointer)NULL ) ;
+       drive_MCW_imseq( im3d->s312 , isqDR_setrange , (XtPointer)NULL ) ;
+     }
+   }
+   return ;
+}
+
+/* set environment variable too */
+void THD_set_image_globalrange_env(int ig)
+{
+   THD_set_image_globalrange(ig);
+   switch(ig) {
+      default:
+      case 0:
+         AFNI_setenv("AFNI_IMAGE_GLOBALRANGE=SLICE");
+         break;
+      case 1:
+         AFNI_setenv("AFNI_IMAGE_GLOBALRANGE=VOLUME");
+         break;
+      case 2:
+         AFNI_setenv("AFNI_IMAGE_GLOBALRANGE=DSET");
+         break;
+   }
+  ENV_globalrange_view( "AFNI_IMAGE_GLOBALRANGE" );
 }
 
 /*------------------------------------------------------------------------*/

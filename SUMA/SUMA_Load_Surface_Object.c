@@ -641,7 +641,7 @@ SUMA_Boolean SUMA_PrepSO_GeomProp_GL(SUMA_SurfaceObject *SO)
    SUMA_LHv("Checking too small a surface: %f\n", SO->MaxCentDist);
    /* check for too small a surface */
    if (SO->MaxCentDist < 10.0 && !iwarn) {
-      if (!(sv = SUMA_BestViewerForDO((SUMA_ALL_DO *)SO))) sv = SUMAg_SVv;
+      if (!(sv = SUMA_BestViewerForADO((SUMA_ALL_DO *)SO))) sv = SUMAg_SVv;
       if (sv) { /* This can be null when surfaces are created on the fly,
                    No need to warn in that case though.*/
          if (sv->GVS[sv->StdView].DimSclFac < 5 && !iwarn) {
@@ -1329,7 +1329,8 @@ SUMA_SurfaceObject * SUMA_Load_Surface_Object_eng (
          
       case SUMA_SUREFIT:
          /* Allocate for SF */
-         SF = (SUMA_SureFit_struct *) SUMA_malloc(sizeof(SUMA_SureFit_struct));   
+         SF = (SUMA_SureFit_struct *) SUMA_calloc(1, 
+                                        sizeof(SUMA_SureFit_struct));   
          if (SF == NULL) {
             fprintf( SUMA_STDERR,
                      "Error %s: Failed to allocate for SF\n", FuncName);
@@ -1419,13 +1420,6 @@ SUMA_SurfaceObject * SUMA_Load_Surface_Object_eng (
                SO->SUMA_VolPar_Aligned = YUP;
          }
          
-         /* free SF */
-         if (!SUMA_Free_SureFit (SF)) {
-            fprintf( SUMA_STDERR,
-                     "Error %s: Failed in SUMA_Free_SureFit.\n", FuncName);
-            SUMA_RETURN (NULL);
-         }
-         
          sprintf (stmp, "%s%s", SF_FileName->name_coord, SF_FileName->name_topo);
          SUMA_NEW_ID(SO->idcode_str, stmp);
 
@@ -1433,6 +1427,14 @@ SUMA_SurfaceObject * SUMA_Load_Surface_Object_eng (
          else SO->normdir = -1;
          
          /* SUMA_Show_SureFit(SF, SUMA_STDERR); */
+         
+         /* free SF */
+         if (!SUMA_Free_SureFit (SF)) {
+            fprintf( SUMA_STDERR,
+                     "Error %s: Failed in SUMA_Free_SureFit.\n", FuncName);
+            SUMA_RETURN (NULL);
+         }
+         
          break;
    } /* SO_FileType*/
    
@@ -4063,7 +4065,7 @@ SUMA_Boolean SUMA_LoadSpec_eng (
 
    }/*locate and load all NON Mappable surfaces */
    
-   SUMA_S_Notev("Have %d DOs to load\n", Spec->N_DO);
+   SUMA_LHv("Have %d DOs to load\n", Spec->N_DO);
    for (i=0; i<Spec->N_DO; ++i) {
       switch ((SUMA_DO_Types)Spec->DO_type[i]) {
          case TRACT_type: {

@@ -104,13 +104,14 @@ ENTRY("AFNI_func_autothresh_CB") ;
 /*! 03 Dec 2013 */
 
 #define TFLASH(iq) \
-  do{ MCW_flash_widget(1,(iq)->vwid->func->thr_scale); BEEPIT; } while(0)
+  do{ MCW_flash_widget(2,(iq)->vwid->func->thr_scale); BEEPIT; } while(0)
 
 void AFNI_func_setpval_final_CB( Widget w, XtPointer cd, MCW_choose_cbs *cbs )
 {
    Three_D_View *im3d = (Three_D_View *)cd ;
    float pval , thresh ;
    int newdec , olddec , stop,smax , ival ;
+   char *cpt ;
 
 ENTRY("AFNI_func_setpval_final_CB") ;
 
@@ -124,8 +125,9 @@ ENTRY("AFNI_func_setpval_final_CB") ;
     TFLASH(im3d) ; EXRETURN ;
    }
 
-   pval = (float)strtod(cbs->cval,NULL) ;
-   if( pval <= 0.0 || pval >= 1.0f ){ TFLASH(im3d); EXRETURN; }
+   pval = (float)strtod(cbs->cval,&cpt) ;
+   if( pval >  0.0f && *cpt == '%'  ) pval *= 0.01f ;
+   if( pval <= 0.0f || pval >= 1.0f ){ TFLASH(im3d); EXRETURN; }
 
    thresh = THD_pval_to_stat( pval ,
               DSET_BRICK_STATCODE(im3d->fim_now,im3d->vinfo->thr_index) ,
@@ -6835,6 +6837,18 @@ ENTRY("AFNI_find_poem_files") ;
    EXRETURN ;
 }
 
+/*---------------------------------------------------------------------------*/
+/* 18 Feb 2014 */
+
+#ifdef USE_SKIT
+static void AFNI_alter_controller_bg( Three_D_View *im3d , float fac )
+{
+   if( !IM3D_OPEN(im3d) || fac < 0.0f || fac > 2.0f ) return ;
+   MCW_scale_widget_bg( im3d->vwid->top_form, fac, im3d->dc ) ;
+   return ;
+}
+#endif
+
 /*-----------------------------------------------------------------
   Event handler to find #3 button press for hidden popup
 -------------------------------------------------------------------*/
@@ -6873,6 +6887,8 @@ ENTRY("AFNI_hidden_EV") ;
 
 #ifdef USE_SKIT
          else if( !NO_frivolities && event->button == Button2 ) SKIT_popper(im3d) ;
+         else if( !NO_frivolities && event->button == Button4 ) AFNI_alter_controller_bg(im3d,0.960000f) ;
+         else if( !NO_frivolities && event->button == Button5 ) AFNI_alter_controller_bg(im3d,1.041667f) ;
 #endif
       }
       break ;

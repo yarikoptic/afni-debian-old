@@ -2332,11 +2332,11 @@ SUMA_Boolean SUMA_NewSurfaceGeometry(SUMA_SurfaceObject *SO)
    for (ii=0; ii<SUMAg_N_SVv; ++ii) {
       if (!SUMAg_SVv[ii].isShaded && SUMAg_SVv[ii].X->TOPLEVEL) {
          for (i=0; i< SUMAg_SVv[ii].N_DO; ++i) {
-            if (SUMA_isSO_G(  SUMAg_DOv[SUMAg_SVv[ii].RegisteredDO[i]], 
+            if (SUMA_isSO_G(  SUMAg_DOv[SUMAg_SVv[ii].RegistDO[i].dov_ind], 
                               SUMAg_SVv[ii].CurGroupName)) {
                /* is this surface the same as SO ? */
                if (SUMA_findSO_inDOv(SO->idcode_str, SUMAg_DOv, SUMAg_N_DOv) == 
-                   SUMAg_SVv[ii].RegisteredDO[i]) {
+                   SUMAg_SVv[ii].RegistDO[i].dov_ind) {
                   /* This surface is visible in this viewer, mark that viewer  */
                   SUMA_LH("Marking Viewer ");
                   SUMAg_SVv[ii].NewGeom = YUP;
@@ -2475,8 +2475,8 @@ float *SUMA_PercFullRangeVol(float *V, int N_V, int p10, int exzero, int *Nvals)
 {
    static char FuncName[]={"SUMA_PercFullRangeVol"};
    int nval = 0, ii;
-   float *pr;
-   float *Vsort, fac, *perc;
+   float *pr=NULL;
+   float *Vsort=NULL, fac, *perc=NULL;
    
    SUMA_ENTRY;
    
@@ -2539,9 +2539,16 @@ SUMA_Boolean SUMA_SetOverlay_Vecs(SUMA_OVERLAYS *Sover, char vec,
    SUMA_ENTRY;
    
    if (!task) task = "update"; /* Vanilla, recreate if necessary */
-   if (!Sover || !Sover->dset_link) {
+   if (!Sover) {
       SUMA_S_Err("NULL input");
+      if (LocalHead) SUMA_DUMP_TRACE("NULL input");
       SUMA_RETURN(NOPE);
+   }
+   if (!Sover->dset_link) {
+      /* Nothing to be done, no dset link. Can happen when freeing 
+      comes from standalone program like 3dVol2Surf. Return
+      without complaining.*/
+      SUMA_RETURN(YUP);
    }
    if (!strcmp(task,"clear")) { /* just clear, and return */
       switch (vec) {
@@ -3050,7 +3057,8 @@ SUMA_Boolean SUMA_ScaleToMap_Interactive (   SUMA_OVERLAYS *Sover )
    
    /* colorizing */
    if ( (Opt->interpmode == SUMA_DIRECT)&& 
-        (SUMA_is_Label_dset(Sover->dset_link,NULL)) ) {
+        (SUMA_is_Label_dset(Sover->dset_link,NULL) ||
+         SUMA_is_Label_dset_col(Sover->dset_link, Opt->find)) ) {
       SUMA_LH("Scaling a la HASH");
       if (!SUMA_ScaleToMap_alaHASH (Sover->V, SDSET_VECFILLED(Sover->dset_link), 
                                     ColMap, Opt,
@@ -3145,7 +3153,7 @@ SUMA_Boolean SUMA_ScaleToMap_Interactive (   SUMA_OVERLAYS *Sover )
                SUMA_S_Crit("Failed to allocate");
                SUMA_RETURN(NOPE); 
             }
-            fact = Opt->IntRange[1]-Opt->IntRange[2];
+            fact = Opt->IntRange[1]-Opt->IntRange[0];
             if (fact == 0.0) fact = 1.0;
             for (i=0; i<SDSET_VECFILLED(Sover->dset_link); ++i) {
                if (!SV->isMasked[i]) {
@@ -3167,7 +3175,7 @@ SUMA_Boolean SUMA_ScaleToMap_Interactive (   SUMA_OVERLAYS *Sover )
                SUMA_SL_Err("Failed to get ColRange!"); 
                SUMA_RETURN(NOPE); 
             }
-            fact = Range[1]-Range[2];
+            fact = Range[1]-Range[0];
             if (fact == 0.0) fact = 1.0;
             for (i=0; i<SDSET_VECFILLED(Sover->dset_link); ++i) {
                if (!SV->isMasked[i]) {
@@ -3189,7 +3197,7 @@ SUMA_Boolean SUMA_ScaleToMap_Interactive (   SUMA_OVERLAYS *Sover )
                SUMA_SL_Err("Failed to get ColRange!"); 
                SUMA_RETURN(NOPE); 
             }
-            fact = Range[1]-Range[2];
+            fact = Range[1]-Range[0];
             if (fact == 0.0) fact = 1.0;
             for (i=0; i<SDSET_VECFILLED(Sover->dset_link); ++i) {
                if (!SV->isMasked[i]) {
@@ -6004,7 +6012,7 @@ SUMA_OVERLAYS * SUMA_CreateOverlayPointer (
       Sover->Font = SW_SurfCont_DsetFont9;
       Sover->NodeRad = SW_SurfCont_DsetNodeRadConst;
       Sover->NodeRadGain = 1.0;
-      Sover->NodeCol = SW_SurfCont_DsetNodeColWhite;
+      Sover->NodeCol = SW_SurfCont_DsetNodeColYellow;
       Sover->BordFrac = SW_SurfCont_DsetGmatBord0;
       Sover->EdgeThick = SW_SurfCont_DsetEdgeThickConst;
       Sover->EdgeThickGain = 1.0;
@@ -6102,7 +6110,8 @@ SUMA_OVERLAYS * SUMA_CreateOverlayPointer (
          }
          if (SUMA_is_VFR_dset(dset)) {
             Sover->OptScl->interpmode = SUMA_NO_INTERP;
-         } else if (SUMA_is_Label_dset(dset, NULL)) {
+         } else if (SUMA_is_Label_dset(dset, NULL) ||
+                    SUMA_is_Label_dset_col(dset, 0)) {
             Sover->OptScl->interpmode = SUMA_DIRECT; /* default for such dsets */
          }
       }
@@ -7370,6 +7379,7 @@ SUMA_Boolean SUMA_MixOverlays (  SUMA_OVERLAYS ** Overlays, int N_Overlays,
    }
    if (!glcolar) {
       SUMA_SL_Err("Null glcolar!");
+      SUMA_DUMP_TRACE("Null glcolar!");
       SUMA_RETURN(NOPE);
    }
    if (!isColored) {
@@ -8500,7 +8510,7 @@ SUMA_Boolean SUMA_MixColors (SUMA_SurfaceViewer *sv)
    for (i=0; i<sv->N_ColList; ++i) {
       
       if (!(pp = SUMA_find_any_object(sv->ColList[i]->idcode_str, &tp))) {
-         SUMA_S_Err("Zut alors!");
+         SUMA_S_Err("Zut alors, id %s not found!", sv->ColList[i]->idcode_str);
          SUMA_RETURN(NOPE);
       }
       if (sv->ColList[i]->Remix) {
@@ -8513,7 +8523,7 @@ SUMA_Boolean SUMA_MixColors (SUMA_SurfaceViewer *sv)
                            FuncName, sv->ColList[i]->idcode_str);
                SO = (SUMA_SurfaceObject *)pp;
                if (!SUMA_Overlays_2_GLCOLAR4((SUMA_ALL_DO *)SO, sv, 
-                                       sv->ColList[i]->glar_ColorList)) {
+                                       SUMA_GetColorListPtr(sv->ColList[i]))) {
                   SUMA_S_Err("Failed in SUMA_Overlays_2_GLCOLAR4.");
                   SUMA_RETURN(NOPE);
                }
@@ -8524,7 +8534,7 @@ SUMA_Boolean SUMA_MixColors (SUMA_SurfaceViewer *sv)
                SUMA_LHv("Mixing Graph Dset Colors (%s), Dset %s...\n", 
                         sv->ColList[i]->idcode_str, SDSET_LABEL(dset));
                if (!SUMA_Overlays_2_GLCOLAR4((SUMA_ALL_DO *)dset, sv, 
-                                       sv->ColList[i]->glar_ColorList)) {
+                                       SUMA_GetColorListPtr(sv->ColList[i]))) {
                   SUMA_S_Err("Failed in SUMA_Overlays_2_GLCOLAR4.");
                   SUMA_RETURN(NOPE);
                }
@@ -8535,7 +8545,7 @@ SUMA_Boolean SUMA_MixColors (SUMA_SurfaceViewer *sv)
                SUMA_LHv("Mixing Volume Object Colors (%s), Dset %s...\n", 
                      sv->ColList[i]->idcode_str, ADO_LABEL((SUMA_ALL_DO *)VO));
                if (!SUMA_Overlays_2_GLCOLAR4((SUMA_ALL_DO *)VO, sv, 
-                                       sv->ColList[i]->glar_ColorList)) {
+                                       SUMA_GetColorListPtr(sv->ColList[i]))) {
                   SUMA_S_Err("Failed in SUMA_Overlays_2_GLCOLAR4.");
                   SUMA_RETURN(NOPE);
                }
@@ -8548,7 +8558,7 @@ SUMA_Boolean SUMA_MixColors (SUMA_SurfaceViewer *sv)
                         sv->ColList[i]->idcode_str, 
                         ADO_LABEL((SUMA_ALL_DO *)pp), ADO_ID((SUMA_ALL_DO *)pp));
                if (!SUMA_Overlays_2_GLCOLAR4((SUMA_ALL_DO *)pp, sv, 
-                                       sv->ColList[i]->glar_ColorList)) {
+                                       SUMA_GetColorListPtr(sv->ColList[i]))) {
                   SUMA_S_Err("Failed in SUMA_Overlays_2_GLCOLAR4.");
                   SUMA_RETURN(NOPE);
                }
@@ -8560,7 +8570,7 @@ SUMA_Boolean SUMA_MixColors (SUMA_SurfaceViewer *sv)
                         sv->ColList[i]->idcode_str, 
                         ADO_LABEL((SUMA_ALL_DO *)pp), ADO_ID((SUMA_ALL_DO *)pp));
                if (!SUMA_Overlays_2_GLCOLAR4((SUMA_ALL_DO *)pp, sv, 
-                                       sv->ColList[i]->glar_ColorList)) {
+                                       SUMA_GetColorListPtr(sv->ColList[i]))) {
                   SUMA_S_Err("Failed in SUMA_Overlays_2_GLCOLAR4.");
                   SUMA_RETURN(NOPE);
                }
@@ -10752,7 +10762,8 @@ SUMA_Boolean SUMA_ContourateDsetOverlay(SUMA_OVERLAYS *cp,
    if (!cp->dset_link) SUMA_RETURN(NOPE);
    
    if (!SV) {
-      if (SUMA_is_Label_dset(cp->dset_link,NULL)) {
+      if (SUMA_is_Label_dset(cp->dset_link,NULL) ||
+          SUMA_is_Label_dset_col(cp->dset_link, cp->OptScl->find)) {
          SUMA_LHv("Creating countours for %s\n",SDSET_LABEL(cp->dset_link));
          if (cp->Contours) {
             /* this should only happen when users reload a label dset.
@@ -10765,7 +10776,7 @@ SUMA_Boolean SUMA_ContourateDsetOverlay(SUMA_OVERLAYS *cp,
          }
          
          ind = SDSET_NODE_INDEX_COL(cp->dset_link);
-         key = SDSET_VEC(cp->dset_link, 0);
+         key = SDSET_VEC(cp->dset_link, cp->OptScl->find);
          cp->Contours = 
             SUMA_MultiColumnsToDrawnROI( SDSET_VECLEN(cp->dset_link),
                   (void *)ind, SUMA_int,

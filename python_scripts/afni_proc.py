@@ -391,9 +391,12 @@ g_history = """
                        (TRs may vary per run)
     4.06 Dec 17, 2013: 3dDespike now defaults to -NEW
         - added -despike_new yes/no for control
+    4.07 Feb 06, 2014: minor -help and -ask_me text changes
+    4.08 Feb 18, 2014: minor -help update
+    4.09 Feb 19, 2014: if AM2 or IM, terminate extraction of ideals
 """
 
-g_version = "version 4.06, December 1, 2013"
+g_version = "version 4.09, February 19, 2014"
 
 # version of AFNI required for script execution
 g_requires_afni = "29 Nov 2013" # for 3dRSFC update

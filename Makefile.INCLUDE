@@ -204,7 +204,8 @@ LIBHEADERS = mrilib.h mcw_glob.h 3ddata.h thd_maker.h thd_iochan.h            \
              nifti/niftilib/nifti1_io.h nifti/nifticdf/nifticdf.h             \
              nifti/znzlib/znzlib.h Aomp.h rcmat.h misc_math.h                 \
              rickr/r_new_resam_dset.h rickr/r_idisp.h rickr/r_misc.h          \
-             thd_atlas.h thd_ttatlas_query.h thd_ttatlas_CA_EZ.h 
+             thd_atlas.h thd_ttatlas_query.h thd_ttatlas_CA_EZ.h              \
+             cs_qsort_small.h
 
 ### Make everything, install it too, and cleanup
 
@@ -887,6 +888,10 @@ strblast:strblast.o
 3dMedianFilter:3dMedianFilter.o
 	$(RM) $@
 	$(CC) -o 3dMedianFilter 3dMedianFilter.o $(LFLAGS) $(LLIBS)
+
+3dDeghost:3dDeghost.o cs_qsort_small.h
+	$(RM) $@
+	$(CC) -o 3dDeghost 3dDeghost.o $(LFLAGS) $(LLIBS)
 
 3dPolyfit:3dPolyfit.o
 	$(RM) $@
@@ -1734,7 +1739,7 @@ afni_doc.tgz:
 
 ### Put things in their places
 
-install: $(INSTALLDIR) $(INSTALL_PREREQ) ptaylor_install pkundu_install 
+install: $(INSTALLDIR) $(INSTALL_PREREQ) ptaylor_install pkundu_install
 	$(MV) $(PROGRAMS) $(INSTALLDIR)
 	$(CP) $(SCRIPTS)  $(INSTALLDIR)
 	$(CP) $(PY_DIR)/*.py  $(R_DIR)/*.R $(INSTALLDIR)
@@ -1817,7 +1822,7 @@ csfft.o:csfft.c
 	$(RM) $@
 	$(CCFAST) -c csfft.c $(INFLAGS)
 
-mri_percents.o:mri_percents.c
+mri_percents.o:mri_percents.c cs_qsort_small.h
 	$(RM) $@
 	$(CCFAST) -c mri_percents.c $(INFLAGS)
 
@@ -1885,7 +1890,7 @@ cs_sort_dv.o:cs_sort_dv.c
 	$(RM) $@
 	$(CCFAST) -c cs_sort_dv.c $(INFLAGS)
 
-cs_sort_d.o:cs_sort_d.c
+cs_sort_d.o:cs_sort_d.c cs_qsort_small.h
 	$(RM) $@
 	$(CCFAST) -c cs_sort_d.c $(INFLAGS)
 
@@ -2011,7 +2016,7 @@ MRI_OBJS = mri_cfft.o mri_complex_arith.o mri_fft_complex.o mri_free.o    \
            mri_pcvector.o mri_fdrize.o mri_floatvec.o mri_sort.o               \
            mri_warpfield.o mri_dicom_stuff.o mri_check.o mri_allzero.o         \
            mri_subset.o mri_to_fvect.o mri_genalign_util.o rcmat.o dmat44.o    \
-           mri_rbfinterp.o mri_genARMA11.o mri_catvol.o mri_polyfit.o          \
+                           mri_genARMA11.o mri_catvol.o mri_polyfit.o          \
            mri_nwarp.o mri_extract.o
 
 THD_OBJS = thd_atr.o thd_dsetto1D.o thd_initalldir.o thd_reconpar.o \
@@ -2946,7 +2951,7 @@ libsegtools.a: avovk/cluster_floatNOMASK.c avovk/thd_segtools_fNM.c
 #############
 #PTAYLOR directory
 
-ptaylor_all: 
+ptaylor_all:
 	( cd ptaylor ;	\
 	./@MakeLocalMake	;\
 	$(MAKE) afni_all  ;	\

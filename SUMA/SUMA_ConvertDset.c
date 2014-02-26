@@ -49,6 +49,10 @@ void usage_ConverDset(SUMA_GENERIC_ARGV_PARSE *ps, int detail)
 "         input.\n"
 "     -input DSET: Input dataset to be converted.\n"
 "                  See more on input datasets below.\n"
+"     -dset_labels 'SB_LABEL_0 SB_LABEL_1 ...'\n"
+"                  Label the columns (sub-bricks) of the output dataset\n"
+"                  You must have as many labels as you have sub-bricks in\n"
+"                  the output dataset."
 "  Optional parameters:\n"
 "     -add_node_index: Add a node index element if one does not exist\n"
 "                      in the input dset. With this option, the indexing\n"
@@ -222,6 +226,7 @@ int main (int argc,char *argv[])
    int nv, mxgrp, RAI;
    char *stmp=NULL, colnm[32];
    SUMA_COLOR_MAP *SM=NULL;
+   NI_str_array *dlabs=NULL;
    SUMA_Boolean LocalHead = NOPE;
    
    SUMA_STANDALONE_INIT;
@@ -464,6 +469,16 @@ int main (int argc,char *argv[])
          brk = YUP;
       }
       
+      if (!brk && (strcmp(argv[kar], "-dset_labels") == 0)) {
+         kar ++;
+			if (kar >= argc)  {
+		  		fprintf (stderr, "need argument after -dset_labels \n");
+				exit (1);
+			}
+			dlabs = NI_strict_decode_string_list(argv[kar] ,";, ");
+         brk = 1;
+		}
+      
       if (!brk && !ps->arg_checked[kar]) {
          fprintf (SUMA_STDERR,
             "Error %s: Option %s not understood. Try -help for usage\n",
@@ -528,9 +543,21 @@ int main (int argc,char *argv[])
          SUMA_ShowDset(dset, 0, NULL);
       }
       
+      if (dlabs) {
+         if (dlabs->num != SDSET_VECNUM(dset)) {
+            SUMA_S_Err("You have %d labels but %d sub-bricks in dset %s",
+                        dlabs->num, SDSET_VECNUM(dset), SDSET_LABEL(dset));
+         } else {
+            int ii;
+            for (ii=0; ii<SDSET_VECNUM(dset); ++ii) {
+               SUMA_UpdateDsetColLabel(dset, ii, dlabs->str[ii]);
+            }
+         }
+         NI_delete_str_array(dlabs); dlabs = NULL;
+      }
+      
       if (toGDSET) {
          SUMA_LH("Going to graph format");
-         
          if (graph_edgelist_1D) {
             int *ie=NULL;
             SUMA_DSET *dsetc=NULL;
@@ -587,21 +614,26 @@ int main (int argc,char *argv[])
             SUMA_LH("Now the nodelist");
             iform = SUMA_1D;
             if (!(dseti = SUMA_LoadDset_s (graph_nodelist_1D, &iform, 0))) {
-               SUMA_S_Err("Failed to load nodelist ");
+               SUMA_S_Err("Failed to load nodelist %s", graph_nodelist_1D);
                exit(1);
             }
             if (SDSET_VECNUM(dseti) != 3) {
-               SUMA_S_Err("Bad nodelist source, only 3 column allowed");
+               SUMA_S_Err("Bad nodelist source\n"
+                          "Only 3 column allowed, have %d of them in %s", 
+                          SDSET_VECNUM(dseti), graph_nodelist_1D);
                exit(1);
             }
             if (graph_nodeindlist_1D) {
                if (!(dsetind = 
                         SUMA_LoadDset_s (graph_nodeindlist_1D, &iform, 0))) {
-                  SUMA_S_Err("Failed to load nodelist ");
+                  SUMA_S_Err("Failed to load node index list %s",
+                             graph_nodeindlist_1D);
                   exit(1);
                }
                if (SDSET_VECNUM(dsetind) != 1) {
-                  SUMA_S_Err("Bad nodelist index source, only 1 column allowed");
+                  SUMA_S_Err("Bad nodelist index source\n"
+                             "Only 1 column allowed, have %d of them in %s",
+                             SDSET_VECNUM(dsetind), graph_nodeindlist_1D);
                   exit(1);
                }
                if (SDSET_VECFILLED(dseti) != SDSET_VECFILLED(dsetind)) {
@@ -747,14 +779,13 @@ int main (int argc,char *argv[])
             }  else {
                ivec = NULL; /* SUMA_AddGDsetNodeListElement will generate one */
             }
-            if (SDSET_VECFILLED(dseti) != GDSET_MAX_POINTS(dset)) {
-               SUMA_S_Errv( "mismatch in number of values "
-                           "in nodelist source (%ld) and dataset (%d)\n",
-                           GDSET_MAX_POINTS(dset), SDSET_VECFILLED(dseti));
-               exit(1);
-            }
-            SUMA_LH("Have indices %d .. %d", 
-                    ivec[0], ivec[SDSET_VECFILLED(dseti)]-1);
+
+            SUMA_LH( "Have %d node indices %d .. %d in %s\n"
+                     "Graph %s has %ld segment nodes, %ld nodes defined.\n", 
+                    SDSET_VECFILLED(dseti), ivec[0], 
+                    ivec[SDSET_VECFILLED(dseti)-1], SDSET_LABEL(dseti),
+                    SDSET_LABEL(dset), GDSET_N_SEG_POINTS(dset),
+                    GDSET_N_ALL_POINTS(dset));
             if (!RAI) {
                int cnt;
                float *fvx = (float *)SDSET_VEC(dseti,0);

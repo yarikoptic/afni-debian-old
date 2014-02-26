@@ -1991,7 +1991,7 @@ int SUMA_UpdateDsetColRange(SUMA_DSET *dset, int icol)
    
    if (!dset) SUMA_RETURN(0);
    if (icol < 0) { istrt=0; iend=SDSET_VECNUM(dset); }
-   else { istrt = icol; iend=icol; }
+   else { istrt = icol; iend=icol+1; }
    if (istrt < 0 || istrt > SDSET_VECNUM(dset)) SUMA_RETURN(0);
    if (iend  < 0 || iend > SDSET_VECNUM(dset)) SUMA_RETURN(0);
    
@@ -2010,6 +2010,33 @@ int SUMA_UpdateDsetColRange(SUMA_DSET *dset, int icol)
    }
    SUMA_RETURN(1);
 }
+
+int SUMA_UpdateDsetColLabel(SUMA_DSET *dset, int icol, char *label) 
+{
+   static char FuncName[]={"SUMA_UpdateDsetColLabel"};
+   int ic=0, istrt=0, iend=0;
+   char *sbuf=NULL;
+   SUMA_Boolean LocalHead=NOPE;
+   
+   SUMA_ENTRY;
+      
+   if (!dset || !label) SUMA_RETURN(0);
+   if (icol < 0) { istrt=0; iend=SDSET_VECNUM(dset); }
+   else { istrt = icol; iend=icol+1; }
+   if (istrt < 0 || istrt > SDSET_VECNUM(dset)) SUMA_RETURN(0);
+   if (iend  < 0 || iend > SDSET_VECNUM(dset)) SUMA_RETURN(0);
+   
+   for (ic=istrt; ic<iend; ++ic) {
+      {
+         NI_element *nelb = 
+            SUMA_FindDsetAttributeElement(dset, "COLMS_LABS");
+         SUMA_LH("%d: %s", ic, label);
+         SUMA_AddColAtt_CompString(nelb, ic, label, SUMA_NI_CSS,0);
+      }
+   }
+   SUMA_RETURN(1);
+}
+
 /*!
    \brief A special case of  SUMA_AddGenDsetColAttr for node indices
    
@@ -2153,7 +2180,7 @@ int SUMA_AddGenGDsetNodeXYZColAttr (SUMA_DSET *dset, SUMA_COL_TYPE ctp,
    } else { 
       SUMA_LH("Calculating XYZrange");
       icol = SUMA_GNODE_IXYZ_CTP2COL(ctp);
-      N_col = GDSET_MAX_POINTS(dset)*stride;
+      N_col = GDSET_N_SEG_POINTS(dset)*stride;
       stmp = SUMA_copy_string(NI_get_attribute(xyznel,"COLMS_RANGE"));
       switch (SUMA_ColType2TypeCast(ctp)) {
          case SUMA_int:           
@@ -10922,6 +10949,7 @@ SUMA_DSET_FORMAT SUMA_GuessFormatFromExtension_core(char *Name)
    
    if (SUMA_isExtension(fn->FileName, ".niml.dset") ||
        SUMA_isExtension(fn->FileName, ".niml.do") ||
+       SUMA_isExtension(fn->FileName, ".niml.mo") ||
        SUMA_isExtension(fn->FileName, ".niml.tract") ) 
       form = SUMA_NIML;
    else if (  SUMA_isExtension(fn->FileName, ".gii.dset") ||
@@ -11985,6 +12013,9 @@ int SUMA_is_AllConsistentColType_dset(SUMA_DSET *dset, SUMA_COL_TYPE ctpi)
    
    for (i=0; i<SDSET_VECNUM(dset); ++i) {
       ctp = SUMA_TypeOfDsetColNumb(dset, i); 
+      /* SUMA_S_Note("Dset %s: Type of col %d = [%d, %s], target [%d %s]",
+                  SDSET_LABEL(dset), i, ctp, SUMA_Col_Type_Name(ctp),
+                  ctpi, SUMA_Col_Type_Name(ctpi)); */
       if (ctpi>SUMA_ERROR_COL_TYPE && ctp != ctpi) SUMA_RETURN(0);
       if (i==0) { ctp0 = ctp; }
       else if (ctp0 != ctp) SUMA_RETURN(0);
@@ -12061,6 +12092,13 @@ int SUMA_is_Label_dset(SUMA_DSET *dset, NI_group **NIcmap)
    
    if (!dset) SUMA_RETURN(0);
    
+   SUMA_LH( "All Cons Type = %d : %d\n"
+            "SDSET_TYPE (%s) = %d\n",
+            SUMA_NODE_ILABEL,
+            SUMA_is_AllConsistentColType_dset(dset, SUMA_NODE_ILABEL),
+            SDSET_LABEL(dset),
+            SDSET_TYPE (dset));
+            
    if (!SUMA_is_AllConsistentColType_dset(dset, SUMA_NODE_ILABEL)) 
       SUMA_RETURN(0);
    
@@ -12071,7 +12109,7 @@ int SUMA_is_Label_dset(SUMA_DSET *dset, NI_group **NIcmap)
       Both types have a dset column that is of type 
       SUMA_NODE_ILABEL*/
    
-   if (SDSET_TYPE (dset) != SUMA_NODE_LABEL) { SUMA_RETURN(0); }  
+   if (SDSET_TYPE(dset) != SUMA_NODE_LABEL) { SUMA_RETURN(0); }  
    
    /* Does the dset have a colormap ?*/
    if ((ngr = SUMA_NI_Cmap_of_Dset(dset))) {
@@ -12082,8 +12120,43 @@ int SUMA_is_Label_dset(SUMA_DSET *dset, NI_group **NIcmap)
       if (NIcmap) *NIcmap = NULL;
    }
    
+   SUMA_LH("dset %s considered Label_dset", SDSET_LABEL(dset));
    SUMA_RETURN(1);
 }
+
+/* sort of like is_Label_dset, but here we just worry
+about one data column. We also require that there be 
+a colormap in the dataset somewhere. This was added
+to handle GIFTI datasets that are labels but that seem 
+to get translate to one column of labels and other columns
+of generic_ints. The dataset came from the HCP's Workbench
+and I am not sure if the problem is one of translation on our
+part or one of GIFTI formatting from Workbench. 
+For now, this function would allow for the proper display of
+such a dataset.   ZSS Feb. 20 2014 */
+int SUMA_is_Label_dset_col(SUMA_DSET *dset, int icol) 
+{
+   static char FuncName[]={"SUMA_is_Label_dset_col"};
+   int ctp, vtp, i;
+   NI_group *ngr=NULL;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   
+   if (!dset || icol < 0) SUMA_RETURN(0);
+   
+   if (SUMA_TypeOfDsetColNumb(dset, icol) != SUMA_NODE_ILABEL) SUMA_RETURN(0); 
+   if (SDSET_TYPE(dset) != SUMA_NODE_LABEL) { SUMA_RETURN(0); }  
+   
+   /* Does the dset have a colormap ?*/
+   if (!(ngr = SUMA_NI_Cmap_of_Dset(dset))) {
+      /* reject out of caution */
+      SUMA_RETURN(0);
+   }
+   
+   SUMA_RETURN(1);
+}
+
 
 /*! 
    \brief requirements to be a VFR dset:
@@ -13850,8 +13923,11 @@ int SUMA_suck_file( char *fname , char **fbuf )
    ii = read( fd , buf , len ) ;
    close( fd ) ;
    if( ii <= 0 ){ SUMA_free(buf) ; SUMA_RETURN(0); }
-   *fbuf = buf ; SUMA_RETURN(ii) ;
+   *fbuf = buf ; 
+   buf[ii] = '\0';
+   SUMA_RETURN(ii) ;
 }
+
 /*!
    \brief Another version of SUMA_suck_file that hopes to
    avoid the silly error on OSX 
@@ -14395,6 +14471,7 @@ SUMA_Boolean SUMA_Dset_to_GDSET(SUMA_DSET **pdset, char *mtype,
    dset = *pdset;
    if (!dset || !dset->ngr || !dset->dnel) SUMA_RETURN(NOPE);
    
+   SUMA_LH("Matrix type %s", mtype?mtype:"NULL");
 
    if (!SUMA_isGraphDset(dset)) {
       if (SDSET_VECNUM(dset) == SDSET_VECLEN(dset) &&
@@ -14452,7 +14529,12 @@ SUMA_Boolean SUMA_Dset_to_GDSET(SUMA_DSET **pdset, char *mtype,
       }
       /* cases where the whole matrix is packed into 1 column */
       nseg = SDSET_VECLEN(dset);
-      if ((mtype && !strcmp(mtype,"lower")) || 
+      if (npts == 1) { /* singletons are full */
+         msz[0]= msz[1] = npts;
+         NI_SET_INTv(dset->dnel,"matrix_size", msz,2);
+         NI_set_attribute(dset->dnel, "matrix_shape",
+                          SUMA_matrix_shape_to_matrix_shape_name(MAT_FULL));
+      } else if ((mtype && !strcmp(mtype,"lower")) || 
           ((!i0 && !i1) && (tt = (1+sqrt(1+8*nseg))/2.0) == (int)tt)) { 
          if (npts < 0) npts = tt;
          SUMA_LHv("Me thinks it triangular Pa, %d %d\n", 
@@ -14678,7 +14760,7 @@ SUMA_Boolean SUMA_GDSET_Set_Aux_matrix_shape(SUMA_DSET *dset)
 {
    static char FuncName[]={"SUMA_GDSET_Set_Aux_matrix_shape"};
    double range[2];
-   int loc[2];
+   int loc[2], buff=0;
    SUMA_Boolean LocalHead = NOPE;
    SUMA_ENTRY;
    
@@ -14718,7 +14800,11 @@ SUMA_Boolean SUMA_GDSET_Set_Aux_matrix_shape(SUMA_DSET *dset)
          dset->Aux->range_edge_index[1] = dset->Aux->matrix_max_index;
          dset->Aux->range_node_index[0] = 0;
          dset->Aux->range_node_index[1] = dset->Aux->matrix_size[0]-1;
-         dset->Aux->N_uniq_nodes = dset->Aux->matrix_size[0];
+         dset->Aux->N_seg_nodes = dset->Aux->matrix_size[0];
+         if (!SUMA_GDSET_GetPointIndexColumn(dset, 
+                                       &buff, NULL)) {
+            dset->Aux->N_all_nodes = dset->Aux->N_seg_nodes;
+         } else dset->Aux->N_all_nodes = buff;
          break;
       case MAT_TRI:
          dset->Aux->matrix_max_index = 
@@ -14727,7 +14813,11 @@ SUMA_Boolean SUMA_GDSET_Set_Aux_matrix_shape(SUMA_DSET *dset)
          dset->Aux->range_edge_index[1] = dset->Aux->matrix_max_index;
          dset->Aux->range_node_index[0] = 0;
          dset->Aux->range_node_index[1] = dset->Aux->matrix_size[0]-1;
-         dset->Aux->N_uniq_nodes = dset->Aux->matrix_size[0];
+         dset->Aux->N_seg_nodes = dset->Aux->matrix_size[0];
+         if (!SUMA_GDSET_GetPointIndexColumn(dset, 
+                                       &buff, NULL)) {
+            dset->Aux->N_all_nodes = dset->Aux->N_seg_nodes;
+         } else dset->Aux->N_all_nodes = buff;
          break;
       case MAT_TRI_DIAG:
          dset->Aux->matrix_max_index = 
@@ -14736,7 +14826,11 @@ SUMA_Boolean SUMA_GDSET_Set_Aux_matrix_shape(SUMA_DSET *dset)
          dset->Aux->range_edge_index[1] = dset->Aux->matrix_max_index;
          dset->Aux->range_node_index[0] = 0;
          dset->Aux->range_node_index[1] = dset->Aux->matrix_size[0]-1;
-         dset->Aux->N_uniq_nodes = dset->Aux->matrix_size[0];
+         dset->Aux->N_seg_nodes = dset->Aux->matrix_size[0];
+         if (!SUMA_GDSET_GetPointIndexColumn(dset, 
+                                       &buff, NULL)){
+            dset->Aux->N_all_nodes = dset->Aux->N_seg_nodes;
+         } else dset->Aux->N_all_nodes = buff;
          break;
       case MAT_SPARSE:
          if (!dset->inel) {
@@ -14788,9 +14882,13 @@ SUMA_Boolean SUMA_GDSET_Set_Aux_matrix_shape(SUMA_DSET *dset)
          iu = UniqueInt(ii, (SDSET_VECLEN(dset)+N_iu), &N_iu, 0); 
          free(ii);
          free(iu);
-         dset->Aux->N_uniq_nodes = N_iu;
+         dset->Aux->N_seg_nodes = N_iu;
          }
          
+         if (!SUMA_GDSET_GetPointIndexColumn(dset, 
+                                       &buff, NULL)){
+            dset->Aux->N_all_nodes = dset->Aux->N_seg_nodes;
+         } else dset->Aux->N_all_nodes = buff;    
          SUMA_RETURN(YUP);
          break;
    }
@@ -15195,8 +15293,11 @@ int *SUMA_GDSET_GetPointIndexColumn(SUMA_DSET *dset, int *N_vals,
    if (nelxyzr) *nelxyzr = NULL;
    
    if (!(nelxyz = SUMA_FindGDsetNodeListElement(dset))) {
-      SUMA_S_Errv("Failed to find Dset %s's NodeListElement\n", 
-                        SDSET_LABEL(dset));
+      /* Just fine if calling function knows what to do 
+         about this */
+      SUMA_LHv("Failed to find Dset %s's NodeListElement.\n", 
+                SDSET_LABEL(dset));
+      if (LocalHead) SUMA_DUMP_TRACE("Who dun that?");
       SUMA_RETURN(NULL);
    }
    if (nelxyzr) *nelxyzr = nelxyz;
@@ -15453,7 +15554,7 @@ NI_element *SUMA_FindGDsetNodeListElement(SUMA_DSET *dset)
 }
 
 /* Add the indices and coordinates of nodes forming graph dataset 
-   Note that I may get reodered in this function */
+   Note that I may get reordered in this function */
 NI_element *SUMA_AddGDsetNodeListElement(SUMA_DSET *dset, 
                                         int *I, float *X, float *Y, float *Z, 
                                         char **names, int *cln, float *cols,
@@ -15482,11 +15583,6 @@ NI_element *SUMA_AddGDsetNodeListElement(SUMA_DSET *dset,
          SUMA_S_Err("Failed to set matrix shape");
          SUMA_RETURN(NULL);
       }
-   }
-   if (N_Nodes != GDSET_MAX_POINTS(dset)) {
-      SUMA_S_Errv("Mismatch in number of points (%d vs %ld)\n", 
-                 N_Nodes, GDSET_MAX_POINTS(dset));
-      SUMA_RETURN(NULL);
    }
    if (!(nel=SUMA_FindGDsetNodeListElement(dset))) {
       attname = SUMA_append_string(NEL_DSET_TYPE(dset->ngr),"_node_coordinates");

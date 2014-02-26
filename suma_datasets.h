@@ -58,7 +58,7 @@
 }
 #else
 #define SUMA_DUMP_TRACE(x) /* nada */
-#define SUMA_EDUMP_TRACE(x) /* nada */
+#define SUMA_EDUMP_TRACE( ... ) /* nada */
 #endif
 #define SUMA_T_Err SUMA_EDUMP_TRACE
 
@@ -403,7 +403,9 @@ typedef struct { /* Something to hold auxiliary datasets structs */
    long int range_edge_index[2]; /* min, max, edge index */
    long int range_node_index[2]; /* min, max, node index 
                                    (points defining edges)*/
-   long int N_uniq_nodes; /* Number of unique node indices */
+   long int N_seg_nodes; /* Number of node indices making up segments*/
+   long int N_all_nodes; /* Total number of nodes stored in nodelist of the
+                            graph dataset */
    SUMA_DSET_FLAVORS isGraph;
 } SUMA_DSET_AUX;
 
@@ -852,8 +854,10 @@ typedef struct {
                                           -1: ((dset)->Aux->matrix_size[0]) )
    #define SDSET_MATRIX_SZ1(dset) ( (!(dset) || !(dset)->Aux) ? \
                                           -1: ((dset)->Aux->matrix_size[1]) )
-   #define GDSET_MAX_POINTS(dset) ( (!(dset) || !(dset)->Aux) ? \
-                                          -1: ((dset)->Aux->N_uniq_nodes) )
+   #define GDSET_N_SEG_POINTS(dset) ( (!(dset) || !(dset)->Aux) ? \
+                                          -1: ((dset)->Aux->N_seg_nodes) )
+   #define GDSET_N_ALL_POINTS(dset) ( (!(dset) || !(dset)->Aux) ? \
+                                          -1: ((dset)->Aux->N_all_nodes) )
 #endif
 
 #define DSET_MAX_NODE_INDEX(dset, MM) {\
@@ -1614,6 +1618,7 @@ SUMA_Boolean SUMA_isDsetNelAttr(NI_element *nel);
 char * SUMA_CreateDsetColRangeCompString( SUMA_DSET *dset, int col_index, 
                                           SUMA_COL_TYPE ctp);
 int SUMA_UpdateDsetColRange(SUMA_DSET *dset, int icol);
+int SUMA_UpdateDsetColLabel(SUMA_DSET *dset, int icol, char *label);
 char * SUMA_GetDsetColStringAttr( SUMA_DSET *dset, int col_index, 
                                     char *attrname);
 char * SUMA_GetNgrColStringAttr( NI_group *ngr, int col_index, 
@@ -1762,6 +1767,7 @@ SUMA_DSET * SUMA_far2dset_ns( char *FullName, char *dset_id, char *dom_id,
 int SUMA_is_AllNumeric_dset(SUMA_DSET *dset);
 int SUMA_dset_to_Label_dset(SUMA_DSET *dset); 
 int SUMA_is_Label_dset(SUMA_DSET *dset, NI_group **NIcmap); 
+int SUMA_is_Label_dset_col(SUMA_DSET *dset, int icol);
 int SUMA_is_Phase_dset(SUMA_DSET *dset); 
 int SUMA_is_RetinoAngle_dset(SUMA_DSET *dset); 
 int SUMA_is_VFR_dset(SUMA_DSET *dset); 

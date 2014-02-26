@@ -49,6 +49,53 @@
 
 afni_history_struct rickr_history[] = {
 
+ { 24,  Feb, 2014, RCR, "realtime_receiver.py", MICRO, TYPE_ENHANCE,
+   "added a little more detail to the demo example",
+   NULL
+ } ,
+
+ { 20,  Feb, 2014, RCR, "3dClustSim", MICRO, TYPE_BUG_FIX,
+   "break WARNING_message(amesg) up, until W_m gets enhanced",
+   "Strings applied via the format are limited to 16K."
+ } ,
+
+ { 19,  Feb, 2014, RCR, "afni_proc.py", MICRO, TYPE_BUG_FIX,
+   "if AM2 or IM, terminate extraction of ideals",
+   "Ideal extraction should be done via 1d_tool.py, using the X-matrix."
+ } ,
+
+ { 19,  Feb, 2014, RCR, "3dDeconvolve", MICRO, TYPE_ENHANCE,
+   "warn if GLOBAL times and 1 early stim per run (looks local)",
+   "An early stim means t <= (NT_r-1)*TR, where NT_r is #TRs in run r.\n"
+   "Negative times are included, as they may be fillers for empty runs."
+ } ,
+
+ { 18,  Feb, 2014, RCR, "timing_tool.py", MINOR, TYPE_NEW_OPT,
+   "added -test_local_timing, to look for local vs. global timing issues",
+   "- in some cases, promote married types to combine/compare them\n"
+   "- keep track of '*' entries from timing files"
+ } ,
+
+ { 18,  Feb, 2014, RCR, "afni_proc.py", MICRO, TYPE_ENHANCE,
+   "minor help update",
+   NULL
+ } ,
+
+ { 10,  Feb, 2014, RCR, "gen_ss_review_scripts.py", MINOR, TYPE_ENHANCE,
+   "show TRs per run, applied and censored",
+   NULL
+ } ,
+
+ {  6,  Feb, 2014, RCR, "afni_proc.py", MICRO, TYPE_MODIFY,
+   "-help examples start with 'Example', for searching",
+   NULL
+ } ,
+
+ {  3,  Feb, 2014, RCR, "apsearch", MICRO, TYPE_NEW_OPT,
+   "added -global_help/-gopts_help to print help for global options",
+   NULL
+ } ,
+
  { 15,  Jan, 2014, RCR, "3dLRflip", MICRO, TYPE_BUG_FIX,
    "used bad filename without -prefix",
    "Var ext was not initialized."

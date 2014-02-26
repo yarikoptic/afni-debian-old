@@ -43,7 +43,40 @@
 
 afni_history_struct rwcox_history[] = {
 /*=====BELOW THIS LINE=====*/
-  { 15 , JAN , 2014 , RWC , "3dQwarp" , MICRO , TYPE_GENERAL ,
+  { 24 , FEB , 2014 , RWC , "afni GUI" , MICRO , TYPE_GENERAL ,
+   "Add index step size popup to 'Index' arrowval" ,
+   "For Stephen Robinson" } ,
+
+ { 19 , FEB , 2014 , RWC , "afni GUI" , MICRO , TYPE_BUG_FIX ,
+   "Some of the pbar 'flip' controls didn't redraw the overlay" ,
+   "Also, scroll wheel in the pbar label (atop the color bar) will now do\n"
+   "the flipping as well." } ,
+
+ { 18 , FEB , 2014 , RWC , "afni GUI" , MICRO , TYPE_GENERAL ,
+   "Threshold slider popup menu now pops up on p-value label" ,
+   "AND -- using the scrollwheel on the p-value label immediately pops up\n"
+   "the 'Set p-value' chooser." } ,
+
+ { 7 , FEB , 2014 , RWC , "3dQwarp" , MICRO , TYPE_BUG_FIX ,
+   "Fix problem with -allineate option" ,
+   "3dAllineate might choose to write out a .nii.gz file instead of the .nii\n"
+   "file ordered.  In that case, 3dQwarp fails to read it in.  The fix -- if\n"
+   "the .nii file doesn't exist, then add '.gz' to the end of the filename\n"
+   "and try again, before giving up and going home to mother." } ,
+
+ { 6 , FEB , 2014 , RWC , "3dttest++" , MICRO , TYPE_NEW_OPT ,
+   "-nomeans AND -notests to shut off more of the output" ,
+   NULL } ,
+
+ { 31 , JAN , 2014 , RWC , "3dttest++" , MICRO , TYPE_GENERAL ,
+   "Make I/O more efficient and streamlined for -brickwise" ,
+   NULL } ,
+
+ { 29 , JAN , 2014 , RWC , "3dttest++" , MINOR , TYPE_NEW_OPT ,
+   "-brickwise allows time-dependent t-test results" ,
+   "For Stephen Robinson" } ,
+
+ { 15 , JAN , 2014 , RWC , "3dQwarp" , MICRO , TYPE_GENERAL ,
    "Modified help to be more clear about -allineate" ,
    "In particular, that the output nonlinear warp also contains the affine\n"
    "warp, so you do NOT want to catenate the affine warp again when using\n"

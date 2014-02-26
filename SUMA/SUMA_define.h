@@ -93,8 +93,10 @@
 #define FOV_INITIAL 30.0  /*!< Leave this at 30 always, change defaults from .sumarc's SUMA_FOV_Original */
 #define FOV_MIN 0.001
 #define FOV_MAX 179
-#define FOV_IN_FACT 1.05   /*!< Still used for colormap display, Obsolete for surface viewers, see sv->KeyZoomGain */
-#define FOV_OUT_FACT 0.95  /*!< Still used for colormap display, Obsolete for surface viewers, see sv->KeyZoomGain */
+#define FOV_IN_FACT 1.05   /*!< Still used for colormap display, 
+                           Obsolete for surface viewers, see sv->KeyZoomGain */
+#define FOV_OUT_FACT 0.95  /*!< Still used for colormap display, 
+                           Obsolete for surface viewers, see sv->KeyZoomGain */
 #define MOUSE_ZOOM_FACT 30 /*!< The larger, the slower the gain on mouse movement */
 #define TRANSLATE_GAIN 50 /*!< between 40 and 80 */
 #define ARROW_TRANSLATE_DELTAX 30
@@ -102,35 +104,53 @@
 #define ARROW_ROTATION_ANGLE_DEG 15 
 #define SUMA_MAX_N_GROUPS 100 /*!< Maximum number of surface groups */
 #define SUMA_MAX_MESSAGES 100 /*!< Maximum number of messages stored in list */
-#define SUMA_MAX_MEMBER_FACE_SETS 110 /*!< Maximum number of facesets a node can be part of. 
-                                          Used to be 60 but that was not enough for a few
-                                          funky FS surfaces. ZSS Mon Mar 24 16:14:12 EST 2003*/
-#define SUMA_MAX_FACESET_EDGE_NEIGHB 3 /*!< Maximum number of adjoining FaceSets a triangular faceset can have.*/
-#define SUMA_MAX_DISPLAYABLE_OBJECTS 1000 /*!< Maximum number of displayable Objects */
-#define SUMA_MAX_SURF_VIEWERS 6 /*!< Maximum number of surface viewers allowed */
+#define SUMA_MAX_MEMBER_FACE_SETS 110 /*!< Maximum number of facesets a node can 
+                                          be part of. Used to be 60 but that was 
+                                          not enough for a few
+                                          funky FS surfaces. ZSS Mon Mar 24 
+                                          16:14:12 EST 2003*/
+#define SUMA_MAX_FACESET_EDGE_NEIGHB 3 /*!< Maximum number of adjoining FaceSets 
+                                            a triangular faceset can have.*/
+#define SUMA_MAX_DISPLAYABLE_OBJECTS 1000 /*!< Max # of displayable Objects */
+#define SUMA_MAX_SURF_VIEWERS 10 /*!< Maximum number of surface viewers allowed,
+                                     Javier needs 7 ! */
+#define SUMA_SURF_CONT_SWITCH_LABEL_LENGTH 40
 #define SUMA_DEFAULT_VIEW_FROM 300 /*!< default view from location on Z axis */
 #define SUMA_MAX_FP_NAME_LENGTH ( SUMA_MAX_DIR_LENGTH + SUMA_MAX_NAME_LENGTH )
-#define SUMA_MAX_COMMAND_LENGTH      2000/*!< Maximum number of characters in a command string */
-#define SUMA_MAX_LABEL_LENGTH 300 /*!< Maximum number of characters for labeling and naming suma fields and objects */
-#define SUMA_MAX_STRING_LENGTH 1000 /*!< Maximum number of characters in a string */ 
+#define SUMA_MAX_COMMAND_LENGTH      2000 /*!< Maximum number of characters in a 
+                                               command string */
+#define SUMA_MAX_LABEL_LENGTH 300 /*!< Maximum number of characters for labeling 
+                                       and naming suma fields and objects */
+#define SUMA_MAX_STRING_LENGTH 1000 /*!< Max number of characters in a string */ 
 #define SUMA_MAX_COLOR_NAME 50 /*!< Max. length of the name of a color */
-#define SUMA_MAX_NUMBER_NODE_NEIGHB   100 /*!< Maximum number of neighbors any one node can have.
-                                          Used to be 50 but that was not enough for a few
-                                          funky FS surfaces. ZSS Mon Mar 24 16:14:12 EST 2003*/
-#define SUMA_MAX_OVERLAYS 50 /*!< Maximum number of color overlay planes allowed */
+#define SUMA_MAX_NUMBER_NODE_NEIGHB   100 /*!< Maximum number of neighbors any 
+                                          one node can have.
+                                          Used to be 50 but that was not enough 
+                                          for a few funky FS surfaces. 
+                                          ZSS Mon Mar 24 16:14:12 EST 2003*/
+#define SUMA_MAX_OVERLAYS 50 /*!< Maximum number of color overlay planes 
+                                  allowed */
 #define SUMA_COMMAND_DELIMITER '|'
 #define SUMA_COMMAND_TERMINATOR '~'
-#define SUMA_PERSPECTIVE_NEAR   1.0   /*!< Z Near, distance from the viewer to the near clipping plane (for gluPerspective)*/
-#define SUMA_PERSPECTIVE_FAR      900 /*!< Z Far, distance from the viewer to the far clipping plane (for gluPerspective)*/
+#define SUMA_PERSPECTIVE_NEAR   1.0   /*!< Z Near, distance from the viewer to 
+                                 the near clipping plane (for gluPerspective)*/
+#define SUMA_PERSPECTIVE_FAR      900 /*!< Z Far, distance from the viewer to the
+                                 far clipping plane (for gluPerspective)*/
 #define SUMA_TESSCON_TO_MM       319.7 /*!< The mysterious Tesscon units */
-#define SUMA_TESSCON_DIFF_FLAG    1000   /*!< If aMaxDim - aMinDim > SUMA_TESSCON_DIFF_FLAG in a .iv file, scaling by SUMA_TESSCON_TO_MM is applied */
+#define SUMA_TESSCON_DIFF_FLAG    1000 /*!< Apply scaling by SUMA_TESSCON_TO_MM
+                                 If aMaxDim - aMinDim > SUMA_TESSCON_DIFF_FLAG in
+                                 a .iv file */
 
 
-#define SUMA_MAX_N_SURFACE_SPEC 500/*!< Maximum number of surfaces allowed in a spec file */
+#define SUMA_MAX_N_SURFACE_SPEC 500/*!< Max # of surfs allowed in a spec file */
 #define SUMA_MAX_N_DO_SPEC 100
 
-#define SUMA_MEMTRACE_BLOCK 10000 /*!< Number of elements to allocate for when keeping track of allocated memory. If needed more space is reallocated with SUMA_MEMTRACE_BLOCK increments. */
-#define SUMA_MEMTRACE_FLAG 1    /*!< Flag to turn on(1) or off (0) the memory tracing capability */
+#define SUMA_MEMTRACE_BLOCK 10000 /*!< Number of elements to allocate for when 
+                                       keeping track of allocated memory. If 
+                                       needed more space is reallocated with 
+                                       SUMA_MEMTRACE_BLOCK increments. */
+#define SUMA_MEMTRACE_FLAG 1    /*!< Flag to turn on(1) or off (0) the 
+                                     memory tracing capability */
 #define SUMA_PI 3.141592653589793115997963 
 #define SUMA_EPSILON 0.000001
 
@@ -233,7 +253,9 @@ typedef enum { SE_Empty,
                SE_SetDsetViewMode, SE_SetDsetFont, SE_SetDsetNodeRad, 
                SE_SetDsetNodeCol, SE_SetDsetEdgeThick, SE_SetDsetEdgeStip,
                SE_SetDsetGmatBord, SE_SetDsetTxtShad, SE_SetTractMask,
-               SE_SetDsetAlphaVal,
+               SE_SetDsetAlphaVal, SE_SetTractStyle, SE_SetATransMode,
+               SE_OpenMaskFileSelection, SE_SaveMaskFileSelection, 
+               SE_OpenMaskFile,
                SE_BadCode} SUMA_ENGINE_CODE; 
                         /* DO not forget to modify SUMA_CommandCode */
 typedef enum { SE_niEmpty,
@@ -315,7 +337,7 @@ typedef enum { SW_SurfCont_Render,
                               /*!< Indices to widgets in SurfaceController under
                                    RenderMode */
 typedef enum { SW_SurfCont_Trans,
-               SW_SurfCont_TransViewerDefault, 
+               SW_SurfCont_TransViewerDefault,
                SW_SurfCont_Trans0, SW_SurfCont_Trans1, 
                SW_SurfCont_Trans2, SW_SurfCont_Trans3, SW_SurfCont_Trans4, 
                SW_SurfCont_Trans5, SW_SurfCont_Trans6, SW_SurfCont_Trans7,
@@ -325,6 +347,17 @@ typedef enum { SW_SurfCont_Trans,
                SW_N_SurfCont_Trans } SUMA_WIDGET_INDEX_SURFCONT_TRANS; 
                               /*!< Indices to widgets in SurfaceController under
                                    TransMode */
+typedef enum { SW_SurfCont_ATrans,
+               SW_SurfCont_ATransViewerDefault, SW_SurfCont_Alpha,
+               SW_SurfCont_ATrans0, SW_SurfCont_ATrans1, 
+               SW_SurfCont_ATrans2, SW_SurfCont_ATrans3, SW_SurfCont_ATrans4, 
+               SW_SurfCont_ATrans5, SW_SurfCont_ATrans6, SW_SurfCont_ATrans7,
+               SW_SurfCont_ATrans8, SW_SurfCont_ATrans9, SW_SurfCont_ATrans10,
+               SW_SurfCont_ATrans11, SW_SurfCont_ATrans12, SW_SurfCont_ATrans13,
+               SW_SurfCont_ATrans14,SW_SurfCont_ATrans15, SW_SurfCont_ATrans16,
+               SW_N_SurfCont_ATrans } SUMA_WIDGET_INDEX_SURFCONT_ATRANS; 
+                              /*!< Indices to widgets in SurfaceController under
+                                   TransMode, with alpha mode */
 typedef enum { SW_SurfCont_DsetView,
                SW_SurfCont_DsetViewCol,
                SW_SurfCont_DsetViewCon,
@@ -407,6 +440,26 @@ typedef enum { SW_SurfCont_DsetEdgeStip,
                SW_SurfCont_DsetEdgeStip15,
                SW_N_SurfCont_DsetEdgeStip }
                                        SUMA_WIDGET_INDEX_SURFCONT_DSETEDGESTIP;
+typedef enum { SW_SurfCont_TractStyle,
+               SW_SurfCont_TractStyleSOLID,
+               SW_SurfCont_TractStyleHIDE,
+               SW_SurfCont_TractStyleST1,
+               SW_SurfCont_TractStyleST2,
+               SW_SurfCont_TractStyleST3,
+               SW_SurfCont_TractStyleST4,
+               SW_SurfCont_TractStyleST5,
+               SW_SurfCont_TractStyleST6,
+               SW_SurfCont_TractStyleST7,
+               SW_SurfCont_TractStyleST8,
+               SW_SurfCont_TractStyleST9,
+               SW_SurfCont_TractStyleST10,
+               SW_SurfCont_TractStyleST11,
+               SW_SurfCont_TractStyleST12,
+               SW_SurfCont_TractStyleST13,
+               SW_SurfCont_TractStyleST14,
+               SW_SurfCont_TractStyleST15,
+               SW_N_SurfCont_TractStyle }
+                                       SUMA_WIDGET_INDEX_SURFCONT_TRACTSTYLE;
 typedef enum { SW_SurfCont_DsetAlphaVal,
                SW_SurfCont_DsetAlphaVal_Max,
                SW_SurfCont_DsetAlphaVal_Avg,
@@ -534,16 +587,25 @@ typedef enum { SUMA_ROI_Undefined,
                SUMA_ROI_NodeSegment /*!< A series of connected nodes */
              } SUMA_ROI_TYPE; /* a generic types of ROI datums*/
 
-typedef enum { SXR_default, SXR_Euro, SXR_Afni , SXR_Bonaire} SUMA_XRESOURCES;   /* flags for different X resources */
+typedef enum { SXR_default, SXR_Euro, SXR_Afni , SXR_Bonaire, SXR_Print } SUMA_XRESOURCES;   /* flags for different X resources */
 
 typedef enum { SRM_ViewerDefault, SRM_Fill, SRM_Line, SRM_Points , SRM_Hide, 
                SRM_N_RenderModes} SUMA_RENDER_MODES; /*!< flags for various 
                                                             rendering modes */
 
-typedef enum { STM_ViewerDefault, STM_0, STM_1, STM_2,STM_3,STM_4,STM_5,
+typedef enum { STM_ViewerDefault,
+               STM_0, STM_1, STM_2,STM_3,STM_4,STM_5,
                STM_6, STM_7, STM_8, STM_9, STM_10, STM_11, STM_12, STM_13,
                STM_14, STM_15, STM_16, STM_N_TransModes} SUMA_TRANS_MODES; 
                                  /*!< flags for various transparency values */
+
+typedef enum { SATM_ViewerDefault, SATM_ALPHA,
+               SATM_0, SATM_1, SATM_2,SATM_3,SATM_4,SATM_5,
+               SATM_6, SATM_7, SATM_8, SATM_9, SATM_10, SATM_11, SATM_12, 
+               SATM_13, SATM_14, SATM_15, SATM_16, 
+                                       SATM_N_TransModes} SUMA_ATRANS_MODES; 
+                                 /*!< flags for various transparency values,
+                                    including Alpha mode */
 
 
 typedef enum { 
@@ -906,7 +968,8 @@ typedef struct {
    
    int EdgeThick; /* see SUMA_WIDGET_INDEX_SURFCONT_DSETEDGETHICK */
    float EdgeThickGain;
-   int EdgeStip; /* see SUMA_WIDGET_INDEX_SURFCONT_DSETEDGESTIP */
+   int EdgeStip; /* see SUMA_WIDGET_INDEX_SURFCONT_DSETEDGESTIP,
+                        Also see  SUMA_WIDGET_INDEX_SURFCONT_TRACTSTYLE*/
    int AlphaVal; /* see SUMA_WIDGET_INDEX_SURFCONT_DSETALPHAVAL */
    char *Name; /*!<  name of ovelay, CONVEXITY or Functional or areal boundaries 
                      perhaps. The Name can be a filename with path*/
@@ -1348,14 +1411,17 @@ typedef struct {
    SUMA_Boolean preserve; 
 } SUMA_PROMPT_DIALOG_STRUCT; /*!< \sa similar fields in SUMA_SELECTION_DIALOG_STRUCT */
 
-typedef enum { SUMA_FILE_OPEN, SUMA_FILE_SAVE } SUMA_FILE_SELECT_MODE; /*!< mode of file selection dialog */
+typedef enum { SUMA_FILE_OPEN, SUMA_FILE_SAVE } 
+            SUMA_FILE_SELECT_MODE; /*!< mode of file selection dialog */
 
 typedef struct {
    SUMA_FILE_SELECT_MODE Mode; 
-   void (*SelectCallback)(char *filename, void *data); /*!< function called when a selection is made 
-                                            See note for Preserve field*/
+   void (*SelectCallback)(char *filename, void *data); /*!< function called 
+                                    when a selection is made 
+                                    See note for Preserve field*/
    void *SelectData; /*!< data sent along to SelectCallback */
-   void (*CancelCallback)(void *data); /*!< function called when cancel or kill is called */
+   void (*CancelCallback)(void *data); /*!< function called when cancel or 
+                                            kill is called */
    void *CancelData; /*!< data sent along to CancelCallback */
    Widget dlg_w; /*!< widget of dialog */
    Widget daddy; /*!< widget of parent */
@@ -1364,13 +1430,13 @@ typedef struct {
    char *FilePattern; /*!< Pattern for filename filtering
                            Only relevant when window is opened */
    SUMA_Boolean preserve; /*!< If YUP, then widget is only unmanaged when 
-                              selection is made or cancel is pressed. In 
-                              this case, you should take care of dlg's safekeeping
-                              and eventual destruction.
-                              If Nope, then the widget is destroyed after selection
-                              and/or cancel and the dlg structure is destroyed.
-                              Be careful, if Preserve is NOPE, that your callbacks
-                              do not return before being done with this structure*/ 
+                     selection is made or cancel is pressed. In 
+                     this case, you should take care of dlg's safekeeping
+                     and eventual destruction.
+                     If Nope, then the widget is destroyed after selection
+                     and/or cancel and the dlg structure is destroyed.
+                     Be careful, if Preserve is NOPE, that your callbacks
+                     do not return before being done with this structure*/ 
 } SUMA_SELECTION_DIALOG_STRUCT;
 
 /*!
@@ -1407,6 +1473,7 @@ typedef enum { SUMA_ERROR_CELL, SUMA_ROW_TIT_CELL, SUMA_COL_TIT_CELL, SUMA_ENTRY
 
 typedef struct{
    Widget rc;
+   Widget rco;
    Widget *cells; /* table cells, Ncol x Nrow total */
    SUMA_Boolean HasColTit; /*!< YUP = table's 1st row is titles */
    SUMA_Boolean HasRowTit; /*!< YUP = table's 1st col is titles */
@@ -1433,6 +1500,7 @@ typedef struct{
                            i = cell_modified % Ni, j = cell_modified / Ni 
                            cell_modified = j * Ni + i */
    SUMA_NUMERICAL_UNITS num_units;
+   char **rowobject_id;
 } SUMA_TABLE_FIELD;
 
 typedef struct {
@@ -1472,6 +1540,21 @@ typedef struct {
    SUMA_Boolean modified; /*!< set to YUP when user edits the value field */
 } SUMA_SLICE_FIELD;
 
+typedef struct {
+   Widget rc; /*! container row column */
+   Widget lab; /*! Label */
+   Widget tb;  /*! Toggle button for view slice */
+   Widget text; /*! Text area where user enters slice number */
+   int Nslc;
+   char *N_slice_num_str;
+   float N_slice_num;
+   SUMA_NUMERICAL_UNITS N_slice_units;
+   void (*NewValueCallback)(void *data); /*!< callback when a new value is set */
+   void *NewValueCallbackData; 
+   SUMA_Boolean modified; /*!< set to YUP when user edits the value field */
+} SUMA_VR_FIELD;
+
+
 /*! structure containing widgets for surface  controllers SurfCont */
 typedef struct {
    /* *** DO NOT ADD ANYTHING BEFORE THESE FIELDS
@@ -1504,6 +1587,8 @@ typedef struct {
                                        controlling the rendering mode menu */
    SUMA_MENU_WIDGET *TransModeMenu; /*!<[SW_N_SurfCont_Trans] widgets 
                                        controlling the transparency menu */
+   SUMA_MENU_WIDGET *VTransModeMenu; /*!<[SW_N_SurfCont_Trans] widgets 
+                                    controlling the volume transparency menu */
    SUMA_MENU_WIDGET *DsetViewModeMenu; /*!<[SW_N_SurfCont_DsetView]  widgets 
                                        controlling the dataset view mode menu */
    SUMA_MENU_WIDGET *DsetFontMenu; /*!<[SW_N_SurfCont_DsetFont] widgets                                   controlling the font displayed on graph nodes */
@@ -1513,11 +1598,13 @@ typedef struct {
    SUMA_MENU_WIDGET *DsetNodeRadMenu; /*!<[SW_N_SurfCont_DsetNodeRad] widgets                                   controlling the sizing of graph nodes */
    SUMA_MENU_WIDGET *DsetEdgeThickMenu; /*!<[SW_N_SurfCont_DsetEdgeThick] widgets                                   controlling the sizing of graph nodes */
    SUMA_MENU_WIDGET *DsetEdgeStipMenu; /*!<[SW_N_SurfCont_DsetEdgeStip] widgets                                   controlling the sizing of graph nodes */
+   SUMA_MENU_WIDGET *TractStyleMenu; /*!<[SW_N_SurfCont_TractStyle] widgets                                   controlling the sizing of graph nodes */
    SUMA_MENU_WIDGET *DsetAlphaValMenu; /*!<[SW_N_SurfCont_DsetAlphaVal] widgets                                   controlling the sizing of graph nodes */
    SUMA_MENU_WIDGET *TractMaskMenu; /*!<[SW_N_SurfCont_TractMask] widgets 
                                 controlling the masking method */
    Widget ColPlane_fr; /*!< the frame controlling the colorplanes */
    Widget Slice_fr;
+   Widget VR_fr;
    Widget DsetMap_fr; /*!< the frame for mapping Dset to colormap */
    Widget Xhair_fr; /*!< The frame for cross hair Info and controls */ 
    Widget SurfContPage_label; /*!< Le label */
@@ -1539,6 +1626,12 @@ typedef struct {
                                       controlling grayness of masked tracts */
    SUMA_TABLE_FIELD *SetRangeTable; /*!< structure for range setting table */
    SUMA_TABLE_FIELD *RangeTable; /*!< structure for range  table */
+   SUMA_TABLE_FIELD *MaskTable;
+   SUMA_TABLE_FIELD *MaskEvalTable;
+   Widget MaskEval_tb;
+   SUMA_Boolean UseMaskEval;
+   SUMA_TABLE_FIELD *MaskLenTable;
+   Widget MaskLen_tb;
    SUMA_TABLE_FIELD *XhairTable; /*!< structure for Cross hair  table */
    SUMA_TABLE_FIELD *NodeTable; /*!< structure for node index  table */
    SUMA_TABLE_FIELD *FaceTable;
@@ -1579,6 +1672,7 @@ typedef struct {
    SUMA_CMAP_RENDER_AREA *cmp_ren;   /* data for cmap rendering zone */
    Widget thr_sc;   /*! scale for threshold data */
    Widget brt_sc;   /*! scale for brightness data */
+   SUMA_VR_FIELD *VR_fld;
    SUMA_SLICE_FIELD *Ax_slc;
    SUMA_SLICE_FIELD *Sa_slc;
    SUMA_SLICE_FIELD *Co_slc;
@@ -1631,6 +1725,11 @@ typedef struct {
    int IntRangeLocked;
    int BrtRangeLocked;
    Widget rcclust; /*!< rowcol holding clusterizing options */
+   Widget DeleteMask_pb;
+   int DeleteMask_first;
+   int DeleteMask_row;
+   float tract_length_mask[2];
+   int UseMaskLen;
 }SUMA_X_SurfCont;
 
 typedef struct {
@@ -1696,45 +1795,6 @@ typedef struct {
                            widgets for SaveWhat menu */
 } SUMA_X_DrawROI;
 
-#if 0 /* STOPPED HERE */
-/*! structure containing widgets and data for the Mask DO widgets*/
-typedef struct {
-   Widget Parent; /*!< Parent widget for the MaskDO window.
-                         It is an Application Shell if in standalone mode.
-                         Otherwise it is a container Row Column ... */ 
-   int standalone;
-   Widget MaskMovemode_tb; /*!< widget for toggling Mask Move mode */
-
-   Widget New_pb;
-   Widget Load_pb;
-   Widget Save_pb;
-   Widget Delete_pb;
-   SUMA_Boolean Delete_first; /*! Flag indicating button has been 
-                                 pressed for the first time */
-   
-   SUMA_ARROW_TEXT_FIELD *MaskSize; /*!< pointer to arrow field */
-   SUMA_ARROW_TEXT_FIELD *MaskCen; /*!< pointer to text field */
-   
-   SUMA_DRAWN_ROI *curDrawnROI; /*!< A pointer to the DrawnROI structure
-                                    currently in use by window.
-                                    This is a copy of another pointer, 
-                                    NEVER FREE IT*/
-   SUMA_LIST_WIDGET *SwitchROIlst; /*!< a structure containing widgets and 
-                                    options for the switch ROI list */
-   int SaveWhat;  /*!< option for determining what ROI to save, acceptable values
-                     are in SUMA_WIDGET_INDEX_DRAWROI_SAVEWHAT */
-   int SaveMode;  /*!< option for determining format of ROI to save, acceptable
-                     values are in SUMA_WIDGET_INDEX_DRAWROI_SAVEMODE */ 
-   int WhatDist;  /*!< option for determining format of ROI to save, acceptable  
-                        values are in SUMA_WIDGET_INDEX_DRAWROI_SAVEMODE */ 
-   SUMA_MENU_WIDGET *SaveModeMenu; /*!<[SW_N_DrawROI_SaveMode] set of 
-                           widgets for SaveMode menu */
-   SUMA_MENU_WIDGET *SaveWhatMenu; /*!<[SW_N_DrawROI_SaveWhat] set of 
-                           widgets for SaveWhat menu */
-   SUMA_MENU_WIDGET *WhatDistMenu; /*!<[SW_N_DrawROI_WhatDist] set of 
-                           widgets for SaveWhat menu */
-} SUMA_X_MaskDO;
-#endif
 
 typedef struct {
    GLXContext last_context;
@@ -1835,6 +1895,8 @@ typedef struct {
    SUMA_GLCONTEXT_RECORD *Cr;
    
    SUMA_X_SurfCont *AllMaskCont;
+   int MaskStateID; /* A flag that is updated anytime masks are modified
+                       requiring a new computation of intersections */
 }SUMA_X_AllView;
 
 /*! structure defining a cross hair */
@@ -1932,9 +1994,10 @@ typedef struct {
    int Mstip;
    GLushort stip;    /* common stippling pattern */
    
-   int N_UnqNodes; /* Number of unique nodes that are used to form the segments
-                      That the number of elements in the set formed by NodeID1 
-                      and NodeID, -1 if it is not set*/
+   int N_SegNodes; /* Number of unique nodes that are used to form the segments
+                      That is the number of elements in the set formed by NodeID1
+                      and NodeID, -1 if it is not set */
+   int N_AllNodes; /* All defined nodes in parent set */
 } SUMA_SegmentDO;
 
 typedef struct {
@@ -1982,6 +2045,23 @@ typedef struct {
    
 }SUMA_SphereDO;
 
+/* A structure to hold tract masking results with boolean expressions */
+typedef struct {
+   int N_vals;          /* Number of vals (tracts) in DO to be intersected */
+   byte varcol[26*4];   /* RGB colors associated with each of the 26 variables
+                           'a' to 'z' */
+   byte varsused[26];   /* varsused[k] = 1 --> variable 'a'+k is in 'expr' */
+   char varsmdo[26][1+SUMA_IDCODE_LENGTH]; /* varsmdo[k] contains the IDcode
+                                             of the object (MaskDO) corresponding
+                                             to variable 'a'+k */
+   char mdoused[26*(1+SUMA_IDCODE_LENGTH)]; /* A brute catenation of IDcodes 
+                                         of DOs referenced by the variables */
+   char allvarsineq[27]; /* A catenation of all variables in 'expr' */
+   byte **marr;          /* a pointer to 26 (byte *) pointers to arrays of
+                          N_vals bytes each. marr[k] is NULL is varsused[k]=0 */
+   char *expr;    /* The boolean expression */
+} SUMA_MASK_EVAL_PARAMS;
+
 typedef struct {
       /* FIRST VARIABLES MUST RETAIN THEIR ORDER and follow SUMA_ALL_DO */
    SUMA_DO_Types do_type; 
@@ -2007,6 +2087,13 @@ typedef struct {
                          1 elements per segment. NULL if using LineWidth */
    SUMA_STIPPLE Stipple; /*!< dashed or solid line */
 
+   SUMA_MASK_EVAL_PARAMS *mep;
+   
+   byte *tmask;
+   int N_tmask;
+   int MaskStateID;
+   byte *tcols;
+   byte usetcols;
 } SUMA_TractDO;
 
 typedef struct {
@@ -2080,12 +2167,6 @@ typedef struct {
 
 /* structure defining the former state of a surface viewer window */
 typedef struct {
-   #if 0 /* not being used May 2013*/
-   int N_DO_sh;      /*!< Total number of surface objects registered with 
-                       the viewer */
-   int *RegisteredDO_sh;  /*!< ShowSO[i] (i=0..N_DO) contains Object indices 
-                             into DOv for DOs visible in the surface viewer*/
-   #endif
    float ViewFrom[3]; /*!< Location of observer's eyes */
    float ViewFromOrig[3]; /*!< Original Location of observer's eyes */
    float ViewCenter[3];   /*!< Center of observer's gaze */
@@ -2096,16 +2177,26 @@ typedef struct {
    float Aspect;   /*!< Aspect ratio of the viewer*/
 } SUMA_ViewState_Hist;
 
+/* A structure to quickly locate DO in DOv
+   Originally, the structure was nothing but an integer.
+   But this integer becomes useless when SUMAg_DOv gets
+   scrambled, mostly when certain objects get deleted.
+   The more reliable string ID is now included along
+   with a bunch of Refresh functions to reset the dov_ind
+   via idcode_str directly */
+typedef struct {
+   int dov_ind; /* index of object into SUMAg_DOv */
+   char idcode_str[SUMA_IDCODE_LENGTH]; /* id of object in question */
+} SUMA_DO_LOCATOR;
 
 /*! structure defining the viewing state of the viewer window */
 typedef struct {
    char *Name; /*!< The name of the viewing state, fiducial, inflated, etc .. */
    SUMA_Boolean AnatCorrect; /* is this state anatomically correct? */
    char *Group; /*!< The group to which the viewing state belongs. */
-   int *MembDOs; /*!< Indices into DOv of SOs that are members of the 
-                      viewing state */
-   int N_MembDOs; /*!< Number of members in MembSOs. 
-                     Only SOs that are in MembSOs can
+   SUMA_DO_LOCATOR *MembDO; 
+   int N_MembDO; /*!< Number of members in MembDO. 
+                     Only SOs that are in MembDO can
                      be placed into RegisteredDO of the viewer in a particular 
                      viewing state.*/                  
    SUMA_ViewState_Hist *Hist; /*!< Pointer to structure containing various 
@@ -2175,7 +2266,7 @@ typedef struct {
    char owner_id[SUMA_IDCODE_LENGTH];   /*!< The id of whoever created that 
                                        pointer. Might never get used.... */
    
-   GLfloat *glar_ColorList; /*!< pointer to the 1D ColorList array */
+   GLfloat *glar_ColorList_private; /*!< pointer to the 1D ColorList array */
    int N_glar_ColorList; /*!< Number of elements in glar_ColorList 4xNumber 
                               of nodes in the surface or edges in a graph */
    char *idcode_str; /*!< string containing the idcode of the surface/object to 
@@ -2260,7 +2351,10 @@ typedef enum {  SUMA_NO_WAX, SUMA_THREE_WAX, SUMA_THREE_TEXT_WAX, SUMA_BOX_WAX, 
 /*! structure defining the state of a viewer window */
 
 typedef struct {
+   int ALPHA_TEST;
    int DEPTH_TEST;
+   int COLOR_MATERIAL;
+   int TEXTURE_2D;
    int TEXTURE_3D_EXT;
    int TEXTURE_3D;
    int TEXTURE_GEN_S;
@@ -2349,8 +2443,17 @@ typedef struct {
 
 typedef struct {
    int N_DO;   /*!< Total number of surface objects registered with the viewer */
+   SUMA_DO_LOCATOR *RegistDO;
+   #if 0 /* Replaced with SUMA_DO_LOCATOR above*/
    int *RegisteredDO;    /*!< RegisteredDO[i] (i=0..N_DO) contains Object indices
                               into DOv for DOs visible in the surface viewer*/
+   char **RegisteredDOid; /*!< A more reliable version of RegisteredDO. 
+                              RegisteredDO starts to fail miserably when objects
+                              are deleted from SUMAg_DOv thereby altering the
+                              order of objects inside SUMAg_DOv.
+                              The same problem needs to be dealt with in MembDO*/
+   #endif
+   
    
    SUMA_Boolean Record; /*!< Set record mode */
    SUMA_Boolean ShowLeft; /*!< Show left side surfaces */
@@ -2503,6 +2606,8 @@ typedef struct {
    int DO_PickMode; /*! Picking mode for selecting non-surface objects */
    DList *pick_colid_list;
    GLubyte *pickrenpix4; /*! An array holding the RGBA rendering buffer */
+   
+   int LoadedTextures[SUMA_MAX_DISPLAYABLE_OBJECTS+1];
 } SUMA_SurfaceViewer;
 
 /*! structure defining an EngineData structure */
@@ -2980,6 +3085,7 @@ typedef struct {
                */  
 
 
+
 typedef struct {
       /* FIRST VARIABLES MUST RETAIN THEIR ORDER and follow SUMA_ALL_DO */
    SUMA_DO_Types do_type; 
@@ -3009,8 +3115,13 @@ typedef struct {
    
    SUMA_SurfaceObject *SO; /* Surface defining mask shape */ 
    
-   GLfloat *colv; /*!< Vector of segment colors, 4 elements per segment. 
-                        NULL if using LineCol */
+   float *init_col;
+   float dim;
+   
+   GLfloat *dcolv;
+   
+   char varname[3];
+   SUMA_TRANS_MODES trans;
 } SUMA_MaskDO;
 
 
@@ -3135,7 +3246,8 @@ typedef struct {
 
 /*! structure containing a mapping of one surface to another*/
 typedef struct {
-   float *NewNodeList; /*!< N_Node x 3 vector containing new mapping of node coordinates */
+   float *NewNodeList; /*!< N_Node x 3 vector containing new mapping 
+                           of node coordinates */
    int N_Node; /*!< Number of nodes in NodeList */
    float *NodeVal; 
    float *NodeCol;
@@ -3148,7 +3260,8 @@ typedef struct {
    char name_coord[SUMA_MAX_NAME_LENGTH];
    int N_Node; /*!< Number of nodes */
    float *NodeList; /*!< N_Node x 3 vector containing node coordinates */
-   int *NodeId; /*!< Node ID, that's normaly from 0..N_Nodes-1 but since it's in .coord file, I keep it anyway */
+   int *NodeId; /*!< Node ID, that's normaly from 0..N_Nodes-1 but 
+                    since it's in .coord file, I keep it anyway */
    byte *allzerocoord;
    char encoding_coord[100];
    char configuration_id[100];
@@ -3159,13 +3272,15 @@ typedef struct {
    char date[100];
    char perimeter_id[100];
    int N_Node_Specs; /*!< Number of nodes with listed node specs */
-   int **Specs_mat; /*!< Node Specs matrix. Columns appear to be arraged as such NodeId #Neighbors ? ? NodeId ? */
+   int **Specs_mat; /*!< Node Specs matrix. Columns appear to be 
+                         arraged as such NodeId #Neighbors ? ? NodeId ? */
    SUMA_NODE_FIRST_NEIGHB FN; /*!< First order neighbor structure */
    int N_FaceSet; /*!< Number of polygons making up surface */
    int *FaceSetList; /*!< definition of polygons. Became a vector in SUMA 1.2*/
    /* Param Files */
    char name_param[SUMA_MAX_NAME_LENGTH];
-   float AC_WholeVolume[3]; /*!< XYZ (from .Orient.params file) of Anterior Comissure of whole volume */
+   float AC_WholeVolume[3]; /*!< XYZ (from .Orient.params file) 
+                               of Anterior Comissure of whole volume */
    float AC[3]; /*!< XYZ of Anterior Comissure of cropped volume */
    float CropMin[3];
    float CropMax[3];

@@ -169,6 +169,7 @@ typedef struct {
 #define mxvc2(mxv,i,j  )   ( mxv->cv[( (int)(i) + (int)(j) * mxv->fdfm[0]   )] )
 #define mxvc1(mxv,i  )     ( mxv->cv[( (int)(i)   )] )
 
+#define IN_MASK(mm,k) ( (!(mm) || (mm)[k]) )
 
 SUMA_MX_VEC *SUMA_FreeMxVec(SUMA_MX_VEC *mxv);
 SUMA_MX_VEC *SUMA_NewMxVec(SUMA_VARTYPE tp, int N_dims, int *dims, 
@@ -282,5 +283,8 @@ double *SUMA_dreorder(double *y, int *isort, int N_isort);
 byte *SUMA_breorder(byte *y, int *isort, int N_isort);
 float *SUMA_freorder(float *y, int *isort, int N_isort);
 float *SUMA_freorder_triplets(float *y, int *isort, int N_isort);
-
+char *SUMA_floats_to_string(float *rgba, int N, float scl, char *here, int *Err,
+                            char *sep, int MVf);
+#define SUMA_RGBA_to_string SUMA_floats_to_string
+float *SUMA_string_to_RGBA(char *s, float *here, float scl, int *Err);                      
 #endif

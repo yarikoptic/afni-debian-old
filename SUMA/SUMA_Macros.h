@@ -739,6 +739,8 @@ if Dist = 0, point on plane, if Dist > 0 point above plane (along normal), if Di
    }  \
 }
 
+#define SUMA_NEW_MASKSTATE() (SUMAg_CF->X ? (++SUMAg_CF->X->MaskStateID):0)
+
 /*!
    \brief Get the pointer for the last visited viewer 
 */
@@ -761,16 +763,6 @@ if Dist = 0, point on plane, if Dist > 0 point above plane (along normal), if Di
    else { SO->PolyMode = i; } \
    if (SO->PolyMode == SRM_Hide) { SO->Show = NOPE; } \
    else { SO->Show = YUP; }\
-}
-
-/*!
-   \brief set transmode
-*/ 
-#define SUMA_SET_SO_TRANSMODE(SO,i){ \
-   if (i < 0 || i >= STM_N_TransModes) { SO->TransMode = STM_ViewerDefault; }\
-   else { SO->TransMode = i; } \
-   if (SO->TransMode == STM_16) { SO->Show = NOPE; } \
-   else { SO->Show = YUP; } \
 }
 
 /*!

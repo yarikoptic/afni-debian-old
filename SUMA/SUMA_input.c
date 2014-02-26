@@ -4980,14 +4980,22 @@ void SUMA_input(Widget w, XtPointer clientData, XtPointer callData)
             } /* if SUMAg_CF->ROImode */
             
             if (sv->Focus_DO_ID > 0){/* Get surface controller page in sync */
-               SUMA_ALL_DO *ado = SUMA_SV_Focus_ADO(sv);
-               if (ado) {
-                  SUMA_LHv("Will call Init for %s if %d\n", 
-                     SUMA_ADO_Label(ado), 
-                     SUMA_isADO_Cont_Realized(ado));
-                  if (SUMA_isADO_Cont_Realized(ado))
-                     SUMA_Init_SurfCont_SurfParam(ado);
-               }
+               if (!SUMA_IS_CONTPAGE_ON_TOP(SUMAg_CF->X->AllMaskCont)) { 
+                  /* Switch only if 'sticky' mask controller page 
+                     is not on top */
+                  SUMA_ALL_DO *ado = SUMA_SV_Focus_ADO(sv);
+                  if (ado) {
+                     SUMA_LHv("Will call Init for %s if %d\n", 
+                        SUMA_ADO_Label(ado), 
+                        SUMA_isADO_Cont_Realized(ado));
+                     if (SUMA_isADO_Cont_Realized(ado))
+                        SUMA_Init_SurfCont_SurfParam(ado);
+                  }
+               } else {
+                  if (!SUMA_InitMasksTable(SUMAg_CF->X->AllMaskCont)) {
+                     SUMA_S_Err("Failed to initialize mask table");
+                  }
+               }  
             }
          break;
          case Button1:
@@ -5950,6 +5958,7 @@ SUMA_PICK_RESULT *SUMA_WhatWasPicked_FrameSO(SUMA_SurfaceViewer *sv, int ido)
                PR->datum_index = PR->primitive_index = -1;
             } else if (!SUMA_GDSET_PointsToSegIndex(dset, ii, jj, &si)) {
                SUMA_S_Errv("Failed to find segment for %d %d\n", ii, jj);
+               if (LocalHead) SUMA_DUMP_TRACE("Now what?");
                PR->datum_index = PR->primitive_index = -1;
             } else {
                PR->datum_index = PR->primitive_index = si;
@@ -6969,11 +6978,20 @@ int SUMA_ComputeLineDOsIntersect (SUMA_SurfaceViewer *sv, SUMA_DO *dov,
    MembDOs = SUMA_ViewState_Membs(&(sv->VSv[sv->iState]), ttv, &N_MembDOs);
    for (i=0; i<N_MembDOs; ++i) {
       if ((hit = SUMA_WhatWasPicked_FrameSO(sv, MembDOs[i]))) { 
-         /* got something, leave. Perhaps in the future will need to go through
-         all stack (slices) and pick the best one ... */
-         ado = iDO_ADO(MembDOs[i]);
-         if (pado) *pado = ado;
-         break;
+         if ( hit->datum_index < 0 && (
+             ( hit->iAltSel[SUMA_ENODE_0]>=0 && 
+               hit->iAltSel[SUMA_ENODE_1]>=0)) ) {
+            /* You have selected a point pair that has no edge defined.
+               This can happen when you click on an empty cell in the matrix */
+            hit = SUMA_free_PickResult(hit);
+         } else {
+            /* got something, leave. 
+               Perhaps in the future will need to go through
+            all stack (slices) and pick the best one ... */
+            ado = iDO_ADO(MembDOs[i]);
+            if (pado) *pado = ado;
+            break;
+         }
       }
    }
    SUMA_ifree(MembDOs);
@@ -7110,8 +7128,14 @@ int SUMA_Apply_PR_DO(SUMA_SurfaceViewer *sv, SUMA_ALL_DO *ado,
    /* Based on what you selected, update controller */
    /* Set the Nodeselection at the closest node */
    if (PR->datum_index >= 0 ||
-       (PR->datum_index == -1 && PR->iAltSel[SUMA_ENODE_0] >= 0)) { 
-                     /* 2nd condition is when only edge node is selected */
+       (PR->datum_index == -1 && 
+        PR->iAltSel[SUMA_ENODE_0] >= 0 && 
+        PR->iAltSel[SUMA_ENODE_1] == -1) ) { 
+                     /* 2nd condition is when only edge node is selected.
+                        We insist on PR->iAltSel[SUMA_ENODE_1] == -1 otherwise
+                        we would have picked a cell in the matrix for which 
+                        there is no data, hence we have ENODE_0, and ENODE_1,
+                        but datum_index = -1 */
       it = (int)PR->datum_index;
       if (!list) list = SUMA_CreateList();
       if (PR->ignore_same_datum && 
@@ -7256,7 +7280,7 @@ int SUMA_Apply_PR(SUMA_SurfaceViewer *sv, SUMA_PICK_RESULT **PR)
    
    if (!sv || !PR || !*PR) {
       SUMA_S_Err("NULL input %p %p %p", sv, PR, *PR);
-      SUMA_DUMP_TRACE("creep");
+      SUMA_DUMP_TRACE("PR application");
       SUMA_RETURN(-1);
    }
    if (MASK_MANIP_MODE(sv)) {
@@ -7279,7 +7303,9 @@ int SUMA_Apply_PR(SUMA_SurfaceViewer *sv, SUMA_PICK_RESULT **PR)
       } else {
          xyz = (*PR)->PickXYZ;
       }
-      SUMA_RETURN(SUMA_MDO_New_Center((SUMA_MaskDO *)ado, xyz));
+      if (LocalHead) SUMA_DUMP_TRACE("Box motion");
+      SUMA_NEW_MASKSTATE();
+      SUMA_RETURN(SUMA_MDO_New_Cen((SUMA_MaskDO *)ado, xyz));
    } else {
       ado = SUMA_whichADOg((*PR)->ado_idcode_str);
       SUMA_LH("Here %s", ADO_LABEL(ado));
@@ -7338,7 +7364,8 @@ int SUMA_ComputeLineMaskIntersect (SUMA_SurfaceViewer *sv, SUMA_DO *dov,
    int NP; 
    SUMA_MT_INTERSECT_TRIANGLE *MTI = NULL, *MTIi = NULL;
    float delta_t_tmp, dmin; 
-   struct timeval tt_tmp; 
+   struct timeval tt_tmp;
+   SUMA_ALL_DO *ado=NULL;
    int ip, it, id, ii, N_MDOlist, 
        MDOlist[SUMA_MAX_DISPLAYABLE_OBJECTS], imin;
    char sfield[100], sdestination[100], CommString[SUMA_MAX_COMMAND_LENGTH];
@@ -7355,6 +7382,14 @@ int SUMA_ComputeLineMaskIntersect (SUMA_SurfaceViewer *sv, SUMA_DO *dov,
    P1f[2] = sv->Pick1[2];
    
    N_MDOlist = SUMA_VisibleMDOs(sv, dov, MDOlist);
+   if (LocalHead) {
+      SUMA_LH("%d visible MDOs", N_MDOlist);
+      for (ii=0; ii < N_MDOlist; ++ii) {
+         ado = (SUMA_ALL_DO *)dov[MDOlist[ii]].OP;
+         fprintf(SUMA_STDERR,"%d: object %d in DOv, label %s, type %s\n", 
+                  ii, MDOlist[ii], ADO_LABEL(ado), ADO_TNAME(ado));
+      }
+   }
    imin = -1;
    dmin = 10000000.0;
    for (ii=0; ii < N_MDOlist; ++ii) { /* find the closest intersection */
@@ -7366,10 +7401,10 @@ int SUMA_ComputeLineMaskIntersect (SUMA_SurfaceViewer *sv, SUMA_DO *dov,
       if (!MDO_IS_SURF(MDO) && !MDO_IS_BOX(MDO) && !MDO_IS_SPH(MDO)) {
          fprintf(SUMA_STDERR,
             "Error %s: "
-            "Not ready to handle such MDO (%s) intersections\n", 
-            FuncName, MDO->mtype);
+            "Not ready to handle such MDO (%s) intersections on %s\n", 
+            FuncName, MDO->mtype, ADO_LABEL((SUMA_ALL_DO *)MDO));
       } if (!MDO->SO) {
-         SUMA_S_Err("No SO buster");
+         SUMA_S_Err("No SO buster on %s", ADO_LABEL((SUMA_ALL_DO *)MDO));
       } else {
          /* Here we're doing the intersection the lazy way, via the SO,
          although this can be done a lot faster in other ways for box and
@@ -7380,10 +7415,9 @@ int SUMA_ComputeLineMaskIntersect (SUMA_SurfaceViewer *sv, SUMA_DO *dov,
                                  MDO->SO->N_FaceSet, NULL, 0);
 
          delta_t_tmp = SUMA_etime (&tt_tmp, 1);
-         if (LocalHead) 
-            fprintf (SUMA_STDERR, 
-               "Local Debug %s: Intersection took %f seconds.\n", 
-               FuncName, delta_t_tmp);
+         SUMA_LH("Intersection took %f seconds with %s.\n", 
+               delta_t_tmp, 
+               ADO_LABEL((SUMA_ALL_DO *)dov[MDOlist[ii]].OP));
 
          if (MTIi == NULL) {
             fprintf(SUMA_STDERR,
@@ -7402,9 +7436,8 @@ int SUMA_ComputeLineMaskIntersect (SUMA_SurfaceViewer *sv, SUMA_DO *dov,
                MTI = MTIi;
             }else {     
                /* not good, toss it away */
-               if (LocalHead) 
-                  fprintf (SUMA_STDERR, 
-                           "%s: ii=%d freeing MTIi...\n", FuncName, ii);
+               SUMA_LH("ii=%d not any closer (%f vs %f). freeing MTIi...\n", 
+                        ii,MTIi->t[MTIi->ifacemin], dmin);
                MTIi = SUMA_Free_MT_intersect_triangle(MTIi); 
             }
          }else {
@@ -7425,7 +7458,7 @@ int SUMA_ComputeLineMaskIntersect (SUMA_SurfaceViewer *sv, SUMA_DO *dov,
       SUMA_PICK_RESULT *PR;
       SUMA_ALL_DO *ado;
       if (!(ado = iDO_ADO(imin))) {
-         SUMA_S_Err("NULL ado at this point?");
+         SUMA_S_Err("NULL ado at this point? imin = %d", imin);
          SUMA_RETURN(-1);
       }
       PR = (SUMA_PICK_RESULT *)SUMA_calloc(1, sizeof(SUMA_PICK_RESULT));

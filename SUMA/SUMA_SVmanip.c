@@ -305,8 +305,14 @@ float SUMA_sv_auto_fov(SUMA_SurfaceViewer *sv)
                                  / 2.0 / CurrentDistance)*180.0/SUMA_PI;
       SUMA_LHv("Computed fov to be %f degrees\n",  fov);
    } else {
+      static int nwarn=0;
       fov = FOV_INITIAL;
-      SUMA_S_Errv("max dim too strange (%f)\nUsing default (%f).\n", mxdim, fov);
+      if (!(nwarn % SUMA_MAX_SURF_VIEWERS)) {
+         SUMA_S_Errv("max dim too strange (%f)\nUsing default (%f).\n"
+                     "Similar messages will be decimated.\n", 
+                     mxdim, fov);
+      }
+      ++nwarn;
    }
    
    /* institutional memory */
@@ -438,6 +444,7 @@ SUMA_SurfaceViewer *SUMA_Alloc_SurfaceViewer_Struct (int N)
    }
    for (i=0; i < N; ++i) {
       SV = &(SVv[i]);
+      SV->LoadedTextures[0] = -1; /* plug */
       memset(SV, 0, sizeof(SUMA_SurfaceViewer)); 
       SV->N_GVS = SUMA_N_STANDARD_VIEWS;
       SV->GVS = (SUMA_GEOMVIEW_STRUCT *)
@@ -726,10 +733,10 @@ SUMA_SurfaceViewer *SUMA_Alloc_SurfaceViewer_Struct (int N)
       
       SV->Open = NOPE;
       
-      SV->RegisteredDO = (int *)SUMA_calloc( SUMA_MAX_DISPLAYABLE_OBJECTS, 
-                                             sizeof(int));
-      if (SV->RegisteredDO == NULL) {
-         SUMA_S_Err("Failed to SUMA_malloc SV->RegisteredDO");
+      SV->RegistDO = (SUMA_DO_LOCATOR *)
+         SUMA_calloc( SUMA_MAX_DISPLAYABLE_OBJECTS, sizeof(SUMA_DO_LOCATOR));
+      if (SV->RegistDO == NULL) {
+         SUMA_S_Err("Failed to SUMA_malloc SV->RegistDO");
          SUMA_RETURN (NULL);
       }
       SV->N_DO = 0; /* Nothing is registered with the viewer yet */
@@ -1091,9 +1098,11 @@ SUMA_Boolean SUMA_Process_Selected_ADO(SUMA_SurfaceViewer *sv, int deepfirst)
    }
 
    /* Now apply the top pick */
+   SUMA_LH("On to apply the PR");
    el = dlist_head(sv->SelAdo);
    ss = (SUMA_SEL_ADO_DATUM *)el->data;
    SUMA_Apply_PR(sv, &(ss->PR)); 
+   SUMA_LH("Returning");
    
    SUMA_RETURN(YUP);
 }
@@ -1178,7 +1187,7 @@ SUMA_Boolean SUMA_Free_SurfaceViewer_Struct (SUMA_SurfaceViewer *SV)
       SUMA_FreePromptDialogStruct (SV->X->HighlightBox_prmpt);
    if (SV->X->ViewCont) SUMA_FreeViewContStruct(SV->X->ViewCont);
    if (SV->X) SUMA_free(SV->X);
-   if (SV->RegisteredDO) SUMA_free(SV->RegisteredDO);
+   if (SV->RegistDO) SUMA_free(SV->RegistDO);
    if (SV->VSv) {
       for (i=0; i < SV->N_VSv; ++i) {
          if (!SUMA_Free_ViewState (&(SV->VSv[i]))) {
@@ -1234,6 +1243,140 @@ SUMA_Boolean SUMA_Free_SurfaceViewer_Struct_Vect (SUMA_SurfaceViewer *SVv, int N
 }
 
 /*!
+\brief SUMA_ADO_FillColorList_Params(SUMA_ALL_DO *ADO, 
+                                     int *N_points, char *idcode);
+*/
+SUMA_Boolean SUMA_ADO_FillColorList_Params(SUMA_ALL_DO *ADO, 
+                                     int *N_points, char **idcode)
+{
+   static char FuncName[]={"SUMA_ADO_FillColorList_Params"};
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   
+   if (!ADO || !N_points || !idcode) {
+      SUMA_RETURN(NOPE);
+   }
+   *N_points = -1; *idcode = NULL;
+   
+   switch (ADO->do_type) {
+      case SO_type: {
+         SUMA_SurfaceObject *SO=(SUMA_SurfaceObject *)ADO;
+         *N_points = SO->N_Node;
+         *idcode = SO->idcode_str;
+         SUMA_LHv("Filling a color list for surface %s (%s).\n", 
+                  SO->Label, SO->idcode_str);
+         } break;
+      case SDSET_type: {
+         SUMA_DSET *dset=(SUMA_DSET *)ADO;
+         if (!SUMA_isGraphDset(dset)) {
+            SUMA_S_Err("Dataset should be graph type");
+            SUMA_RETURN(NOPE);
+         }
+         *N_points = 1+SUMA_GDSET_Max_Edge_Index(dset);
+         *idcode = SDSET_ID(dset);
+         SUMA_LHv("Filling a color list for dset %s (%s).\n", 
+                  SDSET_LABEL(dset), SDSET_ID(dset));
+         } break;
+      case GRAPH_LINK_type: {
+         SUMA_DSET *dset=SUMA_find_GLDO_Dset((SUMA_GraphLinkDO *)ADO);
+         if (dset) 
+            SUMA_RETURN(SUMA_ADO_FillColorList_Params(
+                                    (SUMA_ALL_DO *)dset, N_points, idcode));
+         } break;
+      case MASK_type:
+      case TRACT_type:
+      case VO_type: {
+         *N_points = SUMA_ADO_N_Datum(ADO);
+         *idcode = ADO_ID(ADO);
+         SUMA_LHv("Filling a color list for tract %s (%s) %d points.\n", 
+                  ADO_LABEL(ADO), ADO_ID(ADO), *N_points);
+         break; }
+      default:
+         SUMA_S_Errv("Not ready for type %d (%s)\n", 
+                     ADO->do_type,
+                     SUMA_ObjectTypeCode2ObjectTypeName(ADO->do_type));
+         SUMA_RETURN(NOPE);
+   }
+   
+   SUMA_RETURN(YUP);
+}
+
+SUMA_Boolean SUMA_BlankColorListStruct(SUMA_COLORLIST_STRUCT *cl)
+{
+   static char FuncName[]={"SUMA_BlankColorListStruct"};
+   int i = 0;
+   
+   SUMA_ENTRY;
+   
+   if (!cl || !cl->glar_ColorList_private) {
+      SUMA_S_Err("NULL input");
+      SUMA_RETURN(NOPE);
+   }
+   /* fill up with blanks, may be unecessary ... */
+   i=0;
+   while (i < cl->N_glar_ColorList) {
+      cl->glar_ColorList_private[i] = 
+                                                SUMA_GRAY_NODE_COLOR; ++i;
+      cl->glar_ColorList_private[i] = 
+                                                SUMA_GRAY_NODE_COLOR; ++i;              
+      cl->glar_ColorList_private[i] = 
+                                                SUMA_GRAY_NODE_COLOR; ++i;
+      cl->glar_ColorList_private[i] = SUMA_NODE_ALPHA; ++i;
+   }
+   
+   SUMA_RETURN(YUP);
+}
+
+/* 
+   Accessor function to pointer cl->glar_ColorList_private
+*/   
+GLfloat * SUMA_GetColorListPtr (SUMA_COLORLIST_STRUCT *cl) 
+{
+   static char FuncName[]={"SUMA_GetColorListPtr"};
+   
+   if (!cl) return(NULL);
+   if (cl->glar_ColorList_private) {
+      return(cl->glar_ColorList_private);
+   } else if (cl->idcode_str) {
+      SUMA_ALL_DO *ado = SUMA_whichADOg(cl->idcode_str);
+      int N_points;
+      char *idcode=NULL;
+      SUMA_Boolean LocalHead = NOPE;
+      SUMA_LH("Found but must allocate for colorlist");
+      if (!SUMA_ADO_FillColorList_Params(ado, &N_points, &idcode)) {
+         SUMA_S_Err("Failed to initialize params");
+         return(NULL);
+      }
+      /* That previous call to get N_points may be a waste.
+         The number of values is already in cl->N_glar_ColorList
+         so just check for redundancy now */
+      if (4*N_points != cl->N_glar_ColorList) {
+         SUMA_S_Err("This should not happen: %d clashes with %d",
+                    N_points, cl->N_glar_ColorList);
+         return(NULL);
+      }
+      if (!(cl->glar_ColorList_private = 
+               (GLfloat *) SUMA_calloc (N_points*4, sizeof(GLfloat)))) {
+         SUMA_S_Crit("Failed to allocate %d floats for glar_ColorList_private",
+                     N_points*4);
+         return(NULL); 
+      }
+      if (!SUMA_BlankColorListStruct(cl)) {
+         SUMA_S_Err("Failed to fill with gray?!?");
+         return(NULL);
+      }
+      /* Will need mixing in all likelihood, go ahead, why not */
+      cl->Remix = YUP; 
+      ++cl->RemixID;
+      return(cl->glar_ColorList_private);
+   }
+   return(NULL);
+}
+
+
+
+/*!
 \brief ans = SUMA_FillColorList (sv, so);
 Creates a colorlist structure for a certain displayable.   
 
@@ -1256,44 +1399,24 @@ SUMA_Boolean SUMA_FillColorList (SUMA_SurfaceViewer *sv, SUMA_ALL_DO *ADO)
    
    SUMA_ENTRY;
    
-   switch (ADO->do_type) {
-      case SO_type: {
-         SUMA_SurfaceObject *SO=(SUMA_SurfaceObject *)ADO;
-         N_points = SO->N_Node;
-         idcode = SO->idcode_str;
-         SUMA_LHv("Filling a color list for surface %s (%s).\n", 
-                  SO->Label, SO->idcode_str);
-         } break;
-      case SDSET_type: {
-         SUMA_DSET *dset=(SUMA_DSET *)ADO;
-         if (!SUMA_isGraphDset(dset)) {
-            SUMA_S_Err("Dataset should be graph type");
-            SUMA_RETURN(NOPE);
-         }
-         N_points = 1+SUMA_GDSET_Max_Edge_Index(dset);
-         idcode = SDSET_ID(dset);
-         SUMA_LHv("Filling a color list for dset %s (%s).\n", 
-                  SDSET_LABEL(dset), SDSET_ID(dset));
-         } break;
+   if (!sv) {
+      SUMA_RETURN(NOPE);
+   }
+   
+   switch(ADO->do_type) {
       case GRAPH_LINK_type: {
          SUMA_DSET *dset=SUMA_find_GLDO_Dset((SUMA_GraphLinkDO *)ADO);
          if (dset) SUMA_RETURN(SUMA_FillColorList(sv,(SUMA_ALL_DO *)dset));
-         } break;
-      case MASK_type:
-      case TRACT_type:
-      case VO_type: {
-         N_points = SUMA_ADO_N_Datum(ADO);
-         idcode = ADO_ID(ADO);
-         SUMA_LHv("Filling a color list for tract %s (%s) %d points.\n", 
-                  ADO_LABEL(ADO), ADO_ID(ADO), N_points);
-         break; }
-      default:
-         SUMA_S_Errv("Not ready for type %d (%s)\n", 
-                     ADO->do_type,
-                     SUMA_ObjectTypeCode2ObjectTypeName(ADO->do_type));
+         SUMA_S_Err("GLDO without dset!");
          SUMA_RETURN(NOPE);
+      } break;
    }
    
+   
+   if (!SUMA_ADO_FillColorList_Params(ADO, &N_points, &idcode) ) {
+      SUMA_S_Err("Failed to initialize variables");
+      SUMA_RETURN(NOPE);
+   }
 
    if (!idcode) {
       fprintf (SUMA_STDERR,"Error %s: idcode is NULL.\n", FuncName);
@@ -1309,15 +1432,20 @@ SUMA_Boolean SUMA_FillColorList (SUMA_SurfaceViewer *sv, SUMA_ALL_DO *ADO)
              ADO->do_type != MASK_type) {
             SUMA_S_Err("idcode is already in sv->ColList, \n"
                        "This is an error for a SurfaceObject, though I doubt\n"
-                       "it is of serious consequence...");
+                       "it is of serious consequence. Type is question is %s\n"
+                       "for DO type %s\n", ADO_LABEL(ADO), ADO_TNAME(ADO));
             SUMA_RETURN (NOPE);
          } else {
+            SUMA_LH("List for %s found",
+                    SUMA_DO_dbg_info(idcode));
             /* No harm done, no need to get upset. */ 
             SUMA_RETURN(YUP);
          }
       }
    }
    
+   SUMA_LH("Need to create or link to existing list." 
+           "will insert into position: %d", sv->N_ColList);
    if (sv->N_ColList >= SUMA_MAX_DISPLAYABLE_OBJECTS) {
       SUMA_SL_Crit("sv->N_ColList >= SUMA_MAX_DISPLAYABLE_OBJECTS");
       SUMA_RETURN (NOPE);
@@ -1325,8 +1453,8 @@ SUMA_Boolean SUMA_FillColorList (SUMA_SurfaceViewer *sv, SUMA_ALL_DO *ADO)
    
    /* create the ColList struct */
    if (sv->ColList[sv->N_ColList]) {
-      SUMA_S_Err("ColorList is not NULL. Cannot reallocate.\n"
-                  "not expecting this scenario at this stage");
+      SUMA_S_Err("sv->ColorList[%d] is not NULL. Cannot reallocate.\n"
+                  "not expecting this scenario at this stage", sv->N_ColList);
       SUMA_RETURN (NOPE);
    }
    
@@ -1347,9 +1475,11 @@ SUMA_Boolean SUMA_FillColorList (SUMA_SurfaceViewer *sv, SUMA_ALL_DO *ADO)
          break;
    }
    if (clinh) {
+      SUMA_LH("Inheriting");
       sv->ColList[sv->N_ColList] = 
                   (SUMA_COLORLIST_STRUCT*)SUMA_LinkToPointer((void *)clinh);
    } else {
+      SUMA_LH("Recreating, N_points = %d", N_points);
       sv->ColList[sv->N_ColList] =
          (SUMA_COLORLIST_STRUCT *)SUMA_calloc(1, sizeof(SUMA_COLORLIST_STRUCT));
       sv->ColList[sv->N_ColList]->N_links = 0;
@@ -1359,38 +1489,34 @@ SUMA_Boolean SUMA_FillColorList (SUMA_SurfaceViewer *sv, SUMA_ALL_DO *ADO)
       sv->ColList[sv->N_ColList]->LinkedPtrType = SUMA_LINKED_COLORLIST_TYPE;
       sv->ColList[sv->N_ColList]->do_type = not_DO_type;
 
-      sv->ColList[sv->N_ColList]->glar_ColorList = 
-            (GLfloat *) SUMA_calloc (N_points*4, sizeof(GLfloat));
+      sv->ColList[sv->N_ColList]->N_glar_ColorList = N_points*4;
+
       sv->ColList[sv->N_ColList]->idcode_str = 
             (char *)SUMA_malloc((strlen(idcode)+1) * sizeof(char));
-   
-      if (!sv->ColList[sv->N_ColList]->glar_ColorList || 
-          !sv->ColList[sv->N_ColList]->idcode_str) {
-         SUMA_S_Err("Failed to allocate for glar_ColorList or idcode_str.");
+      if (!sv->ColList[sv->N_ColList]->idcode_str) {
+         SUMA_S_Err("Failed to allocate for idcode_str.");
          SUMA_RETURN (NOPE);
       }
-   
       sv->ColList[sv->N_ColList]->idcode_str = 
          strcpy (sv->ColList[sv->N_ColList]->idcode_str, idcode);
 
-      /* fill up with blanks, may be unecessary ... */
-      sv->ColList[sv->N_ColList]->N_glar_ColorList = N_points*4;
-      i=0;
-      while (i < sv->ColList[sv->N_ColList]->N_glar_ColorList) {
-         sv->ColList[sv->N_ColList]->glar_ColorList[i] = 
-                                                   SUMA_GRAY_NODE_COLOR; ++i;
-         sv->ColList[sv->N_ColList]->glar_ColorList[i] = 
-                                                   SUMA_GRAY_NODE_COLOR; ++i;              
-         sv->ColList[sv->N_ColList]->glar_ColorList[i] = 
-                                                   SUMA_GRAY_NODE_COLOR; ++i;
-         sv->ColList[sv->N_ColList]->glar_ColorList[i] = SUMA_NODE_ALPHA; ++i;
+      if (sv->Open) { /* ZSS: Feb 2014 */
+         /* Only allocate if Viewer is open, otherwise
+            don't allocate for float vector, let SUMA_GetColorList() 
+            take care of that */
+         if (!SUMA_GetColorListPtr(sv->ColList[sv->N_ColList])) {
+            SUMA_S_Err("Failed to allocate for glar_ColorList.");
+            SUMA_RETURN (NOPE);
+         }
+      } else {
+         sv->ColList[sv->N_ColList]->glar_ColorList_private = NULL;
       }
-      sv->ColList[sv->N_ColList]->Remix = YUP; 
-      ++sv->ColList[sv->N_ColList]->RemixID;
+
    }
    
    ++sv->N_ColList;
-   
+   SUMA_LH("N_ColList now %d, latest glar %p", 
+           sv->N_ColList, sv->ColList[sv->N_ColList-1]->glar_ColorList_private);
    SUMA_RETURN (YUP);
 }
 
@@ -1402,13 +1528,12 @@ SUMA_Boolean SUMA_FillColorList (SUMA_SurfaceViewer *sv, SUMA_ALL_DO *ADO)
    \param DO_idstr (char *) ID string of DO (usually a Surface Object) 
    \return glar_ColorList (GLfloat *) a pointer to the array containing 
       node colors 
-   \sa SUMA_GetColorListStruct
+   \sa SUMA_GetColorListStruct, SUMA_GetColorListPtr
 */
 GLfloat * SUMA_GetColorList (SUMA_SurfaceViewer *sv, char *DO_idstr)
 {
    static char FuncName[]={"SUMA_GetColorList"};
    int i;
-   GLfloat * glar_ColorList = NULL;
    SUMA_Boolean Found = NOPE;
    SUMA_Boolean LocalHead = NOPE;
    
@@ -1419,14 +1544,15 @@ GLfloat * SUMA_GetColorList (SUMA_SurfaceViewer *sv, char *DO_idstr)
       SUMA_RETURN (NULL);
    }
    
-   
+   SUMA_LH("Looking for colorlist of %s",
+            SUMA_DO_dbg_info(DO_idstr));
    /* find the culprit */
    Found = NOPE;
    i = 0;
    while (!Found && i < sv->N_ColList) {
       if (strcmp (DO_idstr, sv->ColList[i]->idcode_str) == 0) {
          Found = YUP;
-         SUMA_RETURN (sv->ColList[i]->glar_ColorList);      
+         SUMA_RETURN (SUMA_GetColorListPtr(sv->ColList[i]));
       }
       ++i;
    }
@@ -1458,6 +1584,8 @@ SUMA_COLORLIST_STRUCT * SUMA_GetColorListStruct (SUMA_SurfaceViewer *sv,
       SUMA_RETURN (NULL);
    }
    
+   SUMA_LH("Looking for colorlist struct of %s",
+            SUMA_DO_dbg_info(DO_idstr));
    
    /* find the culprit */
    Found = NOPE;
@@ -1465,6 +1593,9 @@ SUMA_COLORLIST_STRUCT * SUMA_GetColorListStruct (SUMA_SurfaceViewer *sv,
    while (!Found && i < sv->N_ColList) {
       if (strcmp (DO_idstr, sv->ColList[i]->idcode_str) == 0) {
          Found = YUP;
+         if (!SUMA_GetColorListPtr(sv->ColList[i])) {
+            SUMA_RETURN(NULL);
+         }
          SUMA_RETURN (sv->ColList[i]);      
       }
       ++i;
@@ -1489,9 +1620,13 @@ SUMA_Boolean SUMA_Free_ColorList (SUMA_COLORLIST_STRUCT *cl)
    SUMA_Boolean LocalHead = NOPE;
    
    SUMA_ENTRY;
-   SUMA_LH("Entered");
+   
    if (!cl) SUMA_RETURN(YUP);
-
+   
+   SUMA_LH("Entered to free colorlist of %s, (glar = %p)",
+            SUMA_DO_dbg_info(cl->idcode_str), cl->glar_ColorList_private);
+   if (LocalHead) SUMA_DUMP_TRACE("At Free ColorList");
+   
    if (cl->N_links) {
       SUMA_LH("Just a link release");
       cl = (SUMA_COLORLIST_STRUCT *)SUMA_UnlinkFromPointer((void *)cl);
@@ -1499,9 +1634,9 @@ SUMA_Boolean SUMA_Free_ColorList (SUMA_COLORLIST_STRUCT *cl)
    }
    
    /* no more links, go for it */
-   SUMA_LH("No more links, here we go");
+   SUMA_LH("No more links freeing time");
    SUMA_ifree(cl->idcode_str); 
-   SUMA_ifree(cl->glar_ColorList);
+   SUMA_ifree(cl->glar_ColorList_private);
    SUMA_ifree(cl);
    SUMA_RETURN (YUP);
 }
@@ -1523,6 +1658,7 @@ SUMA_Boolean SUMA_EmptyColorList (SUMA_SurfaceViewer *sv, char *DO_idstr)
    static char FuncName[]={"SUMA_EmptyColorList"};
    int i;
    SUMA_Boolean Found = NOPE;
+   SUMA_Boolean LocalHead = NOPE;
    
    SUMA_ENTRY;
    
@@ -1531,6 +1667,7 @@ SUMA_Boolean SUMA_EmptyColorList (SUMA_SurfaceViewer *sv, char *DO_idstr)
       SUMA_RETURN (NOPE);
    } 
    
+   SUMA_LH("Emptying collist for sv %p, id %s", sv, DO_idstr);
    if (!DO_idstr) {
       /* empty them all */
       for (i=0; i < sv->N_ColList; ++i) {
@@ -1538,8 +1675,12 @@ SUMA_Boolean SUMA_EmptyColorList (SUMA_SurfaceViewer *sv, char *DO_idstr)
             SUMA_S_Err("Failed to free colorlist");
             SUMA_RETURN(NOPE);
          }
+         sv->ColList[i]=NULL;
+         sv->N_ColList = 0;
       }
+      
    } else { /* just empty one */
+      SUMA_LH("Emptying col list for %s", DO_idstr);
       Found = NOPE;
       i = 0;
       while (!Found && i < sv->N_ColList) {
@@ -1563,7 +1704,9 @@ SUMA_Boolean SUMA_EmptyColorList (SUMA_SurfaceViewer *sv, char *DO_idstr)
       }
       
       if (!Found) {
-         SUMA_S_Errv("item %s was not found, this should not be.\n", DO_idstr);
+         SUMA_S_Errv("item %s (%s) was not found, this should not be.\n", 
+                     DO_idstr, SUMA_DO_dbg_info(DO_idstr));
+         SUMA_DUMP_TRACE("Whence the unfound");
          SUMA_RETURN (NOPE);
       }
    }
@@ -1573,7 +1716,7 @@ SUMA_Boolean SUMA_EmptyColorList (SUMA_SurfaceViewer *sv, char *DO_idstr)
 
 /*!
    ans = SUMA_SetShownLocalRemixFlag (SUMA_SurfaceViewer *sv)
-   Set Remix flags for all surfaces in sv->RegisteredDO regardless of 
+   Set Remix flags for all surfaces in sv->RegistDO regardless of 
    their relationship.
    This is useful when you change the settings for background color modulation 
    and the like.
@@ -1599,7 +1742,7 @@ SUMA_Boolean SUMA_SetShownLocalRemixFlag (SUMA_SurfaceViewer *sv)
 
 /*!
    ans = SUMA_SetLocalRemixFlag (char *idcode_str, SUMA_SurfaceViewer *sv);
-   Search RegisteredDO for sv and if a Surface in RegisteredDO is related 
+   Search RegistDO for sv and if a Surface in RegistDO is related 
    to DO_idcode_str then its remix flag is set to yes.
    
    \param idcode_str (char *) IDcode of the surface that had its colorplanes 
@@ -1638,12 +1781,12 @@ SUMA_Boolean SUMA_SetLocalRemixFlag (char *DO_idcode_str, SUMA_SurfaceViewer *sv
    switch (tp) {
       case SO_type:
          SO1 = (SUMA_SurfaceObject *)pp;
-         /* search for relatives in RegisteredDO */
+         /* search for relatives in RegistDO */
          for (k=0; k < sv->N_DO; ++k) {
-            ado2 = (SUMA_ALL_DO *)SUMAg_DOv[sv->RegisteredDO[k]].OP;
+            ado2 = (SUMA_ALL_DO *)SUMAg_DOv[sv->RegistDO[k].dov_ind].OP;
             if (SUMA_isRelated((SUMA_ALL_DO *)SO1, ado2, 1)){
                                              /* kinship of da first order */
-               SO2 = (SUMA_SurfaceObject *)SUMAg_DOv[sv->RegisteredDO[k]].OP;
+               SO2 = (SUMA_SurfaceObject *)SUMAg_DOv[sv->RegistDO[k].dov_ind].OP;
                /* related, set flag for remixing SO2 */
                kk = 0;
                Found = NOPE;
@@ -1664,7 +1807,7 @@ SUMA_Boolean SUMA_SetLocalRemixFlag (char *DO_idcode_str, SUMA_SurfaceViewer *sv
       case SDSET_type:
          dset = (SUMA_DSET *)pp;
          for (k=0; k < sv->N_DO; ++k) {
-            ado2 = (SUMA_ALL_DO *)SUMAg_DOv[sv->RegisteredDO[k]].OP;
+            ado2 = (SUMA_ALL_DO *)SUMAg_DOv[sv->RegistDO[k].dov_ind].OP;
             if (SUMA_isRelated((SUMA_ALL_DO *)dset, ado2, 1)){
                kk = 0;
                Found = NOPE;
@@ -1696,8 +1839,8 @@ SUMA_Boolean SUMA_SetLocalRemixFlag (char *DO_idcode_str, SUMA_SurfaceViewer *sv
 /*!
    ans = SUMA_SetRemixFlag (char *idcode_str, SUMA_SurfaceViewer *SVv, 
                             int N_SVv);
-   Search RegisteredDO for each Surface Viewer and if a Surface in 
-   RegisteredDO is related to DO_idcode_str then its remix flag is set to yes.
+   Search RegistDO for each Surface Viewer and if a Surface in 
+   RegistDO is related to DO_idcode_str then its remix flag is set to yes.
    
    \param idcode_str (char *) IDcode of the surface that had its 
                               colorplanes modified
@@ -1757,10 +1900,11 @@ SUMA_Boolean SUMA_SetRemixFlag (char *DO_idcode_str, SUMA_SurfaceViewer *SVv,
             if (LocalHead) 
                fprintf (SUMA_STDERR,"%s: Searching viewer %d.\n", FuncName, i);
             sv = &(SVv[i]);
-            /* search for relatives in RegisteredDO */
+            /* search for relatives in RegistDO */
             for (k=0; k < sv->N_DO; ++k) {
-               if (SUMA_isSO(SUMAg_DOv[sv->RegisteredDO[k]])) {
-                  SO2 = (SUMA_SurfaceObject *)SUMAg_DOv[sv->RegisteredDO[k]].OP;
+               if (SUMA_isSO(SUMAg_DOv[sv->RegistDO[k].dov_ind])) {
+                  SO2 = (SUMA_SurfaceObject *)
+                           SUMAg_DOv[sv->RegistDO[k].dov_ind].OP;
                   if (SUMA_isRelated_SO(SO1, SO2, 1)) { 
                      /* only 1st order kinship allowed */
                      /* related, set flag for remixing SO2 */
@@ -1793,11 +1937,11 @@ SUMA_Boolean SUMA_SetRemixFlag (char *DO_idcode_str, SUMA_SurfaceViewer *SVv,
             if (LocalHead) 
                fprintf (SUMA_STDERR,"%s: Searching viewer %d.\n", FuncName, i);
             sv = &(SVv[i]);
-            /* search for relatives in RegisteredDO */
+            /* search for relatives in RegistDO */
             for (k=0; k < sv->N_DO; ++k) {
-               if (iDO_isTDO(sv->RegisteredDO[k]) ||
-                   iDO_isVO(sv->RegisteredDO[k])) {
-                  ado2 = (SUMA_ALL_DO *)SUMAg_DOv[sv->RegisteredDO[k]].OP;
+               if (iDO_isTDO(sv->RegistDO[k].dov_ind) ||
+                   iDO_isVO(sv->RegistDO[k].dov_ind)) {
+                  ado2 = (SUMA_ALL_DO *)SUMAg_DOv[sv->RegistDO[k].dov_ind].OP;
                   if (SUMA_isRelated(ADO, ado2, 1)) { 
                      SUMA_LHv("%s RELATED to %s\n",
                               SUMA_ADO_Label(ADO), 
@@ -1839,10 +1983,10 @@ SUMA_Boolean SUMA_SetRemixFlag (char *DO_idcode_str, SUMA_SurfaceViewer *SVv,
             if (LocalHead) 
                fprintf (SUMA_STDERR,"%s: Searching viewer %d.\n", FuncName, i);
             sv = &(SVv[i]);
-            /* search for relatives in RegisteredDO */
+            /* search for relatives in RegistDO */
             for (k=0; k < sv->N_DO; ++k) {
-               if (iDO_isGLDO(sv->RegisteredDO[k])) {
-                  ado2 = (SUMA_ALL_DO *)SUMAg_DOv[sv->RegisteredDO[k]].OP;
+               if (iDO_isGLDO(sv->RegistDO[k].dov_ind)) {
+                  ado2 = (SUMA_ALL_DO *)SUMAg_DOv[sv->RegistDO[k].dov_ind].OP;
                   if (SUMA_isRelated((SUMA_ALL_DO *)dset, ado2, 1)) { 
                      SUMA_LHv("%s RELATED to %s\n",
                               SUMA_ADO_Label((SUMA_ALL_DO *)dset), 
@@ -2172,7 +2316,7 @@ SUMA_Boolean SUMA_UpdateViewPoint_RegisteredADO(SUMA_ALL_DO *ado, byte keepzoom)
 
 
 /*!
-Updates the View Center and view from of SV based on the contents of RegisteredDO
+Updates the View Center and view from of SV based on the contents of RegistDO
 */
 SUMA_Boolean SUMA_UpdateViewPoint ( SUMA_SurfaceViewer *SV, 
                                     SUMA_DO *dov, int N_dov, byte KeepZoom)
@@ -2193,7 +2337,7 @@ SUMA_Boolean SUMA_UpdateViewPoint ( SUMA_SurfaceViewer *SV,
    
    i = 0;
    while (i < SV->N_DO) {
-      do_id = SV->RegisteredDO[i];
+      do_id = SV->RegistDO[i].dov_ind;
       switch (dov[do_id].ObjectType) {
          case SO_type:
             so_op = (SUMA_SurfaceObject *)dov[do_id].OP;
@@ -2229,10 +2373,10 @@ SUMA_Boolean SUMA_UpdateViewPoint ( SUMA_SurfaceViewer *SV,
             
             if (!SUMA_IS_REAL_VARIANT(iDO_variant(do_id))) break;
             xyzr = SUMA_GDSET_XYZ_Center(dset, iDO_variant(do_id), NULL);
-            NewCenter[0] += GDSET_MAX_POINTS(dset)*xyzr[0];
-            NewCenter[1] += GDSET_MAX_POINTS(dset)*xyzr[1];
-            NewCenter[2] += GDSET_MAX_POINTS(dset)*xyzr[2];
-            TotWeight += GDSET_MAX_POINTS(dset);
+            NewCenter[0] += GDSET_N_SEG_POINTS(dset)*xyzr[0];
+            NewCenter[1] += GDSET_N_SEG_POINTS(dset)*xyzr[1];
+            NewCenter[2] += GDSET_N_SEG_POINTS(dset)*xyzr[2];
+            TotWeight += GDSET_N_SEG_POINTS(dset);
             break;
          case TRACT_type: {
             SUMA_TractDO *TDO=(SUMA_TractDO *)dov[do_id].OP;
@@ -2320,11 +2464,10 @@ SUMA_Boolean SUMA_UpdateViewPoint ( SUMA_SurfaceViewer *SV,
       SV->GVS[SV->StdView].ViewFromOrig[2] = SV->GVS[SV->StdView].ViewFrom[2];
 
    SUMA_RETURN (YUP);
-   
-   
 }
+
 /*!
-Updates the Rotation Center of SV based on the contents of RegisteredDO
+Updates the Rotation Center of SV based on the contents of RegistDO
 */
 SUMA_Boolean SUMA_UpdateRotaCenter (
                SUMA_SurfaceViewer *SV, SUMA_DO *dov, int N_dov)
@@ -2347,7 +2490,7 @@ SUMA_Boolean SUMA_UpdateRotaCenter (
    
    i = 0;
    while (i < SV->N_DO) {
-      do_id = SV->RegisteredDO[i];
+      do_id = SV->RegistDO[i].dov_ind;
       switch (dov[do_id].ObjectType) {
          case SO_type:
             so_op = (SUMA_SurfaceObject *)dov[do_id].OP;
@@ -2384,10 +2527,10 @@ SUMA_Boolean SUMA_UpdateRotaCenter (
             }
             if (!SUMA_IS_REAL_VARIANT(iDO_variant(do_id))) break;
             xyzr = SUMA_GDSET_XYZ_Center(dset, iDO_variant(do_id), NULL);
-            NewCenter[0] += GDSET_MAX_POINTS(dset)*xyzr[0];
-            NewCenter[1] += GDSET_MAX_POINTS(dset)*xyzr[1];
-            NewCenter[2] += GDSET_MAX_POINTS(dset)*xyzr[2];
-            TotWeight += GDSET_MAX_POINTS(dset);
+            NewCenter[0] += GDSET_N_SEG_POINTS(dset)*xyzr[0];
+            NewCenter[1] += GDSET_N_SEG_POINTS(dset)*xyzr[1];
+            NewCenter[2] += GDSET_N_SEG_POINTS(dset)*xyzr[2];
+            TotWeight += GDSET_N_SEG_POINTS(dset);
             break;
          case MASK_type: {
             int N_pts;
@@ -2636,11 +2779,11 @@ char *SUMA_SurfaceViewer_StructInfo (SUMA_SurfaceViewer *SV, int detail)
                                  SV->State, SV->iState, 
                                  SUMA_isViewerStateAnatomical(SV)?"YES":"NO");
    SS = SUMA_StringAppend_va(SS,"   N_DO = %d\n", SV->N_DO);
-   SS = SUMA_StringAppend(SS, "   RegisteredDO = ");
+   SS = SUMA_StringAppend(SS, "   RegistDO = ");
    for (i=0; i< SV->N_DO; ++i) {
       SS = SUMA_StringAppend_va(SS,"[id %d] %s \n%s", 
-                  SV->RegisteredDO[i], iDO_label(SV->RegisteredDO[i]),
-                  (i<(SV->N_DO-1)) ? "                  ":""); 
+                  SV->RegistDO[i].dov_ind, iDO_label(SV->RegistDO[i].dov_ind),
+                  (i<(SV->N_DO-1)) ? "               ":""); 
    }
    SS = SUMA_StringAppend_va(SS,"   N_ColList = %d\n", SV->N_ColList);
    SS = SUMA_StringAppend(SS, "   ColList = ");
@@ -2662,7 +2805,7 @@ char *SUMA_SurfaceViewer_StructInfo (SUMA_SurfaceViewer *SV, int detail)
    SS = SUMA_StringAppend_va(SS,"   DO in focus %d\n", SV->Focus_DO_ID);
 
    /* show some state stuff */
-   SS = SUMA_StringAppend(SS, "\nView States:\n");
+   SS = SUMA_StringAppend_va(SS, "\nView States (%d total):\n", SV->N_VSv);
    for (i=0; i < SV->N_VSv; ++i) {
       SS = SUMA_StringAppend_va(SS,
                      "\nView State %d/%d (FOV = %f) (autoFOVval = %f):\n", 
@@ -2718,6 +2861,64 @@ SUMA_Boolean SUMA_Show_ViewState(SUMA_ViewState *VS, FILE *Out, int detail)
    SUMA_RETURN(YUP);
 }
 
+/*
+   A function that must be called each time order of objects in 
+   SUMAg_DOv is disturbed 
+*/
+SUMA_Boolean SUMA_ViewState_MembsRefresh(SUMA_ViewState *VS)
+{
+   static char FuncName[]={"SUMA_ViewState_MembsRefresh"};
+   int ii=0, found = -1;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   
+   if (!VS) SUMA_RETURN(NOPE);
+   
+   ii = 0;
+   while (ii < VS->N_MembDO) {
+      if ( VS->MembDO && 
+          (found = SUMA_whichDOg(VS->MembDO[ii].idcode_str)) >= 0) {
+         /* A good thing, refresh index mapping */
+         VS->MembDO[ii].dov_ind = found;
+      } else {
+         SUMA_LH("A bad entry in MembDO at index %d/%d, cleaning", 
+                     ii, VS->N_MembDO);
+         if (ii != VS->N_MembDO-1) {
+            strcpy(VS->MembDO[ii].idcode_str, 
+                VS->MembDO[VS->N_MembDO-1].idcode_str);
+         }
+         VS->MembDO[ii].dov_ind = VS->MembDO[VS->N_MembDO-1].dov_ind;
+         VS->N_MembDO = VS->N_MembDO-1;
+         VS->MembDO = (SUMA_DO_LOCATOR *)SUMA_realloc(VS->MembDO,
+                            VS->N_MembDO*sizeof(SUMA_DO_LOCATOR));
+      }
+      ++ii;
+   }
+   
+   SUMA_RETURN(YUP);
+}
+
+SUMA_Boolean SUMA_AllViewState_MembsRefresh(void) 
+{
+   static char FuncName[]={"SUMA_AllViewState_MembsRefresh"};
+   int i,j;
+   SUMA_SurfaceViewer *sv;
+   SUMA_Boolean state = YUP;
+   
+   SUMA_ENTRY;
+   
+   state = YUP;
+   for (i=0; i<SUMAg_N_SVv; ++i) {
+      sv = SUMAg_SVv+i;
+      for (j=0; j<sv->N_VSv; ++j) {
+         if (!SUMA_ViewState_MembsRefresh(sv->VSv+j)) state = NOPE;
+      }
+   }
+   
+   SUMA_RETURN(state);
+}
+
 /*! Search for certain types of DOs members of a particular state*/
 int *SUMA_ViewState_Membs(SUMA_ViewState *VS, SUMA_DO_Types *ttv,
                           int *uN_Membs)
@@ -2733,45 +2934,45 @@ int *SUMA_ViewState_Membs(SUMA_ViewState *VS, SUMA_DO_Types *ttv,
    if (uN_Membs) *uN_Membs = 0;
    SUMA_LHv("VS %p, Name %s, MembDOs %p, N_MembDOs %d\n",
             VS, (VS && VS->Name) ? VS->Name:"NULL", 
-                (VS && VS->MembDOs) ? VS->MembDOs:NULL, 
-                (VS && VS->N_MembDOs) ? VS->N_MembDOs:0);
-   if (!VS || !VS->MembDOs) SUMA_RETURN(Membs);
+                (VS && VS->MembDO) ? VS->MembDO:NULL, 
+                (VS && VS->N_MembDO) ? VS->N_MembDO:0);
+   if (!VS || !VS->MembDO) SUMA_RETURN(Membs);
    jj = 0; N_ttv=0;
    while (ttv[jj] != NOT_SET_type) { ++N_ttv; ++jj; }
    if (!N_ttv) SUMA_RETURN(Membs);
    
    jj = 0;
    while (ttv[jj] != NOT_SET_type) {  tt = ttv[jj];
-   for (ii=0; ii<VS->N_MembDOs; ++ii) {
+   for (ii=0; ii<VS->N_MembDO; ++ii) {
             SUMA_LHv("Checking %s type %s \n",
-                     iDO_label(VS->MembDOs[ii]), 
+                     iDO_label(VS->MembDO[ii].dov_ind), 
                      SUMA_ObjectTypeCode2ObjectTypeName(tt));
       switch (tt) {
          case SO_type:
-            if (iDO_isSO(VS->MembDOs[ii])) {
+            if (iDO_isSO(VS->MembDO[ii].dov_ind)) {
                if (!Membs) Membs = (int *)
-                        SUMA_malloc(N_ttv*(VS->N_MembDOs+1)*sizeof(int));
-               Membs[N_Membs++] = VS->MembDOs[ii]; 
+                        SUMA_malloc(N_ttv*(VS->N_MembDO+1)*sizeof(int));
+               Membs[N_Membs++] = VS->MembDO[ii].dov_ind; 
                Membs[N_Membs]=-1;/* a plug, if uN_Membs is NULL*/
             }
             break;
          case GRAPH_LINK_type:
-            if (iDO_isGLDO(VS->MembDOs[ii])) {
+            if (iDO_isGLDO(VS->MembDO[ii].dov_ind)) {
                if (!Membs) Membs = (int *)
-                        SUMA_malloc(N_ttv*(VS->N_MembDOs+1)*sizeof(int));
-               Membs[N_Membs++] = VS->MembDOs[ii]; 
+                        SUMA_malloc(N_ttv*(VS->N_MembDO+1)*sizeof(int));
+               Membs[N_Membs++] = VS->MembDO[ii].dov_ind; 
                Membs[N_Membs]=-1;/* a plug, if uN_Membs is NULL*/
             }
             break;
          case TRACT_type:
          case MASK_type:
          case VO_type:
-            if (iDO_isTDO(VS->MembDOs[ii])||
-                iDO_isVO(VS->MembDOs[ii]) ||
-                iDO_isMDO(VS->MembDOs[ii])) {
+            if (iDO_isTDO(VS->MembDO[ii].dov_ind)||
+                iDO_isVO(VS->MembDO[ii].dov_ind) ||
+                iDO_isMDO(VS->MembDO[ii].dov_ind)) {
                if (!Membs) Membs = (int *)
-                        SUMA_malloc(N_ttv*(VS->N_MembDOs+1)*sizeof(int));
-               Membs[N_Membs++] = VS->MembDOs[ii]; 
+                        SUMA_malloc(N_ttv*(VS->N_MembDO+1)*sizeof(int));
+               Membs[N_Membs++] = VS->MembDO[ii].dov_ind; 
                Membs[N_Membs]=-1;/* a plug, if uN_Membs is NULL*/
             }
             break;
@@ -2789,7 +2990,7 @@ int *SUMA_ViewState_Membs(SUMA_ViewState *VS, SUMA_DO_Types *ttv,
 char *SUMA_ViewStateInfo(SUMA_ViewState *VS, int detail) 
 {
    static char FuncName[]={"SUMA_ViewStateInfo"};
-   int i;
+   int i, ifound;
    SUMA_STRING *SS = NULL;
    char *s=NULL;   
 
@@ -2814,32 +3015,25 @@ char *SUMA_ViewStateInfo(SUMA_ViewState *VS, int detail)
    if (VS->Group) SS = SUMA_StringAppend_va(SS, "   Group: %s\n", VS->Group);
    else SS = SUMA_StringAppend_va(SS, "   Group: NULL\n");
 
-   if (VS->N_MembDOs) {
-      SS = SUMA_StringAppend_va(SS, "   %2d MembDOs in VS->MembDOs %p: ", 
-                                 VS->N_MembDOs, VS->MembDOs);
-      for (i=0; i < VS->N_MembDOs; ++i) {
-            SS = SUMA_StringAppend_va(SS, "DOv[%d] %s (%s)\n               ", 
-                        VS->MembDOs[i], 
-                        iDO_label(VS->MembDOs[i]),
-                        iDO_typename(VS->MembDOs[i]) );
+   if (VS->N_MembDO) {
+      SS = SUMA_StringAppend_va(SS, 
+                  "   %2d MembDOs in VS->MembDO %p:\n               ", 
+                                 VS->N_MembDO, VS->MembDO);
+      for (i=0; i < VS->N_MembDO; ++i) {
+            ifound = SUMA_whichDOg(VS->MembDO[i].idcode_str);
+            SS = SUMA_StringAppend_va(SS, 
+                        "id %s DOv[%d] %s (%s) -- id check: %s\n               ",
+                        VS->MembDO[i].idcode_str, VS->MembDO[i].dov_ind, 
+                        iDO_label(VS->MembDO[i].dov_ind),
+                        iDO_typename(VS->MembDO[i].dov_ind), 
+               (ifound == VS->MembDO[i].dov_ind)?"OK":"NO - Must run Refresh");
       }
    } else {
-      SS = SUMA_StringAppend_va(SS, "   No  MembDOs in VS->MembDOs %p\n", 
-                                 VS->MembDOs);
+      SS = SUMA_StringAppend_va(SS, "   No  MembDOs in VS->MembDO %p\n", 
+                                 VS->MembDO);
    }
    
    if (VS->Hist) {
-      #if 0 /* Not in use May 2013 */
-      if (VS->Hist->N_DO_sh) {
-         SS = SUMA_StringAppend_va(SS, 
-                  "   Hist->N_DO_sh = %d\nHist->RegisteredDO_sh: ", 
-                                 VS->Hist->N_DO_sh);
-         for (i=0; i < VS->Hist->N_DO_sh; ++i) {
-            SS = SUMA_StringAppend_va(SS, "   %d, ", 
-                                       VS->Hist->RegisteredDO_sh[i]);
-         }
-      }
-      #endif
    } else {
       SS = SUMA_StringAppend_va(SS, "   Hist is NULL\n");
    }
@@ -2867,10 +3061,6 @@ SUMA_ViewState_Hist *SUMA_Alloc_ViewState_Hist (void)
       fprintf(SUMA_STDERR,"Error %s: Could not allocate for vsh.\n", FuncName);
       SUMA_RETURN (NULL);
    }
-   #if 0 /* not in use May 2013 */
-   vsh->RegisteredDO_sh = NULL;
-   vsh->N_DO_sh = 0;
-   #endif
    SUMA_RETURN (vsh);
 }
    
@@ -2881,9 +3071,6 @@ SUMA_Boolean SUMA_Free_ViewState_Hist (SUMA_ViewState_Hist *vsh)
    SUMA_ENTRY;
 
    if (vsh == NULL) SUMA_RETURN (YUP);
-   #if 0 /* not in use May 2013 */
-   if (vsh->RegisteredDO_sh) SUMA_free(vsh->RegisteredDO_sh);
-   #endif
    if (vsh) SUMA_free(vsh);
    SUMA_RETURN (YUP);
 }
@@ -2921,8 +3108,8 @@ SUMA_Boolean SUMA_New_ViewState (SUMA_SurfaceViewer *cs)
    cs->VSv[cs->N_VSv-1].Name = NULL;
    cs->VSv[cs->N_VSv-1].AnatCorrect = NOPE;
    cs->VSv[cs->N_VSv-1].Group = NULL;
-   cs->VSv[cs->N_VSv-1].MembDOs = NULL;
-   cs->VSv[cs->N_VSv-1].N_MembDOs = 0;
+   cs->VSv[cs->N_VSv-1].MembDO = NULL;
+   cs->VSv[cs->N_VSv-1].N_MembDO = 0;
    cs->VSv[cs->N_VSv-1].Hist = SUMA_Alloc_ViewState_Hist ();
    if (cs->VSv[cs->N_VSv-1].Hist == NULL) {
       SUMA_S_Err("Could not allocate for cs->VSv->Hist.");
@@ -2985,8 +3172,8 @@ SUMA_ViewState *SUMA_Alloc_ViewState (int N)
    for (i=0; i< N; ++i) {
       vs[i].Name = NULL;
       vs[i].Group = NULL;
-      vs[i].MembDOs = NULL;
-      vs[i].N_MembDOs = 0;
+      vs[i].MembDO = NULL;
+      vs[i].N_MembDO = 0;
       vs[i].Hist = SUMA_Alloc_ViewState_Hist ();
       if (vs[i].Hist == NULL) {
          SUMA_S_Err("Could not allocate for vs->Hist.");
@@ -3005,7 +3192,7 @@ SUMA_Boolean SUMA_Free_ViewState (SUMA_ViewState *vs)
    if (vs == NULL) SUMA_RETURN (YUP);
    if (vs->Name) SUMA_free(vs->Name);
    if (vs->Group) SUMA_free(vs->Group);
-   if (vs->MembDOs) SUMA_free(vs->MembDOs);
+   if (vs->MembDO) SUMA_free(vs->MembDO);
    if (vs->Hist) SUMA_Free_ViewState_Hist (vs->Hist);
    if (vs) SUMA_free(vs);
    SUMA_RETURN (YUP);
@@ -3082,6 +3269,56 @@ SUMA_SurfaceViewer *SUMA_OneViewerWithSOinFocus(
    SUMA_RETURN(sv);
 }
 
+/* return 1st viewer that is open and has a 
+   particular object visible AND in focus
+*/
+SUMA_SurfaceViewer *SUMA_OneViewerWithADOinFocus(SUMA_ALL_DO *ADO)
+{  
+   static char FuncName[]={"SUMA_OneViewerWithADOinFocus"};
+   int i=0;
+   SUMA_SurfaceViewer *sv=NULL;
+   
+   SUMA_ENTRY;
+
+   /* look for 1st viewer that has this ADO in focus*/
+   for (i=0; i<SUMAg_N_SVv; ++i) {
+      if (!SUMAg_SVv[i].isShaded && SUMAg_SVv[i].X->TOPLEVEL) {
+         /* is this viewer showing ADO ? */
+         if (SUMA_isVisibleDO(&(SUMAg_SVv[i]), SUMAg_DOv, ADO)) {
+            if ((SUMAg_DOv[SUMAg_SVv[i].Focus_DO_ID].OP) == ADO) {
+                  sv = &(SUMAg_SVv[i]);
+                  SUMA_RETURN(sv);
+            }
+         }
+      }
+   }
+
+   SUMA_RETURN(sv);
+}
+
+SUMA_SurfaceViewer *SUMA_OneViewerWithADOVisible(SUMA_ALL_DO *ADO)
+{  
+   static char FuncName[]={"SUMA_OneViewerWithADOVisible"};
+   int i=0;
+   SUMA_SurfaceViewer *sv=NULL;
+   
+   SUMA_ENTRY;
+
+   /* look for 1st viewer that is showing this 
+      surface and has this surface in focus*/
+   for (i=0; i<SUMAg_N_SVv; ++i) {
+      if (!SUMAg_SVv[i].isShaded && SUMAg_SVv[i].X->TOPLEVEL) {
+         /* is this viewer showing ADO ? */
+         if (SUMA_isVisibleDO(&(SUMAg_SVv[i]), SUMAg_DOv, ADO)) {
+            sv = &(SUMAg_SVv[i]);
+            SUMA_RETURN(sv);
+         }
+      }
+   }
+
+   SUMA_RETURN(sv);
+}
+
 SUMA_SurfaceViewer *SUMA_OneViewerWithSOVisible(
                               SUMA_SurfaceObject *curSO)
 {  
@@ -3098,6 +3335,28 @@ SUMA_SurfaceViewer *SUMA_OneViewerWithSOVisible(
          /* is this viewer showing curSO ? */
          if (SUMA_isVisibleDO(&(SUMAg_SVv[i]), SUMAg_DOv,  
                                (SUMA_ALL_DO *)curSO)) {
+            sv = &(SUMAg_SVv[i]);
+            SUMA_RETURN(sv);
+         }
+      }
+   }
+
+   SUMA_RETURN(sv);
+}
+
+SUMA_SurfaceViewer *SUMA_OneViewerWithADORegistered(SUMA_ALL_DO *ADO)
+{  
+   static char FuncName[]={"SUMA_OneViewerWithADORegistered"};
+   int i=0;
+   SUMA_SurfaceViewer *sv=NULL;
+   
+   SUMA_ENTRY;
+
+   /* look for 1st viewer that is showing this 
+      surface and has this surface in focus*/
+   for (i=0; i<SUMAg_N_SVv; ++i) {
+      if (!SUMAg_SVv[i].isShaded && SUMAg_SVv[i].X->TOPLEVEL) {
+         if (SUMA_ADO_isRegistered(SUMAg_SVv+i, ADO)) {
             sv = &(SUMAg_SVv[i]);
             SUMA_RETURN(sv);
          }
@@ -3131,10 +3390,10 @@ SUMA_SurfaceViewer *SUMA_OneViewerWithSORegistered(
    SUMA_RETURN(sv);
 }
 
-SUMA_SurfaceViewer *SUMA_BestViewerForDO(SUMA_ALL_DO *ado)
+SUMA_SurfaceViewer *SUMA_BestViewerForADO(SUMA_ALL_DO *ado)
                               
 {  
-   static char FuncName[]={"SUMA_BestViewerForDO"};
+   static char FuncName[]={"SUMA_BestViewerForADO"};
    int i=0;
    SUMA_SurfaceViewer *sv=NULL;
    
@@ -3161,8 +3420,21 @@ SUMA_SurfaceViewer *SUMA_BestViewerForDO(SUMA_ALL_DO *ado)
          /* crap! */
          sv = &(SUMAg_SVv[0]);
          break; }
+      case GRAPH_LINK_type:
       case SDSET_type:
-         SUMA_S_Warn("Nothing clever being done here");
+      case VO_type:
+      case TRACT_type:
+         if ((sv=SUMA_OneViewerWithADOinFocus(ado))) {
+            SUMA_RETURN(sv);
+         }
+         /* just visible */
+         if ((sv=SUMA_OneViewerWithADOVisible(ado))) {
+            SUMA_RETURN(sv);
+         }
+         /* registered */
+         if ((sv=SUMA_OneViewerWithADORegistered(ado))) {
+            SUMA_RETURN(sv);
+         }
          sv = &(SUMAg_SVv[0]);
          break;
       default:
@@ -3253,6 +3525,7 @@ int SUMA_Which_iDO_State(int dov_id, SUMA_SurfaceViewer *cSV, int addifmissing)
 {
    static char FuncName[]={"SUMA_Which_iDO_State"};
    int is = -2, do_all=0, iic, isd;
+   char *sid=NULL;
    SUMA_Boolean LocalHead = NOPE;
    
    SUMA_ENTRY;
@@ -3278,10 +3551,13 @@ int SUMA_Which_iDO_State(int dov_id, SUMA_SurfaceViewer *cSV, int addifmissing)
                        "Name or .Group.");
             SUMA_RETURN (NOPE);
          }   
-         cSV->VSv[is].N_MembDOs = 1;
-         cSV->VSv[is].MembDOs = 
-            (int *)SUMA_calloc(cSV->VSv[is].N_MembDOs, sizeof(int));
-         cSV->VSv[is].MembDOs[cSV->VSv[is].N_MembDOs-1] = dov_id;
+         cSV->VSv[is].N_MembDO = 1;
+         cSV->VSv[is].MembDO = 
+            (SUMA_DO_LOCATOR *)SUMA_calloc(cSV->VSv[is].N_MembDO, 
+                                           sizeof(SUMA_DO_LOCATOR));
+         cSV->VSv[is].MembDO[cSV->VSv[is].N_MembDO-1].dov_ind = dov_id;
+         sid = iDO_idcode(dov_id);
+         strcpy(cSV->VSv[is].MembDO[cSV->VSv[is].N_MembDO-1].idcode_str, sid);
          if (LocalHead) {
             char *s = SUMA_ViewStateInfo (&(cSV->VSv[is]), 0);
             SUMA_LHv("State Info of cSV->VSv[%d] now:\n%s\n",is, s);
@@ -3318,6 +3594,7 @@ SUMA_Boolean SUMA_RegisterSpecSO (SUMA_SurfSpecFile *Spec,
 {
    static char FuncName[]={"SUMA_RegisterSpecSO"};
    int is, i, old_N_VSv = 0;
+   char *sid=NULL;
    SUMA_SurfaceObject * SO;
    SUMA_Boolean LocalHead = NOPE;
    
@@ -3384,14 +3661,14 @@ SUMA_Boolean SUMA_RegisterSpecSO (SUMA_SurfSpecFile *Spec,
                                 "Name or .Group.");
                      SUMA_RETURN (NOPE);
                   }   
-                  csv->VSv[csv->N_VSv-1].N_MembDOs = 1;
+                  csv->VSv[csv->N_VSv-1].N_MembDO = 1;
                } else { /* old one, count it */
                   if (LocalHead) {
                      fprintf(SUMA_STDERR,
                         "%s: For %s\n State:%s,Group:%s found\n", 
                         FuncName, SO->Label, SO->State, SO->Group);
                   }
-                  csv->VSv[is].N_MembDOs += 1;
+                  csv->VSv[is].N_MembDO += 1;
                }
             }
             break;
@@ -3419,7 +3696,7 @@ SUMA_Boolean SUMA_RegisterSpecSO (SUMA_SurfSpecFile *Spec,
                              "Name or .Group.");
                   SUMA_RETURN (NOPE);
                }   
-               csv->VSv[csv->N_VSv-1].N_MembDOs = 1;
+               csv->VSv[csv->N_VSv-1].N_MembDO = 1;
             } else {
                if (LocalHead) {
                      fprintf(SUMA_STDERR,
@@ -3427,7 +3704,7 @@ SUMA_Boolean SUMA_RegisterSpecSO (SUMA_SurfSpecFile *Spec,
                         FuncName, iDO_label(i), 
                         SUMA_iDO_state(i), SUMA_iDO_group(i));
                   }
-                  csv->VSv[is].N_MembDOs += 1;
+                  csv->VSv[is].N_MembDO += 1;
             }
             break;
          default:
@@ -3442,19 +3719,21 @@ SUMA_Boolean SUMA_RegisterSpecSO (SUMA_SurfSpecFile *Spec,
       counters will be reset for later use */
    for (i=0; i < csv->N_VSv; ++i) {
       
-      if (!csv->VSv[i].MembDOs) {
-         csv->VSv[i].MembDOs = (int *) SUMA_calloc(csv->VSv[i].N_MembDOs, 
-                                                   sizeof(int));
+      if (!csv->VSv[i].MembDO) {
+         csv->VSv[i].MembDO = (SUMA_DO_LOCATOR *) 
+                                 SUMA_calloc(csv->VSv[i].N_MembDO, 
+                                                   sizeof(SUMA_DO_LOCATOR));
       } else {
-         csv->VSv[i].MembDOs = (int *) SUMA_realloc(csv->VSv[i].MembDOs, 
-                                          csv->VSv[i].N_MembDOs * sizeof(int));
+         csv->VSv[i].MembDO = (SUMA_DO_LOCATOR *) 
+                              SUMA_realloc(csv->VSv[i].MembDO,
+                                 csv->VSv[i].N_MembDO * sizeof(SUMA_DO_LOCATOR));
       }
-      if (csv->VSv[i].MembDOs == NULL) {
-         SUMA_S_Err("Failed to allocate for csv->VSv[i].MembDOs.\n");
+      if (csv->VSv[i].MembDO == NULL) {
+         SUMA_S_Err("Failed to allocate for csv->VSv[i].MembDO.\n");
          SUMA_RETURN (NOPE);
       }   
       
-      csv->VSv[i].N_MembDOs = 0;
+      csv->VSv[i].N_MembDO = 0;
    }
 
    
@@ -3485,8 +3764,10 @@ SUMA_Boolean SUMA_RegisterSpecSO (SUMA_SurfSpecFile *Spec,
                FuncName, SO->Label, is);
             }
             /* store its id as a valid member of the state */
-            csv->VSv[is].MembDOs[csv->VSv[is].N_MembDOs] = i; 
-            csv->VSv[is].N_MembDOs += 1; /* count it, again */ 
+            csv->VSv[is].MembDO[csv->VSv[is].N_MembDO].dov_ind = i; 
+            strcpy(csv->VSv[is].MembDO[csv->VSv[is].N_MembDO].idcode_str,
+                   SO->idcode_str);
+            csv->VSv[is].N_MembDO += 1; /* count it, again */ 
             break;
          case TRACT_type:
          case MASK_type:
@@ -3504,8 +3785,10 @@ SUMA_Boolean SUMA_RegisterSpecSO (SUMA_SurfSpecFile *Spec,
                FuncName, SO->Label, is);
             }
             /* store its id as a valid member of the state */
-            csv->VSv[is].MembDOs[csv->VSv[is].N_MembDOs] = i; 
-            csv->VSv[is].N_MembDOs += 1; /* count it, again */ 
+            csv->VSv[is].MembDO[csv->VSv[is].N_MembDO].dov_ind = i;
+            sid = iDO_idcode(i);
+            strcpy(csv->VSv[is].MembDO[csv->VSv[is].N_MembDO].idcode_str, sid); 
+            csv->VSv[is].N_MembDO += 1; /* count it, again */ 
             break;
          default:
             if (SUMA_is_iDO_Selectable(i)) {
@@ -3623,6 +3906,8 @@ SUMA_CommonFields * SUMA_Create_CommonFields ()
    }
    cf->X->SumaCont = SUMA_CreateSumaContStruct();
    cf->X->DrawROI = SUMA_CreateDrawROIStruct();
+   cf->X->AllMaskCont = NULL;
+   cf->X->MaskStateID = 0;
    cf->X->DPY_controller1 = NULL;
    memset(&(cf->X->App), 0, sizeof(XtAppContext)); /* a futile effort 
                   to get rid of Conditional jump or move messages from
@@ -3649,6 +3934,9 @@ SUMA_CommonFields * SUMA_Create_CommonFields ()
       } else if (strcmp (eee, "DEFAULT") == 0) {
          cf->X->X_Resources = SXR_default;
          if (LocalHead) fprintf(SUMA_STDERR,"%s: default resources\n", FuncName);
+      } else if (strcmp (eee, "PRINT") == 0) {
+         cf->X->X_Resources = SXR_Print;
+         if (LocalHead) fprintf(SUMA_STDERR,"%s: Print resources\n", FuncName);
       } else {
          cf->X->X_Resources = SXR_Euro;
          fprintf(SUMA_STDERR,
@@ -4171,6 +4459,15 @@ SUMA_X_SurfCont *SUMA_CreateSurfContStruct (char *idcode_str, SUMA_DO_Types tp)
    SurfCont->TractMaskGray = 
       (SUMA_ARROW_TEXT_FIELD *)calloc(1, sizeof(SUMA_ARROW_TEXT_FIELD));
    SurfCont->XhairTable = SUMA_AllocTableField();
+   SurfCont->MaskTable = SUMA_AllocTableField();
+   SurfCont->MaskEvalTable = SUMA_AllocTableField();
+   SurfCont->MaskEval_tb = NULL;
+   SurfCont->MaskLenTable = SUMA_AllocTableField();
+   SurfCont->MaskLen_tb = NULL;
+   SurfCont->UseMaskEval = 0;
+   SurfCont->DeleteMask_pb = NULL;
+   SurfCont->DeleteMask_first = YUP;
+   SurfCont->DeleteMask_row = -1;
    SurfCont->SetRangeTable = SUMA_AllocTableField();
    SurfCont->SetThrScaleTable = SUMA_AllocTableField();
    SurfCont->RangeTable = SUMA_AllocTableField();
@@ -4189,6 +4486,7 @@ SUMA_X_SurfCont *SUMA_CreateSurfContStruct (char *idcode_str, SUMA_DO_Types tp)
    SurfCont->Ax_slc = SUMA_AllocSliceField(); 
    SurfCont->Sa_slc = SUMA_AllocSliceField(); 
    SurfCont->Co_slc = SUMA_AllocSliceField(); 
+   SurfCont->VR_fld = SUMA_AllocVRField(); 
    SurfCont->curColPlane = NULL;
    {
       char *eee = getenv("SUMA_ShowOneOnly");
@@ -4263,10 +4561,35 @@ SUMA_X_SurfCont *SUMA_CreateSurfContStruct (char *idcode_str, SUMA_DO_Types tp)
    SurfCont->BrtRangeLocked = 0;
    SurfCont->rcclust = NULL;
    
-
+   SurfCont->tract_length_mask[0] = 0.0;
+      /* SUMA_floatEnv("TEMP_MIN_LENGTH", 0.0); */
+   SurfCont->tract_length_mask[1] = -1.0;
+      /* SUMA_floatEnv("TEMP_MAX_LENGTH", -1.0); */
+   if (SurfCont->tract_length_mask[1]>=
+       SurfCont->tract_length_mask[0])
+      SurfCont->UseMaskLen = 0; /* leave it off, let it be activated in GUI */
+   else
+      SurfCont->UseMaskLen = 0;
   return (SurfCont);
 }
- 
+
+SUMA_X_SurfCont *SUMA_GlobalMaskContStruct(char *idcode)
+{
+   static char FuncName[]={"SUMA_GlobalMaskContStruct"};
+   if (!SUMAg_CF->X->AllMaskCont) {
+      if (!(SUMAg_CF->X->AllMaskCont = 
+               SUMA_CreateSurfContStruct(idcode, MASK_type))){
+         fprintf(SUMA_STDERR,
+                 "Error %s: Failed to create global mask controller struct",
+                 FuncName);
+         return(NULL);         
+      }
+   }
+   /* Return a link to that struct */
+   return((SUMA_X_SurfCont*)
+                     SUMA_LinkToPointer((void *)SUMAg_CF->X->AllMaskCont));
+}
+
 /*!
    \brief frees structure SUMA_X_SurfCont, returns null
    
@@ -4294,6 +4617,9 @@ void *SUMA_FreeSurfContStruct (SUMA_X_SurfCont *SurfCont)
    if (SurfCont->ColPlaneAlphaThresh) free (SurfCont->ColPlaneAlphaThresh);
    if (SurfCont->SetRangeTable) SUMA_FreeTableField (SurfCont->SetRangeTable);
    if (SurfCont->RangeTable) SUMA_FreeTableField (SurfCont->RangeTable);
+   if (SurfCont->MaskTable) SUMA_FreeTableField (SurfCont->MaskTable);
+   if (SurfCont->MaskEvalTable) SUMA_FreeTableField (SurfCont->MaskEvalTable);
+   if (SurfCont->MaskLenTable) SUMA_FreeTableField (SurfCont->MaskLenTable);
    if (SurfCont->XhairTable) SUMA_FreeTableField (SurfCont->XhairTable);
    if (SurfCont->NodeTable) SUMA_FreeTableField (SurfCont->NodeTable);
    if (SurfCont->FaceTable) SUMA_FreeTableField (SurfCont->FaceTable);
@@ -4302,6 +4628,7 @@ void *SUMA_FreeSurfContStruct (SUMA_X_SurfCont *SurfCont)
    if (SurfCont->Ax_slc) SUMA_FreeSliceField (SurfCont->Ax_slc); 
    if (SurfCont->Sa_slc) SUMA_FreeSliceField (SurfCont->Sa_slc); 
    if (SurfCont->Co_slc) SUMA_FreeSliceField (SurfCont->Co_slc); 
+   if (SurfCont->VR_fld) SUMA_FreeVRField (SurfCont->VR_fld); 
    if (SurfCont->ColPlaneLabelTable) 
       SUMA_FreeTableField (SurfCont->ColPlaneLabelTable); 
    if (SurfCont->SetClustTable) SUMA_FreeTableField (SurfCont->SetClustTable);
@@ -4317,6 +4644,8 @@ void *SUMA_FreeSurfContStruct (SUMA_X_SurfCont *SurfCont)
                               SUMA_Free_Menu_Widget(SurfCont->DsetEdgeThickMenu);
    SurfCont->DsetEdgeStipMenu = 
                               SUMA_Free_Menu_Widget(SurfCont->DsetEdgeStipMenu); 
+   SurfCont->TractStyleMenu = 
+                              SUMA_Free_Menu_Widget(SurfCont->TractStyleMenu); 
    SurfCont->DsetAlphaValMenu = 
                               SUMA_Free_Menu_Widget(SurfCont->DsetAlphaValMenu); 
    SurfCont->TractMaskMenu = SUMA_Free_Menu_Widget(SurfCont->TractMaskMenu); 
@@ -4377,7 +4706,7 @@ SUMA_Boolean SUMA_Free_CommonFields (SUMA_CommonFields *cf)
    if (cf->X->FileSelectDlg) 
       SUMA_FreeFileSelectionDialogStruct(cf->X->FileSelectDlg); 
    cf->X->FileSelectDlg = NULL;
-   
+   if (cf->X->AllMaskCont) SUMA_FreeSurfContStruct(cf->X->AllMaskCont);
    SUMA_ifree(cf->X->Cr);
    
    if (cf->X->SumaCont) 

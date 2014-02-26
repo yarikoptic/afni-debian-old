@@ -65,6 +65,117 @@
 
 afni_history_struct ziad_history[] = {
 /*=====BELOW THIS LINE=====*/
+ { 25, Feb, 2014, ZSS, "suma", MICRO, TYPE_NEW_OPT,
+   "Secret option for Javier to make graph dsets display on top of everything",
+   "The option is hidden for now, requiring the use of both -dev and \n"
+   "a temporary env. The two can be combined on the command line with:\n"
+   "  suma -dev -setenv \"'JAVIER_DEPTH_SPECIAL = YES'\" ... "
+ },
+  
+ { 25, Feb, 2014, ZSS, "ConvertDset", MINOR, TYPE_NEW_OPT,
+   "Added -dset_labels option to label dset sub-bricks.",
+   "Normally 3drefit would handle that, but not for graph dsets, not yet \n"
+   "at least"
+ },
+  
+ { 25, Feb, 2014, ZSS, "afni-general", MICRO, TYPE_BUG_FIX,
+   "Modified Makefile.macosx* to start building SurfMesh again.",
+   NULL
+ },
+  
+ { 25, Feb, 2014, ZSS, "suma", MINOR, TYPE_NEW_OPT,
+   "Added loading/saving of masks and evaluation expressions to GUI.",
+   NULL
+ },
+  
+ { 25, Feb, 2014, ZSS, "suma", MINOR, TYPE_NEW_OPT,
+   "Added tract length masking in Masks GUI.",
+   NULL
+ },
+  
+ { 19, Feb, 2014, ZSS, "suma", MINOR, TYPE_BUG_FIX,
+   "Fixed crash during crazy matrix rotations.",
+   "The problem was caused by divisions by very small sizes under certain\n"
+   "projection (viewing) angles\n"
+ },
+  
+ { 19, Feb, 2014, ZSS, "suma", MINOR, TYPE_BUG_FIX,
+   "Fixed indexing errors in sparse matrices with certain node (point) lists.",
+   "The problem occurred when point lists were supersets of the points used to\n"
+   "define the edges."
+ },
+  
+ { 19, Feb, 2014, ZSS, "DriveSuma", MINOR, TYPE_NEW_OPT,
+   "Added -Clst and -UseClst options to DriveSuma",
+   NULL
+ }, 
+ 
+ { 19, Feb, 2014, ZSS, "ConvertDset", MICRO, TYPE_BUG_FIX,
+   "Removed stringent test on number of points in edge list",
+   "The program insisted on having the same number or points (nodes)\n"
+   "in the node list as there are unique points making up the graph.\n"
+ }, 
+ 
+ { 18, Feb, 2014, ZSS, "suma", MAJOR, TYPE_MODIFY,
+   "Added tract masking with boolean expressions",
+   "This allows users to specify the masking function\n"
+   "using the various masks as variables in a boolean expression.\n"
+   "The interface also allows for the coloring of various tracts based\n"
+   "on which masks they travel through. This addition is only available\n"
+   "with the -dev option, though the restriction will soon be lifted."
+ }, 
+ 
+ { 10, Feb, 2014, ZSS, "suma", MINOR, TYPE_MODIFY,
+   "Changed ordering of objects displayed to prevent graph text masking",
+   NULL,
+ }, 
+ 
+ { 6, Feb, 2014, ZSS, "suma", MINOR, TYPE_MODIFY,
+   "Increased Maximum number of viewers to 10 for Javier's desire",
+   "To allow the increase without needlessly waisting memory,\n"
+   "the color lists now only created if a viewer is open.\n"
+   "That still means as many color lists for almost each type of data\n"
+   "carrying object. But the allocation is only done if the viewer is\n"
+   "open. Volume objects share the same color list and perhaps tracts\n"
+   "should do the same, in the future. \n"
+   "The downside of sharing is that coloration will\n"
+   "be the same across all viewers for the same object.\n"
+ }, 
+ 
+ { 31, Jan, 2014, ZSS, "afni-general", MINOR, TYPE_MODIFY,
+   "Lessened dependency on new libgsl to allow FATCAT build on xorg7",
+   "This necessitated creating a double version of thd_correlate()\n"
+   "and adding -DXORG7 to the xorg7 makefiles" 
+ }, 
+ 
+ { 31, Jan, 2014, ZSS, "suma", MINOR, TYPE_BUG_FIX,
+   "Fixed problem with graph where segments were turning black.",
+   "Problem was caused by a stale pointer copy stored in SDO->colv\n"
+   "bad bad bad!" 
+ }, 
+ 
+ { 23, Jan, 2014, ZSS, "suma", MINOR, TYPE_GENERAL,
+   "Added transparency for slice displays",
+   NULL 
+ }, 
+ 
+ { 23, Jan, 2014, ZSS, "suma", MINOR, TYPE_GENERAL,
+   "Added GUI for tract mask editing",
+   NULL 
+ }, 
+ 
+ { 23, Jan, 2014, ZSS, "suma", MINOR, TYPE_GENERAL,
+   "Added volume rendering in addition to slice rendering ",
+   "No clipping planes yet." 
+ }, 
+ 
+ { 10, Jan, 2014, ZSS, "DriveSuma", MICRO, TYPE_NEW_ENV,
+   "Added SUMA_DriveSumaMaxCloseWait env ",
+   "This controls how long DriveSuma waits before it considers\n"
+   "a currently open stream lost forever. Consider also\n"
+   "env SUMA_DriveSumaMaxWait." 
+ }, 
+ 
  { 8, Jan, 2014, ZSS, "ConvertDset", MINOR, TYPE_NEW_OPT,
    "Added -graph_XYZ_LPI to flip coords to RAI for the user.",
    NULL

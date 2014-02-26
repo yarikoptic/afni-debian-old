@@ -661,7 +661,9 @@ typedef struct {
       Widget frame , rowcol ;
 
       Widget thr_rowcol , thr_label , thr_scale , thr_pval_label ;
-      MCW_arrowval * thr_top_av ;
+      MCW_arrowval *thr_top_av ;
+      Widget pval_menu ;           /* 18 Feb 2014 */
+      Widget pval_setpval_pb ;
 
       Widget thr_menu ;
       MCW_bbox *thr_onoff_bbox ;
@@ -1422,6 +1424,9 @@ extern "C" {
    extern PLUGIN_interface * GICOR_init(char *);         /* 22 Dec 2009 */
 #endif
 
+extern void ENV_globalrange_view( char *vname );
+extern void THD_set_image_globalrange_env(int ig);
+
 extern void GICOR_setup_func(NI_stream, NI_element *) ;        /* 22 Dec 2009 */
 extern void GICOR_process_dataset( NI_element *nel, int ct ) ; /* 23 Dec 2009 */
 extern void GICOR_process_message( NI_element *nel ) ;            /* Apr 2013 */
@@ -1641,6 +1646,9 @@ extern void AFNI_clus_popdown( Three_D_View *im3d ) ;
 extern int AFNI_clus_find_xyz( Three_D_View *im3d , float x,float y,float z ) ;
 extern void AFNI_clus_action_CB( Widget w , XtPointer cd , XtPointer cbs ) ;
 
+extern void AFNI_time_index_EV( Widget, XtPointer, XEvent *, Boolean * ) ; /* 24 Feb 2014 */
+extern void AFNI_time_index_set_fstep( Three_D_View *im3d , int istep ) ;
+
 extern void AFNI_update_dataset_viewing( THD_3dim_dataset * ); /* 21 Jul 2009 */
 extern void AFNI_alter_wami_text(Three_D_View *im3d, char *utlab);
 
@@ -1809,11 +1817,11 @@ extern Boolean AFNI_refashion_dataset( Three_D_View * ,
 extern void AFNI_set_viewpoint( Three_D_View * , int,int,int , int ) ;
 extern void AFNI_set_index_viewpoint( Three_D_View *, int, int );
                                                             /*ZSS July 2010 */
-extern void AFNI_redisplay_func( Three_D_View * ) ; /* 05 Mar 2002 */
+extern void AFNI_redisplay_func( Three_D_View * ) ;          /* 05 Mar 2002 */
 extern void AFNI_view_setter( Three_D_View *, MCW_imseq *) ; /* 26 Feb 2003 */
 extern void AFNI_range_setter( Three_D_View *, MCW_imseq *); /* 04 Nov 2003 */
 
-extern void AFNI_coord_filer_setup( Three_D_View *im3d ) ; /* 07 May 2010 */
+extern void AFNI_coord_filer_setup( Three_D_View *im3d ) ;   /* 07 May 2010 */
 
 extern XmString AFNI_crosshair_label( Three_D_View * ) ;
 extern XmString AFNI_range_label( Three_D_View * ) ;

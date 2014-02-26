@@ -174,7 +174,8 @@ ENTRY("AFNI_process_environ") ;
             } else if( !AFNI_noenv("AFNI_ENVIRON_WARNINGS") &&
                         strcmp(right, eee)){
                INFO_message(  "Environment variable %s already set to '%s'. "
-                              "Value of '%s' from %s is ignored.",
+                              "Value of '%s' from %s is ignored. \n"
+                         "To kill such warnings Set AFNI_ENVIRON_WARNINGS to NO",
                               left, eee, right, fname_str);
             }
             nenv++ ;
@@ -629,3 +630,64 @@ int THD_ok_overwrite(void)  /* Jan 2008 */
    if (ppp && strcmp(ppp,"OVERWRITE")==0) return 1;
    return 0;
 }
+
+/* accessor functions for setting and getting globalrange variable */
+static int image_globalrange = -1;
+
+/* force globalrange to a specific value - reset with -1 */
+void THD_set_image_globalrange(int ii)
+{
+   image_globalrange = ii;
+}
+
+/* get current value (maybe default value) for image globalrange */
+int THD_get_image_globalrange()
+{
+   char *temp_envstr = NULL;
+
+   if(image_globalrange<0) {
+      if(AFNI_yesenv("AFNI_IMAGE_GLOBALRANGE")) image_globalrange = 1;
+      else {
+         temp_envstr = my_getenv("AFNI_IMAGE_GLOBALRANGE");
+         if(temp_envstr){
+            if((strcasecmp(temp_envstr,"VOLUME")==0) ||
+               (strcasecmp(temp_envstr,"SUBBRICK")==0))
+               image_globalrange = 1;   /* also same as "YES" */
+            else if ((strcasecmp(temp_envstr,"DSET")==0) ||
+                      (strcasecmp(temp_envstr,"DATASET")==0))
+               image_globalrange = 2;   /* apply display LUT based on whole dataset */
+         }
+         if(image_globalrange < 0)
+            image_globalrange = 0;   /* default to slice-based scaling */
+      }
+   }
+
+   return(image_globalrange);
+}
+
+/* set short string to put in image viewer */
+char *THD_get_image_globalrange_str()
+{
+   int ig;
+
+   ig = THD_get_image_globalrange();
+
+   switch (ig) {
+      default:
+      case 0 : return("Slice");
+      case 1 : return("Vol");
+      case 2 : return("Dset");
+   }
+}
+
+/* cycle to next range setting */
+void THD_cycle_image_globalrange()
+{
+   int ig;
+   
+   ig = THD_get_image_globalrange();
+   ig++;
+   if(ig>2) ig = 0;
+   THD_set_image_globalrange(ig);
+}
+
