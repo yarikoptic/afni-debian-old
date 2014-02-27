@@ -1399,9 +1399,10 @@ STATUS("making imag->time_index_av") ;
    imag->time_index_av->allow_wrap = 1 ;
 
    MCW_reghelp_children( imag->time_index_av->wrowcol ,
-                         "Controls the time index\n"
-                         "of the images being viewed.\n"
-                         "[For time-dependent datasets.]" ) ;
+                         "* Controls the time index\n"
+                         "  of the images being viewed.\n"
+                         "* Right click on 'Index' for\n"
+                         "  a menu of extra options." ) ;
    MCW_reghint_children( imag->time_index_av->wrowcol ,
                          "Set index in time" ) ;
 
@@ -2891,7 +2892,7 @@ STATUS("making func->rowcol") ;
    MCW_register_hint( func->thr_autothresh_pb ,
                       "Compute ad hoc threshold automatically NOW" ) ;
 
-   /*-- Set pval button [03 Aug 2013] --*/
+   /*-- Set pval button [03 Dec 2013] --*/
 
    func->thr_setpval_pb =
       XtVaCreateManagedWidget(
@@ -2904,6 +2905,22 @@ STATUS("making func->rowcol") ;
                   AFNI_func_setpval_CB , im3d ) ;
    MCW_register_hint( func->thr_setpval_pb ,
                       "Enter p-value to set threshold" ) ;
+
+   /*-- Set qval button [26 Feb 2014] --*/
+
+   func->thr_setqval_pb =
+      XtVaCreateManagedWidget(
+         "dialog" , xmPushButtonWidgetClass , func->thr_menu ,
+            LABEL_ARG("Set q-value") ,
+            XmNtraversalOn , True  ,
+            XmNinitialResourcesPersistent , False ,
+         NULL ) ;
+   XtAddCallback( func->thr_setqval_pb , XmNactivateCallback ,
+                  AFNI_func_setqval_CB , im3d ) ;
+   MCW_register_hint( func->thr_setqval_pb ,
+                      "Enter q-value to set threshold" ) ;
+
+   im3d->vinfo->fixed_qval = 0.0f ;
 
    /* Threshold sign arrowval [08 Aug 2007] */
 
@@ -5672,7 +5689,8 @@ ENTRY("new_AFNI_controller") ;
    im3d->opened = 0 ;          /* not yet opened up */
    im3d->dc     = dc ;
    im3d->vinfo  = myXtNew( AFNI_view_info ); ADDTO_KILL(im3d->kl,im3d->vinfo);
-      flush_vinfo_sort(im3d->vinfo, NULL);     /* ZSS April 26 2012 */
+
+   flush_vinfo_sort(im3d->vinfo, NULL);     /* ZSS April 26 2012 */
 
    im3d->brand_new = 1 ; /* 07 Dec 2001 */
 
@@ -6046,6 +6064,12 @@ ENTRY("AFNI_initialize_controller") ;
 
    if( im3d->vwid->view->marks_enabled )
      SHIFT_TIPS( im3d , TIPS_MINUS_SHIFT ) ;
+
+   /* Set index step from environment [26 Feb 2014] */
+
+                 ii = (int)AFNI_numenv("AFNI_INDEX_STEP"  ) ;
+   if( ii <= 0 ) ii = (int)AFNI_numenv("AFNI_INDEX_STRIDE") ;
+   if( ii >  0 ) AFNI_time_index_set_fstep(im3d,ii) ;
 
    RESET_AFNI_QUIT(im3d) ;
    EXRETURN ;
