@@ -43,7 +43,22 @@
 
 afni_history_struct rwcox_history[] = {
 /*=====BELOW THIS LINE=====*/
-  { 24 , FEB , 2014 , RWC , "afni GUI" , MICRO , TYPE_GENERAL ,
+  { 27 , FEB , 2014 , RWC , "afni GUI" , MICRO , TYPE_GENERAL ,
+   "Add control to set (and fix) q-value" ,
+   NULL } ,
+
+ { 26 , FEB , 2014 , RWC , "afni GUI" , MICRO , TYPE_GENERAL ,
+   "Add ability to set q-value (in addition to p-value)" ,
+   "From threshold slider popup menu (top or bottom labels)." } ,
+
+ { 26 , FEB , 2014 , RWC , "afni GUI" , MICRO , TYPE_NEW_ENV ,
+   "Remove AFNI_SLAVE_THRTIME and AFNI_SLAVE_BUCKETS_TOO variables" ,
+   "The functionality of AFNI_SLAVE_THRTIME is improved via the newer\n"
+   "'Thr=OLay?' controls.\n"
+   "The functionality of AFNI_SLAVE_BUCKETS_TOO is simply now subsumed by\n"
+   "AFNI_SLAVE_FUNCTIME." } ,
+
+ { 24 , FEB , 2014 , RWC , "afni GUI" , MICRO , TYPE_GENERAL ,
    "Add index step size popup to 'Index' arrowval" ,
    "For Stephen Robinson" } ,
 

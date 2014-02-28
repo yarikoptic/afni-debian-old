@@ -1514,7 +1514,13 @@ void AFNI_sigfunc_alrm(int sig)
      "I am not bound to please thee with my statistics"              ,
      "I will praise any man that will praise me"                     ,
      "If you have tears, prepare to shed them now"                   ,
+     "Remember -- nothing is always absolutely so"                   ,
+     "Remember -- 90% of everything is cr*p"                         ,
+     "Remember -- Good things always take longer than you expect"    ,
+     "Remember -- 'New and Improved' is neither"                     ,
+     "Remember -- Murphy was an optimist"                            ,
 
+     "Wirth's law -- software gets slower faster than hardware gets faster"           ,
      "How wouldst thou worst, I wonder, than thou dost, defeat, thwart me?"           ,
      "Meet me at the Torre Pendente di Pisa on the feast of St Rainerius"             ,
      "One martini is just right; two is too many; three is never enough"              ,
@@ -5707,6 +5713,11 @@ ENTRY("AFNI_closedown_3dview") ;
    if( im3d->vwid->view->swid != NULL )
      XtUnmapWidget( im3d->vwid->view->swid->wtop ) ;
 
+   im3d->vinfo->fix_qval   = 0 ;    /* 27 Feb 2014 */
+   im3d->vinfo->fixed_qval = 0.0f ;
+   im3d->vinfo->fix_pval   = 0 ;    /* 27 Feb 2014 */
+   im3d->vinfo->fixed_pval = 0.0f ;
+
    MPROBE ;
    EXRETURN ;
 }
@@ -6072,6 +6083,7 @@ ENTRY("AFNI_time_index_CB") ;
        im3d->vinfo->fim_index = DSET_NVALS(im3d->fim_now) - 1 ;
      AV_assign_ival( im3d->vwid->func->fim_buck_av , im3d->vinfo->fim_index ) ;
 
+#if 0
      if( AFNI_yesenv("AFNI_SLAVE_THRTIME") ){   /* 24 Jan 2005 - RWCox */
        im3d->vinfo->thr_index = ipx ;
        if( im3d->vinfo->thr_index >= DSET_NVALS(im3d->fim_now) )
@@ -6080,10 +6092,18 @@ ENTRY("AFNI_time_index_CB") ;
      } else {
        AFNI_enforce_throlayx(im3d) ;  /* 13 Aug 2010 */
      }
+#else
+       AFNI_enforce_throlayx(im3d) ;
+#endif
    }
 
    im3d->vinfo->tempflag = 1 ;
    AFNI_modify_viewing( im3d , False ) ;  /* setup new bricks to view */
+
+   if( im3d->vinfo->fix_pval && im3d->vinfo->fixed_pval > 0.0f )
+     AFNI_set_pval(im3d,im3d->vinfo->fixed_pval) ;
+   else if( im3d->vinfo->fix_qval && im3d->vinfo->fixed_qval > 0.0f )
+     AFNI_set_qval(im3d,im3d->vinfo->fixed_qval) ;
 
    if( ISVALID_DSET(im3d->fim_now)       &&   /* if time index on */
        DSET_NUM_TIMES(im3d->fim_now) > 1   )  /* function changed */
