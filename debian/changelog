@@ -1,9 +1,16 @@
+afni (0.20140225~dfsg.1-1) neurodebian; urgency=low
+
+  * New upstream code. Updated CMake build system.
+
+ -- Alex Waite <Alexqw85@gmail.com>  Fri, 28 Feb 2014 13:20:33 +0200
+
 afni (0.20131204~dfsg.1-2) neurodebian; urgency=low
 
   * Prune any @update.afni.* script (e.g. @update.afni.binaries) from
     installation so it doesn't interfer with packaged installation
 
- --
+ -- Yaroslav Halchenko <debian@onerussian.com>  Thu, 05 Dec 2013 16:48:02
+-0500
 
 afni (0.20131204~dfsg.1-1) neurodebian; urgency=low
 
