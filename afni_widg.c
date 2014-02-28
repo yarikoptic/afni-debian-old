@@ -1407,6 +1407,12 @@ STATUS("making imag->time_index_av") ;
 
    ADDTO_KILL(im3d->kl,imag->time_index_av) ;
 
+   /* [24 Feb 2014] Right-click event handler for Index label */
+
+   XtInsertEventHandler( imag->time_index_av->wlabel ,
+                           ButtonPressMask , FALSE ,
+                           AFNI_time_index_EV , (XtPointer)im3d , XtListTail ) ;
+
    /*--- frame to hold all viewing control stuff ---*/
 
 STATUS("imag->view_frame") ;
@@ -2799,7 +2805,6 @@ STATUS("making func->rowcol") ;
 
    /**--------- 05 Sep 2006: create menu hidden on the thr_label ---------**/
 
-#if 1
    { static char *onofflabel[]    = { "Use Threshold?" } ;
      static char *throlayxlabel[] = { "Thr = OLay ?" , "Thr = Olay+1 ?" } ;
 
@@ -2940,7 +2945,6 @@ STATUS("making func->rowcol") ;
                       "Compute FDR curves for OLay statistical sub-bricks" ) ;
 
    } /*---- end of thr_menu creation for top of threshold slider ----*/
-#endif
 
    FIX_SCALE_VALUE(im3d) ;  /* just in case */
 
@@ -3059,8 +3063,9 @@ STATUS("making func->rowcol") ;
    ) ;
    MCW_register_hint( func->thr_pval_label , "Nominal p-value per voxel; FDR q-value" ) ;
 
-#if 0
-   /* 05 Sep 2006: duplicate popup from thr_label */
+#define PVAL_POPUP
+#ifdef  PVAL_POPUP
+   /* 05 Sep 2006: duplicate popup menu from thr_label */
 
    XtInsertEventHandler( func->thr_pval_label ,  /* handle events in label */
 
@@ -6029,16 +6034,15 @@ ENTRY("AFNI_initialize_controller") ;
 
    WAIT_for_window( im3d->vwid->top_shell ) ;
 
-#if 1
    POPUP_cursorize( im3d->vwid->func->thr_label ) ;       /* 05 Sep 2006 */
-#endif
-#if 0
+#ifdef PVAL_POPUP
    POPUP_cursorize( im3d->vwid->func->thr_pval_label ) ;  /* 05 Sep 2006 */
 #endif
    POPUP_cursorize( im3d->vwid->func->inten_label ) ;
    POPUP_cursorize( im3d->vwid->picture ) ;
    POPUP_cursorize( imag->crosshair_label ) ;
    POPUP_cursorize( im3d->vwid->func->thr_label ) ;
+   POPUP_cursorize( im3d->vwid->imag->time_index_av->wlabel ) ;
 
    if( im3d->vwid->view->marks_enabled )
      SHIFT_TIPS( im3d , TIPS_MINUS_SHIFT ) ;
@@ -7234,6 +7238,8 @@ ENTRY("AFNI_sesslab_EV") ;
 
        } else if( event->button == Button2 ){
          XUngrabPointer( event->display , CurrentTime ) ;
+       } else if( event->button == Button4 || event->button == Button5 ){
+         MCW_invert_widget(w) ;
        }
      }
      break ;

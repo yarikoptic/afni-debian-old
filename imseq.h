@@ -295,6 +295,8 @@ typedef struct {
 #define isqCR_setindex        602 /* 26 Apr 2007 */
 #define isqCR_deltival        603 /* 23 Feb 2011 */
 #define isqCR_raiseupthedead  604 /* 17 Jun 2011 */
+#define isqCR_globalrange     605 /* 03 Feb 2013 */
+#define isqCR_resetglobalrange  606
 
 #define COLORMAP_CHANGE(sq)                                          \
   do{ if( ISQ_REALZ((sq)) && (sq)->dc->visual_class == TrueColor ){  \
@@ -505,6 +507,8 @@ typedef struct MCW_imseq {
      MCW_bbox *wbar_plots_bbox ;        /* 20 Sep 2001 */
      MCW_arrowval *wbar_label_av ;      /* 20 Sep 2001 */
      MCW_arrowval *wbar_labsz_av ;      /* 21 Sep 2001 */
+     MCW_arrowval *wbar_globrange_av ;  /* 30 Jan 2013 */
+
      Widget        wbar_labst_pb ;      /* 23 Dec 2011 */
 
      Widget        zoom_sep              /* 11 Mar 2002 */;
@@ -521,6 +525,8 @@ typedef struct MCW_imseq {
      int crop_nxorg , crop_nyorg , crop_allowed ;
      Widget        crop_drag_pb ;                     /* 17 Jun 2002 */
      int           crop_drag ;
+     int           crop_autocenter ;                  /* 14 Jan 2014 */
+     MCW_bbox     *wbar_crop_bbox ;                   /* 15 Jan 2014 */
 
      int button2_width ;                              /* 08 Oct 2002 */
 
@@ -580,7 +586,7 @@ extern void ISQ_actually_pan( MCW_imseq * , int , int ) ;
 extern int ISQ_show_zoom( MCW_imseq *seq )  ;
 extern void ISQ_center_zoom( MCW_imseq *seq ) ; /* 27 Aug 2009 */
 
-extern void ISQ_adjust_crop( MCW_imseq *,int,int,int,int) ; /* 25 Aug 2009 */
+extern void ISQ_adjust_crop( MCW_imseq *,int,int,int,int,int) ; /* 25 Aug 2009 */
 extern void ISQ_set_crop_hint( MCW_imseq *seq ) ;
 
 #define CURSOR_NORMAL    0                            /* 10 Mar 2003 */
@@ -707,7 +713,9 @@ extern void ISQ_scale_CB( Widget , XtPointer , XtPointer ) ;
 
 extern void ISQ_wbar_plots_CB( Widget , XtPointer , XtPointer ) ; /* 20 Sep 2001 */
 extern void ISQ_wbar_label_CB( MCW_arrowval * , XtPointer ) ;
+extern void ISQ_wbar_globrange_CB( MCW_arrowval * , XtPointer ) ;
 extern void ISQ_wbar_amask_CB( Widget , XtPointer , XtPointer ) ; /* 14 Jun 2010 */
+extern void ISQ_wbar_crop_CB ( Widget , XtPointer , XtPointer ) ; /* 15 Jan 2014 */
 
 extern void ISQ_wbar_menu_CB( Widget , XtPointer , XtPointer ) ;
 extern void ISQ_set_rng_CB( Widget , XtPointer , MCW_choose_cbs * ) ;

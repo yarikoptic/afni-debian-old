@@ -36,6 +36,11 @@
 
 static Widget wwtem ;
 
+#define SWL_TMASK_DEFAULT (Mod1Mask | Mod2Mask)
+
+static int scrollwheel_tmask = SWL_TMASK_DEFAULT ;
+static int scrollwheel_debug = 0 ;
+
 /************************************************************************
    Define the buttons and boxes that go in the "Disp" dialog
 *************************************************************************/
@@ -776,6 +781,7 @@ ENTRY("open_MCW_imseq") ;
    newseq->cropit       =  0 ; /* 11 Jun 2002 */
    newseq->crop_allowed =  1 ;
    newseq->crop_nxorg   = newseq->crop_nyorg = -1 ;
+   newseq->crop_autocenter = AFNI_yesenv("AFNI_CROP_AUTOCENTER") ;
 
    newseq->last_width_mm  = IM_WIDTH(tim) ;  /* dimensions in real space */
    newseq->last_height_mm = IM_HEIGHT(tim) ;
@@ -1647,6 +1653,16 @@ if( PRINT_TRACING ){
    ii = DC_find_overlay_color( newseq->dc , getenv("AFNI_IMAGE_ZEROCOLOR") ) ;
    if( ii > 0 ) newseq->zer_color = ii ;
 
+   { char *blab[1] = { "Crop Autocenter?" } ;
+     newseq->wbar_crop_bbox = new_MCW_bbox( newseq->wbar_menu ,  /* 15 Jan 2014 */
+                                             1 , blab ,
+                                             MCW_BB_check , MCW_BB_noframe ,
+                                             ISQ_wbar_crop_CB , (XtPointer)newseq ) ;
+     MCW_reghint_children(newseq->wbar_crop_bbox->wrowcol,"Automatically center crop window on crosshairs") ;
+     if( newseq->crop_autocenter ) MCW_set_bbox( newseq->wbar_crop_bbox , 1 ) ;
+   }
+
+
    /* label for informational display */
 
    newseq->onoff_widgets[(newseq->onoff_num)++] =
@@ -1749,12 +1765,36 @@ STATUS("creation: widgets created") ;
                                        "LowerLeft", "LowerRight",
                                        "UpperMid" , "LowerMid"   } ;
      static char *slabel[5] = { "Small" , "Medium" , "Large" , "Huge" , "Enormous" } ;
+     static char *mlabel[3] = { "Slice", "Volume", "Dataset" };
+
      char *eee ; int iii ;
 
      (void) XtVaCreateManagedWidget( "menu",
                                      xmSeparatorWidgetClass, newseq->wbar_menu,
                                        XmNseparatorType , XmSINGLE_LINE ,
                                      NULL ) ;
+
+#if 1
+     iii = THD_get_image_globalrange();
+     if( iii < 0 || iii > 3 ) iii = 0 ;
+
+     newseq->wbar_globrange_av =
+        new_MCW_arrowval( newseq->wbar_menu ,
+                          "Image Global Range" ,
+                          MCW_AV_optmenu ,      /* option menu style */
+                          0 ,                   /* first option */
+                          2 ,                   /* last option */
+                          iii ,                 /* initial selection */
+                          MCW_AV_readtext ,     /* ignored but needed */
+                          0 ,                   /* ditto */
+                          ISQ_wbar_globrange_CB , /* callback when changed */
+                          (XtPointer)newseq ,   /* data for above */
+                          MCW_av_substring_CB , /* text creation routine */
+                          mlabel                /* data for above */
+                        ) ;
+     MCW_reghint_children(newseq->wbar_globrange_av->wrowcol,
+                  "Set how images are scaled in display - sets AFNI_IMAGE_GLOBALRANGE") ;
+#endif
 
      /*-- plots stuff --*/
 
@@ -1951,6 +1991,26 @@ STATUS("creation: widgets created") ;
        memplot_topshell_setsaver( ".png" , memplot_to_png ) ;
        first = 0 ;
      }
+   }
+
+   /* set scrollwheel threshold modifier mask [14 Feb 2014] */
+
+   { char *eee = my_getenv("AFNI_IMAGE_SCROLLWHEEL_TMASK") ;
+     int swt = 0 ;
+     if( eee != NULL ){
+       if( strcasestr(eee,"shift")   != NULL ) swt |= ShiftMask ;
+       if( strcasestr(eee,"shft")    != NULL ) swt |= ShiftMask ;
+       if( strcasestr(eee,"ctrl")    != NULL ) swt |= ControlMask ;
+       if( strcasestr(eee,"control") != NULL ) swt |= ControlMask ;
+       if( strcasestr(eee,"mod1")    != NULL ) swt |= Mod1Mask ;
+       if( strcasestr(eee,"mod2")    != NULL ) swt |= Mod2Mask ;
+       if( strcasestr(eee,"mod3")    != NULL ) swt |= Mod3Mask ;
+       if( strcasestr(eee,"mod4")    != NULL ) swt |= Mod4Mask ;
+       if( strcasestr(eee,"mod5")    != NULL ) swt |= Mod5Mask ;
+
+       if( strcasestr(eee,"debug")   != NULL ) scrollwheel_debug = 1 ;
+     }
+     scrollwheel_tmask = (swt == 0) ? SWL_TMASK_DEFAULT : swt ;
    }
 
    RETURN(newseq) ;
@@ -2330,7 +2390,7 @@ ENTRY("ISQ_crop_pb_CB") ;
 /*-----------------------------------------------------------------------*/
 
 void ISQ_adjust_crop( MCW_imseq *seq ,
-                      int dxa , int dxb , int dya , int dyb )
+                      int dxa , int dxb , int dya , int dyb , int doit )
 {
    int new_xa, new_xb, new_ya, new_yb , ii,jj ;
 
@@ -2409,7 +2469,7 @@ ENTRY("ISQ_adjust_crop") ;
 
    seq->crop_xa = new_xa ; seq->crop_xb = new_xb ;
    seq->crop_ya = new_ya ; seq->crop_yb = new_yb ;
-   ISQ_redisplay( seq , -1 , isqDR_display ) ;
+   if( doit ) ISQ_redisplay( seq , -1 , isqDR_display ) ;
    EXRETURN ;
 }
 
@@ -2493,7 +2553,11 @@ void ISQ_butdisp_EV( Widget w , XtPointer client_data ,
          cbs.reason = isqCR_raiseupthedead ; SEND(seq,cbs) ;
        } else if( event->button == Button2 ){
          XBell(XtDisplay(w),100) ;
-         MCW_popup_message( w, " \n Don't! \n ", MCW_USER_KILL );
+         MCW_popup_message( w, " \n Don't! \n "        , MCW_USER_KILL|MCW_TIMER_KILL );
+       } else if( event->button == Button4 ){
+         MCW_popup_message( w, " \n That tickles! \n " , MCW_USER_KILL|MCW_TIMER_KILL ) ;
+       } else if( event->button == Button5 ){
+         MCW_popup_message( w, " \n Please stop \n "   , MCW_USER_KILL|MCW_TIMER_KILL ) ;
        }
      }
      break ;
@@ -2518,26 +2582,34 @@ void ISQ_butcrop_EV( Widget w , XtPointer client_data ,
          XButtonEvent *event = (XButtonEvent *) ev ;
          if( event->button == Button3 ){
            char *lvec[2] = { "Width " , "Height" } ;
-           float fvec[2] ; int oww,ohh ;
-           if( seq->cropit && seq->crop_nxorg > 0 ){
-             oww = seq->crop_nxorg ; ohh = seq->crop_nyorg ;
-           } else {
-             oww = seq->horig ; ohh = seq->vorig ;
+           float fvec[2] ; int oww=0,ohh=0 ;
+           if( seq->cropit ){
+             oww = seq->crop_xb -seq->crop_xa + 1 ;
+             ohh = seq->crop_yb -seq->crop_ya + 1 ;
            }
-           fvec[0] = oww/2 ; fvec[1] = ohh/2 ;
-           if( oww > MINCROP && ohh > MINCROP ){
+           if( oww < MINCROP ) oww = seq->horig / 2 ;
+           if( ohh < MINCROP ) ohh = seq->vorig / 2 ;
+           if( oww < MINCROP ) oww = MINCROP ;
+           if( ohh < MINCROP ) ohh = MINCROP ;
+           fvec[0] = oww ; fvec[1] = ohh ;
+           if( oww >= MINCROP && ohh >= MINCROP ){
              MCW_choose_vector(
                 seq->crop_drag_pb ,
                 "--------------------------------------------\n"
                 "Choose width and height of image crop window\n"
-                "    (minimum allowed size is 9 pixels)\n"
+                "     (minimum allowed size is 9 pixels)\n"
+                "   Crop window will be centered on image:\n"
+                "    Adjust with Shift+Keypad_Arrow_Keys.\n"
                 "--------------------------------------------"  ,
                 2 , lvec , fvec , ISQ_butcrop_choice_CB , (XtPointer)seq ) ;
            }
 
          } else if( event->button == Button2 ){
             XBell(XtDisplay(w),100) ;
-            MCW_popup_message( w, " \n Ooch! \n ", MCW_USER_KILL );
+            MCW_popup_message( w,
+                               lrand48()%2 == 0 ? " \n Ooch! \n "
+                                                : "Don't\n DO\nthat!" ,
+                               MCW_USER_KILL|MCW_TIMER_KILL );
             /** AFNI_speak( "Ouch!" , 0 ) ; **/
          }
       }
@@ -3077,6 +3149,7 @@ MRI_IMAGE * ISQ_process_mri( int nn , MCW_imseq *seq , MRI_IMAGE *im )
    short clbot=0 , cltop=0 ;
    int must_rescale = 1 ;     /* 31 Jan 2002: always turn this on */
    int have_transform ;
+   char scalestring[8];
 
 ENTRY("ISQ_process_mri") ;
 
@@ -3250,7 +3323,9 @@ ENTRY("ISQ_process_mri") ;
                       seq->dc->ncol_im , seq->scl,seq->lev ) ;
            clbot = seq->clbot = seq->rng_bot ;
            cltop = seq->cltop = seq->rng_top ;
-           if( seq->rng_extern ) strcpy(seq->scl_label,"[Glob]") ;
+/*           if( seq->rng_extern ) strcpy(seq->scl_label,"[Glob]") ;*/
+           if( seq->rng_extern ) sprintf(seq->scl_label,"[%s]",
+              THD_get_image_globalrange_str()) ;
            else                  strcpy(seq->scl_label,"[User]") ;
          }
          break ; /* end of user input range scaling */
@@ -4772,7 +4847,7 @@ ENTRY("ISQ_redisplay") ;
    /** set the image number to be displayed now **/
 
    if( n >= 0 && !ISQ_set_image_number(seq,n) ){
-      if( RECUR ) recur_flg = FALSE ; EXRETURN ;
+     if( RECUR ) recur_flg = FALSE ; EXRETURN ;
    }
 
    MCW_discard_events_all( seq->wimage , ButtonPressMask ) ;  /* 20 Mar 2007 */
@@ -5712,7 +5787,12 @@ STATUS(" .. ButtonPress") ;
            }
            else if( but == Button4 || but == Button5 ){ /* Scroll Wheel */
               int ddd = (but==Button4) ? -1 : 1 ;
-              if( (event->state & (Mod1Mask|Mod2Mask)) )
+              if( scrollwheel_debug ){
+                INFO_message("Scrollwheel (wbar): button=%u ; state mask=%xx",but,event->state) ;
+                ININFO_message("  (mask: shift=%xx ctrl=%xx mod1=%xx mod2=%xx mod3=%xx mod4=%xx mod5=%xx)" ,
+                               ShiftMask , ControlMask , Mod1Mask , Mod2Mask , Mod3Mask , Mod4Mask , Mod5Mask ) ;
+              }
+              if( (event->state & scrollwheel_tmask) )
                 DC_palette_bright(  seq->dc , ddd ) ;   /* brightness */
               else
                 DC_palette_squeeze( seq->dc , ddd ) ;   /* contrast */
@@ -5739,7 +5819,13 @@ STATUS(" .. ButtonPress") ;
 
          if( but == Button4 || but == Button5 ){
            if( seq->button2_enabled ){ busy=0; EXRETURN; }  /* 10 Oct 2007 */
-           if( (event->state & (Mod1Mask|Mod2Mask)) ){ /* mod+scroll == '{}' */
+           if( scrollwheel_debug ){
+             INFO_message("Scrollwheel (imag): button=%u ; state mask=%xx",but,event->state) ;
+             ININFO_message("  (mask: shift=%xx ctrl=%xx mod1=%xx mod2=%xx mod3=%xx mod4=%xx mod5=%xx)" ,
+                            ShiftMask , ControlMask , Mod1Mask , Mod2Mask , Mod3Mask , Mod4Mask , Mod5Mask ) ;
+           }
+           if( (event->state & scrollwheel_tmask) ){ /* mod+scroll == '{}' */
+             if( scrollwheel_debug ) ININFO_message("  change threshold") ;
 STATUS("scroll wheel ==> change threshold") ;
              cbs.reason = isqCR_keypress ;
              cbs.event  = ev ;
@@ -5748,6 +5834,7 @@ STATUS("scroll wheel ==> change threshold") ;
              SEND(seq,cbs) ;
            } else {                           /* no modifiers == change slice */
              int nold=seq->im_nr , dd=(but==Button4)?-1:+1 , nnew ;
+             if( scrollwheel_debug ) ININFO_message("  change slice") ;
 STATUS("scroll wheel ==> change slice") ;
              if( AFNI_yesenv("AFNI_INDEX_SCROLLREV") ) dd = -dd ;
              nnew = nold + dd ;
@@ -8618,6 +8705,19 @@ ENTRY("ISQ_wbar_amask_CB") ;
    EXRETURN ;
 }
 
+/*----------------------------------------------------------------------------*/
+
+void ISQ_wbar_crop_CB( Widget w, XtPointer client_data, XtPointer call_data )
+{
+   MCW_imseq *seq = (MCW_imseq *)client_data ;  /* 14 Jun 2010 */
+ENTRY("ISQ_wbar_crop_CB") ;
+   if( ISQ_REALZ(seq) ){
+     seq->crop_autocenter = MCW_val_bbox(seq->wbar_crop_bbox) ;
+     ISQ_redisplay( seq , -1 , isqDR_display ) ;
+   }
+   EXRETURN ;
+}
+
 /*----------------------------------------------------------------------*/
 
 void ISQ_wbar_label_CB( MCW_arrowval *av , XtPointer cd )
@@ -8635,6 +8735,30 @@ ENTRY("ISQ_wbar_label_CB") ;
 
    EXRETURN ;
 }
+
+#if 1
+void ISQ_wbar_globrange_CB( MCW_arrowval *av , XtPointer cd )
+{
+   MCW_imseq *seq = (MCW_imseq *)cd ;
+   ISQ_cbs cbs ;
+
+ENTRY("ISQ_wbar_globrange_CB") ;
+
+   if( !ISQ_REALZ(seq) ) EXRETURN ;
+
+   THD_set_image_globalrange(av->ival);
+   cbs.reason = isqCR_resetglobalrange ;
+/*       cbs.key      = ii ;*/                 /* number of points */
+
+       SEND(seq,cbs) ;   /* send this back to a callback function now in afni.c
+                            imseq doesn't have access directly to dataset info */
+
+/*   THD_set_image_globalrange_env(av->ival);*/
+
+   EXRETURN ;
+}
+#endif
+
 
 /*----------------------------------------------------------------------*/
 /* Finalize the overlay label append string [23 Dec 2011] */
@@ -11137,7 +11261,7 @@ void ISQ_butsave_EV( Widget w , XtPointer client_data ,
             free(strlist) ;
          } else if( event->button == Button2 ){
             XBell(XtDisplay(w),100) ;
-            MCW_popup_message( w, " \n Ouch! \n ", MCW_USER_KILL );
+            MCW_popup_message( w, " \n Ouch! \n ", MCW_USER_KILL|MCW_TIMER_KILL );
             /** AFNI_speak( "Ouch!" , 0 ) ; **/
          }
       }
@@ -12202,11 +12326,11 @@ ENTRY("ISQ_handle_keypress") ;
 
    if( key > 255 ){
      KeySym ks = (KeySym)key ;
-     switch( ks ){
+    switch( ks ){
 
        case XK_Home:       /* 27 Aug 2009 : center crop or pan at crosshairs */
          if( shft ){
-           ISQ_adjust_crop( seq, 0,0,0,0 ) ;  /* crop center */
+           ISQ_adjust_crop( seq, 0,0,0,0 , 1 ) ;  /* crop center */
          } else if (ctrl ){
            /* nada */
          } else {
@@ -12217,9 +12341,9 @@ ENTRY("ISQ_handle_keypress") ;
        case XK_Left:
        case XK_KP_Left:
          if( shft ){                        /* 25 Aug 2009: edit crop window */
-           ISQ_adjust_crop( seq , +astp,+astp , 0,0 ) ;
+           ISQ_adjust_crop( seq , +astp,+astp , 0,0 , 1 ) ;
          } else if( ctrl ){
-           ISQ_adjust_crop( seq , +1,-1 , 0,0 ) ;
+           ISQ_adjust_crop( seq , +1,-1 , 0,0 , 1 ) ;
          } else {
            seq->arrowpad->which_pressed = AP_LEFT ;
            seq->arrowpad->xev.type = 0 ;
@@ -12230,9 +12354,9 @@ ENTRY("ISQ_handle_keypress") ;
        case XK_Right:
        case XK_KP_Right:
          if( shft ){
-           ISQ_adjust_crop( seq , -astp,-astp , 0,0 ) ;
+           ISQ_adjust_crop( seq , -astp,-astp , 0,0 , 1 ) ;
          } else if( ctrl ){
-           ISQ_adjust_crop( seq , -1,+1 , 0,0 ) ;
+           ISQ_adjust_crop( seq , -1,+1 , 0,0 , 1 ) ;
          } else {
            seq->arrowpad->which_pressed = AP_RIGHT ;
            seq->arrowpad->xev.type = 0 ;
@@ -12243,9 +12367,9 @@ ENTRY("ISQ_handle_keypress") ;
        case XK_Down:
        case XK_KP_Down:
          if( shft ){
-           ISQ_adjust_crop( seq , 0,0 , -astp,-astp ) ;
+           ISQ_adjust_crop( seq , 0,0 , -astp,-astp , 1 ) ;
          } else if( ctrl ){
-           ISQ_adjust_crop( seq , 0,0 , -1,+1 ) ;
+           ISQ_adjust_crop( seq , 0,0 , -1,+1 , 1 ) ;
          } else {
            seq->arrowpad->which_pressed = AP_DOWN ;
            seq->arrowpad->xev.type = 0 ;
@@ -12256,9 +12380,9 @@ ENTRY("ISQ_handle_keypress") ;
        case XK_Up:
        case XK_KP_Up:
          if( shft ){
-           ISQ_adjust_crop( seq , 0,0 , +astp,+astp ) ;
+           ISQ_adjust_crop( seq , 0,0 , +astp,+astp , 1 ) ;
          } else if( ctrl ){
-           ISQ_adjust_crop( seq , 0,0 , +1,-1 ) ;
+           ISQ_adjust_crop( seq , 0,0 , +1,-1 , 1 ) ;
          } else {
            seq->arrowpad->which_pressed = AP_UP ;
            seq->arrowpad->xev.type = 0 ;
@@ -12303,7 +12427,7 @@ ENTRY("ISQ_handle_keypress") ;
          if( !seq->button2_enabled ){
            MCW_popup_message( seq->wimage,
                               " \n Only when \n"
-                              " Drawing!! \n ", MCW_USER_KILL );
+                              " Drawing!! \n ", MCW_USER_KILL|MCW_TIMER_KILL );
            XBell(seq->dc->display,100); busy=0; RETURN(0);
          }
          ISQ_set_cursor_state( seq ,
@@ -12318,7 +12442,7 @@ ENTRY("ISQ_handle_keypress") ;
          if( !seq->button2_enabled ){
            MCW_popup_message( seq->wimage,
                               " \n Only when \n"
-                              " Drawing!! \n ", MCW_USER_KILL );
+                              " Drawing!! \n ", MCW_USER_KILL|MCW_TIMER_KILL );
            XBell(seq->dc->display,100); busy=0; RETURN(0);
          }
          cbs.reason = isqCR_button2_key ;
@@ -12342,7 +12466,7 @@ ENTRY("ISQ_handle_keypress") ;
        case XK_F12:
 #if 0
          XBell(seq->dc->display,100) ;
-         MCW_popup_message( seq->wimage, " \n Ouch! \n ", MCW_USER_KILL );
+         MCW_popup_message( seq->wimage, " \n Ouch! \n ", MCW_USER_KILL|MCW_TIMER_KILL );
          AFNI_speak( "Ouch!" , 0 ) ;
 #endif
        break ;
@@ -12370,7 +12494,7 @@ ENTRY("ISQ_handle_keypress") ;
        if( seq->button2_enabled ){
          MCW_popup_message( seq->wimage,
                                " \n Not when \n"
-                               " Drawing! \n ", MCW_USER_KILL );
+                               " Drawing! \n ", MCW_USER_KILL|MCW_TIMER_KILL );
          XBell(seq->dc->display,100) ;
        } else if( seq->status->num_total > 1 ){      /* bring it on */
          seq->timer_func  = ISQ_TIMERFUNC_INDEX ;
@@ -12390,7 +12514,7 @@ ENTRY("ISQ_handle_keypress") ;
        if( seq->button2_enabled ){
          MCW_popup_message( seq->wimage,
                               " \n Not when \n"
-                              " Drawing! \n ", MCW_USER_KILL );
+                              " Drawing! \n ", MCW_USER_KILL|MCW_TIMER_KILL );
          XBell(seq->dc->display,100) ;
        } else if( seq->status->num_total > 1 ){      /* bring it on */
          seq->timer_func  = ISQ_TIMERFUNC_BOUNCE ;
@@ -12479,20 +12603,30 @@ ENTRY("ISQ_handle_keypress") ;
      }
      break ;
 
-     /* 22 Aug 2005: 'm' == Min-to-Max toggle */
+    /* ctrl-m to cycle globalranges */
+     case 13 : {
+       ISQ_cbs cbs ;
+       cbs.reason = isqCR_globalrange ;
+       SEND(seq,cbs) ;   /* send this back to a callback function now in afni.c
+                            imseq doesn't have access directly to dataset info */
 
-     case 'm':{
-       if( seq->dialog_starter==NBUT_DISP ){XBell(seq->dc->display,100); break;}
-       switch( seq->opt.scale_range ){
-         default:
-         case ISQ_RNG_MINTOMAX: seq->opt.scale_range = ISQ_RNG_02TO98;  break;
-         case ISQ_RNG_CLIPPED:  seq->opt.scale_range = ISQ_RNG_MINTOMAX;break;
-         case ISQ_RNG_02TO98:   seq->opt.scale_range = ISQ_RNG_MINTOMAX;break;
-       }
-
-       ISQ_redisplay( seq , -1 , isqDR_display ) ;
        busy=0 ; RETURN(1) ;
      }
+     break;
+
+     /* 22 Aug 2005: 'm' == Min-to-Max toggle */
+     case 'm':{
+       if( seq->dialog_starter==NBUT_DISP ){XBell(seq->dc->display,100); break;}
+          switch( seq->opt.scale_range ){
+            default:
+            case ISQ_RNG_MINTOMAX: seq->opt.scale_range = ISQ_RNG_02TO98;  break;
+            case ISQ_RNG_CLIPPED:  seq->opt.scale_range = ISQ_RNG_MINTOMAX;break;
+            case ISQ_RNG_02TO98:   seq->opt.scale_range = ISQ_RNG_MINTOMAX;break;
+          }
+       }
+       ISQ_redisplay( seq , -1 , isqDR_display ) ;
+       busy=0 ; RETURN(1) ;
+
      break ;
 
      /* 22 Aug 2005: 'l' == LR mirror toggle */
@@ -13269,3 +13403,5 @@ ENTRY("ISQ_save_anim") ;
 
    DESTROY_SARR(agif_list) ; free(prefix) ; free(fnamep); EXRETURN ;
 }
+
+

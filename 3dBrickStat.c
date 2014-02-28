@@ -17,6 +17,11 @@ void usage_3dBrickStat(int detail) {
 "The output is a number to the console.  The input dataset\n"
 "may use a sub-brick selection list, as in program 3dcalc.\n"
 "\n"
+"Note that this program computes ONE number as the output; e.g.,\n"
+"the mean over all voxels and time points.  If you want (say) the\n"
+"mean over all voxels but for each time point individually, see\n"
+"program 3dmaskave.\n"
+"\n"
 "Note: If you don't specify one sub-brick, the parameter you get\n"
 "----- back is computed from all the sub-bricks in dataset.\n"
 "Options :\n"
@@ -356,7 +361,8 @@ int main( int argc , char * argv[] )
       if (!ninmask) {
          ERROR_exit(" No voxels in mask !");
       }  
-      INFO_message("%d voxels in mask\n", ninmask);
+      /* text output program, so avoid extras   26 Dec 2013 [rickr] */
+      /* INFO_message("%d voxels in mask\n", ninmask); */
       DSET_delete(mask_dset) ; 
    }
          

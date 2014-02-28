@@ -1,7 +1,6 @@
 #ifndef SUMA_SEGFUNC_INCLUDED
 #define SUMA_SEGFUNC_INCLUDED
 
-#define IN_MASK(mm,k) ( (!(mm) || (mm)[k]) )
 
 /*!
    Swap a column between two dsets.
@@ -370,30 +369,6 @@
       SUMA_free(opref); SUMA_free(oid);\
    }  \
 }      
-      
-#define SUMA_SEG_WRITE_DSET_KILLME(proot, pref, dset, iter, hh) {\
-   char m_pref[512], *m_proot = (char *)proot, *m_hh = (char*)hh; int ovw;   \
-   char *opref = SUMA_copy_string(DSET_PREFIX(dset)); \
-   char *oid = SUMA_copy_string(DSET_IDCODE_STR(dset));   \
-   char *ohist = tross_Get_History(dset); \
-   if (m_proot != NULL) {\
-      if (iter >=0) { snprintf(m_pref, 500, "%s/%s.%s.%d", \
-                                       m_proot, m_proot,pref, iter); }\
-      else { snprintf(m_pref, 500, "%s/%s.%s", m_proot, m_proot, pref); }\
-   } else { \
-      if (iter >=0) snprintf(m_pref, 500, "%s/%s.%d", m_proot, pref, iter); \
-      else snprintf(m_pref, 500, "%s%s", m_proot, pref); \
-   }  \
-   SUMA_S_Notev("Writing %s\n", m_pref);   \
-   EDIT_dset_items(  dset , ADN_prefix  , m_pref, ADN_none);  \
-   UNIQ_idcode_fill(DSET_IDCODE_STR(dset));/* new id */   \
-   if (m_hh) tross_Append_History(dset, m_hh);/*add history*/   \
-   DSET_quiet_overwrite(dset);   \
-   EDIT_dset_items(  dset , ADN_prefix  , opref, ADN_none);  \
-   strcpy(DSET_IDCODE_STR(dset), oid); \
-   if (ohist) tross_Replace_History(dset, ohist); \
-   SUMA_free(opref); SUMA_free(oid); free(ohist); ohist=NULL;\
-}
 
 #define GRID_MISMATCH(a,b) (   (DSET_NX(a) != DSET_NX(b)) \
                             || (DSET_NY(a) != DSET_NY(b)) \
@@ -687,6 +662,20 @@ SUMA_SurfaceObject *SUMA_ExtractHead_RS(THD_3dim_dataset *iset,
 SUMA_Boolean SUMA_ShrinkSkullHull(SUMA_SurfaceObject *SO, 
                              THD_3dim_dataset *iset, float thr,
                              int use_rs, SUMA_COMM_STRUCT *cs);                  
+SUMA_Boolean SUMA_ShrinkHeadSurf(SUMA_SurfaceObject *SO, 
+                             THD_3dim_dataset *aset, 
+                             THD_3dim_dataset *arset,
+                             float *ucm,
+                             SUMA_COMM_STRUCT *cs);
+SUMA_Boolean SUMA_ShrinkSkullHull_RS(SUMA_SurfaceObject *SO, 
+                             THD_3dim_dataset *aset, 
+                             THD_3dim_dataset *arset, float thr,
+                             SUMA_COMM_STRUCT *cs) ;
+SUMA_Boolean SUMA_ShrinkHeadSurf_RS(SUMA_SurfaceObject *SO, 
+                             THD_3dim_dataset *aset, 
+                             THD_3dim_dataset *arset,
+                             float *ucm,
+                             SUMA_COMM_STRUCT *cs);
 THD_3dim_dataset *SUMA_Dset_FindVoxelsInSurface(
                      SUMA_SurfaceObject *SO, THD_3dim_dataset *iset, 
                      SUMA_VOLPAR *vp, char *vpname,

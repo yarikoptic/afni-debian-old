@@ -100,6 +100,9 @@ static char *env_fixed[] = {
 char *angle_strings[] = { "120" , "180" , "240" , "300" , "360" } ;
 #define NUM_angle_strings (sizeof(angle_strings)/sizeof(char *)) /* 08 Nov 2011 */
 
+char *globalrange_strings[] = { "Slice" , "Volume" , "Dataset" } ; /* 29 Jan 2014 */
+#define NUM_globalrange_strings 3 
+
 /*--------------------- strings for Cooordinate format --------------------*/
 
 #define NUM_cord_strings 50
@@ -116,7 +119,7 @@ static char *cord_strings[NUM_cord_strings] = {
 
 static void ENV_coorder( char * ) ;
 static void ENV_angle_string( char * ) ;
-static void ENV_globalrange( char * ) ;
+/*void ENV_globalrange( char * ) ;*/
 static void ENV_thresh_lock( char * ) ;
 static void ENV_compressor( char * ) ;
 static void ENV_leftisleft( char * ) ;
@@ -384,8 +387,9 @@ PLUGIN_interface * ENV_init(void)
                    NUM_yesno_list , yesno_list , ENV_redisplay  ) ;
 
    ENV_add_string( "AFNI_IMAGE_GLOBALRANGE" ,
-                   "Set image viewers to use 3D global data range min-to-max?" ,
-                   NUM_yesno_list , yesno_list , ENV_globalrange  ) ;
+   "Set image viewers to use 3D global data range by slice, volume or dataset min-max?",
+              NUM_globalrange_strings , globalrange_strings , ENV_globalrange_view  ) ;
+
 
    /* 19 Nov 2003 */
 
@@ -877,31 +881,6 @@ ENTRY("ENV_main") ;
    RETURN( NULL );
 }
 
-/*-----------------------------------------------------------------------*/
-
-static void ENV_globalrange( char *vname )
-{
-   Three_D_View *im3d ;
-   int ii , gbr=AFNI_yesenv("AFNI_IMAGE_GLOBALRANGE") ;
-
-   for( ii=0 ; ii < MAX_CONTROLLERS ; ii++ ){
-     im3d = GLOBAL_library.controllers[ii] ;
-     if( ! IM3D_OPEN(im3d) ) continue ;
-     if( gbr ){
-       AFNI_range_setter( im3d , im3d->s123 ) ;
-       AFNI_range_setter( im3d , im3d->s231 ) ;
-       AFNI_range_setter( im3d , im3d->s312 ) ;
-       drive_MCW_imseq( im3d->s123 , isqDR_display , (XtPointer)(-1) ) ;
-       drive_MCW_imseq( im3d->s231 , isqDR_display , (XtPointer)(-1) ) ;
-       drive_MCW_imseq( im3d->s312 , isqDR_display , (XtPointer)(-1) ) ;
-     } else {
-       drive_MCW_imseq( im3d->s123 , isqDR_setrange , (XtPointer)NULL ) ;
-       drive_MCW_imseq( im3d->s231 , isqDR_setrange , (XtPointer)NULL ) ;
-       drive_MCW_imseq( im3d->s312 , isqDR_setrange , (XtPointer)NULL ) ;
-     }
-   }
-   return ;
-}
 
 /*-----------------------------------------------------------------------*/
 

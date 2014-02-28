@@ -484,7 +484,7 @@ void SUMA_memplot_clone(void *mpv)
             ado = (SUMA_ALL_DO *)SUMAg_DOv[iso].OP;
             if (SUMA_isOverlayOfDO(ado, Sover)) {
                SUMA_OverlayGraphAtNode(Sover, ado, 
-                                       SUMA_ADO_SelectedDatum(ado, NULL)); 
+                                       SUMA_ADO_SelectedDatum(ado, NULL, NULL)); 
             } 
          }
       }
@@ -678,7 +678,7 @@ SUMA_Boolean SUMA_OverlayGraphAtNode(SUMA_OVERLAYS *Sover,
          SUMA_RETURN(1);
       }
       /* position plot */
-      sv = SUMA_BestViewerForDO(ado);
+      sv = SUMA_BestViewerForADO(ado);
       if (sv) {
          SUMA_PositionWindowRelative(  Sover->rowgraph_mtd->top , 
                                        sv->X->TOPLEVEL, 

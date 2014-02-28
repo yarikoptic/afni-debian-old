@@ -1,14 +1,19 @@
 #ifndef SUMA_STRING_PARSE_INCLUDED
 #define SUMA_STRING_PARSE_INCLUDED
 
-/* >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> Begin string parsing macros <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< */
+/* >>>>>>>>>>>>>>>>>>>>>>> Begin string parsing macros <<<<<<<<<<<<<<<<<<<<<<< */
+/* See also SUMA_IS_DIGIT_CHAR, SUMA_IS_NUM_CHAR */
 #define SUMA_IS_DIGIT(c) ( ((c) < '0' || (c) > '9') ? 0 : 1 )
  
+#define SUMA_IS_PURE_BLANK(c) ( ((c) == ' ' || (c) == '\t' ) )
+
 /*! a macro version of C's isspace
    returns 1 if charater is considered a blank
    \sa SUMA_SKIP_BLANK
 */
-#define SUMA_IS_BLANK(c) ( ((c) == ' ' || (c) == '\t' || (c) == '\n' || (c) == '\v' || (c) == '\f' || (c) == '\r') ? 1 : 0 )
+#define SUMA_IS_BLANK(c) ( (SUMA_IS_PURE_BLANK(c) || (c) == '\n' || (c) == '\v' || (c) == '\f' || (c) == '\r') ? 1 : 0 )
+
+/* See also SUMA_IS_EOL */
 #define SUMA_IS_LINE_END(c) ( ((c) == '\n' || (c) == '\f' || (c) == '\r') ? 1 : 0 )
 #define SUMA_IS_NICE_PREFIX_CHAR(c) ( (SUMA_IS_BLANK(c) \
                                        || (c) == ':' || (c) == ';' || (c) == '[' || (c) == ']' || (c) == '{' || (c) == '}'  \
@@ -24,6 +29,11 @@
 #define SUMA_SKIP_BLANK(op, eop){  \
    while (*op != '\0' && op != eop && SUMA_IS_BLANK(*op)) ++op; \
 }
+
+#define SUMA_SKIP_PURE_BLANK(op, eop){  \
+   while (*op != '\0' && op != eop && SUMA_IS_PURE_BLANK(*op)) ++op; \
+}
+
 #define SUMA_SKIP_LINE(op, eop){   \
    while (*op != '\0' && op != eop && *op != '\n' && *op != '\f' && *op != '\r') ++op; \
    SUMA_SKIP_BLANK(op, eop);\
@@ -77,9 +87,12 @@
    }  \
 }
 
+/* See also SUMA_IS_LINE_END */
+#define SUMA_IS_EOL(cc) ((  (cc) == '\n' || (cc) == '\v'                      \
+                          ||(cc) == '\f' || (cc) == '\r' || (cc) == '\0') )
 #define SUMA_SKIP_TO_EOL(op, eop){  \
    char m_quote_open = '\0';   \
-   while (*op != '\0' && op !=eop && !( !m_quote_open && (*op == '\n' || *op == '\v' || *op == '\f' || *op == '\r')) ) { \
+   while (*op != '\0' && op !=eop && !(!m_quote_open && SUMA_IS_EOL(*op)) ) { \
       if (*op == '"' || *op == '\'') {  \
          if (!m_quote_open) m_quote_open = *op; \
          else if (m_quote_open == *op) m_quote_open = '\0'; \
@@ -116,9 +129,11 @@
 }
 
 #define SUMA_GET_TO_EOL(op, eop, op2){  \
-   SUMA_SKIP_BLANK(op, eop); /* skip first blanks*/   \
-   op2 = op;                 /* skip till next blanks */ \
-   SUMA_SKIP_TO_EOL(op2, eop);  \
+   if (!SUMA_IS_EOL(*op)) { \
+      SUMA_SKIP_BLANK(op, eop); /* skip first blanks*/   \
+      op2 = op;                 /* skip till next blanks */ \
+      SUMA_SKIP_TO_EOL(op2, eop);  \
+   } else { op2 = op; } /* Stay right where you are */ \
 }
 
 /*! \brief Count number of blank delimited words. 

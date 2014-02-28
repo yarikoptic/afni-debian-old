@@ -321,6 +321,23 @@ void Show_Taylor_Network(TAYLOR_NETWORK *net, FILE *out,
    EXRETURN;
 }
 
+float Tract_Length(TAYLOR_TRACT *tt) 
+{
+   float l = -1.0, dx, dy, dz;
+   int i, N, i13, i03;
+   if (!tt) return(l);
+   N = tt->N_pts3/3;
+   l = 0.0;
+   for (i=1; i<N; ++i) {
+      i13 = 3*i; i03 = i13-3;
+      dx = tt->pts[i13  ]-tt->pts[i03  ];
+      dy = tt->pts[i13+1]-tt->pts[i03+1];
+      dz = tt->pts[i13+2]-tt->pts[i03+2];
+      l += sqrt(dx*dx+dy*dy+dz*dz);
+   }
+   return(l);
+}
+
 int Bundle_N_points(TAYLOR_BUNDLE *bun, byte recalc)
 {
    int it, nn;
@@ -1021,9 +1038,8 @@ TAYLOR_NETWORK * Read_Network(char *name)
    RETURN(net);
 }
 
-
-int NI_getTractAlgOpts(NI_element *nel, float *MinFA, float *MaxAngDeg, 
-                       float *MinL, int *SeedPerV, int *M, int *bval)
+int NI_getTractAlgOpts_M(NI_element *nel, float *MinFA, float *MaxAngDeg, 
+                         float *MinL, int *SeedPerV)
 {
    char *atr=NULL;
    
@@ -1031,7 +1047,7 @@ int NI_getTractAlgOpts(NI_element *nel, float *MinFA, float *MaxAngDeg,
    if (!nel) RETURN(1);
    
    if (MinFA && (atr=NI_get_attribute(nel,"Thresh_FA"))) {
-      *MinFA = (float)strtod(atr,NULL);
+      *MinFA = (float)strtod(atr,NULL); 
    }
    if (MaxAngDeg && (atr=NI_get_attribute(nel,"Thresh_ANG"))) {
       *MaxAngDeg = (float)strtod(atr,NULL);
@@ -1048,18 +1064,13 @@ int NI_getTractAlgOpts(NI_element *nel, float *MinFA, float *MaxAngDeg,
    if (SeedPerV && (atr=NI_get_attribute(nel,"Nseed_Z"))) {
       SeedPerV[2] = (int)strtod(atr,NULL);
    }
-   if (M && (atr=NI_get_attribute(nel,"Ngrads"))) {
-      *M = (int)strtod(atr,NULL);
-   }
-   if (bval && (atr=NI_get_attribute(nel,"Bval"))) {
-      *bval = (int)strtod(atr,NULL);
-   }
+   
    RETURN(0);
 }
 
-NI_element * NI_setTractAlgOpts(NI_element *nel, float *MinFA, 
+NI_element * NI_setTractAlgOpts_M(NI_element *nel, float *MinFA, 
 										  float *MaxAngDeg, float *MinL, 
-										  int *SeedPerV, int *M, int *bval)
+                                  int *SeedPerV)
 {   
    ENTRY("NI_setTractAlgOpts");
    
@@ -1079,22 +1090,17 @@ NI_element * NI_setTractAlgOpts(NI_element *nel, float *MinFA,
       NI_SETA_INT(nel,"Nseed_Y",SeedPerV[1]);
       NI_SETA_INT(nel,"Nseed_Z",SeedPerV[2]);
    }
-   if (M) {
-      NI_SETA_INT(nel,"Ngrads",*M);
-   }
-   if (bval) {
-      NI_SETA_INT(nel,"Bval",*bval);
-   }
    
    RETURN(nel);
 }
+      
 
-NI_element * ReadTractAlgOpts(char *fname) 
+NI_element * ReadTractAlgOpts_M(char *fname) 
 {
    NI_stream ns=NULL;
    NI_element *nel=NULL;
    float MinFA, MaxAngDeg, MinL;
-   int SeedPerV[3], M, bval;
+   int SeedPerV[3];
    char *strm=NULL;
    FILE *fin4=NULL;
    
@@ -1120,13 +1126,13 @@ NI_element * ReadTractAlgOpts(char *fname)
 			fprintf(stderr, "Error opening file %s.",fname);
 			RETURN(NULL);
       }
-      fscanf(fin4, "%f %f %f %d %d %d %d %d",
+      fscanf(fin4, "%f %f %f %d %d %d",
 				 &MinFA,&MaxAngDeg,&MinL,&SeedPerV[0],&SeedPerV[1],
-				 &SeedPerV[2],&M,&bval);
+				 &SeedPerV[2]);
       fclose(fin4);
       if (!(nel = 
-            NI_setTractAlgOpts(NULL, &MinFA, &MaxAngDeg, &MinL, 
-                               SeedPerV, &M, &bval))){
+            NI_setTractAlgOpts_M(NULL, &MinFA, &MaxAngDeg, &MinL, 
+                               SeedPerV))){
          ERROR_message("Failed to get options");
          RETURN(NULL);
       }
@@ -1135,6 +1141,7 @@ NI_element * ReadTractAlgOpts(char *fname)
    RETURN(nel);
 }      
 
+// THIS one doesn't need to change with new format for MULTI/HARDI update
 int WriteTractAlgOpts(char *fname, NI_element *nel) 
 {
    char *strm=NULL;
@@ -1142,13 +1149,20 @@ int WriteTractAlgOpts(char *fname, NI_element *nel)
    
    ENTRY("WriteTractAlgOpts");
    
-   if (!nel || !fname) RETURN(1);
-   
-   strm = (char *)calloc(strlen(fname)+20, sizeof(char));
-   if (STRING_HAS_SUFFIX(fname,".niml.opts")) {
-      sprintf(strm,"file:%s",fname);
+   if (!nel) {
+      fprintf(stderr, "NULL nel\n");
+      RETURN(1);
+   }
+   if (fname) {
+      strm = (char *)calloc(strlen(fname)+20, sizeof(char));
+      if (STRING_HAS_SUFFIX(fname,".niml.opts")) {
+         sprintf(strm,"file:%s",fname);
+      } else {
+         sprintf(strm,"file:%s.niml.opts",fname);
+      }
    } else {
-      sprintf(strm,"file:%s.niml.opts",fname);
+      strm = (char *)calloc(20, sizeof(char));
+      sprintf(strm,"fd:1");
    }
    if (!(ns = NI_stream_open( strm , "w" ))) {
       ERROR_message("Failed to open %s\n", strm);
@@ -1159,50 +1173,48 @@ int WriteTractAlgOpts(char *fname, NI_element *nel)
    RETURN(0);
 } 
 
-// **********************************
-
-int NI_getProbTractAlgOpts(NI_element *nel, float *MinFA, float *MaxAngDeg, 
+int NI_getProbTractAlgOpts_M(NI_element *nel, float *MinFA, float *MaxAngDeg, 
 									float *MinL, float *NmNsFr, int *Nseed, 
-									int *Nmonte, int *M, int *bval)
+									int *Nmonte)
 {
    char *atr=NULL;
    
    ENTRY("NI_getProbTractAlgOpts");
    if (!nel) RETURN(1);
    
-   if (MinFA && (atr=NI_get_attribute(nel,"Thresh_FA"))) {
+   if (MinFA && ( (atr=NI_get_attribute(nel,"Thresh_FA")) ||
+                  (atr=NI_get_attribute(nel,"MinFA"))) ) {
       *MinFA = (float)strtod(atr,NULL);
    }
-   if (MaxAngDeg && (atr=NI_get_attribute(nel,"Thresh_ANG"))) {
+   if (MaxAngDeg && ( (atr=NI_get_attribute(nel,"Thresh_ANG")) ||
+                      (atr=NI_get_attribute(nel,"MaxAng"))) ) {
       *MaxAngDeg = (float)strtod(atr,NULL);
    }
-   if (MinL && (atr=NI_get_attribute(nel,"Thresh_Len"))) {
+   if (MinL && ( (atr=NI_get_attribute(nel,"Thresh_Len")) ||
+                 (atr=NI_get_attribute(nel,"MinL"))) ) {
       *MinL = (float)strtod(atr,NULL);
    }
-   if (NmNsFr && (atr=NI_get_attribute(nel,"Thresh_Frac"))) {
+
+   if (NmNsFr && ( (atr=NI_get_attribute(nel,"Thresh_Frac")) ||
+                   (atr=NI_get_attribute(nel,"MinHitFr"))) ) {
       *NmNsFr = (float)strtod(atr,NULL);
    }
-   if (Nseed && (atr=NI_get_attribute(nel,"Nseed_Vox"))) {
+   if (Nseed && ( (atr=NI_get_attribute(nel,"Nseed_Vox")) ||
+                  (atr=NI_get_attribute(nel,"Nseed"))) ) {
 	   *Nseed = (int)strtod(atr,NULL);
    }
    if (Nmonte && (atr=NI_get_attribute(nel,"Nmonte"))) {
       *Nmonte = (int)strtod(atr,NULL);
    }
-   if (M && (atr=NI_get_attribute(nel,"Ngrads"))) {
-      *M = (int)strtod(atr,NULL);
-   }
-   if (bval && (atr=NI_get_attribute(nel,"Bval"))) {
-      *bval = (int)strtod(atr,NULL);
-   }
    RETURN(0);
 }
 
-NI_element * NI_setProbTractAlgOpts(NI_element *nel, float *MinFA, 
+NI_element * NI_setProbTractAlgOpts_M(NI_element *nel, float *MinFA, 
 												float *MaxAngDeg, float *MinL,
 												float *NmNsFr, int *Nseed, 
-												int *Nmonte, int *M, int *bval)
+												int *Nmonte)
 {   
-   ENTRY("NI_setProbTractAlgOpts");
+   ENTRY("NI_setProbTractAlgOpts_M");
    
    if (!nel) nel = NI_new_data_element ("PROBTRACK_opts",0);
    
@@ -1224,22 +1236,16 @@ NI_element * NI_setProbTractAlgOpts(NI_element *nel, float *MinFA,
 	if (Nmonte) {
       NI_SETA_INT(nel,"Nmonte",*Nmonte);
 	}
-   if (M) {
-      NI_SETA_INT(nel,"Ngrads",*M);
-   }
-   if (bval) {
-      NI_SETA_INT(nel,"Bval",*bval);
-   }
    
    RETURN(nel);
 }
 
-NI_element * ReadProbTractAlgOpts(char *fname) 
+NI_element * ReadProbTractAlgOpts_M(char *fname) 
 {
    NI_stream ns=NULL;
    NI_element *nel=NULL;
    float MinFA, MaxAngDeg, MinL,NmNsFr;
-   int Nseed, Nmonte, M, bval;
+   int Nseed, Nmonte;
    char *strm=NULL;
    FILE *fin4=NULL;
    
@@ -1265,12 +1271,15 @@ NI_element * ReadProbTractAlgOpts(char *fname)
 			fprintf(stderr, "Error opening file %s.",fname);
 			RETURN(NULL);
       }
-      fscanf(fin4, "%f %f %f %f %d %d %d %d",
-             &MinFA,&MaxAngDeg,&MinL,&NmNsFr,&Nseed,&Nmonte,&M,&bval);
+      fscanf(fin4, "%f %f %f %f %d %d",
+             &MinFA,&MaxAngDeg,&MinL,&NmNsFr,&Nseed,&Nmonte);
       fclose(fin4);
+      //printf("%f %f %f %f %d %d",
+      //     MinFA,MaxAngDeg,MinL,NmNsFr,Nseed,Nmonte); 
+
       if (!(nel = 
-            NI_setProbTractAlgOpts(NULL, &MinFA, &MaxAngDeg, &MinL, 
-											  &NmNsFr,&Nseed,&Nmonte,&M,&bval))){
+            NI_setProbTractAlgOpts_M(NULL, &MinFA, &MaxAngDeg, &MinL, 
+											  &NmNsFr,&Nseed,&Nmonte))){
          ERROR_message("Failed to get options");
          RETURN(NULL);
       }
@@ -1279,15 +1288,18 @@ NI_element * ReadProbTractAlgOpts(char *fname)
    RETURN(nel);
 }      
 
-int SimpleWriteDetNetTr(FILE *file, int ***idx, THD_3dim_dataset *FA,
-                        THD_3dim_dataset *MD, THD_3dim_dataset *L1,
-                        float **loc, int **locI, int len,
-                        int *TV, int *Dim, float *Ledge)
+int SimpleWriteDetNetTr_M(int N_HAR, FILE *file, int ***idx, 
+                           THD_3dim_dataset **PARS,
+                           int PAR_BOT, int PAR_TOP,
+                           float **loc, int **locI, int len,
+                           int *TV, int *Dim, float *Ledge)
 { // for trackvis
-  int m,aa,bb;
+   int m,aa,bb;
   int READS_in;
   float READS_fl;
 
+  ENTRY("SimpleWriteDetNetTr");
+  
   // first write len of tr
   READS_in = len;
   fwrite(&READS_in,sizeof(READS_in),1,file);
@@ -1302,14 +1314,43 @@ int SimpleWriteDetNetTr(FILE *file, int ***idx, THD_3dim_dataset *FA,
       fwrite(&READS_fl,sizeof(READS_fl),1,file);
     }
     bb=idx[locI[m][0]][locI[m][1]][locI[m][2]];
-    READS_fl = 1; //THD_get_voxel(FA, bb, 0); 
-    fwrite(&READS_fl,sizeof(READS_fl),1,file);
-    READS_fl = 1; //THD_get_voxel(MD, bb, 0); 
-    fwrite(&READS_fl,sizeof(READS_fl),1,file);
-    READS_fl = 1; //THD_get_voxel(L1, bb, 0); 
-    fwrite(&READS_fl,sizeof(READS_fl),1,file);
+    if(N_HAR) { // hardi, single param
+       READS_fl = THD_get_voxel(PARS[PAR_BOT], bb, 0); 
+       fwrite(&READS_fl,sizeof(READS_fl),1,file);
+    }
+    else 
+       for( aa=1 ; aa<4 ; aa++ ) {
+          READS_fl = THD_get_voxel(PARS[aa], bb, 0); 
+          fwrite(&READS_fl,sizeof(READS_fl),1,file);
+       }
   }
-
+  
   RETURN(1);
 }
 
+int Free_Insta_Tract_Setup(INSTA_TRACT_SETUP *ITS)
+{
+   ENTRY("Free_Insta_Tract_Setup");
+
+   if (!ITS) RETURN(0);
+   
+   if (ITS->grid) DSET_delete(ITS->grid);
+   ITS->grid = NULL;
+   
+   /* Do not delte ITS , leave it to calling function */
+  
+   RETURN(1);
+}
+
+/* Create brandnew, or wipe clean existing ITS */
+INSTA_TRACT_SETUP *New_Insta_Tract_Setup(INSTA_TRACT_SETUP *ITS)
+{
+   ENTRY("New_Insta_Tract_Setup");
+
+   if (!ITS) ITS = (INSTA_TRACT_SETUP *)calloc(1,sizeof(INSTA_TRACT_SETUP));
+   else Free_Insta_Tract_Setup(ITS);
+   
+   /* Put any initialization here ... */
+   
+   RETURN(ITS);
+}

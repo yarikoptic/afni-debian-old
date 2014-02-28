@@ -65,6 +65,266 @@
 
 afni_history_struct ziad_history[] = {
 /*=====BELOW THIS LINE=====*/
+ { 25, Feb, 2014, ZSS, "suma", MICRO, TYPE_NEW_OPT,
+   "Secret option for Javier to make graph dsets display on top of everything",
+   "The option is hidden for now, requiring the use of both -dev and \n"
+   "a temporary env. The two can be combined on the command line with:\n"
+   "  suma -dev -setenv \"'JAVIER_DEPTH_SPECIAL = YES'\" ... "
+ },
+  
+ { 25, Feb, 2014, ZSS, "ConvertDset", MINOR, TYPE_NEW_OPT,
+   "Added -dset_labels option to label dset sub-bricks.",
+   "Normally 3drefit would handle that, but not for graph dsets, not yet \n"
+   "at least"
+ },
+  
+ { 25, Feb, 2014, ZSS, "afni-general", MICRO, TYPE_BUG_FIX,
+   "Modified Makefile.macosx* to start building SurfMesh again.",
+   NULL
+ },
+  
+ { 25, Feb, 2014, ZSS, "suma", MINOR, TYPE_NEW_OPT,
+   "Added loading/saving of masks and evaluation expressions to GUI.",
+   NULL
+ },
+  
+ { 25, Feb, 2014, ZSS, "suma", MINOR, TYPE_NEW_OPT,
+   "Added tract length masking in Masks GUI.",
+   NULL
+ },
+  
+ { 19, Feb, 2014, ZSS, "suma", MINOR, TYPE_BUG_FIX,
+   "Fixed crash during crazy matrix rotations.",
+   "The problem was caused by divisions by very small sizes under certain\n"
+   "projection (viewing) angles\n"
+ },
+  
+ { 19, Feb, 2014, ZSS, "suma", MINOR, TYPE_BUG_FIX,
+   "Fixed indexing errors in sparse matrices with certain node (point) lists.",
+   "The problem occurred when point lists were supersets of the points used to\n"
+   "define the edges."
+ },
+  
+ { 19, Feb, 2014, ZSS, "DriveSuma", MINOR, TYPE_NEW_OPT,
+   "Added -Clst and -UseClst options to DriveSuma",
+   NULL
+ }, 
+ 
+ { 19, Feb, 2014, ZSS, "ConvertDset", MICRO, TYPE_BUG_FIX,
+   "Removed stringent test on number of points in edge list",
+   "The program insisted on having the same number or points (nodes)\n"
+   "in the node list as there are unique points making up the graph.\n"
+ }, 
+ 
+ { 18, Feb, 2014, ZSS, "suma", MAJOR, TYPE_MODIFY,
+   "Added tract masking with boolean expressions",
+   "This allows users to specify the masking function\n"
+   "using the various masks as variables in a boolean expression.\n"
+   "The interface also allows for the coloring of various tracts based\n"
+   "on which masks they travel through. This addition is only available\n"
+   "with the -dev option, though the restriction will soon be lifted."
+ }, 
+ 
+ { 10, Feb, 2014, ZSS, "suma", MINOR, TYPE_MODIFY,
+   "Changed ordering of objects displayed to prevent graph text masking",
+   NULL,
+ }, 
+ 
+ { 6, Feb, 2014, ZSS, "suma", MINOR, TYPE_MODIFY,
+   "Increased Maximum number of viewers to 10 for Javier's desire",
+   "To allow the increase without needlessly waisting memory,\n"
+   "the color lists now only created if a viewer is open.\n"
+   "That still means as many color lists for almost each type of data\n"
+   "carrying object. But the allocation is only done if the viewer is\n"
+   "open. Volume objects share the same color list and perhaps tracts\n"
+   "should do the same, in the future. \n"
+   "The downside of sharing is that coloration will\n"
+   "be the same across all viewers for the same object.\n"
+ }, 
+ 
+ { 31, Jan, 2014, ZSS, "afni-general", MINOR, TYPE_MODIFY,
+   "Lessened dependency on new libgsl to allow FATCAT build on xorg7",
+   "This necessitated creating a double version of thd_correlate()\n"
+   "and adding -DXORG7 to the xorg7 makefiles" 
+ }, 
+ 
+ { 31, Jan, 2014, ZSS, "suma", MINOR, TYPE_BUG_FIX,
+   "Fixed problem with graph where segments were turning black.",
+   "Problem was caused by a stale pointer copy stored in SDO->colv\n"
+   "bad bad bad!" 
+ }, 
+ 
+ { 23, Jan, 2014, ZSS, "suma", MINOR, TYPE_GENERAL,
+   "Added transparency for slice displays",
+   NULL 
+ }, 
+ 
+ { 23, Jan, 2014, ZSS, "suma", MINOR, TYPE_GENERAL,
+   "Added GUI for tract mask editing",
+   NULL 
+ }, 
+ 
+ { 23, Jan, 2014, ZSS, "suma", MINOR, TYPE_GENERAL,
+   "Added volume rendering in addition to slice rendering ",
+   "No clipping planes yet." 
+ }, 
+ 
+ { 10, Jan, 2014, ZSS, "DriveSuma", MICRO, TYPE_NEW_ENV,
+   "Added SUMA_DriveSumaMaxCloseWait env ",
+   "This controls how long DriveSuma waits before it considers\n"
+   "a currently open stream lost forever. Consider also\n"
+   "env SUMA_DriveSumaMaxWait." 
+ }, 
+ 
+ { 8, Jan, 2014, ZSS, "ConvertDset", MINOR, TYPE_NEW_OPT,
+   "Added -graph_XYZ_LPI to flip coords to RAI for the user.",
+   NULL
+ }, 
+ 
+ { 8, Jan, 2014, ZSS, "ConvertDset", MINOR, TYPE_BUG_FIX,
+   "Fixed problem introduced by earlier -graph_named_nodelist_txt change",
+   "Problem was one of parsing and made the program fail to read in all\n"
+   "entries in labels file.\n"
+ }, 
+ 
+ { 6, Jan, 2014, ZSS, "suma", MINOR, TYPE_MODIFY,
+   "Set proper voxel identification in interface. No more resampling.",
+   "RAI resampling is no longer needed, but stil available by setting\n"
+   "SUMA_VO_Reorient.\n"
+ }, 
+ 
+ { 3, Jan, 2014, ZSS, "suma", MAJOR, TYPE_MODIFY,
+   "Big improvements to slice rendering",
+   "Improvements include proper alpha masking and auto thresholding\n"
+   "Montage-like capability.\n"
+   "Percentile thresholding and intensity range setting\n"
+   "Fixed intersection bug with multi-slice rendering\n"
+ }, 
+ 
+ { 3, Jan, 2014, ZSS, "suma", MINOR, TYPE_MODIFY,
+   "Modernized some driver handling functions to use ADO instead of SO",
+   "Improvements will allow easier driving of SUMA for non-surface\n"
+   "objects. For now we're not quite there yet. Soon one hopes.\n"
+ }, 
+ 
+
+ { 31, Dec, 2013, ZSS, "suma", MAJOR, TYPE_MODIFY,
+   "Improvements to tract rendering",
+   "Added stenciling to allow for rendering of masked tracts without\n"
+   "interfering with unmasked tracts\n"
+ }, 
+ 
+ { 24, Dec , 2013 , ZSS , "suma" , MICRO , TYPE_BUG_FIX,
+   "Fixed SUMA's erroneous switch of colplanes for tracts",
+   "Problem was in thoughtless use of SUMA_ADO_Overlay0() insead\n"
+   "of available curColPlane pointer in SUMA_cb_createSurfaceCont_TDO().\n"
+   "Similar changes were made to other SUMA_cb_createSurfaceCont_*() functions\n"
+   "where curColPlane must be non null at the time of controller creation.\n"
+ },
+
+ { 24, Dec , 2013 , ZSS , "InstaTract" , MINOR , TYPE_NEW_PROG,
+   "Wrote the outlines of InstaTract to eventually perform miniprob tracking",
+   "The program now talks to SUMA and receives queries from it.\n"
+   "The queries return a dummy network for now. PT will make it interface\n"
+   "with FATCAT to compute the actual tracts."
+ },
+
+ { 23, Dec , 2013 , ZSS , "DriveSuma" , MINOR , TYPE_NEW_OPT,
+   "Added support for F12 key from DriveSuma",
+   NULL
+ },
+
+ { 23, Dec , 2013 , ZSS , "suma" , MINOR , TYPE_NEW_OPT,
+   "Added option to hide graph nodes when nothing is connected to them",
+   NULL
+ },
+
+ { 22, Dec , 2013 , ZSS , "suma" , MICRO , TYPE_BUG_FIX,
+   "Fixed problem with graph edge selection when viewing connections from node",
+   "Problem is mismatch between colid and what gets rendered when it is not\n"
+   "the whole object being displayed. For now, everything BUT thresholded \n"
+   "edges will get rendered during selection, regardless of what is being\n"
+   "displayed"
+ },
+
+ { 20, Dec , 2013 , ZSS , "3dProbTrackID" , MICRO , TYPE_MODIFY,
+   "Fixed confusion with -algopts parsing",
+   "Program will stop if it gets confused about parameters.\n"
+   "Made annotations in options file match those in the help\n"
+ },
+
+ { 17, Dec , 2013 , ZSS , "suma-general" , MINOR , TYPE_BUG_FIX,
+   "SUMA stopped building on systems lacking glCheckFramebufferStatus()",
+   "That was basically all linux_* systems since they are quite a few\n"
+   "versions behind. The patch is activated with a define at make time.\n"
+   "Set SUMA_MDEFS = -DSUMA_GL_NO_CHECK_FRAME_BUFFER in Makefile.* if\n"
+   "the OpenGL installed does not support  glCheckFramebufferStatus().\n"
+   "Note that -DSUMA_GL_NO_CHECK_FRAME_BUFFER is not really needed for\n"
+   "most build machines because the code uses other ways to check for\n"
+   "glCheckFramebufferStatus(). However these auto checks failed on \n"
+   "hurin so SUMA_GL_NO_CHECK_FRAME_BUFFER is still necessary for the moment"
+ },
+
+ { 17, Dec , 2013 , ZSS , "suma" , MINOR , TYPE_NEW_OPT,
+   "Allowed graph node coloring based on a graph point's group ID",
+   "To use such a coloring scheme, set Cl --> Grp in the surface controller\n"
+   "for a graph dataset. To set group IDs and color, see ConvertDset's\n"
+   "option -graph_named_nodelist_txt\n"
+ },
+ 
+ { 17, Dec , 2013 , ZSS , "ConvertDset" , MINOR , TYPE_NEW_OPT,
+   "ConvertDset's -graph_named_nodelist_txt now takes node grouping and color",
+   "See -graph_named_nodelist_txt's help section for details" 
+ },
+ 
+ { 17, Dec , 2013 , ZSS , "suma" , MICRO , TYPE_BUG_FIX,
+   "Fixed SUMA's opacity cycling with 'o'",
+   "NULL"
+ },
+ 
+
+ { 11, Dec , 2013 , ZSS , "apsearch" , MINOR , TYPE_NEW_OPT,
+   "Wildcard file expansion with extension and view trimming and sorting",
+   "See apsearch's -help output with all the -wild_* options for detail.\n"
+   "Functions at the heart of all this are unique_str() and MCW_wildcards().\n"
+ },
+
+ { 11, Dec , 2013 , ZSS , "apsearch" , MINOR , TYPE_NEW_OPT,
+   "Added -afni_web_downloader",
+   "Done via GetAfniWebDownloader()\n"
+ },
+
+ { 10, Dec , 2013 , ZSS , "suma" , MINOR , TYPE_MODIFY,
+   "Reduced memory load by about a factor of 5 when dealing with volumes",
+   "This was done by sharing color lists across viewers. This would be\n"
+   "appropriate when volumes are colored the same way across viewers, a \n"
+   "likely scenario. Further reductions can be made by going from \n"
+   "GLfloat * to GLbyte *, sometime in the future perhaps.\n"
+ },
+
+ { 10, Dec , 2013 , ZSS , "suma" , MINOR , TYPE_BUG_FIX,
+   "Fixed source of undefined buffer and problem with glXMakeCurrent on OS X",
+   "Problem seems caused by attempting to create an X graphics context when\n"
+   "creating a new suma viewer. XCreateGC is no longer needed - its context\n"
+   "has not been used for a long while anyway.\n"
+ },
+
+ { 9, Dec , 2013 , ZSS , "suma-general" , MINOR , TYPE_BUG_FIX,
+   "Fixed broken demo script run_stdmesh_demo from std_meshes.tgz",
+   "Failure was in glXMakeCurrent which crashed rather than return in error.\n"
+   "Not sure what was causing this, but it was the rapid succession of \n"
+   "controllers being open and repositioned that was causing this. Simply\n"
+   "splitting the two operations into separate loops was enough to remedy\n"
+   "this. Adding calls to glFinish() and XSync() did nothing to fix the\n"
+   "problem reliably"
+ },
+
+ { 6, Dec , 2013 , ZSS , "suma" , MINOR , TYPE_MODIFY,
+   "Automated decision for calling glXMakeCurrent with SUMA_glXMakeCurrent()",
+   "This fixes instances where surfaces were being rendered in the colorbar!"
+   "Eventually any use of SUMA_Si_Si_I_Insist() should be obsolete."
+ },
+
  { 27, Nov , 2013 , ZSS , "3dCM" , MINOR , TYPE_NEW_OPT,
    "Added -roi_vals to get COM for multiple ROIs",
    "Workhorse is THD_roi_cmass() in thd_center.c"

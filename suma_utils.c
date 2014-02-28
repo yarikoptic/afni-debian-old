@@ -2161,7 +2161,8 @@ char *SUMA_EscapeChars(char *s1, char *ca, char *es)
    ses[l] = '\0';
    
    SUMA_RETURN(ses);
-} 
+}
+
 char *SUMA_ReplaceChars(char *s1, char *ca, char *es)
 {
    static char FuncName[]={"SUMA_ReplaceChars"};
@@ -2250,6 +2251,8 @@ int SUMA_NumStringUnits (char *s, int marktip)
                               SUMA_RETURN(SUMA_P_VALUE_UNITS);
    else if (!strncmp((s+nd), "q",1)) 
                               SUMA_RETURN(SUMA_Q_VALUE_UNITS);
+   else if (!strncmp((s+nd), "%",1)) 
+                              SUMA_RETURN(SUMA_PERC_VALUE_UNITS);
    SUMA_RETURN(unt);
 }
 
@@ -2301,6 +2304,7 @@ int SUMA_strtod(char *n, double *valp)
    \sa SUMA_AdvancePastNumbers
    \sa SUMA_NumStringUnits
 */
+
 int SUMA_StringToNum (char *s, void *vv, int N, int prec)
 {
    static char FuncName[]={"SUMA_StringToNum"};
@@ -2320,8 +2324,7 @@ int SUMA_StringToNum (char *s, void *vv, int N, int prec)
    /* clean s by removing trailing junk then replacing non characters by space*/
    FoundTip = 0;
    for (nd=strlen(s)-1; nd >=0; --nd) {
-      if (!isdigit(s[nd]) && s[nd] != '.' && s[nd] != '-' && s[nd] != '+' && 
-                             s[nd] != 'e' && s[nd] != 'E') {
+      if (!SUMA_IS_NUM_CHAR(s,nd)) {
          if (!FoundTip) {
             s[nd]= '\0'; /* remove */
          } else {
@@ -2432,7 +2435,7 @@ char *SUMA_set_string_length(char *buf, char cp, int n)
    }
          
    if (strlen(lbl) != n) {
-      lbl30 = SUMA_pad_string(lbl, ' ', n, 1); 
+      lbl30 = SUMA_pad_string(lbl, cp, n, 1); 
       SUMA_free(lbl); lbl = NULL;
    } else {
       lbl30 = lbl; lbl = NULL;
@@ -3123,7 +3126,15 @@ NI_str_array * SUMA_NI_decode_string_list( char *ss , char *sep )
                     !isspace(ss[id])) id++; ] */
 
       while( id < lss && strchr(sep,ss[id]) == NULL ) id++;
-      if( id == jd ){ id++; continue; }    /* is only a separator? */
+      if( id == jd ){ /* a blank string */
+         /* Prior to Dec. 17 2013, I would:    
+            id++; continue; 
+            But that is a bad idea in cases when parsing
+            strings that have something like "...;;..." where
+            ';;' indicates an empty string. That can come up for
+            column range of data elements when a range cannot be
+            computed. */
+      }
 
       /* new sub-string runs from ss[jd] to ss[id-1] */
 
@@ -3133,7 +3144,7 @@ NI_str_array * SUMA_NI_decode_string_list( char *ss , char *sep )
 #if 0
       while( nn > 0 && isspace(ss[jd+nn-1]) ) nn-- ; /* clip trailing blanks */
 #endif
-      sar->str[num] = NI_malloc(char, (nn+1)*sizeof(char)) ;              /* make output string  */
+      sar->str[num] = NI_malloc(char, (nn+1)*sizeof(char)); /* output string  */
       if( nn > 0 ) memcpy(sar->str[num],ss+jd,nn) ;  /* copy sub-string    */
       sar->str[num++][nn] = '\0' ;                   /* terminate output  */
 
@@ -3352,7 +3363,8 @@ void SUMA_Show_NI_str_ar(NI_str_array *nisa, FILE *out)
    else {
       SS = SUMA_StringAppend_va(SS, "%d strings:\n", nisa->num);
       for (i=0; i<nisa->num; ++i) {
-         SS = SUMA_StringAppend_va(SS, "\t%d->>>%s<<<\n", i, nisa->str[i]);
+         SS = SUMA_StringAppend_va(SS, "\t%d->>>%s<<<\n", 
+                  i, nisa->str[i]?nisa->str[i]:"NULL nisa str");
       }
    }
    
@@ -3602,7 +3614,7 @@ SUMA_Boolean SUMA_Set_Sub_String(char **cs, char *sep, int ii, char *str)
    }  
    sprintf(act,"c%d",ii);
    nisa = SUMA_NI_decode_string_list( *cs , sep );
-   /*SUMA_LHv("act: >>%s<< >>%s<< >>%s<< >>%s<<\n", act, *cs, sep, str);*/ 
+   /* SUMA_LHv("act: >>%s<< >>%s<< >>%s<< >>%s<<\n", act, *cs, sep, str); */
    nisa = SUMA_NI_str_array(nisa,str,act);
    SUMA_free(*cs); 
    *cs = SUMA_NI_str_ar_2_comp_str(nisa, sep);
@@ -3866,7 +3878,7 @@ static ENV_SPEC envlist[] = {
    {  "Incremental arrow rotation angle in degrees",
       "SUMA_ArrowRotAngle",
       "5" } ,
-   {  "Color pattern (AFNI, EURO, DEFAULT)",
+   {  "Color pattern (AFNI, EURO, PRINT, DEFAULT)",
       "SUMA_ColorPattern",
       "EURO" },
    {  "Swap mouse buttons 1 and 3",
@@ -4017,7 +4029,7 @@ static ENV_SPEC envlist[] = {
       "SUMA_KeyNodeJump",
       "1" },
    {  "Numer of seconds to wait for SUMA to respond to DriveSuma. \n"
-      " Valid range from 0 to 60000",
+      " Valid range from 0 to 60000, see also env SUMA_DriveSumaMaxCloseWait",
       "SUMA_DriveSumaMaxWait",
       "300.0" },
    {  "String to use in creating left hemisphere dataset wildcards.",
@@ -4131,7 +4143,19 @@ static ENV_SPEC envlist[] = {
       "YES" },
    {  "Set colormap for volumes, choose any of the standard list",
       "SUMA_VO_ColorMap",
-      "ngray20" },
+      "bw20" },
+   {  "Force reorienting of read volume.\nTo force reorientation,\n"
+      "Choose from RAI, LPI, RAS. etc...\n"
+      "Use NO to avoid reorientation. This env. is for debugging purposes.\n",
+      "SUMA_VO_Reorient",
+      "NO" },
+   {  "Set maximum waiting time for proper detection of closed stream\n"
+      "This is to avoid DriveSuma's: Failed to detect closed stream ...\n"
+      "complaint which results in a forced stream closing. Time unit is\n"
+      "in seconds. See also env SUMA_DriveSumaMaxWait\n",
+      "SUMA_DriveSumaMaxCloseWait",
+      "5" },
+   
    {  NULL, NULL, NULL  }
 };
       
@@ -4572,6 +4596,25 @@ char **SUMA_sreorder(char **y, int *isort, int N_isort)
    SUMA_RETURN(yr);
 }
 
+byte *SUMA_breorder(byte *y, int *isort, int N_isort)
+{
+   static char FuncName[]={"SUMA_breorder"};
+   int i = 0;
+   byte *yr = NULL;
+   
+   SUMA_ENTRY;
+   
+   if (!y || !isort || N_isort <= 0) SUMA_RETURN(yr);
+   
+   yr = (byte *)SUMA_calloc( N_isort, sizeof(byte));
+   if (!yr) SUMA_RETURN(yr);
+   
+   for (i=0; i<N_isort; ++i) yr[i] = y[isort[i]];
+   
+   SUMA_RETURN(yr);
+}
+
+
 float *SUMA_freorder(float *y, int *isort, int N_isort)
 {
    static char FuncName[]={"SUMA_freorder"};
@@ -4631,3 +4674,219 @@ double *SUMA_dreorder(double *y, int *isort, int N_isort)
 }
 
 
+float *SUMA_string_to_RGBA(char *s, float *here, float scl, int *Err) 
+{
+   static char FuncName[]={"SUMA_string_to_RGBA"};
+   
+   static int icall=0;
+   static float fv[10][4];
+   char *sc=NULL, i, err, one, twofif, N;
+   float all[12];
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   
+   if (!here) {
+      ++icall; if (icall > 9) icall = 0;
+      here = (float *)(&fv[icall]);
+   }
+   here[0] = here[1] = here[2] =  here[3] = 1.0;
+   if (Err) *Err=1; /* initialize with problem */
+   
+   if (!s) SUMA_RETURN(here);
+   
+   sc = SUMA_copy_string(s);
+   
+   /* deblank borders */
+   sc = deblank_name(sc);
+   if (!strcasecmp(sc,"red") || !strcasecmp(sc,"r")) {
+      here[0] = 1.0; here[1] = 0.0; here[2] = 0.0; here[3] = 1.0;
+      if (Err) *Err=0;
+   } else if (!strcasecmp(sc,"green") || !strcasecmp(sc,"g")) {
+      here[0] = 0.0; here[1] = 1.0; here[2] = 0.0; here[3] = 1.0;
+      if (Err) *Err=0;
+   } else if (!strcasecmp(sc,"blue") || !strcasecmp(sc,"b")) {
+      here[0] = 0.0; here[1] = 0.0; here[2] = 1.0; here[3] = 1.0;  
+      if (Err) *Err=0;
+   } else if (!strcasecmp(sc,"yellow") || !strcasecmp(sc,"y")) {
+      here[0] = 1.0; here[1] = 1.0; here[2] = 0.0; here[3] = 1.0;  
+      if (Err) *Err=0;
+   } else if (!strcasecmp(sc,"cyan") || !strcasecmp(sc,"c")) {
+      here[0] = 0.0; here[1] = 1.0; here[2] = 1.0; here[3] = 1.0;  
+      if (Err) *Err=0;
+   } else if (!strcasecmp(sc,"purple") || !strcasecmp(sc,"p")) {
+      here[0] = 1.0; here[1] = 0.0; here[2] = 1.0; here[3] = 1.0;  
+      if (Err) *Err=0;
+   } else if (!strcasecmp(sc,"white") || !strcasecmp(sc,"w")) {
+      here[0] = 1.0; here[1] = 1.0; here[2] = 1.0; here[3] = 1.0;  
+      if (Err) *Err=0;
+   } else if (SUMA_CleanNumString(sc,(void *)4)) {
+      SUMA_LH("Have RGBA");
+      N=4;
+      SUMA_StringToNum(sc, (void*)all, N, 1);
+      one = 0; twofif = 0; err = 0;
+      if (scl == 0.0f) {
+         for (i=0; i<N; ++i) {
+            if (all[i] >= 0.0 && all[i] <= 1.0) {
+               ++one;
+            } else if (all[i] >= 0.0 && all[i] <= 255.0) {
+               ++twofif;
+            } else {
+               SUMA_S_Err("Bad col param %d in %s", i, sc);
+               ++err;
+            }
+         }
+         if (err) {
+            SUMA_ifree(sc); SUMA_RETURN(here);
+         }
+         if (twofif == 0) scl = 1.0;
+         else scl = 1.0/255.0;
+      } 
+      for (i=0; i<N; ++i) { here[i] = all[i]*scl; }
+      if (Err) *Err=0;
+   } else if (SUMA_CleanNumString(sc,(void *)3)) {
+      SUMA_LH("Have RGB");
+      N=3;
+      SUMA_StringToNum(sc, (void*)all, N, 1);
+      one = 0; twofif = 0; err = 0;
+      if (scl == 0.0f) {
+         for (i=0; i<N; ++i) {
+            if (all[i] >= 0.0 && all[i] <= 1.0) {
+               ++one;
+            } else if (all[i] >= 0.0 && all[i] <= 255.0) {
+               ++twofif;
+            } else {
+               SUMA_S_Err("Bad col param %d in %s", i, sc);
+               ++err;
+            }
+         }
+         if (err) {
+            SUMA_ifree(sc); SUMA_RETURN(here);
+         }
+         if (twofif == 0) scl = 1.0;
+         else scl = 1.0/255.0;
+      } 
+      for (i=0; i<N; ++i) { here[i] = all[i]*scl; }
+      here[3] = 1.0*scl; 
+      if (Err) *Err=0;
+   } else if (SUMA_CleanNumString(sc,(void *)1)) {
+      SUMA_LH("Have  1 color, going gray scale");
+      N=1;
+      SUMA_StringToNum(sc, (void*)all, N, 1);
+      one = 0; twofif = 0; err = 0;
+      if (scl == 0.0f) {
+         for (i=0; i<N; ++i) {
+            if (all[i] >= 0.0 && all[i] <= 1.0) {
+               ++one;
+            } else if (all[i] >= 0.0 && all[i] <= 255.0) {
+               ++twofif;
+            } else {
+               SUMA_S_Err("Bad col param %d in %s", i, sc);
+               ++err;
+            }
+         }
+         if (err) {
+            SUMA_ifree(sc); SUMA_RETURN(here);
+         }
+         if (twofif == 0) scl = 1.0;
+         else scl = 1.0/255.0;
+      }
+      for (i=0; i<4; ++i) { here[i] = all[0]*scl; }
+      if (Err) *Err=0;
+   } else if (SUMA_CleanNumString(sc,(void *)0)) {
+      SUMA_LH("Have no numbers");
+   }
+   SUMA_ifree(sc);
+   SUMA_RETURN(here);
+}
+
+char *SUMA_floats_to_string(float *rgba, int N, float scl, char *here, int *Err,
+                            char *sep, int MVf) 
+{
+   static char FuncName[]={"SUMA_floats_to_string"};
+   static int icall=0;
+   static char fv[10][64];
+   char *sc=NULL, i, err, one, twofif;
+   float all[12];
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   
+   if (!here) {
+      ++icall; if (icall > 9) icall = 0;
+      here = (char *)(&fv[icall]);
+   }
+   here[0] = '\0';
+   if (Err) *Err=1; /* initialize with problem */
+   
+   if (!rgba) SUMA_RETURN(here);
+   if (!sep) sep = ",";
+   if (scl == 0.0) scl = 1.0;
+
+   if (N == 4) {
+      if (MVf > 0) {
+         snprintf(here, 63, "%s%s%s%s%s%s%s", 
+                  MV_format_fval2(rgba[0]*scl, MVf), sep, 
+                  MV_format_fval2(rgba[1]*scl, MVf), sep, 
+                  MV_format_fval2(rgba[2]*scl, MVf), sep, 
+                  MV_format_fval2(rgba[3]*scl, MVf));
+      } else if (MVf == 0) {
+         snprintf(here, 63, "%f%s%f%s%f%s%f", 
+                  rgba[0]*scl, sep, rgba[1]*scl, sep, 
+                  rgba[2]*scl, sep, rgba[3]*scl);
+      } else if (MVf == -1) {
+         snprintf(here, 63, "%.1f%s%.1f%s%.1f%s%.1f", 
+                  rgba[0]*scl, sep, rgba[1]*scl, sep, 
+                  rgba[2]*scl, sep, rgba[3]*scl);
+      } else if (MVf == -2) {
+         snprintf(here, 63, "%.2f%s%.2f%s%.2f%s%.2f", 
+                  rgba[0]*scl, sep, rgba[1]*scl, sep, 
+                  rgba[2]*scl, sep, rgba[3]*scl);
+      } else if (MVf == -3) {
+         snprintf(here, 63, "%.3f%s%.3f%s%.3f%s%.3f", 
+                  rgba[0]*scl, sep, rgba[1]*scl, sep, 
+                  rgba[2]*scl, sep, rgba[3]*scl);
+      } 
+   } else if (N == 3) {
+      if (MVf > 0) {
+         snprintf(here, 63, "%s%s%s%s%s", 
+                  MV_format_fval2(rgba[0]*scl, MVf), sep, 
+                  MV_format_fval2(rgba[1]*scl, MVf), sep, 
+                  MV_format_fval2(rgba[2]*scl, MVf));
+      } else if (MVf == 0) {
+         snprintf(here, 63, "%f%s%f%s%f", 
+                  rgba[0]*scl, sep, rgba[1]*scl, sep, 
+                  rgba[2]*scl);
+      } else if (MVf == -1) {
+         snprintf(here, 63, "%.1f%s%.1f%s%.1f", 
+                  rgba[0]*scl, sep, rgba[1]*scl, sep, 
+                  rgba[2]*scl);
+      } else if (MVf == -2) {
+         snprintf(here, 63, "%.2f%s%.2f%s%.2f", 
+                  rgba[0]*scl, sep, rgba[1]*scl, sep, 
+                  rgba[2]*scl);
+      } else if (MVf == -3) {
+         snprintf(here, 63, "%.3f%s%.3f%s%.3f", 
+                  rgba[0]*scl, sep, rgba[1]*scl, sep, 
+                  rgba[2]*scl);
+      }
+   } else if (N == 1) {
+      if (MVf > 0) {
+         snprintf(here, 63, "%s", 
+                  MV_format_fval2(rgba[0]*scl, MVf));
+      } else if (MVf == 0) {
+         snprintf(here, 63, "%f", 
+                  rgba[0]*scl);
+      } else if (MVf == -1) {
+         snprintf(here, 63, "%.1f", 
+                  rgba[0]*scl);
+      } else if (MVf == -2) {
+         snprintf(here, 63, "%.2f", 
+                  rgba[0]*scl);
+      } else if (MVf == -3) {
+         snprintf(here, 63, "%.3f", 
+                  rgba[0]*scl);
+      }
+   } 
+   SUMA_RETURN(here);
+}

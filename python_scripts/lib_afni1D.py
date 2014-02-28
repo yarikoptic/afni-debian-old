@@ -51,9 +51,10 @@ class Afni1D:
       self.nvec      = 0        # one vector per column in file
       self.nt        = 0        # length of each column (# rows)
       self.tr        = 1.0
-      self.nrowfull  = 0
+      self.nrowfull  = 0        # length without censoring
       self.nruns     = 1
       self.run_len   = [0]      # len(run_len) is number of runs
+      self.run_len_nc= [0]      # run lengths without censoring
       self.nroi      = 1
       self.GLapplied = 0        # was goodlist applied (1=yes, 2=zero-padded)
 
@@ -81,6 +82,8 @@ class Afni1D:
          if self.init_from_matrix(matrix): return None
 
       self.update_group_info()
+
+      if self.verb > 2: self.show()
 
    def reduce_by_tlist(self, tlist):
       """reduce by time list, similiar to afni's {} selector
@@ -936,25 +939,15 @@ class Afni1D:
          return status (0=success) and the TR index list
       """
 
-      rv, ilist = self.get_uncensored_trs()  # no run_index
+      rv, ulist = self.get_uncensored_trs()  # no run_index
       if rv: return 1, []
 
-      rlist = UTIL.invert_int_list(ilist, top=self.nt-1)
+      if self.nrowfull > 0: nt = self.nrowfull
+      else: nt = self.nt
 
-      # maybe we are done
-      if run_index < 0: return 0, rlist
+      tr_list = UTIL.invert_int_list(ulist, top=nt-1)
 
-      if run_index >= self.nruns:
-         print '** cannot return (cen) TR list for (0-based) run %d, have %d' \
-               (run_index, self.nruns)
-         return 1, []
-
-      # restrict return values to [bot, top)
-      bot = self.runstart[run_index]
-      if run_index == self.nruns - 1: top = self.nrowfull
-      else:                           top = self.runstart[run_index+1]
-
-      return 0, [v for v in rlist if v >= bot and v < top]
+      return self.restrict_tr_list_to_run(tr_list, run_index)
 
    def get_uncensored_trs(self, run_index=-1):
       """return a list of TRs that were used, i.e. we not censored
@@ -978,27 +971,41 @@ class Afni1D:
          print "** Afni1D not ready for get_uncensored_trs"
          return 1, []
 
-      # handle xmat case separately
+      # either have goodlist from xmat or take indices of non-zero values
       if len(self.goodlist) > 0:
-         # simple case, return all runs
-         if run_index < 0: return 0, self.goodlist
+         tr_list = self.goodlist
+      else:
+         tr_list = [i for i,v in enumerate(self.mat[0]) if v]
 
-         # otherwise, restrict
-         if run_index >= self.nruns:
-            print '** cannot return TR list for (0-based) run %d, have %d' \
-                  (run_index, self.nruns)
-            return 1, []
+      # and restrict to run_index
+      return self.restrict_tr_list_to_run(tr_list, run_index)
 
-         # return a partial goodlist
-         bot = UTIL.loc_sum(self.run_len[0:run_index])
-         if run_index < self.nruns-1:
-            top = bot + self.run_len[run_index]
-            return 0, self.goodlist[bot:top]
-         else:
-            return 0, self.goodlist[bot:]
+   def restrict_tr_list_to_run(self, tr_list, run_index=-1):
+      """rely on runstart to restrict tr_list
+         return status and restricted list
+      """
+     
+      # maybe there is nothing to do
+      if run_index < 0: return 0, tr_list
 
-      # otherwise, return indices from mat[0] as mask
-      return 0, [i for i,v in enumerate(self.mat[0]) if v]
+      if run_index >= self.nruns:
+         print '** cannot restrict TR list for (0-based) run %d, have %d' \
+               (run_index, self.nruns)
+         return 1, []
+
+      if self.nrowfull > 0: nt = self.nrowfull
+      else: nt = self.nt
+
+      # restrict return values to [bot, top)
+      bot = self.runstart[run_index]
+      if run_index == self.nruns - 1: top = nt
+      else:                           top = self.runstart[run_index+1]
+
+      if self.verb > 2:
+         print '-- restricting %d TRs between %d and %d' \
+               % (len(tr_list),bot,top-1)
+
+      return 0, [v for v in tr_list if v >= bot and v < top]
 
    def show_censor_count(self, invert=0, column=0):
       """display the total number of TRs censored (clear) in the given column
@@ -1464,9 +1471,12 @@ class Afni1D:
 
       return 0, mstr
 
-   def list_cormat_warnings(self, cutoff=0.4):
+   def list_cormat_warnings(self, cutoff=0.4, skip_expected=1):
       """return an error code, error string and a list of corval, cosval,
-         vec, index for each cormat value with abs() > cutoff"""
+         vec, index for each cormat value with abs() > cutoff
+
+         if skip_expected, skip: mot or base against mot or base
+      """
 
       if self.verb > 3: print '-- Afni1D list_cormat_warnings, cut=%g'%cutoff
 
@@ -1515,8 +1525,9 @@ class Afni1D:
          rmot  = r in motcols
          cmot  = c in motcols
 
-         if cmot and (rbase or rmot): continue
-         if cbase and rmot: continue
+         # also, skip baseline against baseline (from 2-3 run polort 0)
+         # 30 Dec 2013
+         if skip_expected and (cmot or cbase) and (rbase or rmot): continue
 
          if aval < cutoff: break
 
@@ -1552,6 +1563,8 @@ class Afni1D:
             find the first column in group 0, verify that it looks like
             one run of 1s (with remaining 0s), and use it to set the length
 
+         --> set nruns, run_len and runstart
+
          return 0 on success, 1 on error
       """
 
@@ -1571,6 +1584,11 @@ class Afni1D:
              print '** nvalid nruns = %d (does not divide nt = %d)'  \
                    % (nruns, self.nt)
              return 1
+         # and set runstart
+         self.runstart = [r*rlen for r in range(nruns)]
+         if self.verb > 1:
+            print '++ set_nruns 0: nruns = %d, run_len = %s, runstart = %s' \
+                  % (nruns, self.run_len, self.runstart)
          return 0
 
       # next, try run_lens (if not set, try runstart data from RunStart label)
@@ -1602,8 +1620,14 @@ class Afni1D:
             return 1
          self.run_len = rlens[:]     # make a copy, to be safe
          self.nruns = len(rlens)
+         rsum = 0
+         self.runstart = []
+         for ll in rlens:
+            self.runstart.append(rsum)
+            rsum += ll
          if self.verb > 1:
-            print '++ set_nruns: nruns = %d, run_len = %s' % (nruns, rlens)
+            print '++ set_nruns 1: nruns = %d, run_len = %s, runstart = %s' \
+                  % (nruns, rlens, self.runstart)
          return 0
 
       # otherwise, init to 1 run and look for other labels
@@ -1664,6 +1688,7 @@ class Afni1D:
    def apply_goodlist(self, parent=None, padbad=0):
       """try to apply goodlist, runstart, nt and nrowfull
             -> set nruns and run_lens[]
+            -> also, set run_lens_nc[] (not censored)
 
          if padbad is set, pad the data with zero over all TRs NOT
             in goodlist (so run_lens should come from RunStart)
@@ -1774,8 +1799,14 @@ class Afni1D:
          print '** apply_goodlist: nt (%d) != goodtot (%d)' % (self.nt, gtot)
          return 1
 
+      # also, generate an uncensored run length list from runstart
+      self.run_len_nc = [runstart[i+1]-runstart[i] for i in range(nruns-1)]
+      self.run_len_nc.append(self.nrowfull-self.runstart[-1])
+
       if self.verb > 1:
          print '++ from apply_goodlist: run_len[%d] = %s' % (nruns, rcount)
+         print '   run_len_nc = %s' % self.run_len_nc
+         print '   run_start = %s' % self.runstart
 
       self.nruns = nruns
       self.run_len = rcount     # steal reference
@@ -1795,6 +1826,61 @@ class Afni1D:
       if mesg:     print '%s' % mesg,
       if verb > 0: print 'rows = %d, cols = %d' % (self.nt, self.nvec)
       else:        print '%d %d' % (self.nt, self.nvec)
+
+   def get_tr_counts(self):
+      """return status, self.run_len, self.run_len_nc
+
+         check for consistency
+         if vector lengths are not nruns and 
+      """
+
+      rv = self.check_tr_count_consistency(self.verb)
+      return rv, self.run_len, self.run_len_nc
+
+   def check_tr_count_consistency(self, verb=1):
+      """check the consistency of TR counts
+
+            - matrix is ready
+            - nruns >= 1
+            - len(run_len) == len(run_len_nc) == nruns
+            - sum(run_len) == nt
+            - sun(run_len_nc) == nrowfull
+
+         return 0 if consistent, 1 otherwise
+      """
+
+      if not self.ready:
+         if verb: print '** bad run lists: not ready'
+         return 1
+
+      nr = self.nruns
+      if nr < 1:
+         if verb: print '** bad run lists: nruns = %d' % nr
+         return 1
+
+      if len(self.run_len) != nr:
+         if verb: print '** bad run lists: len(run_len) = %d, nruns = %d' \
+                        % (len(self.run_len), nruns)
+         return 1
+
+      if len(self.run_len_nc) != nr:
+         if verb: print '** bad run lists: len(run_len_nc) = %d, nruns = %d' \
+                        % (len(self.run_len_nc), nruns)
+         return 1
+
+      ntr = UTIL.loc_sum(self.run_len)
+      if ntr != self.nt:
+         if verb: print '** bad run lists: sum(run_len) = %d, nt = %d' \
+                        % (ntr, self.nt)
+         return 1
+
+      ntr = UTIL.loc_sum(self.run_len_nc)
+      if ntr != self.nrowfull:
+         if verb: print '** bad run lists: sum(run_len_nc) = %d, nt = %d' \
+                        % (ntr, self.nt)
+         return 1
+
+      return 0
 
    def apply_censor_dset(self, cset=None):
       """remove censored TRs from self.mat
@@ -2065,10 +2151,11 @@ class Afni1D:
              "++ tr       : %s\n" \
              "++ nrowfull : %d\n" \
              "++ nruns    : %d\n" \
-             "++ run_len  : %s\n" % \
+             "++ run_len  : %s\n" \
+             "++ run_len_nc: %s\n" % \
              (self.name, rstr, self.fname, self.nvec, self.nt,
              self.labels, self.groups, self.goodlist, self.tr, self.nrowfull,
-             self.nruns, self.run_len)
+             self.nruns, self.run_len, self.run_len_nc)
 
       return mstr
 
@@ -2334,6 +2421,7 @@ class AfniData(object):
       self.data    = None       # actual data (array of arrays [[]])
       self.mdata   = None       # married data (elements are [time [mods] dur])
       self.clines  = None       # comment lines from file
+      self.alist   = None       # list of '*' counts per row
 
       # descriptive variables, set from data
       self.nrows     = 0
@@ -2344,6 +2432,8 @@ class AfniData(object):
       self.empty     = 0        # no data at all
       self.married   = 0        # data has modulators or durations
       self.mtype     = 0        # married type (bits, amp, dur)
+      self.minlen    = 0        # min and max row lengths
+      self.maxlen    = 0
 
       self.ready     = 0        # data is ready
 
@@ -2403,8 +2493,31 @@ class AfniData(object):
       if dur == -2: return 0    # uninitialized means 0
       return dur                # -1 or good value
 
-   def extend_data_rows(self, newdata):
-      """extend each row by the corresponding row of newdata"""
+   def get_min_max_duration(self):
+      """return -1, -1  : if empty
+                min, max: otherwise
+      """
+
+      if self.mtype == 0 or len(self.mdata) == 0: return 0
+
+      # have actual married data
+
+      dmin = -1
+      dmax = -1
+      for row in self.mdata:
+         for entry in row:
+            dur = entry[2]
+            if dmax == -1: dmin = dur # init, but not to a small thing
+            if dur < dmin: dmin = dur
+            if dur > dmax: dmax = dur
+      return dmin, dmax
+
+   def extend_data_rows(self, newdata, promote_mtype=1, promote_rows=0):
+      """extend each row by the corresponding row of newdata
+         if promote_mtypes and they differ, promote so they are the same
+         if promote_rows and they differ, promote so they are the same
+      """
+      
       if not self.ready or not newdata.ready:
          print '** timing elements not ready for extending rows (%d,%d)' % \
                (self.ready, newdata.ready)
@@ -2413,23 +2526,122 @@ class AfniData(object):
       if self.nrows != newdata.nrows:
          print '** timing nrows differ for extending (%d, %d)' % \
                (self.nrows,newdata.nrows)
-         return 1
+         if not promote_rows: return 1
+         print '   promoting nrows between %s and %s'%(self.name, newdata.name)
+         self.promote_nrows(newdata)
 
       if self.mtype != newdata.mtype:
-         print '** timing elements differ in married type (%s, %s)' % \
-               (self.married_type_string(self.mtype),
-                self.married_type_string(newdata.mtype))
-         return 1
+         print '** timing elements differ in married type (%s, %s)' \
+	       % (self.married_type_string(self.mtype),
+                  self.married_type_string(newdata.mtype))
+         if not promote_mtype: return 1
+         print '   promoting mtypes between %s and %s'%(self.name, newdata.name)
+         self.promote_mtypes(newdata)
 
       if self.verb > 1: print '++ MTiming: extending %d rows' % self.nrows
 
       for ind in range(self.nrows):
+	 if self.verb > 3:
+            print '++ edr m #%d: extending %d rows from %d cols by %d' \
+	       % (ind, self.nrows, len(self.data[ind]), len(newdata.data[ind]))
          self.data[ind].extend(newdata.data[ind])
 
       for ind in range(self.nrows):
+	 if self.verb > 3:
+            print '++ EDR M #%d: extending %d rows from %d cols by %d' \
+	       % (ind, self.nrows, len(self.mdata[ind]),len(newdata.mdata[ind]))
          self.mdata[ind].extend(newdata.mdata[ind])
 
+      # and update ncols
+      self.ncols = min([len(r) for r in self.data])
+
+      if self.verb > 3:
+         print self.make_data_string(nplaces=1, flag_empty=0, check_simple=0,
+                        mesg='\nnew mdata for %s'%self.name)
+         print '-- min, max dur = %s %s' % self.get_min_max_duration()
+
       return 0
+
+   def promote_nrows(self, newdata, dataval=None, maryval=None):
+      """if differing nrows, extend to match
+
+         if dataval == None: new rows are empty
+         else:               pad by ncols vector of dataval elements
+      """
+
+      diff = self.nrows - newdata.nrows
+
+      if diff == 0: return 0
+
+      if dataval == None: df = []
+      else:               df = [dataval for i in range(self.ncols)]
+      if maryval == None: mf = []
+      else:               mf = [maryval for i in range(self.ncols)]
+
+      if diff < 0: updater = self
+      else       : updater = newdata
+
+      for r in range(abs(diff)):
+         updater.data.append(df)
+         updater.mdata.append(mf)
+
+      return 0
+
+   def promote_mtypes(self, newdata):
+      """if married types differ, promote data to match"""
+
+      # if they are the same, there is nothing to do
+      if self.mtype == newdata.mtype: return 0
+
+      # else they will certainly be married after this,
+      # so set both to married, and mtype to the combined one
+      self.married = 1
+      newdata.married = 1
+      new_mtype = self.mtype | newdata.mtype
+      self.mtype = new_mtype
+      newdata.mtype = new_mtype
+
+      if self.verb > 2:
+         print '++ promoting married type to %d (%s from %s)' \
+               % (new_mtype, self.name, newdata.name)
+
+      # try to find some data
+      sval = []
+      for v in self.mdata:
+         if len(v) > 0:
+            sval = v[0]
+            break
+      nval = []
+      for v in newdata.mdata:
+         if len(v) > 0:
+            nval = v[0]
+            break
+
+      # if either has no data, we are done
+      if len(sval) == 0 or len(nval) == 0: return 0
+
+      # so we have data, see who has more amplitude modulators
+
+      adiff = len(sval[1]) - len(nval[1])
+      if adiff < 0:   self.pad_amp_mods(-adiff)
+      elif adiff > 0: newdata.pad_amp_mods(adiff)
+      if adiff != 0: # promote mtypes
+         self.mtype = (self.mtype | MTYPE_AMP)
+         newdata.mtype = (newdata.mtype | MTYPE_AMP)
+
+      # nothing to do for MTYPE_DUR, except promote mtype, done above
+
+      return 0
+
+   def pad_amp_mods(self, ext_len):
+      """extend the amplitudes by length ext_len list of 1"""
+      if ext_len <= 0: return
+      if self.verb > 2:
+         print '++ pad_amp_mods(%d) for %s' % (ext_len, self.name)
+      elist = [1] * ext_len
+      for row in self.mdata:
+         for val in row:
+            val[1].extend(elist)
 
    def show_married_info(self):
       print '-- modulation type: %s' % self.married_info_string()
@@ -2462,13 +2674,13 @@ class AfniData(object):
    def ave_dur_modulation(self):
       if not self.mtype & MTYPE_DUR: return 0
       if not self.mdata: return 0
-      sum, count = 0.0, 0
+      lsum, count = 0.0, 0
       for row in self.mdata:
          if len(row) == 0: continue
          count += len(row)
-         sum += UTIL.loc_sum([entry[2] for entry in row])
+         lsum += UTIL.loc_sum([entry[2] for entry in row])
       if count == 0: return 0
-      return sum*1.0/count # be wary of integers
+      return lsum*1.0/count # be wary of integers
 
    def married_type_string(self, mtype=None):
       if mtype == None: mtype = self.mtype
@@ -2507,28 +2719,42 @@ class AfniData(object):
    def transpose(self):
       """the tranpose operation requires rectangular data"""
       if not self.ready: return 1
-      if not self.is_rect():
+
+      # allow transpose if max row length is 1
+      if self.maxlen > 1 and not self.is_rect():
          print '** cannot take transpose, data is not rectangular'
          return 1
 
       if self.verb > 1: print '-- AData: taking transpose...'
 
-      # det mdata and data
-      newdata = []
-      if not self.empty:
+      if self.empty: return 0
+
+      # get mdata and data
+
+      # if column (maybe non-rectagular), allow transpose
+      # (akin to when 3dDeconvolve might mis-interpret local times as global)
+      if self.maxlen == 1 and not self.is_rect():
+         newdata = []
+         for row in self.data: newdata.extend(row)
+         self.data = [newdata]
+         newdata = []
+         for row in self.mdata: newdata.extend(row)
+         self.mdata = [newdata]
+      else: # typical rectagular case
+         newdata = []
          for col in range(len(self.data[0])):
             newdata.append([self.data[row][col] for row in range(self.nrows)])
-      del(self.data)
-      self.data = newdata
+         del(self.data)
+         self.data = newdata
 
-      newdata = []
-      if not self.empty:
+         newdata = []
          for col in range(len(self.mdata[0])):
             newdata.append([self.mdata[row][col] for row in range(self.nrows)])
-      del(self.mdata)
-      self.mdata = newdata
+         del(self.mdata)
+         self.mdata = newdata
 
       self.nrows = len(self.mdata)
+      self.ncols = len(self.mdata[0])
 
       return 0
 
@@ -2806,9 +3032,88 @@ class AfniData(object):
 
          del(row)
 
+      # no fatal errors yet
       if errors: return 1
       else:      return 0
 
+   def looks_local_but_3dD_global(self, warn=0, maxruns=20):
+      """return 1 if the timing looks local (has '*' anywhere),
+         but would be read as global by 3dDeconvolve (max cols == 1)
+
+         true if '*' entries exist, and:
+            - max entries (per row) is 1 (including '*')
+            - there is some time after row 1
+
+         true if '*' entries do not exist, and:
+            - there is exactly one time per row
+            - either of:
+               - len(run_lens) == nrows
+               - there are <= maxruns rows
+
+         if verb: warn user
+      """
+
+      if not self.ready:
+         print '** LLB3G: data not ready'
+         return 0
+
+      if self.empty: return 0
+
+      # has_alist will imply it exists, is valid and there are '*' entries
+      has_alist = (self.alist != None)
+      if has_alist: has_alist = (len(self.alist) == len(self.data))
+      if has_alist: has_alist = (UTIL.loc_sum(self.alist) > 0)
+
+      minntimes = 2 # at which point we would not care
+      maxent = 0
+      late_times = 0
+
+      # track max entries per row, including '*' chars
+      for rind, row in enumerate(self.data):
+         nent = len(row)
+         if rind > 0 and nent > 0: late_times = 1 # stim exist after row 0
+         if nent < minntimes: minntimes = nent    # min stim times per row
+         if has_alist: nent += self.alist[rind]   # total events per row
+         if nent > maxent: maxent = nent          # max events across rows
+
+         # save a little time if we are safe
+         if maxent > 1: return 0
+
+      # if maxent is not 1, there is no problem
+      if maxent != 1: return 0
+
+      # if there is no event after row 1, there is no problem
+      if not late_times: return 0
+
+      # we have at most 1 entry per row, and times after row 1,
+      # get to the stated tests
+
+      if has_alist:
+         if warn:
+            print "** timing file %s looks like local times from '*', but\n" \
+                  "   might be interpreted as global times by 3dDeconvovle\n"\
+                  "   because it has only one column\n"                      \
+                  "   (consider adding one '*', giving that row 2 entries)\n"\
+                  % self.fname
+         return 1
+
+      if len(self.run_lens) > 0:
+         if len(self.run_lens) == self.nrows:
+            if warn:
+               print "** timing file %s looks like global times, but\n" \
+                     "   Nruns == Nstim, so maybe it is local\n"        \
+                     "   (if local, add '*' to some row)\n"             \
+                     % self.fname
+            return 1
+      elif self.nrows > 0 and self.nrows < maxruns:
+         if warn:
+            print "** timing file %s looks like global times, but\n" \
+                  "   has very few stim, so might be local\n"        \
+                  "   (if local, add '*' to some row)\n"             \
+                        % self.fname
+         return 1
+
+      return 0
 
    def file_type_warnings_local(self, run_lens=[], tr=0.0):
       """warn about any oddities in local timing
@@ -2848,11 +3153,23 @@ class AfniData(object):
             warnings.append("   - %d rows does not match %d runs" \
                            % (self.nrows, nruns))
 
+      check_alist = (self.alist != None)
+      if check_alist: check_alist = len(self.alist) == len(self.data)
+      maxent = 0
+
       wcount = [0,0,0]  # limit warnings of each type (to 2 for now)
       for rind in range(len(self.data)):
          # start with row copy
          row = self.data[rind][:]
-         if len(row) == 0: continue
+
+         # track max entries per row, including '*' chars
+         rlen = len(row)
+         nent = rlen
+         if check_alist: nent += self.alist[rind]
+         if nent > maxent: maxent = nent
+
+         if rlen == 0: continue
+
          row.sort()
          first = row[0]
          last = row[-1]
@@ -2880,6 +3197,16 @@ class AfniData(object):
       if wcount[2] > 2:
          warnings.append("   * %d row times exceed run dur %g ..." \
                          % (wcount[2], rlens[rind]))
+
+      if maxent == 1 and self.nrows > 1:
+         awarn = 0
+         if check_alist:
+            if UTIL.loc_sum(self.alist) > 0: awarn = 1
+         if awarn: warnings.append(                             \
+            "   * single column looks local from '*',\n"        \
+            "     but 3dDeconvolve would interpret as global")
+         else: warnings.append(                                 \
+            "   * 3dDeconvolve would interpret single column as global")
 
       if len(warnings) > 0:
          print '** warnings for local stim_times format of file %s' % self.fname
@@ -2920,6 +3247,7 @@ class AfniData(object):
          return 0
 
       errors = 0
+      ferrors = 0
 
       # must be one row or column
       if self.ncols != 1 and self.nrows != 1:
@@ -2931,6 +3259,12 @@ class AfniData(object):
          errors |= ERR_ANY_MISC
          if verb > 1: print "** file %s is not a rectangular" % self.fname
 
+      # this is fatal, as opposed to nrows/ncols
+      if self.maxlen > 1:
+         ferrors |= ERR_ANY_MISC
+         if verb: print '** file %s has rows longer than 1' % self.fname
+         
+
       # negative times are not errors, but warnings
 
       # possibly scale run_lengths
@@ -2941,8 +3275,9 @@ class AfniData(object):
 
       # repetition times are not errors, but warnings
 
-      if errors: return 1
-      else:      return 0
+      if  ferrors: return -1
+      elif errors: return 1
+      else:        return 0
 
    def file_type_warnings_global(self, run_lens=[], tr=0.0, verb=1):
 
@@ -2997,10 +3332,14 @@ class AfniData(object):
          For now, store complete result but focus on times only.
       """
 
-      mdata, clines = TD.read_married_file(fname, verb=self.verb)
+      mdata, clines, alist = TD.read_married_file(fname, verb=self.verb)
       if mdata == None:
          if self.verb > 0: print '** A1D: failed to read data file %s' % fname
          return 1
+
+      # init name from filename
+      aname = BASE.afni_name(self.fname)
+      self.name  = aname.pve()
 
       # note whether the data is married (modulation or duration)
       self.mtype = TD.married_type(mdata)
@@ -3011,16 +3350,21 @@ class AfniData(object):
       self.mdata    = mdata
       self.clines   = clines
       self.fname    = fname
+      self.alist    = alist
 
       self.nrows    = len(self.data)
       self.row_lens = [len(row) for row in self.data]
 
       # empty data includes existing but empty runs
-      if len(self.data) == 0: maxlen = 0
-      else:                   maxlen = max([len(drow) for drow in self.data])
+      if len(self.data) == 0:
+         self.maxlen = 0
+         self.minlen = 0
+      else:
+         self.maxlen = max([len(drow) for drow in self.data])
+         self.minlen = min([len(drow) for drow in self.data])
 
       # accept an empty file?
-      if self.nrows == 0 or maxlen == 0:
+      if self.nrows == 0 or self.maxlen == 0:
          self.empty = 1
          self.ready = 1
          return 0

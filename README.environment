@@ -1647,6 +1647,15 @@ When saving a zoomed image, the default is to save the entire zoomed image,
 not just the part you see.  If this YES/NO variable is set to YES, then only
 the visible part will be saved.
 
+------------------------------
+Variable: AFNI_CROP_AUTOCENTER
+------------------------------
+If this variable is set to YES, then the image viewer windows will
+automatically re-center the cropping sub-window (if cropping is active)
+around the crosshair position -- as far as possible.  You can also set
+this crop autocenter capability individually for each image viewer
+window from the intensity bar right-click popup menu.
+
 ---------------------------
 Variables: AFNI_TLRC_BBOX_*
 ---------------------------
@@ -2342,9 +2351,25 @@ values between 0.6 and 1.9 (inclusive) -- the default is 1.0.
 --------------------------------
 Variable: AFNI_IMAGE_GLOBALRANGE (editable)
 --------------------------------
-If this variable is set to YES, then the image viewer windows will be
-set to scale the bottom gray level to the minimum value in the 3D
-volume and the top gray level to the maximum value in the 3D volume.
+AFNI_IMAGE_GLOBALRANGE can be set to SLICE (default), VOLUME (SUBBRICK),
+or DSET. The GUI applies the lookup table to color the underlay with the
+range determined from the slice, sub-brick or the whole multi-sub-brick
+dataset,respectively, depending on this variable. Besides the .afnirc file,
+the GUI allows changes from the environment plugin menu, the right-click
+menu on the image viewer colorbar or by typing Control-m in an image viewer.
+The Control-m cycles among the global range types.
+
+Previous YES/NO definitions for this variable correspond to VOLUME and
+SLICE respectively and will continue to work as before. The lower right
+corner of the image viewer shows the current range setting:
+(2%-98%/Min2Max, Vol, Dset)
+
+If this variable is set to YES/VOLUME/SUBBRICK, then the image
+viewer windows will be set to scale the bottom gray level to the
+minimum value in the 3D volume and the top gray level to the maximum
+value in the 3D volume. Setting the variable to DSET similarly sets
+the minimum and maximum based on the range of the whole dataset.
+
 This setting overrides the "Min-to-Max" and "2%-to-98%" settings in
 the "Disp" control panel.  This setting also applies to all image
 viewers.  If you set this in the "Edit Environment" control, it will
@@ -2359,7 +2384,8 @@ Therefore, the info label beneath the slider shows the source of
 the bot-top grayscale values:
   [2%-98%]  = from the 2% to 98% points on the slice histogram
   [Min2Max] = from the 0% to 100% points on the slice histogram
-  [Glob]    = set from the entire volume min and max values
+  [Vol]     = set from the entire volume min and max values
+  [Dset]    = set from the min and max across all subbricks of a dataset
   [User]    = set by the user from 'Display Range'
   absent    = not applicable (e.g., underlay image is RGB)
 The popup 'hint' for the grayscale bar shows the current values
@@ -2795,6 +2821,15 @@ looking for "firefox", "mozilla", "netscape", and "opera" (in that order).
 If a browser is found, or set, then the 'hidden' popup menu (in the blank
 square to the right of the 'done' button) will have a menu item to open it.
 
+-----------------------------
+Variable: AFNI_WEB_DOWNLOADER
+-----------------------------
+This variable should be set to the full executable path to a Web downloader,
+as in
+  setenv AFNI_WEB_DOWNLOADER /usr/bin/curl
+If it is not set, AFNI will scan your path to see if it can find a downloader,
+looking for "curl" and "wget" (in that order).
+
 ----------------------------
 Variable: AFNI_JPEG_COMPRESS
 ----------------------------
@@ -3125,6 +3160,41 @@ arrow buttons (on the right of the image viewer) to rotate the
 color circle.  The default value of 240 is purely for historical
 reasons, dating back to the old FD program from Medieval Times.
 
+--------------------------------------
+Variable: AFNI_IMAGE_SCROLLWHEEL_TMASK
+--------------------------------------
+This variable lets you control which keyboard modifier keys are
+checked when the mouse scroll wheel is used inside the image.
+If one (or more) of the selected keys is pressed while the
+scroll wheel is moved, then the AFNI controller 'Define Overlay'
+threshold slider moves -- otherwise (the normal case), the image
+slice slider moves.  The value of this variable should be contain
+one or more of these strings (NOT case sensitive):
+  Shift           = Shift key pressed
+  Ctrl or Control = Control key pressed
+  Mod1            = Alt key pressed (Linux)
+  Mod2            = Command key pressed (Mac)
+If you do NOT set this variable, it is like setting it to the
+value 'Mod1+Mod2' (so that Alt and Command work on Linux and
+Mac OS X, respectively).  However, some Linux systems seem to
+always have the Mod2 mask set for the scroll wheel, and so
+the wheel ALWAYS change the threshold slider and not the slice.
+To prevent this sad thing from happening, set this variable to
+just 'Mod1'.  Furthermore, if you include the string 'Debug'
+in this variable, when the scroll wheel is used over the image
+sub-window, some information will be printed out about what the
+program detects, which might help you set things up correctly.
+On my Mac, I get the following output when using the scroll wheel
+twice -- once with no key pressed and once with the Command key:
+  ++ Scrollwheel (imag): button=5 ; state mask=0x
+   +   (mask: shift=1x ctrl=4x mod1=8x mod2=10x mod3=20x mod4=40x mod5=80x)
+   +   change slice
+  ++ Scrollwheel (imag): button=5 ; state mask=10x
+   +   (mask: shift=1x ctrl=4x mod1=8x mod2=10x mod3=20x mod4=40x mod5=80x)
+   +   change threshold
+The second use shows that the 'state mask' (which shows the modifier
+keys) was hexadecimal '10x', which corresponds to the 'mod2' value.
+
 ----------------------------
 Variable: AFNI_DUMMY_DATASET
 ----------------------------
@@ -3132,7 +3202,7 @@ The old 'frivolous' AFNI dummy dataset was replaced with a low-resolution
 edition of the N27 dataset on 12 Feb 2010.  If for some absurd reason you
 want the old dummy dataset back, then set this variable to OLD.  (Recall
 that the dummy dataset is only created if you start the AFNI GUI without
-any input datasets at all -- AFNI is constructed so that it needs SOME
+any input datasets at all -- AFNI is so constructed that it needs SOME
 dataset present to be able to operate: hence, the dummy dataset concept.)
 
 ----------------------------

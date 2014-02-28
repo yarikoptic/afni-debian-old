@@ -58,7 +58,7 @@
 }
 #else
 #define SUMA_DUMP_TRACE(x) /* nada */
-#define SUMA_EDUMP_TRACE(x) /* nada */
+#define SUMA_EDUMP_TRACE( ... ) /* nada */
 #endif
 #define SUMA_T_Err SUMA_EDUMP_TRACE
 
@@ -75,6 +75,7 @@ typedef enum { SUMA_NO_NUM_UNITS = 0,
                SUMA_MM_UNITS,
                SUMA_P_VALUE_UNITS,
                SUMA_Q_VALUE_UNITS,
+               SUMA_PERC_VALUE_UNITS,
                
                SUMA_N_NUMERICAL_UNITS
                } SUMA_NUMERICAL_UNITS;
@@ -167,8 +168,10 @@ typedef enum {
    SUMA_NO_COL_TYPE,
    SUMA_NODE_INT,    /*!< Generic integer */
    SUMA_NODE_INDEX,  /*!< index of a node OR edge to locate it in its domain */
-   SUMA_NODE_ILABEL, /*!< An integer coding for a label */
-   SUMA_NODE_SLABEL, /*!< An integer coding for a string label */
+   SUMA_NODE_ILABEL, /*!< An integer coding for an integer label */
+   SUMA_NODE_SLABEL, /*!< An string label */
+   SUMA_GNODE_IGROUP, /*!< An integer coding for a group integer label of 
+                           a graph node*/
    SUMA_NODE_FLOAT,  /*!< Generic float */ 
    SUMA_NODE_CX,     /*!< Node convexity */
    SUMA_NODE_X,      /*!< Node X coordinate */
@@ -216,14 +219,22 @@ typedef enum {
                                  (ctp)==SUMA_NODE_Y || \
                                  (ctp)==SUMA_NODE_Z || \
                                  (ctp)==SUMA_GNODE_INDEX || \
+                                 (ctp)==SUMA_GNODE_IGROUP || \
+                                 (ctp)==SUMA_NODE_R || \
+                                 (ctp)==SUMA_NODE_G || \
+                                 (ctp)==SUMA_NODE_B || \
                                  (ctp)==SUMA_NODE_SLABEL) ? 1:0)
                                  
 #define SUMA_GNODE_IXYZ_CTP2COL(ctp) ( (ctp)==SUMA_NODE_X ? 1 : \
                                        ( (ctp)==SUMA_NODE_Y ? 2: \
                                        ( (ctp)==SUMA_NODE_Z ? 3: \
                                        ( (ctp)==SUMA_NODE_SLABEL ? 4: \
+                                       ( (ctp)==SUMA_GNODE_IGROUP ? 5: \
+                                       ( (ctp)==SUMA_NODE_R ? 6: \
+                                       ( (ctp)==SUMA_NODE_G ? 7: \
+                                       ( (ctp)==SUMA_NODE_B ? 8: \
                                        ( (ctp)==SUMA_GNODE_INDEX ? 0: \
-                                                               -1 )  ) ) )  )
+                                                         -1 ) ) ) ) ) ) ) ) )
                                        
 #define SUMA_IS_DATUM_INDEX_COL(ctp) (((ctp)==SUMA_NODE_INDEX || \
                                  (ctp)==SUMA_EDGE_P1_INDEX || \
@@ -266,6 +277,8 @@ typedef enum { NOT_SET_type = -1,
                       ( SUMAg_DOv[(i)].ObjectType == GRAPH_LINK_type ? 1:0) )
 #define iDO_isTDO(i) ( ((i)<0 || (i)>=SUMAg_N_DOv) ? 0: \
                       ( SUMAg_DOv[(i)].ObjectType == TRACT_type ? 1:0) )
+#define iDO_isMDO(i) ( ((i)<0 || (i)>=SUMAg_N_DOv) ? 0: \
+                      ( SUMAg_DOv[(i)].ObjectType == MASK_type ? 1:0) )
 #define iDO_isVO(i) ( ((i)<0 || (i)>=SUMAg_N_DOv) ? 0: \
                       ( SUMAg_DOv[(i)].ObjectType == VO_type ? 1:0) )
 #define iDO_type(i) ( ((i)<0 || (i)>=SUMAg_N_DOv) ? NOT_SET_type: \
@@ -287,6 +300,8 @@ typedef enum { NOT_SET_type = -1,
                                     (ado)->do_type) ) )
 #define ADO_ID(ado) SUMA_ADO_idcode(ado)
 #define ADO_LABEL(ado) SUMA_ADO_sLabel(ado)
+#define ADO_STATE(ado) SUMA_iDO_state(ADO_iDO(ado))
+#define ADO_GROUP(ado) SUMA_iDO_group(ADO_iDO(ado))
 
 #define iDO_label(i) ( ((i)<0 || (i)>=SUMAg_N_DOv) ? \
                               "NO OBJECT!": \
@@ -355,6 +370,7 @@ typedef enum { SUMA_NO_PTR_TYPE,
                SUMA_LINKED_MEMB_FACE_TYPE, 
                                  /*!< For pointers to SUMA_MEMBER_FACE_SETS*/
                SUMA_LINKED_SURFCONT_TYPE, /*!< For pointers to SUMA_X_SurfCont*/
+               SUMA_LINKED_COLORLIST_TYPE,/* pointers to SUMA_COLORLIST_STRUCT */
                SUMA_N_LINKED_PTR_TYPES } SUMA_LINKED_PTR_TYPES;
 
 typedef enum { MAT_UNKNOWN=-2, MAT_NA = -1, MAT_HEEHAW = 0 /* not set */, 
@@ -387,7 +403,9 @@ typedef struct { /* Something to hold auxiliary datasets structs */
    long int range_edge_index[2]; /* min, max, edge index */
    long int range_node_index[2]; /* min, max, node index 
                                    (points defining edges)*/
-   long int N_uniq_nodes; /* Number of unique node indices */
+   long int N_seg_nodes; /* Number of node indices making up segments*/
+   long int N_all_nodes; /* Total number of nodes stored in nodelist of the
+                            graph dataset */
    SUMA_DSET_FLAVORS isGraph;
 } SUMA_DSET_AUX;
 
@@ -836,8 +854,10 @@ typedef struct {
                                           -1: ((dset)->Aux->matrix_size[0]) )
    #define SDSET_MATRIX_SZ1(dset) ( (!(dset) || !(dset)->Aux) ? \
                                           -1: ((dset)->Aux->matrix_size[1]) )
-   #define GDSET_MAX_POINTS(dset) ( (!(dset) || !(dset)->Aux) ? \
-                                          -1: ((dset)->Aux->N_uniq_nodes) )
+   #define GDSET_N_SEG_POINTS(dset) ( (!(dset) || !(dset)->Aux) ? \
+                                          -1: ((dset)->Aux->N_seg_nodes) )
+   #define GDSET_N_ALL_POINTS(dset) ( (!(dset) || !(dset)->Aux) ? \
+                                          -1: ((dset)->Aux->N_all_nodes) )
 #endif
 
 #define DSET_MAX_NODE_INDEX(dset, MM) {\
@@ -1542,7 +1562,8 @@ NI_element *SUMA_FindDsetDataElement(SUMA_DSET *dset);
 NI_element *SUMA_FindGDsetNodeListElement(SUMA_DSET *dset);
 NI_element *SUMA_AddGDsetNodeListElement(SUMA_DSET *dset, 
                                          int *I, float *X, float *Y, float *Z, 
-                                         char **names, int N_Node);
+                                         char **names, int *cln, float *cols,
+                                         int N_Node);
 NI_element *SUMA_FindDsetDatumIndexElement(SUMA_DSET *dset);
 NI_element *SUMA_FindSDsetNodeIndexElement(SUMA_DSET *dset);
 NI_element *SUMA_FindGDsetEdgeIndexElement(SUMA_DSET *dset);
@@ -1597,6 +1618,7 @@ SUMA_Boolean SUMA_isDsetNelAttr(NI_element *nel);
 char * SUMA_CreateDsetColRangeCompString( SUMA_DSET *dset, int col_index, 
                                           SUMA_COL_TYPE ctp);
 int SUMA_UpdateDsetColRange(SUMA_DSET *dset, int icol);
+int SUMA_UpdateDsetColLabel(SUMA_DSET *dset, int icol, char *label);
 char * SUMA_GetDsetColStringAttr( SUMA_DSET *dset, int col_index, 
                                     char *attrname);
 char * SUMA_GetNgrColStringAttr( NI_group *ngr, int col_index, 
@@ -1745,6 +1767,7 @@ SUMA_DSET * SUMA_far2dset_ns( char *FullName, char *dset_id, char *dom_id,
 int SUMA_is_AllNumeric_dset(SUMA_DSET *dset);
 int SUMA_dset_to_Label_dset(SUMA_DSET *dset); 
 int SUMA_is_Label_dset(SUMA_DSET *dset, NI_group **NIcmap); 
+int SUMA_is_Label_dset_col(SUMA_DSET *dset, int icol);
 int SUMA_is_Phase_dset(SUMA_DSET *dset); 
 int SUMA_is_RetinoAngle_dset(SUMA_DSET *dset); 
 int SUMA_is_VFR_dset(SUMA_DSET *dset); 
@@ -1978,6 +2001,10 @@ char * SUMA_matrix_shape_to_matrix_shape_name(SUMA_SQ_MATRIX_SHAPES sq);
 int *SUMA_GDSET_GetPointIndexColumn(SUMA_DSET *dset, int *N_vals, NI_element **);
 char **SUMA_GDSET_GetPointNamesColumn(SUMA_DSET *dset, int *N_vals, 
                                     NI_element **nelxyzr);
+float *SUMA_GDSET_GetPointColumn_f(SUMA_DSET *dset, int *N_vals, 
+                                      NI_element **nelxyzr, char *label);
+int *SUMA_GDSET_GetPointGroupColumn(SUMA_DSET *dset, int *N_vals, 
+                                      NI_element **nelxyzr);
 int SUMA_GDSET_Index_To_NodeIndex(SUMA_DSET *dset, int cinode);
 int SUMA_GDSET_NodeIndex_To_Index(SUMA_DSET *dset, int node);
 int SUMA_GDSET_EdgeIndex_To_Row(SUMA_DSET *dset, int ei);

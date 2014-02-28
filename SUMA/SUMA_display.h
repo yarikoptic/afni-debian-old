@@ -32,6 +32,17 @@
    SUMA_S_Note("Waiting...");\
    glXWaitGL();glXWaitX(); glFinish();\
    SUMA_S_Note("Done.");}  
+
+#define SUMA_CHECK_GL_ERROR(str)                                           \
+{                                                                  \
+    GLenum error;                                                  \
+    while((error = glGetError()) != GL_NO_ERROR)                   \
+       fprintf(stderr,"**************GL Error: %s (%s)\n", \
+         gluErrorString(error), str);  \
+}
+
+
+
                                   
 typedef struct suma_menu_item {
     char        *label;         /*!< the label for the item */
@@ -258,6 +269,8 @@ sets the select color of the widget to its foreground color */
 
 String *SUMA_get_fallbackResources ();         
 void SUMA_CullOption(SUMA_SurfaceViewer *, const char *action);
+SUMA_Boolean SUMA_glXMakeCurrent(Display *dpy, Window wdw, GLXContext cont,
+      char *fname, char *wlab, int force);
 Boolean SUMA_handleRedisplay (XtPointer w);
 void SUMA_postRedisplay(Widget w, XtPointer clientData, XtPointer call);
 GLenum SUMA_index_to_clip_plane(int iplane) ;
@@ -265,6 +278,8 @@ int SUMA_PixelsToDisk(SUMA_SurfaceViewer *csv, int w, int h, GLvoid *pixels,
                       int colordepth, int verb, char *ufname, 
                       int autoname, int over); 
 int SUMA_SnapToDisk(SUMA_SurfaceViewer *csv, int verb, int getback);
+SUMA_DO_LOCATOR *SUMA_SV_SortedRegistDO(SUMA_SurfaceViewer *csv, int *N_regs,
+                                        SUMA_DO *dov);
 void SUMA_display(SUMA_SurfaceViewer *csv, SUMA_DO *dov);
 Colormap SUMA_getShareableColormap_Eng(XVisualInfo * vi, Display *dpy);
 Colormap SUMA_getShareableColormap(SUMA_SurfaceViewer * csv);
@@ -354,14 +369,17 @@ SUMA_CREATE_TEXT_SHELL_STRUCT * SUMA_CreateTextShellStruct (
    void (*opencallback)(void *data), void *opendata, char *opendatatype, 
    void (*closecallback)(void*data), void *closedata);
 SUMA_CREATE_TEXT_SHELL_STRUCT * SUMA_CreateTextShell (char *s, char *title, SUMA_CREATE_TEXT_SHELL_STRUCT *TextShellStruct);
-void SUMA_cb_search_text(Widget widget, XtPointer client_data, XtPointer call_data);
+void SUMA_cb_search_text(Widget widget, XtPointer client_data, 
+                         XtPointer call_data);
 char * SUMA_WriteStringToFile(char *fname, char *s, int, int);
 void SUMA_SaveTextShell(Widget w, XtPointer ud, XtPointer cd);
 void SUMA_RefreshTextShell(Widget w, XtPointer ud, XtPointer cd);
 void SUMA_DestroyTextShell (Widget w, XtPointer ud, XtPointer cd);
 void SUMA_SurfInfo_open (void *SO);
 void SUMA_SurfInfo_destroyed (void *SO);
-void SUMA_cb_ToggleCaseSearch (Widget widget, XtPointer client_data, XtPointer call_data);
+void SUMA_cb_ToggleCaseSearch (Widget widget, XtPointer client_data, 
+                               XtPointer call_data);
+void SUMA_cb_Mask (Widget w, XtPointer client_data, XtPointer callData);
 void SUMA_cb_helpUsage (Widget w, XtPointer data, XtPointer callData);
 void SUMA_cb_helpIO_notify(Widget w, XtPointer data, XtPointer callData);
 void SUMA_cb_helpEchoKeyPress(Widget w, XtPointer data, XtPointer callData);
@@ -375,6 +393,8 @@ void SUMA_cb_helpSurfaceStruct (Widget w, XtPointer data, XtPointer callData);
 void SUMA_cb_SetRenderMode(Widget widget, XtPointer client_data, 
                            XtPointer call_data);
 void SUMA_cb_SetTransMode(Widget widget, XtPointer client_data, 
+                           XtPointer call_data);
+void SUMA_cb_SetATransMode(Widget widget, XtPointer client_data, 
                            XtPointer call_data);
 int SUMA_SetDsetViewMode(SUMA_ALL_DO *ado, int imenu, int update_menu) ;
 int SUMA_SetDsetFont(SUMA_ALL_DO *ado, int imenu, int updatemenu);
@@ -518,6 +538,11 @@ int SUMA_ColPlane_NewOpacity_one (SUMA_ALL_DO *ado, SUMA_OVERLAYS *colp,
 int SUMA_Tract_NewGray (SUMA_ALL_DO *ado, 
                            float newgray, int cb_direct );
 void SUMA_cb_Tract_NewGray(void *data);
+int SUMA_ColPlane_NewAlphaThresh_one (SUMA_ALL_DO *ado, SUMA_OVERLAYS *colp, 
+                                  float newAlphaThresh, int cb_direct);
+int SUMA_ColPlane_NewAlphaThresh (SUMA_ALL_DO *ado, SUMA_OVERLAYS *colp, 
+                              float newAlphaThresh, int cb_direct);
+void SUMA_cb_ColPlane_NewAlphaThresh (void *data);
 void SUMA_cb_ColPlane_NewDimFact (void *data);
 int SUMA_ColPlane_NewDimFact     (SUMA_ALL_DO *ado, SUMA_OVERLAYS *colp,
                                  float newdimfact, int cb_direct);
@@ -571,7 +596,7 @@ SUMA_Boolean SUMA_InitializeColPlaneShell_VO(SUMA_ALL_DO *ado,
 SUMA_Boolean SUMA_InitializeColPlaneShell_MDO (SUMA_ALL_DO *ado, 
                                                SUMA_OVERLAYS *ColPlane);
 SUMA_Boolean SUMA_UpdateColPlaneShellAsNeeded(SUMA_ALL_DO *SO);
-SUMA_Boolean SUMA_RemixRedisplay (SUMA_ALL_DO *ado);
+SUMA_Boolean SUMA_Remixedisplay (SUMA_ALL_DO *ado);
 void SUMA_cb_SetDrawROI_SaveMode(Widget w, XtPointer data, XtPointer call_data);
 void SUMA_cb_SetDrawROI_SaveWhat(Widget w, XtPointer data, XtPointer call_data);
 void SUMA_response(Widget widget, XtPointer client_data, XtPointer call_data);
@@ -596,6 +621,9 @@ void SUMA_SiSi_I_Insist(void);
 void SUMA_BuildMenuReset(int nchar);
 void SUMA_MenuArrowFieldCallback (void *CB);
 int SUMA_PageWidgetToNumber(Widget NB, Widget page);
+#define SUMA_IS_CONTPAGE_ON_TOP(SC) ( (SC) && (SC)->Page \
+                                      &&  SUMAg_CF->X->UseSameSurfCont \
+                && SUMA_isCurrentContPage(SUMAg_CF->X->SC_Notebook,(SC)->Page) )
 int SUMA_isCurrentContPage(Widget NB, Widget page);
 SUMA_Boolean SUMA_SetSurfContPageNumber(Widget NB, int i);
 int SUMA_NotebookLastPageNumber(Widget NB);
@@ -640,6 +668,9 @@ void SUMA_cb_XformOpts_Apply (Widget w, XtPointer data,
 void SUMA_setIO_notify(int val);
 int SUMA_RenderMode2RenderModeMenuItem(int Mode);
 int SUMA_TransMode2TransModeMenuItem(int Mode);
+SUMA_TRANS_MODES SUMA_ATransMode2TransMode(SUMA_ATRANS_MODES ii);
+SUMA_ATRANS_MODES SUMA_TransMode2ATransMode(SUMA_TRANS_MODES ii);
+int SUMA_ATransMode2ATransModeMenuItem(int Mode);
 int SUMA_ShowMode2ShowModeMenuItem(int Mode);
 int SUMA_ShowModeStr2ShowModeMenuItem(char *str); 
 int SUMA_Font2FontMenuItem(int Mode);
@@ -653,6 +684,9 @@ float *SUMA_NodeCol2Col(int Mode, float *here);
 void SUMA_cb_SetDsetEdgeStip(Widget widget, XtPointer client_data, 
                            XtPointer call_data);
 int SUMA_SetDsetEdgeStip(SUMA_ALL_DO *ado, int imenu, int updatemenu); 
+void SUMA_cb_SetDsetAlphaVal(Widget widget, XtPointer client_data, 
+                           XtPointer call_data);
+int SUMA_SetDsetAlphaVal(SUMA_ALL_DO *ado, int imenu, int updatemenu); 
 void SUMA_cb_SetTractMask(Widget widget, XtPointer client_data, 
                            XtPointer call_data);
 int SUMA_SetTractMask(SUMA_ALL_DO *ado, int imenu, int updatemenu);
@@ -668,7 +702,16 @@ int SUMA_GDSET_ShowBundles ( SUMA_ALL_DO *ado,
                                 SUMA_Boolean state, int cb_direct);
 void SUMA_cb_GDSET_ShowBundles_toggled (Widget w, XtPointer data, 
                                           XtPointer client_data);
+int SUMA_GDSET_ShowUncon ( SUMA_ALL_DO *ado, 
+                                SUMA_Boolean state, int cb_direct);
+void SUMA_cb_GDSET_ShowUncon_toggled (Widget w, XtPointer data, 
+                                          XtPointer client_data);
 int SUMA_FlushPickBufferForDO(SUMA_ALL_DO *curDO);
+SUMA_TRANS_MODES SUMA_1dig_to_T(int i);
+int SUMA_T_to_1dig(SUMA_TRANS_MODES stm);
+float SUMA_1dig_to_A(int i);
+int SUMA_A_to_1dig(float v);
+SUMA_Boolean SUMA_DispExpr_To_EvalExpr(char *expr, char *evale, char *tight);
 
 
 #define SUMA_MAX_XFCB_OBJS 32       /*!< Max number of callbacks or xforms 
@@ -729,7 +772,84 @@ void SUMA_OpenXformOrtFile (char *filename, void *data);
 SUMA_Boolean SUMA_WildcardChoice(int filetype, 
                   SUMA_SurfaceObject *SO, char wild[]); 
 SUMA_Boolean SUMA_Set_Menu_Widget(SUMA_MENU_WIDGET *men, int i);
-      
+void SUMA_MaskTableCell_EV ( Widget w , XtPointer cd ,
+                XEvent *ev , Boolean *continue_to_dispatch );
+void SUMA_cb_createSurfaceCont_MDO(Widget w, XtPointer data, 
+                                     XtPointer callData);
+void SUMA_cb_SetMaskTableValue (void *data);
+void SUMA_MaskTableLabel_EV ( Widget w , XtPointer cd ,
+                      XEvent *ev , Boolean *continue_to_dispatch );
+void SUMA_MaskTableCell_EV ( Widget w , XtPointer cd ,
+                      XEvent *ev , Boolean *continue_to_dispatch );
+void SUMA_MaskEvalTableCell_EV ( Widget w , XtPointer cd ,
+                      XEvent *ev , Boolean *continue_to_dispatch );
+void SUMA_MaskEvalTableLabel_EV ( Widget w , XtPointer cd ,
+                      XEvent *ev , Boolean *continue_to_dispatch );
+int SUMA_SetMaskEvalTableValueNew(  int row, int col,
+                                char *s1, 
+                                int setmen, 
+                                int redisplay, 
+                                SUMA_NUMERICAL_UNITS num_units);
+char *SUMA_GetMaskEvalExpr(void);
+void SUMA_cb_SetMaskEvalTableValue (void *data);
+void SUMA_cb_UseMaskEval_toggled(Widget w, XtPointer data, 
+                                 XtPointer client_data);
+SUMA_Boolean SUMA_Set_UseMaskEval(int v, int redisp, int setmen);
+void SUMA_MaskLenTableCell_EV ( Widget w , XtPointer cd ,
+                      XEvent *ev , Boolean *continue_to_dispatch );
+void SUMA_MaskLenTableLabel_EV ( Widget w , XtPointer cd ,
+                      XEvent *ev , Boolean *continue_to_dispatch );
+int SUMA_SetMaskLenTableValueNew(  int row, int col,
+                                float, 
+                                int setmen, 
+                                int redisplay, 
+                                SUMA_NUMERICAL_UNITS num_units);
+void SUMA_cb_SetMaskLenTableValue (void *data);
+void SUMA_cb_UseMaskLen_toggled(Widget w, XtPointer data, 
+                                 XtPointer client_data);
+SUMA_Boolean SUMA_Set_UseMaskLen(int v, int redisp, int setmen);
+SUMA_Boolean SUMA_ModifyTable(SUMA_TABLE_FIELD *TF, int Nrows);
+void SUMA_delete_mask_timeout_CB( XtPointer client_data , XtIntervalId * id);
+void SUMA_cb_Mask_Delete(Widget wcall, XtPointer cd1, XtPointer cbs);
+SUMA_Boolean SUMA_DeleteMask(char *ado_id);
+SUMA_MaskDO * SUMA_findanyMDOp_inDOv(SUMA_DO *dov, int N_dov, int *dov_id);
+SUMA_MaskDO * SUMA_findanyMDOp(int *dov_id);
+DList *SUMA_AssembleMasksList(int withShadow);
+DList *SUMA_AssembleMasksList_inDOv(SUMA_DO *dov, int N_dov, int withShadow);
+SUMA_Boolean  SUMA_InitMasksTable(SUMA_X_SurfCont *SurfCont);
+SUMA_Boolean  SUMA_InitMasksTable_row(SUMA_X_SurfCont *SurfCont, 
+                                      SUMA_MaskDO *mdo, int row);
+int SUMA_NewSymMaskDO(void); 
+int SUMA_ShadowMaskDO(SUMA_MaskDO **mdop);
+int SUMA_SetTractStyle(SUMA_ALL_DO *ado, int imenu, int updatemenu);
+void SUMA_cb_SetTractStyle(Widget widget, XtPointer client_data, 
+                           XtPointer call_data);
+void SUMA_CreateVrFields(  Widget parent,
+                        char *tit, char *hint, char *help, 
+                        int Nslc, SUMA_ALL_DO *ado,
+                        void (*NewValueCallback)(void * data), void *cb_data,
+                        SUMA_VR_FIELD *VrF);
+void SUMA_cb_ShowVrF_toggled(Widget w, XtPointer data, XtPointer client_data);
+void SUMA_leave_NslcField( Widget w , XtPointer client_data ,
+                            XEvent * ev , Boolean * continue_to_dispatch );
+void SUMA_VrF_cb_N_slc_change (  Widget w, XtPointer client_data, 
+                                    XtPointer call_data);
+void SUMA_VrF_SetNslcString(SUMA_VR_FIELD * VrF);
+int SUMA_SetMaskTableValueNew(int row, int col,
+                              char *s1,
+                              int setmen, 
+                              int redisplay,
+                              SUMA_NUMERICAL_UNITS num_units);
+SUMA_Boolean SUMA_Set_ADO_TransMode(SUMA_ALL_DO *ado, int i);
+void SUMA_cb_Masks_Save (Widget w, XtPointer data, XtPointer client_data);
+void SUMA_cb_Masks_Load(Widget w, XtPointer data, XtPointer client_data);
+SUMA_Boolean SUMA_LoadMultiMasks_eng (char *filename, 
+                              int SetupOverlay, 
+                              int LaunchDisplay);
+void SUMA_LoadMultiMasks (char *filename, void *data);
+void SUMA_SaveMultiMasks (char *filename, void *data);
+SUMA_Boolean SUMA_SaveMultiMasks_eng (char *filename);
+                  
 #define SUMA_XformOrtFile_Load_help   \
    "Load an ort file"
 
@@ -858,6 +978,11 @@ SUMA_Boolean SUMA_Set_Menu_Widget(SUMA_MENU_WIDGET *men, int i);
 
 #define SUMA_DrawROI_DeleteROI_help   \
    "Delete a drawn ROI.\n" \
+   "This operation is not reversible,\n"  \
+   "(no Undo here) so you'll have to click twice."
+   
+#define SUMA_SurfCont_DeleteMask_help   \
+   "Deletes a Mask.\n" \
    "This operation is not reversible,\n"  \
    "(no Undo here) so you'll have to click twice."
    
@@ -1008,14 +1133,66 @@ SUMA_Boolean SUMA_Set_Menu_Widget(SUMA_MENU_WIDGET *men, int i);
    "Gain factor to apply to edge thickness." \
 
 #define SUMA_SurfCont_TractMask_hint \
-   "What becomes of tracts out of mask." \
+   "Gray level (0--100) of tracts outside of mask (only for Msk --> Gry)" \
 
 #define SUMA_SurfCont_ColPlaneOrder_hint \
    "Order of Dset's colorplane." \
 
+#define SUMA_SurfCont_ColPlaneAlphaThresh_hint \
+   "Threshold for voxel alpha value." \
+
 #define SUMA_SurfCont_ColPlaneOpacity_hint \
    "Opacity of Dset's colorplane." \
 
+#define SUMA_VR_help \
+   "Volume Rendering Settings.\n"
 
+#define SUMA_VR_hint \
+   "VR params (use BHelp for details)"
+
+#define SUMA_SliceSelect_axial_help \
+   "Select axial slice(s) to render.\n"\
+   "If the dataset is oblique, that would be the slice that is closest\n"\
+   "to the axial plane.\n"\
+   "Move slider bar or enter slice number directly in adjoining field.\n"\
+   "To show a stack of axial slices set the second text field to N:S\n"\
+   "where N is the number of slices in the stack and S is the spacing\n"\
+   "in number of slices between consecutive slices. The stack is centered\n"   \
+   "on the chosen slice number. So when N > 1 and even, the 'selected' slice\n" \
+   "is not rendered. In that case, set N to the next odd number to see it.\n"   \
+   "To hide/show all displayed axial slices, use right-side toggle button."
+
+#define SUMA_SliceSelect_axial_hint \
+   "Select axial slice(s) to render (use BHelp for details)"
+   
+#define SUMA_SliceSelect_sagittal_help \
+   "Select sagittal slice(s) to render.\n"\
+   "If the dataset is oblique, that would be the slice that is closest\n"\
+   "to the sagittal plane.\n"\
+   "Move slider bar or enter slice number directly in adjoining field.\n"\
+   "To show a stack of sagittal slices set the second text field to N:S\n"\
+   "where N is the number of slices in the stack and S is the spacing\n"\
+   "in number of slices between consecutive slices. The stack is centered\n"   \
+   "on the chosen slice number. So when N > 1 and even, the 'selected' slice\n" \
+   "is not rendered. In that case, set N to the next odd number to see it.\n"  \
+   "To hide/show all displayed sagittal slices, use right-side toggle button."
+
+#define SUMA_SliceSelect_sagittal_hint \
+   "Select sagittal slice(s) to render (use BHelp for details)"
+
+#define SUMA_SliceSelect_coronal_help \
+   "Select coronal slice(s) to render.\n"\
+   "If the dataset is oblique, that would be the slice that is closest\n"\
+   "to the coronal plane.\n"\
+   "Move slider bar or enter slice number directly in adjoining field.\n"\
+   "To show a stack of coronal slices set the second text field to N:S\n"\
+   "where N is the number of slices in the stack and S is the spacing\n"\
+   "in number of slices between consecutive slices. The stack is centered\n"   \
+   "on the chosen slice number. So when N > 1 and even, the 'selected' slice\n" \
+   "is not rendered. In that case, set N to the next odd number to see it.\n"   \
+   "To hide/show all displayed coronal slices, use right-side toggle button."
+
+#define SUMA_SliceSelect_coronal_hint \
+   "Select coronal slice(s) to render (use BHelp for details)"
    
 #endif

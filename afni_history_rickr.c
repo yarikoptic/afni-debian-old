@@ -49,13 +49,136 @@
 
 afni_history_struct rickr_history[] = {
 
- {  4,  Dec, 2013, RCR, "@afni.run.me", MINOR, TYPE_NEW_PROG,
-   "download and execute afni:/pub/dist/bin/misc/afni_runme script",
+ { 24,  Feb, 2014, RCR, "realtime_receiver.py", MICRO, TYPE_ENHANCE,
+   "added a little more detail to the demo example",
    NULL
  } ,
 
+ { 20,  Feb, 2014, RCR, "3dClustSim", MICRO, TYPE_BUG_FIX,
+   "break WARNING_message(amesg) up, until W_m gets enhanced",
+   "Strings applied via the format are limited to 16K."
+ } ,
+
+ { 19,  Feb, 2014, RCR, "afni_proc.py", MICRO, TYPE_BUG_FIX,
+   "if AM2 or IM, terminate extraction of ideals",
+   "Ideal extraction should be done via 1d_tool.py, using the X-matrix."
+ } ,
+
+ { 19,  Feb, 2014, RCR, "3dDeconvolve", MICRO, TYPE_ENHANCE,
+   "warn if GLOBAL times and 1 early stim per run (looks local)",
+   "An early stim means t <= (NT_r-1)*TR, where NT_r is #TRs in run r.\n"
+   "Negative times are included, as they may be fillers for empty runs."
+ } ,
+
+ { 18,  Feb, 2014, RCR, "timing_tool.py", MINOR, TYPE_NEW_OPT,
+   "added -test_local_timing, to look for local vs. global timing issues",
+   "- in some cases, promote married types to combine/compare them\n"
+   "- keep track of '*' entries from timing files"
+ } ,
+
+ { 18,  Feb, 2014, RCR, "afni_proc.py", MICRO, TYPE_ENHANCE,
+   "minor help update",
+   NULL
+ } ,
+
+ { 10,  Feb, 2014, RCR, "gen_ss_review_scripts.py", MINOR, TYPE_ENHANCE,
+   "show TRs per run, applied and censored",
+   NULL
+ } ,
+
+ {  6,  Feb, 2014, RCR, "afni_proc.py", MICRO, TYPE_MODIFY,
+   "-help examples start with 'Example', for searching",
+   NULL
+ } ,
+
+ {  3,  Feb, 2014, RCR, "apsearch", MICRO, TYPE_NEW_OPT,
+   "added -global_help/-gopts_help to print help for global options",
+   NULL
+ } ,
+
+ { 15,  Jan, 2014, RCR, "3dLRflip", MICRO, TYPE_BUG_FIX,
+   "used bad filename without -prefix",
+   "Var ext was not initialized."
+ } ,
+
+ { 14,  Jan, 2014, RCR, "3dttest++", MICRO, TYPE_MODIFY,
+   "make mask failure message more clear",
+   "In THD_create_mask_from_string(), if string is short enough for a file\n"
+   "check, report error with entire string."
+ } ,
+
+ { 14,  Jan, 2014, RCR, "@update.afni.binaries", MICRO, TYPE_ENHANCE,
+   "added more system programs to check",
+   NULL
+ } ,
+
+ { 30,  Dec, 2013, RCR, "1d_tool.py", MICRO, TYPE_MODIFY,
+   "skip polort against polort in -show_cormat_warnings",
+   NULL
+ } ,
+
+ { 30,  Dec, 2013, RCR, "afni-general", MICRO, TYPE_BUG_FIX,
+   "mcw_malloc.c: moved mcw_malloc_dump_sort below _dump for solaris",
+   "Apparently it does not like inconsistent declaration in same file,\n"
+   "and mcw_malloc.h does not offer prototypes to many functions in the\n"
+   "case of DONT_USE_MCW_MALLOC, including this one."
+ } ,
+
+ { 30,  Dec, 2013, RCR, "file_tool", MINOR, TYPE_ENHANCE,
+   "for -show_bad_backslash, check for '\\' as the last file character",
+   "The fix (with -prefix) is to delete the last '\\' and end with a newline."
+ } ,
+
+ { 27,  Dec, 2013, RCR, "gen_ss_review_scripts.py", MINOR, TYPE_ENHANCE,
+   "also output censored TRs per run, along with fractions",
+   NULL
+ } ,
+
+ { 27,  Dec, 2013, RCR, "1d_tool.py", MINOR, TYPE_NEW_OPT,
+   "added -show_tr_run_counts and -show_num_runs, for gen_ss_review_scripts.py",
+   NULL
+ } ,
+
+ { 26,  Dec, 2013, RCR, "gen_ss_review_scripts.py", MINOR, TYPE_MODIFY,
+   "max and jump to cluster max are now based on masked dset, if possible",
+   NULL
+ } ,
+
+ { 26,  Dec, 2013, RCR, "3dBrickStat", MICRO, TYPE_MODIFY,
+   "removed extra mask size output when using -mask option",
+   "Text output is the intention of the program, so limit to requested text."
+ } ,
+
+ { 18,  Dec, 2013, RCR, "@update.afni.binaries", MINOR, TYPE_MODIFY,
+   "if system files seem to exist in the abin directory, block update",
+   "If AFNI seems to be installed in a system directory (i.e. with OS level\n"
+   "programs), default to not letting the update proceed.  Options -sys_ok\n"
+   "and -help_system_progs were added to provide control and details."
+ } ,
+
+ { 17,  Dec, 2013, RCR, "afni_proc.py", MINOR, TYPE_MODIFY,
+   "use -NEW by default with 3dDespike",
+   "Added -despike_new to override the default behavior."
+ } ,
+
+ { 16,  Dec, 2013, RCR, "gen_ss_review_scripts.py", MINOR, TYPE_BUG_FIX,
+   "fixed use of num_trs in the case of censoring",
+   "Thanks to K Kerr for nothing the problem."
+ } ,
+
+ { 16,  Dec, 2013, RCR, "auto_warp.py", MINOR, TYPE_NEW_OPT,
+   "added -qblur option for P Molfese",
+   NULL
+ } ,
+
+ {  9,  Dec, 2013, RCR, "afni_util.py", MINOR, TYPE_BUG_FIX,
+   "added backup function for get_process_stack",
+   "BASE.shell_com() might return a short process list, probably from\n"
+   "limited buffer space (for cmd.stdout)."
+ } ,
+
  {  4,  Dec, 2013, RCR, "@update.afni.binaries", MINOR, TYPE_BUG_FIX,
-   "fixed ac++ condition",
+   "fixed ac++ condition and empty if",
    NULL
  } ,
 
@@ -3365,7 +3488,7 @@ afni_history_struct rickr_history[] = {
    NULL
  } ,
 
- { 22, JUL, 2009, RCR, "realtime_receiver.py", MAJOR, TYPE_NEW_PROG,
+ { 22, JUL, 2009, RCR, "realtime_receiver.py", MAJOR, TYPE_NEW_OPT,
    "python replacement for serial helper",
    "New 'data_choice' options can be added to compute_data_for_serial_port\n"
    "for sending results of a different computation to the serial port."

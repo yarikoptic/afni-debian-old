@@ -389,12 +389,17 @@ g_history = """
     4.04 Oct 31, 2013: restrict blur estimation to uncensored TRs
     4.05 Nov 01, 2013: let all-1 input for extents mask vary per run
                        (TRs may vary per run)
+    4.06 Dec 17, 2013: 3dDespike now defaults to -NEW
+        - added -despike_new yes/no for control
+    4.07 Feb 06, 2014: minor -help and -ask_me text changes
+    4.08 Feb 18, 2014: minor -help update
+    4.09 Feb 19, 2014: if AM2 or IM, terminate extraction of ideals
 """
 
-g_version = "version 4.05, November 1, 2013"
+g_version = "version 4.09, February 19, 2014"
 
 # version of AFNI required for script execution
-g_requires_afni = "31 Oct 2013" # for 3dRSFC update
+g_requires_afni = "29 Nov 2013" # for 3dRSFC update
 
 # ----------------------------------------------------------------------
 # dictionary of block types and modification functions
@@ -707,6 +712,9 @@ class SubjProcSream:
                         helpstr="allow 3dDespike to automask (-dilate 4)")
         self.valid_opts.add_opt('-despike_opts_3dDes', -1, [],
                         helpstr='additional options directly for 3dDespike')
+        self.valid_opts.add_opt('-despike_new', 1, [],
+                        acplist=['yes','no'],
+                        helpstr="(yes/no) run 3dDespike with -NEW method")
 
         self.valid_opts.add_opt('-ricor_datum', 1, [],
                         acplist=['short', 'float'],

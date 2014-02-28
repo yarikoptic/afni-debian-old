@@ -113,12 +113,15 @@ MRI_vectim * THD_dset_censored_to_vectim( THD_3dim_dataset *dset,
 
 ENTRY("THD_dset_censored_to_vectim") ;
 
-                     if( !ISVALID_DSET(dset) ) RETURN(NULL) ;
-   DSET_load(dset) ; if( !DSET_LOADED(dset)  ) RETURN(NULL) ;
+   if( !ISVALID_DSET(dset) ) RETURN(NULL) ;
 
    if( nkeep <= 0 || keep == NULL ){
      mrv = THD_dset_to_vectim( dset , mask , 0 ) ;
      RETURN(mrv) ;
+   }
+
+   if( THD_subset_loaded(dset,nkeep,keep) ){
+     DSET_load(dset) ; if( !DSET_LOADED(dset)  ) RETURN(NULL) ;
    }
 
    nvals = nkeep ;
@@ -1115,6 +1118,47 @@ ENTRY("THD_vectim_to_dset_indexed") ;
    free(tar) ; EXRETURN ;
 }
 
+/*----------------------------------------------------------------------*/
+/* The ilist[jj]-th point in the vectim goes into the jj-th index
+   in the output dataset [06 Feb 2014].
+*//*--------------------------------------------------------------------*/
+
+void THD_vectim_indexed_to_dset( MRI_vectim *mrv, int nlist, int *ilist,
+                                 THD_3dim_dataset *dset )
+{
+   int nvals , nvec ,  jj,kk ;
+   float *tar , *var ;
+
+ENTRY("THD_vectim_indexed_to_dset") ;
+
+   if( mrv   == NULL || !ISVALID_DSET(dset) ||
+       nlist <= 0    || ilist == NULL       || nlist > DSET_NVALS(dset)  ){
+     ERROR_message("THD_vectim_indexed_to_dset: illegal inputs (nlist=%d)",nlist) ;
+     EXRETURN ;
+   }
+
+   nvec  = mrv->nvec ;
+   nvals = mrv->nvals ;
+
+   for( kk=0 ; kk < nlist ; kk++ ){
+     if( ilist[kk] < 0 || ilist[kk] >= nvals ){
+       ERROR_message("THD_vectim_indexed_to_dset: illegal ilist[%d]=%d",kk,ilist[kk]) ;
+       EXRETURN ;
+     }
+   }
+
+   tar = (float *)malloc(sizeof(float)*nlist) ;
+
+   for( kk=0 ; kk < nvec ; kk++ ){
+     var = VECTIM_PTR(mrv,kk) ;
+     for( jj=0 ; jj < nlist ; jj++ ) tar[jj] = var[ilist[jj]] ;
+     THD_insert_series( mrv->ivec[kk] , dset ,
+                        nlist , MRI_float , tar , 0 ) ;
+   }
+
+   free(tar) ; EXRETURN ;
+}
+
 /*---------------------------------------------------------------------------*/
 
 MRI_vectim * THD_tcat_vectims( int nvim , MRI_vectim **vim )
@@ -1173,7 +1217,40 @@ MRI_vectim * THD_dset_list_to_vectim( int nds, THD_3dim_dataset **ds, byte *mask
    vim = (MRI_vectim **)malloc(sizeof(MRI_vectim *)*nds) ;
    for( kk=0 ; kk < nds ; kk++ ){
      vim[kk] = THD_dset_to_vectim( ds[kk] , mask , 0 ) ;
-     DSET_unload( ds[kk] ) ;
+     /** DSET_unload( ds[kk] ) ; **/
+     if( vim[kk] == NULL ){
+       for( jj=0 ; jj < kk ; jj++ ) VECTIM_destroy(vim[jj]) ;
+       free(vim) ; return NULL ;
+     }
+   }
+
+   vout = THD_tcat_vectims( nds , vim ) ;
+   for( jj=0 ; jj < nds ; jj++ ) VECTIM_destroy(vim[jj]) ;
+   free(vim) ; return vout ;
+}
+
+/*---------------------------------------------------------------------------*/
+
+MRI_vectim * THD_dset_list_censored_to_vectim( int nds, THD_3dim_dataset **ds,
+                                               byte *mask , int nkeep , int *keep )
+{
+   MRI_vectim *vout , **vim ;
+   int kk , jj ;
+
+   if( nds < 1 || ds == NULL ) return NULL ;
+
+   if( nds == 1 ) return THD_dset_censored_to_vectim( ds[0],mask,nkeep,keep );
+
+   for( kk=0 ; kk < nds ; kk++ ){
+     if( !ISVALID_DSET(ds[kk]) ) return NULL ;
+     if( DSET_NVALS(ds[kk]) != DSET_NVALS(ds[0]) ) return NULL ;
+   }
+
+#pragma omp critical (MALLOC)
+   vim = (MRI_vectim **)malloc(sizeof(MRI_vectim *)*nds) ;
+   for( kk=0 ; kk < nds ; kk++ ){
+     vim[kk] = THD_dset_censored_to_vectim( ds[kk] , mask , nkeep,keep ) ;
+     /** DSET_unload( ds[kk] ) ; **/
      if( vim[kk] == NULL ){
        for( jj=0 ; jj < kk ; jj++ ) VECTIM_destroy(vim[jj]) ;
        free(vim) ; return NULL ;

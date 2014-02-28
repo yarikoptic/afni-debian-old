@@ -133,9 +133,10 @@ static char g_history[] =
  " 3.11 Feb 11, 2013    - added recent options to help\n"
  " 3.12 Mar 07, 2013    - applied -prefix with -show_bad_backslash\n"
  " 3.13 Jul 09, 2013    - added a little more info for locating bad chars\n"
+ " 3.14 Dec 30, 2013    - bad_backslash includes files ending with one\n"
  "----------------------------------------------------------------------\n";
 
-#define VERSION         "3.13 (July 9, 2013)"
+#define VERSION         "3.14 (December 30, 2013)"
 
 
 /* ----------------------------------------------------------------------
@@ -329,14 +330,29 @@ scr_show_bad_bs( char * filename, param_t * p )
         /* note beginning of line (it's the next char) */
         if( fdata[count] == '\n' ){  line_start = fdata+count+1;  lnum++; }
 
-        if( outfp ) fputc(fdata[count], outfp); /* regardless, char is okay */
-
         if( fdata[count] != '\\' ){
+           if( outfp ) fputc(fdata[count], outfp); /* output good char */
            count++;
            continue;
         }
 
         /* found a '\\' char, count it and look beyond */
+
+        /* check for '\' at the end of the file (last char or before \n) */
+        if ( count == flen-1 || (count == flen-2 && fdata[count+1] == '\n') ) {
+           if( !p->quiet && bad ) fputs("   ", stdout);
+           if( !p->quiet ) printf("file '%s' ends with a backslash\n",filename);
+           /* and fix the line ('\' was added, so go with 2 newlines) */
+           if( outfp ) {
+              if(p->debug > 1) printf("--> skip last '\\', include newline\n");
+              fputc('\n', outfp);
+           }
+           bad++;
+           break;
+        } 
+
+        /* now look behond the '\' */
+        if( outfp ) fputc(fdata[count], outfp); /* output '\' char */
         bcount++; count++;
 
         /* note first char after '\\', and do not write out corrected
@@ -712,9 +728,13 @@ read_file( char * filename, char ** fdata, int * flen )
     }
 
     length = THD_filesize(filename);
+    if( length < 0 ) {
+        fprintf(stderr,"** failed to check size for file '%s'\n", filename);
+        return -1;
+    }
 
     /* see if we need to update space */
-    if ( *flen < length )
+    if ( *flen != length && length > 0 )
     {
         *fdata = (char*) realloc( *fdata, length * sizeof(char) );
         if ( *fdata == NULL )
@@ -1407,7 +1427,7 @@ set_params( param_t * p, int argc, char * argv[] )
     else
         p->modify = 0;                             /* be explicit */
 
-    if ( p->length <= 0 && p->debug > 0 )
+    if ( p->length <= 0 && p->debug > 0 && ! p->script )
         fputs( "warning: missing '-length' option, using file len\n", stderr );
 
     if ( p->modify )

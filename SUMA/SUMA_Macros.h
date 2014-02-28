@@ -428,6 +428,14 @@ if Dist = 0, point on plane, if Dist > 0 point above plane (along normal), if Di
    Eq[3] = -(Eq[0]*P[0] + Eq[1]*P[1] + Eq[2]*P[2]);   \
 }
 
+#define SUMA_MARK_PLANE_NOT_SET(P) { (P)[0] = 0.0; (P)[1] = 0.0; \
+                                     (P)[2] = 0.0; (P)[2] = 0.0; }
+/* Is equation of plane marked as not set? */
+#define SUMA_PLANE_NOT_SET(P) (!(P) || \
+                                ((P)[0] == 0.0 && (P)[1] == 0.0 && \
+                                 (P)[2] == 0.0 && (P)[2] == 0.0))
+#define SUMA_PLANE_IS_SET(P) (!(SUMA_PLANE_NOT_SET((P))))
+
 /*!
    Shift a plane to pass through P
    See also SUMA_Plane_Equation
@@ -731,6 +739,8 @@ if Dist = 0, point on plane, if Dist > 0 point above plane (along normal), if Di
    }  \
 }
 
+#define SUMA_NEW_MASKSTATE() (SUMAg_CF->X ? (++SUMAg_CF->X->MaskStateID):0)
+
 /*!
    \brief Get the pointer for the last visited viewer 
 */
@@ -753,16 +763,6 @@ if Dist = 0, point on plane, if Dist > 0 point above plane (along normal), if Di
    else { SO->PolyMode = i; } \
    if (SO->PolyMode == SRM_Hide) { SO->Show = NOPE; } \
    else { SO->Show = YUP; }\
-}
-
-/*!
-   \brief set transmode
-*/ 
-#define SUMA_SET_SO_TRANSMODE(SO,i){ \
-   if (i < 0 || i >= STM_N_TransModes) { SO->TransMode = STM_ViewerDefault; }\
-   else { SO->TransMode = i; } \
-   if (SO->TransMode == STM_16) { SO->Show = NOPE; } \
-   else { SO->Show = YUP; } \
 }
 
 /*!

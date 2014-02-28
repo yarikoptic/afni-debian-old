@@ -19,7 +19,7 @@ int SUMA_init_ports_assignments(SUMA_CommonFields *cf)
 {
    static char FuncName[]={"SUMA_init_ports_assignments"};
    int i;
-   float dsmw = 5*60;
+   float dsmw = 5*60, dsmwc = 5;
    char *eee=NULL;
    
    SUMA_ENTRY;
@@ -43,6 +43,20 @@ int SUMA_init_ports_assignments(SUMA_CommonFields *cf)
    } else {
       dsmw = (float)5*60;
    } 
+   eee = getenv("SUMA_DriveSumaMaxCloseWait");
+   if (eee) {
+      dsmwc = atof(eee);
+      if (dsmwc < 0 || dsmwc > 60000) {
+         SUMA_S_Warnv( 
+               "Environment variable SUMA_DriveSumaMaxCloseWait %f is invalid.\n"
+                "value must be between 0 and 60000 seconds.\n"
+                "Using default of %d\n", 
+                dsmwc, 5);
+         dsmwc = (float)5;/* wait for 5 secs */
+      }
+   } else {
+      dsmwc = (float)5;
+   } 
     
    for (i=0; i<SUMA_MAX_STREAMS; ++i) {
       cf->ns_v[i] = NULL;
@@ -50,9 +64,11 @@ int SUMA_init_ports_assignments(SUMA_CommonFields *cf)
          case SUMA_GICORR_LINE:
          case SUMA_DRIVESUMA_LINE:
             cf->ns_to[i] = (int)(dsmw*1000);  
+            cf->ns_toc[i] = (int)(dsmwc*1000);  
             break;
          default:
             cf->ns_to[i] = SUMA_WRITECHECKWAITMAX;
+            cf->ns_toc[i] = (int)(SUMA_WRITECHECKWAITMAX*1000);  
             break;
       }
       cf->ns_flags_v[i] = 0;
@@ -88,6 +104,9 @@ int SUMA_init_ports_assignments(SUMA_CommonFields *cf)
             break;
          case SUMA_HALLO_SUMA_LINE:
             cf->TCP_port[i] = get_port_named("SUMA_HALLO_SUMA_NIML");
+            break;
+         case SUMA_INSTA_TRACT_LINE:
+            cf->TCP_port[i] = get_port_named("SUMA_INSTA_TRACT_NIML");
             break;
          default:
             SUMA_S_Errv("Bad stream index %d. Ignoring it.\n", i);
@@ -276,6 +295,12 @@ Boolean SUMA_niml_workproc( XtPointer thereiselvis )
                   SUMAg_CF->TCP_port[cc], cc) ;
          if (cc == SUMA_HALLO_SUMA_LINE) { /* Connected flag for AFNI line 
                                               handled elsewhere */
+            SUMA_S_Note("Connected on HALLO_SUMA");
+            SUMAg_CF->Connected_v[cc] = YUP;
+         }
+         if (cc == SUMA_INSTA_TRACT_LINE) { /* Connected flag for AFNI line 
+                                              handled elsewhere */
+            SUMA_S_Note("Connected on INSTA_TRACT_LINE");
             SUMAg_CF->Connected_v[cc] = YUP;
          }            
      }
@@ -487,7 +512,8 @@ SUMA_Boolean SUMA_niml_call ( SUMA_CommonFields *cf, int si,
          /* contact afni */
             SUMA_SetWriteCheckWaitMax(cf->ns_to[si]);
             fprintf( SUMA_STDOUT,
-                     "%s: Contacting on %s (%d), maximum wait %.3f sec\n", 
+                     "%s: Contacting on %s (%d), maximum wait %.3f sec \n"
+            "(You can change max. wait time with env. SUMA_DriveSumaMaxWait)\n", 
                      FuncName, cf->NimlStream_v[si], si, 
                      (float)cf->ns_to[si]/1000.0);
             fflush(SUMA_STDOUT);
@@ -646,7 +672,6 @@ SUMA_Boolean SUMA_process_NIML_data( void *nini , SUMA_SurfaceViewer *sv)
    SUMA_ALL_DO *ado=NULL;
    SUMA_SurfaceViewer *svi = NULL;
    SUMA_OVERLAYS * tmpptr; 
-   GLfloat *glar_ColorList = NULL;
    SUMA_OVERLAY_PLANE_DATA sopd;
    SUMA_SurfSpecFile *Spec=NULL;
    SUMA_Boolean iselement = YUP;
@@ -654,7 +679,7 @@ SUMA_Boolean SUMA_process_NIML_data( void *nini , SUMA_SurfaceViewer *sv)
 
    SUMA_ENTRY;
 
-   if( tt < 0 ) {/* should never happen */
+   if( tt < 0 ) {/* should never happen unless nini was NULL*/
       fprintf(SUMA_STDERR,"Error %s: Should never have happened.\n", FuncName);
       SUMA_RETURN(NOPE);
    } 
@@ -1312,7 +1337,8 @@ SUMA_Boolean SUMA_process_NIML_data( void *nini , SUMA_SurfaceViewer *sv)
             change. So I'll allocate for the entire node list 
             for the FuncAfni_0 color plane although only some values will 
             be used*/
-
+         
+         memset(&sopd, 0, sizeof(SUMA_OVERLAY_PLANE_DATA));
          sopd.Type = SOPT_ibbb;
          sopd.Source = SES_Afni;
          sopd.GlobalOpacity = SUMA_AFNI_COLORPLANE_OPACITY;
@@ -1366,7 +1392,7 @@ SUMA_Boolean SUMA_process_NIML_data( void *nini , SUMA_SurfaceViewer *sv)
                SUMA_UpdateColPlaneShellAsNeeded(ado); 
                               /* update other open ColPlaneShells */
                /* If you're viewing one plane at a time, do a remix */
-               if (SUMA_ADO_ShowCurForeOnly(ado)) SUMA_RemixRedisplay(ado);
+               if (SUMA_ADO_ShowCurForeOnly(ado)) SUMA_Remixedisplay(ado);
             }
          }
          /* register a color remix request */
@@ -1869,14 +1895,64 @@ SUMA_Boolean SUMA_process_NIML_data( void *nini , SUMA_SurfaceViewer *sv)
 
          /* don't free nel, it's freed later on */
          SUMA_RETURN(YUP);
-      }
-   
+      } else if (strcmp(ngr->name,"network") == 0) {
+         SUMA_TractDO *TDO=NULL;
+         TAYLOR_NETWORK *net=NULL;
+         SUMA_LH( "I got me some network. FIX ME. "
+                  "Check ADO replacement, registration, etc.!");
+         /* SUMA_ShowNel(ngr); */
+         if (!(net = NIgr_2_Network(ngr))) {
+            SUMA_S_Err("Failed to turn group element to network\n");
+            SUMA_RETURN(NOPE);
+         }
+         if (!(TDO = SUMA_Net2TractDO(net, "InstaTract", NULL))) {
+            SUMA_S_Err("Failed to turn net to TDO\n");
+            SUMA_RETURN(NOPE);
+         } 
+
+         if (!SUMA_AddDO(SUMAg_DOv, &SUMAg_N_DOv, (void *)TDO, 
+                         TDO->do_type, SUMA_WORLD)) {
+            fprintf(SUMA_STDERR,"Error %s: Failed in SUMA_AddDO.\n", FuncName);
+            SUMA_RETURN(NOPE);
+         }
+         
+         if (!sv) sv = &(SUMAg_SVv[0]);
+
+         /* register DO with viewer */
+         if (!SUMA_RegisterDO(SUMAg_N_DOv-1, sv)) {
+            fprintf( SUMA_STDERR,
+                     "Error %s: Failed in SUMA_RegisterDO.\n", FuncName);
+            SUMA_RETURN(NOPE);
+         }
+
+         /* redisplay curent only*/
+         sv->ResetGLStateVariables = YUP;
+         SUMA_handleRedisplay((XtPointer)sv->X->GLXAREA);
+         
+         /* don't free ngr, it's freed later on */
+         SUMA_RETURN(YUP);
+      } else if (strcmp(ngr->name,"IT.griddef") == 0) {
+         NI_group *gngr=NULL;
+         
+         SUMAg_CF->ITset = New_Insta_Tract_Setup(SUMAg_CF->ITset);
+         SUMA_LH("Grid from InstaTract");
+         if (!(gngr = (NI_group *)SUMA_FindNgrNamedAny(ngr, "AFNI_dataset"))) {
+            SUMA_S_Err("Failed to get grid element");
+            SUMA_RETURN(NOPE);
+         }
+         if (!(SUMAg_CF->ITset->grid = THD_niml_to_dataset( gngr , 1 ))) {
+            SUMA_S_Err("Failed to get grid");
+            SUMA_RETURN(NOPE);
+         }
+         SUMA_LH("Yay!");
+         /* don't free ngr, it's freed later on */
+         SUMA_RETURN(YUP);
+      }      
+      
       /*** If here, then name of group didn't match anything 
            Try processing its parts ***/
       if (LocalHead)  {
-               fprintf( SUMA_STDERR,
-                        "%s:  Working group %s \n",
-                        FuncName, ngr->name);
+         fprintf(SUMA_STDERR,"%s:  Working group %s \n", FuncName, ngr->name);
       }
       for( ip=0 ; ip < ngr->part_num ; ip++ ){ 
          switch( ngr->part_typ[ip] ){
@@ -1903,7 +1979,6 @@ SUMA_Boolean SUMA_process_NIML_data( void *nini , SUMA_SurfaceViewer *sv)
                break;
          }
       }
-      
       SUMA_RETURN(YUP) ;
    }
 }
@@ -2161,7 +2236,7 @@ NI_element * SUMA_makeNI_CrossHair (SUMA_SurfaceViewer *sv)
    static char FuncName[]={"SUMA_makeNI_CrossHair"};
    NI_element *nel=NULL;
    float *XYZmap;
-   int I_C = -1, ip, iv4[4];
+   int I_C = -1, ip, ivsel[SUMA_N_IALTSEL_TYPES];
    SUMA_ALL_DO *ado = NULL;
    SUMA_SurfaceObject *SO;
    
@@ -2219,12 +2294,12 @@ NI_element * SUMA_makeNI_CrossHair (SUMA_SurfaceViewer *sv)
          }
 
          /* add some info about surface in question */
-         ip = SUMA_ADO_SelectedDatum(ado, (void *)iv4);
+         ip = SUMA_ADO_SelectedDatum(ado, (void *)ivsel, NULL);
          NI_SETA_INT(nel, "network_pointid", ip);
-         NI_SETA_INT(nel, "net_bundle_id", iv4[SUMA_NET_BUN]);
-         NI_SETA_INT(nel, "bundle_tract_id", iv4[SUMA_BUN_TRC]);
-         NI_SETA_INT(nel, "tract_point_id", iv4[SUMA_TRC_PNT]);
-         NI_SETA_INT(nel, "net_tract_id", iv4[SUMA_NET_TRC]);
+         NI_SETA_INT(nel, "net_bundle_id", ivsel[SUMA_NET_BUN]);
+         NI_SETA_INT(nel, "bundle_tract_id", ivsel[SUMA_BUN_TRC]);
+         NI_SETA_INT(nel, "tract_point_id", ivsel[SUMA_TRC_PNT]);
+         NI_SETA_INT(nel, "net_tract_id", ivsel[SUMA_NET_TRC]);
          NI_set_attribute(nel, "network_idcode", ADO_ID(ado));
          NI_set_attribute(nel, "surface_label", ADO_LABEL(ado));
 
@@ -2237,7 +2312,7 @@ NI_element * SUMA_makeNI_CrossHair (SUMA_SurfaceViewer *sv)
          }
 
          /* add some info about surface in question */
-         ip = SUMA_ADO_SelectedDatum(ado, (void *)iv4);
+         ip = SUMA_ADO_SelectedDatum(ado, (void *)ivsel, NULL);
          NI_add_column( nel , NI_FLOAT , sv->Ch->c_noVisX );
          break;
       case SDSET_type:
@@ -2250,7 +2325,7 @@ NI_element * SUMA_makeNI_CrossHair (SUMA_SurfaceViewer *sv)
          }
 
          /* add some info about object in question */
-         ip = SUMA_ADO_SelectedDatum(ado, NULL);
+         ip = SUMA_ADO_SelectedDatum(ado, NULL, NULL);
          NI_SETA_INT(nel, "edge_id", ip);
          NI_set_attribute(nel, "graph_idcode", ADO_ID(ado));
          NI_set_attribute(nel, "graph_label", ADO_LABEL(ado));
@@ -2264,7 +2339,7 @@ NI_element * SUMA_makeNI_CrossHair (SUMA_SurfaceViewer *sv)
          }
 
          /* add some info about object in question */
-         ip = SUMA_ADO_SelectedDatum(ado, NULL);
+         ip = SUMA_ADO_SelectedDatum(ado, (void*)ivsel, NULL);
          NI_SETA_INT(nel, "voxel_id", ip);
          NI_set_attribute(nel, "volume_idcode", ADO_ID(ado));
          NI_set_attribute(nel, "volume_label", ADO_LABEL(ado));
@@ -2276,6 +2351,151 @@ NI_element * SUMA_makeNI_CrossHair (SUMA_SurfaceViewer *sv)
    }
    SUMA_RETURN (nel);
 }
+
+NI_group * SUMA_makeNI_InstaTract_Query (SUMA_SurfaceViewer *sv)
+{
+   static char FuncName[]={"SUMA_makeNI_InstaTract_Query"};
+   NI_element *nel=NULL;
+   NI_group *ngr=NULL;
+   THD_3dim_dataset *gset=NULL;
+   float *XYZmap, find[3];
+   int I_C = -1, ip, iv4[4], *nind=NULL, ninmask=-1;
+   SUMA_ALL_DO *ado = NULL;
+   SUMA_SurfaceObject *SO=NULL;
+   MCW_cluster *nbhd=NULL;
+   
+   SUMA_ENTRY;
+
+   if (sv == NULL) {
+      SUMA_S_Err("Null sv.");
+      SUMA_RETURN (NULL);
+   }
+   if (sv->Ch == NULL) {
+      SUMA_S_Err("NULL Ch.");
+      SUMA_RETURN (NULL);
+   }
+   if (!SUMAg_CF->ITset || !(gset = SUMAg_CF->ITset->grid)) {
+      SUMA_S_Err("NULL ITset(%p) or ITset->grid (%p)", 
+                  SUMAg_CF->ITset, SUMAg_CF->ITset?SUMAg_CF->ITset->grid:NULL);
+      SUMA_RETURN(NULL);
+   }
+   
+   if (!(ado=SUMA_SV_Focus_ADO(sv))) SUMA_RETURN(NULL);
+   
+   if (!(nel = SUMA_makeNI_CrossHair(sv))) {
+      SUMA_S_Err("Failed to form cross hair nel");
+      SUMA_RETURN(NULL);
+   }
+   XYZmap = (float*)nel->vec[0]; /* Supposed to be an anatomically correct XYZ */
+   if (!(SUMA_THD_dicomm_to_3dfind(gset, 
+                     XYZmap[0], XYZmap[1], XYZmap[2], find))) {
+      SUMA_S_Err("No good ijk for %f %f %f", 
+                  XYZmap[0], XYZmap[1], XYZmap[2]);
+      NI_free_element(nel); SUMA_RETURN(NULL);
+   }
+   
+   /* Now determine the voxels to be part of the ROI sent to InstaTract */
+   switch(ado->do_type) {
+      case SO_type:
+         SO = (SUMA_SurfaceObject *)ado;
+         I_C = SO->SelectedNode;
+         #if 0
+         /* For ROI selection... somewhere else ... */
+         /*
+         1- From click location find all nodes with xmm radius 
+         2- For each incident triangle, identify voxels intersecting it 
+            AND that are within xmm of node
+         3-    From each accepted voxel, travel along incident triangle's normal
+               and accept encountered voxels until you reach the depth limit
+               (for voxel triangle intersection see 
+                     SUMA_GetVoxelsIntersectingTriangle() and 
+                     SUMA_isVoxelIntersect_Triangle()
+         */
+         #endif
+         /* For now just get something in the sphere, around XYZ.
+         In the future you want to dig in (depending on the surface)
+         and pick white matter. See Adam Greenberg's paper for 
+         an example */
+         nbhd = MCW_spheremask( SUMA_ABS(DSET_DX(gset)), 
+                                SUMA_ABS(DSET_DY(gset)),
+                                SUMA_ABS(DSET_DZ(gset)), 20 );
+         nind = (int *)calloc(nbhd->num_pt, sizeof(int));
+         ninmask = mri_load_nbhd_indices (
+                        DSET_NX(gset), DSET_NY(gset) , DSET_NZ(gset),
+                        NULL , (int)find[0], (int)find[1], (int)find[2], 
+                        nbhd, nind);
+         KILL_CLUSTER(nbhd); nbhd = NULL;
+         break;
+      case TRACT_type:
+         /* For now just get something in the sphere, around XYZ.
+         In the future you want to dig in (depending on the surface)
+         and pick white matter. See Adam Greenberg's paper for 
+         an example */
+         nbhd = MCW_spheremask( SUMA_ABS(DSET_DX(gset)), 
+                                SUMA_ABS(DSET_DY(gset)),
+                                SUMA_ABS(DSET_DZ(gset)), 20 );
+         nind = (int *)calloc(nbhd->num_pt, sizeof(int));
+         ninmask = mri_load_nbhd_indices (
+                        DSET_NX(gset), DSET_NY(gset) , DSET_NZ(gset),
+                        NULL , (int)find[0], (int)find[1], (int)find[2], 
+                        nbhd, nind);
+         KILL_CLUSTER(nbhd); nbhd = NULL;
+         break;
+      case MASK_type:
+         break;
+      case SDSET_type:
+         break;
+      case GRAPH_LINK_type:
+         if (strcmp(SUMA_ADO_variant(ado),"G3D")) break;
+         /* For now just get something in the sphere, around XYZ.
+         In the future you want to dig in (depending on the surface)
+         and pick white matter. See Adam Greenberg's paper for 
+         an example */
+         nbhd = MCW_spheremask( SUMA_ABS(DSET_DX(gset)), 
+                                SUMA_ABS(DSET_DY(gset)),
+                                SUMA_ABS(DSET_DZ(gset)), 20 );
+         nind = (int *)calloc(nbhd->num_pt, sizeof(int));
+         ninmask = mri_load_nbhd_indices (
+                        DSET_NX(gset), DSET_NY(gset) , DSET_NZ(gset),
+                        NULL , (int)find[0], (int)find[1], (int)find[2], 
+                        nbhd, nind);
+         KILL_CLUSTER(nbhd); nbhd = NULL;
+         break;
+      case VO_type:
+         /* For now just get something in the sphere, around XYZ.
+         In the future you want to dig in (depending on the surface)
+         and pick white matter. See Adam Greenberg's paper for 
+         an example */
+         nbhd = MCW_spheremask( SUMA_ABS(DSET_DX(gset)), 
+                                SUMA_ABS(DSET_DY(gset)),
+                                SUMA_ABS(DSET_DZ(gset)), 20 );
+         nind = (int *)calloc(nbhd->num_pt, sizeof(int));
+         ninmask = mri_load_nbhd_indices (
+                        DSET_NX(gset), DSET_NY(gset) , DSET_NZ(gset),
+                        NULL , (int)find[0], (int)find[1], (int)find[2], 
+                        nbhd, nind);
+         KILL_CLUSTER(nbhd); nbhd = NULL;
+         break;
+      default:
+         break;
+   }
+   
+   /* Now put it all together */
+   if (ninmask) {
+      ngr = NI_new_group_element();
+      NI_rename_group(ngr, "InstaTract_Query");
+      NI_add_to_group(ngr, nel);
+      nel = NI_new_data_element("ROI", ninmask);
+      NI_add_column(nel, NI_INT, nind);
+      NI_add_to_group(ngr, nel);   
+   } else {
+      NI_free_element(nel);
+   }
+   SUMA_ifree(nind);
+   
+   SUMA_RETURN (ngr);
+}
+
 
 /*!
    ans = SUMA_CanTalkToAfni (dov, N_dov);
@@ -3896,6 +4116,7 @@ void SUMA_Wait_Till_Stream_Goes_Bad(SUMA_COMM_STRUCT *cs,
    if (WaitClose >= WaitMax) { 
       if (verb) 
          SUMA_S_Warnv("\nFailed to detect closed stream after %d ms.\n"
+         "(You can change max. wait time with env. SUMA_DriveSumaMaxCloseWait)\n"
                       "Closing shop anyway...", WaitMax);  
    }else{
       if (verb) fprintf (SUMA_STDERR,"Done.\n");
@@ -4260,7 +4481,8 @@ SUMA_Boolean SUMA_SendToSuma (SUMA_SurfaceObject *SO, SUMA_COMM_STRUCT *cs,
 
 
          /* now wait till stream goes bad */
-         SUMA_Wait_Till_Stream_Goes_Bad(cs, 1000, 5000, 1);
+         SUMA_Wait_Till_Stream_Goes_Bad(cs, 1000, 
+                                    SUMAg_CF->ns_toc[cs->istream], 1);
           
          NI_stream_close(SUMAg_CF->ns_v[cs->istream]);
          SUMAg_CF->ns_v[cs->istream] = NULL;

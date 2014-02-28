@@ -204,7 +204,8 @@ LIBHEADERS = mrilib.h mcw_glob.h 3ddata.h thd_maker.h thd_iochan.h            \
              nifti/niftilib/nifti1_io.h nifti/nifticdf/nifticdf.h             \
              nifti/znzlib/znzlib.h Aomp.h rcmat.h misc_math.h                 \
              rickr/r_new_resam_dset.h rickr/r_idisp.h rickr/r_misc.h          \
-             thd_atlas.h thd_ttatlas_query.h thd_ttatlas_CA_EZ.h 
+             thd_atlas.h thd_ttatlas_query.h thd_ttatlas_CA_EZ.h              \
+             cs_qsort_small.h
 
 ### Make everything, install it too, and cleanup
 
@@ -887,6 +888,10 @@ strblast:strblast.o
 3dMedianFilter:3dMedianFilter.o
 	$(RM) $@
 	$(CC) -o 3dMedianFilter 3dMedianFilter.o $(LFLAGS) $(LLIBS)
+
+3dDeghost:3dDeghost.o cs_qsort_small.h
+	$(RM) $@
+	$(CC) -o 3dDeghost 3dDeghost.o $(LFLAGS) $(LLIBS)
 
 3dPolyfit:3dPolyfit.o
 	$(RM) $@
@@ -1734,7 +1739,7 @@ afni_doc.tgz:
 
 ### Put things in their places
 
-install: $(INSTALLDIR) $(INSTALL_PREREQ) ptaylor_install pkundu_install 
+install: $(INSTALLDIR) $(INSTALL_PREREQ) ptaylor_install pkundu_install
 	$(MV) $(PROGRAMS) $(INSTALLDIR)
 	$(CP) $(SCRIPTS)  $(INSTALLDIR)
 	$(CP) $(PY_DIR)/*.py  $(R_DIR)/*.R $(INSTALLDIR)
@@ -1817,7 +1822,7 @@ csfft.o:csfft.c
 	$(RM) $@
 	$(CCFAST) -c csfft.c $(INFLAGS)
 
-mri_percents.o:mri_percents.c
+mri_percents.o:mri_percents.c cs_qsort_small.h
 	$(RM) $@
 	$(CCFAST) -c mri_percents.c $(INFLAGS)
 
@@ -1885,7 +1890,7 @@ cs_sort_dv.o:cs_sort_dv.c
 	$(RM) $@
 	$(CCFAST) -c cs_sort_dv.c $(INFLAGS)
 
-cs_sort_d.o:cs_sort_d.c
+cs_sort_d.o:cs_sort_d.c cs_qsort_small.h
 	$(RM) $@
 	$(CCFAST) -c cs_sort_d.c $(INFLAGS)
 
@@ -2011,7 +2016,7 @@ MRI_OBJS = mri_cfft.o mri_complex_arith.o mri_fft_complex.o mri_free.o    \
            mri_pcvector.o mri_fdrize.o mri_floatvec.o mri_sort.o               \
            mri_warpfield.o mri_dicom_stuff.o mri_check.o mri_allzero.o         \
            mri_subset.o mri_to_fvect.o mri_genalign_util.o rcmat.o dmat44.o    \
-           mri_rbfinterp.o mri_genARMA11.o mri_catvol.o mri_polyfit.o          \
+                           mri_genARMA11.o mri_catvol.o mri_polyfit.o          \
            mri_nwarp.o mri_extract.o
 
 THD_OBJS = thd_atr.o thd_dsetto1D.o thd_initalldir.o thd_reconpar.o \
@@ -2946,7 +2951,7 @@ libsegtools.a: avovk/cluster_floatNOMASK.c avovk/thd_segtools_fNM.c
 #############
 #PTAYLOR directory
 
-ptaylor_all: 
+ptaylor_all:
 	( cd ptaylor ;	\
 	./@MakeLocalMake	;\
 	$(MAKE) afni_all  ;	\
@@ -2980,6 +2985,7 @@ libSUMA.a: libmri.a libmrix.a libcoxplot.a libf2c.a libtracktools.a
 	( cd SUMA ;	\
 	rm -f libSUMA.a	;\
 	$(MAKE) -f $(SUMA_MAKEFILE_NAME) clean MarchingCubes.o libSUMA.a 'INSTALLDIR=$(INSTALLDIR)' \
+	'SUMA_MDEFS=$(SUMA_MDEFS)' \
 	'SUMA_INCLUDE_PATH=$(SUMA_INCLUDE_PATH)' \
 	'SUMA_BIN_ARCHIVE=$(SUMA_BIN_ARCHIVE)' \
 	'RANLIB=$(RANLIB)' \
@@ -3014,6 +3020,7 @@ libGLws.a:
 	rm -f libGLws.a	;\
 	$(MAKE) -f $(SUMA_MAKEFILE_NAME) libGLws.a 'INSTALLDIR=$(INSTALLDIR)' \
 	'SUMA_INCLUDE_PATH=$(SUMA_INCLUDE_PATH)' \
+	'SUMA_MDEFS=$(SUMA_MDEFS)' \
 	'SUMA_BIN_ARCHIVE=$(SUMA_BIN_ARCHIVE)' \
 	'RANLIB=$(RANLIB)' \
         'MAKE=$(MAKE)'     \
@@ -3036,8 +3043,9 @@ suma_exec:libGLws.a libSUMA.a libtracktools.a libmri.a xutil.o LiteClue.o parser
    3dSkullStrip 3dCRUISEtoAFNI 3dBRAIN_VOYAGERtoAFNI 3dSurfMask\
    SurfToSurf Surf2VolCoord ROIgrow SurfDsetInfo SurfInfo AnalyzeTrace \
    DriveSuma SurfDist SpharmReco SpharmDeco prompt_user SurfRetinoMap \
-   ParseName 3dGenPriors 3dSeg SurfExtrema 3dinfill 3dHist HalloSuma \
+   ParseName 3dGenPriors 3dSeg SurfExtrema 3dinfill 3dHist HalloSuma InstaTract \
    'INSTALLDIR=$(INSTALLDIR)' \
+	'SUMA_MDEFS=$(SUMA_MDEFS)' \
 	'SUMA_INCLUDE_PATH=$(SUMA_INCLUDE_PATH)' \
 	'SUMA_LINK_PATH=$(SUMA_LINK_PATH)' \
 	'SUMA_LINK_LIB=$(SUMA_LINK_LIB)' \
@@ -3055,6 +3063,7 @@ suma_gts_progs: libgts.a
 	( cd SUMA ;	\
 	$(MAKE) -f $(SUMA_MAKEFILE_NAME) SurfMesh 'INSTALLDIR=$(INSTALLDIR)' \
 	'SUMA_INCLUDE_PATH=$(SUMA_INCLUDE_PATH)' \
+	'SUMA_MDEFS=$(SUMA_MDEFS)' \
 	'SUMA_LINK_PATH=$(SUMA_LINK_PATH)' \
 	'SUMA_LINK_LIB=$(SUMA_LINK_LIB)' \
 	'SUMA_BIN_ARCHIVE=$(SUMA_BIN_ARCHIVE)' \
@@ -3070,6 +3079,7 @@ suma_gts_progs: libgts.a
 suma_all:libmri.a libtracktools.a xutil.o LiteClue.o parser.o parser_int.o libmrix.a libcoxplot.a libf2c.a
 	( cd SUMA ;	\
 	$(MAKE) -f $(SUMA_MAKEFILE_NAME) all 'INSTALLDIR=$(INSTALLDIR)' 'INSTALLDIR_SUMA=$(INSTALLDIR)' \
+	'SUMA_MDEFS=$(SUMA_MDEFS)' \
 	'SUMA_INCLUDE_PATH=$(SUMA_INCLUDE_PATH)' \
 	'SUMA_LINK_PATH=$(SUMA_LINK_PATH)' \
 	'SUMA_LINK_LIB=$(SUMA_LINK_LIB)' \
@@ -3086,6 +3096,7 @@ suma_all:libmri.a libtracktools.a xutil.o LiteClue.o parser.o parser_int.o libmr
 suma_anew:libmri.a xutil.o LiteClue.o parser.o parser_int.o libmrix.a libcoxplot.a libf2c.a libtracktools.a
 	( cd SUMA ;	\
 	$(MAKE) -f $(SUMA_MAKEFILE_NAME) anew 'INSTALLDIR=$(INSTALLDIR)' 'INSTALLDIR_SUMA=$(INSTALLDIR)' \
+	'SUMA_MDEFS=$(SUMA_MDEFS)' \
 	'SUMA_INCLUDE_PATH=$(SUMA_INCLUDE_PATH)' \
 	'SUMA_LINK_PATH=$(SUMA_LINK_PATH)' \
 	'SUMA_LINK_LIB=$(SUMA_LINK_LIB)' \
@@ -3201,6 +3212,8 @@ suma_clean:
 	if [ -f SUMA/3dHist ]; then $(RM) SUMA/3dHist; fi;
 	if [ -f HalloSuma ]; then $(RM) HalloSuma; fi;
 	if [ -f SUMA/HalloSuma ]; then $(RM) SUMA/HalloSuma; fi;
+	if [ -f InstaTract ]; then $(RM) InstaTract; fi;
+	if [ -f SUMA/InstaTract ]; then $(RM) SUMA/InstaTract; fi;
 
 ###
 #Use precompiled libraries present in SUMA/$(SUMA_BIN_ARCHIVE) and just link SUMA
@@ -3218,7 +3231,8 @@ suma_link:
    3dCRUISEtoAFNI 3dBRAIN_VOYAGERtoAFNI 3dSurfMask\
    SurfToSurf Surf2VolCoord ROIgrow SurfDsetInfo SurfInfo AnalyzeTrace \
    DriveSuma SurfDist SpharmReco SpharmDeco prompt_user SurfRetinoMap \
-   ParseName 3dGenPriors 3dSeg SurfExtrema 3dinfill 3dHist HalloSuma; \
+   ParseName 3dGenPriors 3dSeg SurfExtrema 3dinfill 3dHist HalloSuma \
+   InstaTract; \
 	$(MAKE) -f $(SUMA_MAKEFILE_NAME) testGL suma MakeColorMap ROI2dataset \
    3dVol2Surf 3dSurf2Vol ScaleToMap SurfMeasures SurfFWHM \
 	MapIcosahedron CreateIcosahedron CompareSurfaces ConvertSurface ConvertDset \
@@ -3227,8 +3241,9 @@ suma_link:
    3dCRUISEtoAFNI 3dBRAIN_VOYAGERtoAFNI 3dSurfMask \
 	SurfToSurf Surf2VolCoord ROIgrow SurfDsetInfo SurfInfo AnalyzeTrace \
    DriveSuma SurfDist SpharmReco SpharmDeco prompt_user SurfRetinoMap \
-   ParseName 3dGenPriors 3dSeg SurfExtrema 3dinfill 3dHist HalloSuma \
+   ParseName 3dGenPriors 3dSeg SurfExtrema 3dinfill 3dHist HalloSuma InstaTract \
 	'INSTALLDIR=$(INSTALLDIR)' \
+	'SUMA_MDEFS=$(SUMA_MDEFS)' \
 	'SUMA_INCLUDE_PATH=$(SUMA_INCLUDE_PATH)' \
 	'SUMA_LINK_PATH=$(SUMA_LINK_PATH)' \
 	'SUMA_LINK_LIB=$(SUMA_LINK_LIB)' \
@@ -3258,7 +3273,7 @@ suma_install:
    SUMA/SurfInfo SUMA/AnalyzeTrace SUMA/DriveSuma SUMA/SurfDist \
    SUMA/SpharmReco SUMA/SpharmDeco SUMA/prompt_user SUMA/SurfRetinoMap \
    SUMA/ParseName SUMA/3dGenPriors SUMA/3dSeg SUMA/SurfExtrema SUMA/3dinfill \
-   SUMA/3dHist SUMA/HalloSuma \
+   SUMA/3dHist SUMA/HalloSuma SUMA/InstaTract \
    ${INSTALLDIR} ; \
 	if [ -f SUMA/SurfMesh ]; then $(CP) SUMA/SurfMesh ${INSTALLDIR} ; fi; \
 	$(CP) @SUMA_* ${INSTALLDIR} ;)

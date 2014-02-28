@@ -49,6 +49,39 @@
 
 
 afni_history_struct dglen_history[] = {
+{ 17 , Feb, 2014 , DRG , "@MakeLabelTable" , 
+    MICRO , TYPE_BUG_FIX, 
+    "-centers option incorrect for some atlases",
+    "incorrect centers of mass for datasets with missing ROI values\n"
+},
+
+{ 31 , JAN, 2014 , DRG , "AFNI_IMAGE_GLOBALRANGE" , 
+    MINOR , TYPE_NEW_ENV, 
+    "New options for scaling display in afni GUI",
+    "AFNI_IMAGE_GLOBALRANGE can be set to SLICE (default), VOLUME (SUBBRICK),\n"
+    "or DSET. The GUI applies the lookup table to color the underlay with the\n"
+    "range determined from the slice, sub-brick or the whole multi-sub-brick\n"
+    "dataset. This environment variable may be set in a user's .afnirc file,\n"
+    "Additionally, the GUI allows changes from the environment plugin menu or\n"
+    "in two new places - the right-click menu on the image viewer colorbar.\n"
+    "Typing Control-m in an image viewer cycles among the global range types.\n"
+    "Previous YES/NO definitions for this variable correspond to VOLUME and\n"
+    "SLICE respectively and will continue to work as before. The lower right\n"
+    "corner of the image viewer shows the current range setting:\n"
+    "(2%-98%/Min2Max, Vol, Dset)"
+} ,
+
+{ 9 , JAN, 2014 , DRG , "3dDWItoDT" , 
+    MINOR , TYPE_BUG_FIX, 
+    "bmatrix options",
+    "bmatrix_Z and bmatrix_NZ options replace old -bmatrix option\n"
+    "The new options allow for a B=0 and no B=0 row in an optional\n"
+    "b-matrix input. The b-matrix may be used as input instead of the\n"
+    "gradient vector direction file. The former -bmatrix option\n"
+    "resulted in an error or incorrect results. (Paul Taylor is mostly\n"
+    "responsible for recognizing and fixing this. Thanks, Paul!)"
+} ,
+
 { 21 , OCT, 2013 , DRG , "whereami GUI" , 
     MINOR , TYPE_NEW_ENV, 
     "NeuroSynth.org link",

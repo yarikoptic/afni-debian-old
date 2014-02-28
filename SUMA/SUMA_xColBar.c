@@ -93,10 +93,11 @@ void SUMA_cmap_wid_graphicsInit (Widget w, XtPointer clientData, XtPointer call)
                         True);              /* Direct rendering if possible. */
    
    /* Setup OpenGL state. */
-   if (!glXMakeCurrent( XtDisplay(w), XtWindow(w), 
-                        SurfCont->cmp_ren->cmap_context)) {
+   if (!SUMA_glXMakeCurrent( XtDisplay(w), XtWindow(w), 
+                        SurfCont->cmp_ren->cmap_context, 
+                        FuncName, "some cmap init", 1)) {
       fprintf (SUMA_STDERR, 
-               "Error %s: Failed in glXMakeCurrent.\n \tContinuing ...\n", 
+               "Error %s: Failed in SUMA_glXMakeCurrent.\n \tContinuing ...\n", 
                FuncName);
       SUMA_GL_ERRS;
       SUMA_RETURNe;
@@ -265,7 +266,7 @@ void SUMA_cmap_wid_display(SUMA_ALL_DO *ado)
    if (!SurfCont->Open) {
       SUMA_LHv("SurfCont closed for %s, trying to open it\n", 
                SUMA_ADO_Label(ado));
-      if (!SUMA_viewSurfaceCont(NULL, ado, SUMA_BestViewerForDO(ado))) {
+      if (!SUMA_viewSurfaceCont(NULL, ado, SUMA_BestViewerForADO(ado))) {
          SUMA_S_Warn("No SurfCont");
          SUMA_DUMP_TRACE("No SurfCont");
          SUMA_RETURNe;
@@ -374,11 +375,10 @@ Boolean SUMA_cmap_wid_handleRedisplay(XtPointer clientData)
       SUMA_LHv("Making cmap_wid current %p %p\n", 
                SurfCont->cmp_ren->cmap_wid, 
                SurfCont->cmp_ren->cmap_context);
-      if (!glXMakeCurrent( XtDisplay(SurfCont->cmp_ren->cmap_wid), 
+      if (!SUMA_glXMakeCurrent( XtDisplay(SurfCont->cmp_ren->cmap_wid), 
                            XtWindow(SurfCont->cmp_ren->cmap_wid), 
-                           SurfCont->cmp_ren->cmap_context)) {
-         SUMA_GL_ERRS;
-         SUMA_S_Err("Failed in glXMakeCurrent.\n \tContinuing ...");
+            SurfCont->cmp_ren->cmap_context, FuncName, "some cmap resize", 1)) {
+         SUMA_S_Err("Failed in SUMA_glXMakeCurrent.\n \tContinuing ...");
       }
       SUMA_LH("Calling wid display");
       SUMA_cmap_wid_display(ado);
@@ -503,10 +503,10 @@ void SUMA_cmap_wid_input(Widget w, XtPointer clientData, XtPointer callData)
    }  
 
    /* make sure the color map is the current context */
-   if (!glXMakeCurrent( XtDisplay(w), 
+   if (!SUMA_glXMakeCurrent( XtDisplay(w), 
                         XtWindow(w), 
-                        SurfCont->cmp_ren->cmap_context)) {
-      fprintf (SUMA_STDERR, "Error %s: Failed in glXMakeCurrent.\n ", FuncName);
+            SurfCont->cmp_ren->cmap_context, FuncName, "some cmap input", 1)) {
+      SUMA_S_Err("Failed in SUMA_glXMakeCurrent.\n ");
       SUMA_RETURNe;
    }
 
@@ -966,7 +966,7 @@ int SUMA_set_threshold_one(SUMA_ALL_DO *ado, SUMA_OVERLAYS *colp,
          colp->OptScl->RecomputeClust = 1;
       }
       SUMA_ColorizePlane(colp);
-      SUMA_RemixRedisplay(ado);
+      SUMA_Remixedisplay(ado);
    }
 
    /* call this one since it is not being called as the slider is dragged. */
@@ -1212,7 +1212,7 @@ int SUMA_SwitchColPlaneIntensity_one (
    }
    
    
-   SUMA_RemixRedisplay(ado);
+   SUMA_Remixedisplay(ado);
 
    #if SUMA_SEPARATE_SURF_CONTROLLERS
       SUMA_UpdateColPlaneShellAsNeeded(ado);
@@ -1364,7 +1364,7 @@ int SUMA_SwitchColPlaneThreshold_one(
          SUMA_RETURN(0);
    }
    
-   SUMA_RemixRedisplay(ado);
+   SUMA_Remixedisplay(ado);
 
    #if SUMA_SEPARATE_SURF_CONTROLLERS
       SUMA_UpdateColPlaneShellAsNeeded(ado);
@@ -1525,7 +1525,7 @@ int SUMA_SwitchColPlaneBrightness_one(
          SUMA_RETURN(0);
    }
    
-   SUMA_RemixRedisplay(ado);
+   SUMA_Remixedisplay(ado);
 
    #if SUMA_SEPARATE_SURF_CONTROLLERS
       SUMA_UpdateColPlaneShellAsNeeded(ado);
@@ -1581,7 +1581,7 @@ void SUMA_cb_SwitchBrightness(Widget w, XtPointer client_data, XtPointer call)
    }
    
 
-   SUMA_RemixRedisplay(ado);
+   SUMA_Remixedisplay(ado);
    
    #if SUMA_SEPARATE_SURF_CONTROLLERS
       SUMA_UpdateColPlaneShellAsNeeded(ado);
@@ -1730,7 +1730,7 @@ void SUMA_cb_ShowZero_tb_toggled (Widget w, XtPointer data,
          SUMA_RETURNe;
    }
    
-   SUMA_RemixRedisplay(ado);
+   SUMA_Remixedisplay(ado);
  
    SUMA_UpdateNodeLblField(ado);
    
@@ -1788,7 +1788,7 @@ void SUMA_cb_SymIrange_tb_toggled (Widget w, XtPointer data,
          SUMA_RETURNe;
    }
    
-   SUMA_RemixRedisplay(ado);
+   SUMA_Remixedisplay(ado);
  
    SUMA_UpdateNodeValField(ado);
    SUMA_UpdateNodeLblField(ado);
@@ -1853,7 +1853,7 @@ void SUMA_cb_AbsThresh_tb_toggled (Widget w, XtPointer data,
          SUMA_RETURNe;
    }
    
-   SUMA_RemixRedisplay(ado);
+   SUMA_Remixedisplay(ado);
 
    SUMA_UpdateNodeLblField(ado);
 
@@ -1903,7 +1903,7 @@ void SUMA_cb_SwitchInt_toggled (Widget w, XtPointer data, XtPointer client_data)
                                  curColPlane->ShowMode));
       
    SUMA_ColorizePlane(curColPlane);
-   SUMA_RemixRedisplay(ado);
+   SUMA_Remixedisplay(ado);
    SUMA_UpdateNodeLblField(ado);
 
    #if SUMA_SEPARATE_SURF_CONTROLLERS
@@ -1946,7 +1946,7 @@ void SUMA_cb_SwitchThr_toggled (Widget w, XtPointer data, XtPointer client_data)
          XmToggleButtonGetState (SurfCont->Thr_tb);
       
    SUMA_ColorizePlane(curColPlane);
-   SUMA_RemixRedisplay(ado);
+   SUMA_Remixedisplay(ado);
    
    SUMA_UpdateNodeLblField(ado);
    
@@ -1989,7 +1989,7 @@ void SUMA_cb_SwitchBrt_toggled (Widget w, XtPointer data, XtPointer client_data)
                      XmToggleButtonGetState (SurfCont->Brt_tb);
    
    SUMA_ColorizePlane(curColPlane);
-   SUMA_RemixRedisplay(ado);
+   SUMA_Remixedisplay(ado);
    SUMA_UpdateNodeLblField(ado);
 
    #if SUMA_SEPARATE_SURF_CONTROLLERS
@@ -2131,7 +2131,7 @@ SUMA_Boolean SUMA_SetCmapMode(SUMA_ALL_DO *ado, int imenu)
    /* redisplay all viewers showing SO*/
    if (NewDisp) {
       SUMA_ColorizePlane(curColPlane);
-      SUMA_RemixRedisplay(ado);
+      SUMA_Remixedisplay(ado);
    }
    
    SUMA_UpdateNodeNodeField(ado);
@@ -2199,7 +2199,7 @@ void SUMA_cb_SetLinkMode(Widget widget, XtPointer client_data,
    /* redisplay all viewers showing SO*/
    if (NewDisp) {
       SUMA_ColorizePlane(curColPlane);
-      SUMA_RemixRedisplay(ado);
+      SUMA_Remixedisplay(ado);
    }
    
    SUMA_UpdateNodeNodeField(ado);
@@ -2304,7 +2304,7 @@ void SUMA_cb_SetCoordBias(Widget widget, XtPointer client_data,
    /* redisplay all viewers showing DO*/
    if (NewDisp) {
       SUMA_ColorizePlane(curColPlane);
-      SUMA_RemixRedisplay(ado);
+      SUMA_Remixedisplay(ado);
    }
    
    SUMA_UpdateNodeNodeField(ado);
@@ -2324,6 +2324,7 @@ SUMA_Boolean SUMA_RedisplayAllShowing(char *SO_idcode_str,
    static char FuncName[]={"SUMA_RedisplayAllShowing"};
    SUMA_SurfaceViewer *sv;
    void *pp=NULL;
+   SUMA_ALL_DO *ado=NULL;
    SUMA_DO_Types tp;
    SUMA_SurfaceObject *SO1 = NULL, *SO2 = NULL;
    SUMA_DSET *dset=NULL;
@@ -2333,6 +2334,10 @@ SUMA_Boolean SUMA_RedisplayAllShowing(char *SO_idcode_str,
    
    SUMA_ENTRY;
    
+   if (!SVv) {
+      SVv = SUMAg_SVv;
+      N_SVv = SUMAg_N_SVv;
+   }
    if (!SO_idcode_str || !SVv) {
       SUMA_S_Err("NULL SVv or SO_idcode_str. BAD");
       SUMA_RETURN (NOPE);
@@ -2341,6 +2346,7 @@ SUMA_Boolean SUMA_RedisplayAllShowing(char *SO_idcode_str,
       SUMA_S_Errv("Failed to find object with idcode %s.\n", SO_idcode_str);
       SUMA_RETURN(NOPE);
    }
+   ado = (SUMA_ALL_DO*)pp;
    switch (tp) {
       case SO_type:
          SO1 = (SUMA_SurfaceObject *)pp;
@@ -2350,9 +2356,9 @@ SUMA_Boolean SUMA_RedisplayAllShowing(char *SO_idcode_str,
             sv = &(SVv[i]);
             /* search for SO in RegisteredDO */
             for (k=0; k < sv->N_DO; ++k) {
-               if (SUMA_isSO(SUMAg_DOv[sv->RegisteredDO[k]])) {
+               if (SUMA_isSO(SUMAg_DOv[sv->RegistDO[k].dov_ind])) {
                   SO2 = (SUMA_SurfaceObject *)
-                                 SUMAg_DOv[sv->RegisteredDO[k]].OP;
+                                 SUMAg_DOv[sv->RegistDO[k].dov_ind].OP;
                   if (SUMA_WhatAreYouToMe(SO1, SO2) == SUMA_SO1_is_SO2) { 
                      /* Get a redisplay for that puppy */
                      if (!list) list = SUMA_CreateList ();
@@ -2363,11 +2369,19 @@ SUMA_Boolean SUMA_RedisplayAllShowing(char *SO_idcode_str,
             } 
          }       
          break;
+      case MASK_type:
       case SDSET_type:
-         dset = (SUMA_DSET *)pp;
-         SUMA_S_Warn("Need to write function that searches for viewer\n"
-                     "showing a graph dset and redisplay it\n"
-                     "Function may be written already!\n");
+      case VO_type:
+      case TRACT_type:
+      case GRAPH_LINK_type:
+         for (i=0; i < N_SVv; ++i) {
+            sv = &(SVv[i]);
+            if (SUMA_ADO_isRegistered(sv, ado)) {
+               if (!list) list = SUMA_CreateList ();
+                        SUMA_REGISTER_HEAD_COMMAND_NO_DATA(list, SE_Redisplay,
+                                                     SES_SumaWidget, sv);
+            }
+         }
          break;
       default:
          SUMA_S_Errv("Type %d (%s) is not welcome here\n", 
@@ -2410,6 +2424,7 @@ SUMA_TABLE_FIELD * SUMA_AllocTableField(void)
    TF->cell_modified = -1;
    TF->num_value = NULL;
    TF->str_value = NULL;
+   TF->rowobject_id = NULL;
    SUMA_RETURN(TF);
 }
 
@@ -2437,7 +2452,7 @@ SUMA_SLICE_FIELD * SUMA_AllocSliceField(void)
    SF->mont_units = SUMA_NO_NUM_UNITS;
    SF->slice_num = 0;
    SF->mont_num = 1;
-   SF->mont_inc = 1;
+   SF->mont_inc = 10;
    SF->variant = NULL;
    SUMA_RETURN(SF);
 }
@@ -2460,6 +2475,44 @@ SUMA_SLICE_FIELD * SUMA_FreeSliceField(SUMA_SLICE_FIELD *SF)
 
 }
 
+SUMA_VR_FIELD * SUMA_AllocVRField(void)
+{
+   static char FuncName[]={"SUMA_AllocVRField"};
+   SUMA_VR_FIELD *VrF = NULL;
+
+   SUMA_ENTRY;
+
+   VrF = (SUMA_VR_FIELD *)SUMA_calloc(1,sizeof(SUMA_VR_FIELD));
+   if (!VrF) {
+      SUMA_SL_Crit("Failed to allocate");
+      SUMA_RETURN(VrF);
+   }
+   VrF->Nslc = -1;
+   VrF->tb = NULL;
+   VrF->text = NULL;
+   VrF->NewValueCallback = NULL;
+   VrF->NewValueCallbackData = NULL;
+   VrF->N_slice_num_str = NULL;
+   VrF->N_slice_units = SUMA_NO_NUM_UNITS;
+   VrF->N_slice_num = 150;
+   SUMA_RETURN(VrF);
+}
+
+SUMA_VR_FIELD * SUMA_FreeVRField(SUMA_VR_FIELD *VrF)
+{
+   static char FuncName[]={"SUMA_FreeVRField"};
+   int i;
+   
+   SUMA_ENTRY;
+
+   if (!VrF) SUMA_RETURN(NULL);
+
+   if (VrF->N_slice_num_str) SUMA_free(VrF->N_slice_num_str);
+   SUMA_free(VrF);
+
+   SUMA_RETURN(NULL);
+
+}
 
 /*!
    Called when user clicks on range table cell
@@ -2579,6 +2632,7 @@ void SUMA_RangeTableCell_EV ( Widget w , XtPointer cd ,
    
    SUMA_RETURNe;
 }
+
 /*!
    Called when user clicks on table title 
    Expects SUMA_SRV_DATA in TF->NewValueCallbackData
@@ -2673,7 +2727,7 @@ void SUMA_SetRangeTableTit_EV ( Widget w , XtPointer cd ,
                curColPlane->OptScl->AutoIntRange = 1;
                SUMA_InitRangeTable(ado, 0); /* overkill but little overhead */
                SUMA_ColorizePlane(curColPlane);
-               SUMA_RemixRedisplay(ado);
+               SUMA_Remixedisplay(ado);
                curColPlane->OptScl->AutoIntRange = AutoHist; 
             }
             break;
@@ -2688,7 +2742,7 @@ void SUMA_SetRangeTableTit_EV ( Widget w , XtPointer cd ,
                curColPlane->OptScl->AutoBrtRange = 1;
                SUMA_InitRangeTable(ado, 1); /* overkill but little overhead */
                SUMA_ColorizePlane(curColPlane);
-               SUMA_RemixRedisplay(ado);
+               SUMA_Remixedisplay(ado);
                curColPlane->OptScl->AutoBrtRange = AutoHist; 
             }
             break;
@@ -2754,7 +2808,7 @@ SUMA_Boolean SUMA_SetClustTableTit_one (SUMA_ALL_DO *ado,
                colp->OptScl->Clusterize = TF->but_flag[j*TF->Ni+i];
                colp->OptScl->RecomputeClust = YUP;
                SUMA_ColorizePlane(colp);
-               SUMA_RemixRedisplay((SUMA_ALL_DO*)ado);
+               SUMA_Remixedisplay((SUMA_ALL_DO*)ado);
             }else if (Button == Button3) { /* nothing to do */
                
             }
@@ -2932,6 +2986,126 @@ void SUMA_SetClustTableTit_EV ( Widget w , XtPointer cd ,
 
 }
 
+void SUMA_SetClustTableCell_EV ( Widget w , XtPointer cd ,
+                      XEvent *ev , Boolean *continue_to_dispatch )
+{
+   static char FuncName[]={"SUMA_SetClustTableCell_EV"};
+   Dimension lw ;
+   Widget * children , wl = NULL;
+   XButtonEvent * bev = (XButtonEvent *) ev ;
+   int  num_children , i, j, Found, incr=0, an, n;
+   float reset, newv;
+   SUMA_TABLE_FIELD *TF = (SUMA_TABLE_FIELD *)cd;
+   SUMA_SRV_DATA *srvd=(SUMA_SRV_DATA *)TF->NewValueCallbackData;
+   SUMA_ALL_DO *ado = srvd->ado;
+   SUMA_X_SurfCont *SurfCont=NULL;
+   SUMA_OVERLAYS *curColPlane=NULL;
+   DList *list = NULL;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   
+   SUMA_LH("Called Button %d", bev->button);
+   
+   SurfCont = SUMA_ADO_Cont(ado);
+   curColPlane = SUMA_ADO_CurColPlane(ado);
+
+   /* see note in bbox.c optmenu_EV for the condition below*/
+   if( bev->button == Button2 ){
+     XUngrabPointer( bev->display , CurrentTime ) ;
+     SUMA_RETURNe ;
+   }
+   
+   if( w == NULL || TF == NULL ) SUMA_RETURNe ;
+
+   incr = 0;
+   switch (bev->button) {
+      case Button1:
+         SUMA_LH("Button 1");
+         break;
+      case Button2:
+         SUMA_LH("Button 2");
+         break;
+      case Button3:
+         SUMA_LH("Button 3");
+         break;
+      case Button4:
+      case 6:  /* This is shift and wheel on mac, Button6 is not in X.h ! */
+         SUMA_LH("Button 4/6 %d", bev->button);
+         incr = -1;
+         break;
+      case Button5:
+      case 7: 
+         SUMA_LH("Button 5/7 %d", bev->button);
+         incr = 1;
+         break;
+      default:
+         SUMA_RETURNe;
+   }
+   
+   /* which cell is calling? */
+   n = 0;
+   Found = -1;
+   while (n<TF->Nj*TF->Ni && Found == -1) {
+      if (TF->cells[n] == w) {
+         Found = n;
+      } else ++n;
+   }
+   
+   if (Found <0) {
+      SUMA_SL_Err("Widget not found ????");
+      SUMA_RETURNe;
+   }
+   
+   /* find out widget's place in table*/
+   i = Found % TF->Ni; j = Found / TF->Ni ;
+   n = Found; 
+      
+   switch (j) {
+      case 0:
+         break;
+      case 1:/* radius */
+      case 2: /* area */
+         if (incr) {
+                 if (TF->num_value[n]>1000) incr = incr*100;
+            else if (TF->num_value[n]>100) incr = incr*10;
+            else if (TF->num_value[n]>50) incr = incr*5;
+            newv = TF->num_value[n]+incr;
+            SUMA_MODIFY_CELL_VALUE(TF, i, j, newv);
+            an = SUMA_SetClustValue(ado, curColPlane, i, j,
+                          TF->num_value[n], 0.0,
+                          0, 1, &reset);
+            if (an < 0) {
+               SUMA_S_Warn("Error checking not handled yet.\n"
+                           "This upcoming code chunk is from\n"
+                           "sister function: SUMA_cb_SetRangeValueNew\n");
+               if (an == -1 || an == -2) {
+                  SUMA_BEEP; 
+                  TF->num_value[n] = reset;
+                  SUMA_TableF_SetString(TF);      
+                  if (an == -1) { SUMA_SLP_Err("Doh"); }
+                  else { SUMA_SLP_Err("Duh"); }
+                  SUMA_RETURNe;
+               } else {
+                  SUMA_S_Err("Erriositation");
+                  SUMA_RETURNe;
+               }
+            }
+            /* redisplay */
+            if (!list) list = SUMA_CreateList ();
+            SUMA_REGISTER_TAIL_COMMAND_NO_DATA(list, SE_Redisplay_AllVisible, 
+                                               SES_Suma, NULL); 
+            if (!SUMA_Engine(&list)) SUMA_SLP_Err("Failed to redisplay.");   
+         }
+         break;
+      default:
+         SUMA_SL_Err("Did not know you had so many");
+         break;
+   }
+   
+   SUMA_RETURNe;
+}
+
 SUMA_TABLE_FIELD * SUMA_FreeTableField(SUMA_TABLE_FIELD *TF)
 {
    static char FuncName[]={"SUMA_FreeTableField"};
@@ -2949,6 +3123,11 @@ SUMA_TABLE_FIELD * SUMA_FreeTableField(SUMA_TABLE_FIELD *TF)
       for (i=0; i<TF->Nj*TF->Ni; ++i) 
          if (TF->str_value[i]) SUMA_free(TF->str_value[i]); 
       SUMA_free(TF->str_value);
+   }
+   if (TF->rowobject_id) { 
+      for (i=0; i<TF->Ni; ++i) 
+         if (TF->rowobject_id[i]) SUMA_free(TF->rowobject_id[i]); 
+      SUMA_free(TF->rowobject_id);
    }
    SUMA_free(TF);
 
@@ -3124,7 +3303,7 @@ void SUMA_CreateTable(  Widget parent,
    static char FuncName[]={"SUMA_CreateTable"};
    int i, j, n, titw, xmw, shad;
    char *tmp;
-   Widget rco, rcc;
+   Widget rcc;
    XtPointer cd;
    SUMA_Boolean LocalHead = NOPE;
    
@@ -3147,7 +3326,8 @@ void SUMA_CreateTable(  Widget parent,
    
    if (!TF) { SUMA_SL_Err("NULL TF"); SUMA_RETURNe; }
    TF->Ni = Ni; TF->Nj = Nj; TF->editable = editable; 
-   TF->cwidth = (int *)SUMA_calloc(TF->Nj, sizeof(int)); 
+   TF->cwidth = (int *)SUMA_calloc(TF->Nj, sizeof(int));
+   TF->rowobject_id = (char **)SUMA_calloc(TF->Ni, sizeof(char *));
    for (j=0; j<TF->Nj; ++j) TF->cwidth[j] = cwidth[j];
    if(col_tit) TF->HasColTit = YUP; else TF->HasColTit = NOPE;
    if(row_tit) TF->HasRowTit = YUP; else TF->HasRowTit = NOPE;
@@ -3188,7 +3368,7 @@ void SUMA_CreateTable(  Widget parent,
                
     
    /* Le row column to contain the table's columns*/
-   rco = XtVaCreateManagedWidget ("rowcolumn",
+   TF->rco = XtVaCreateManagedWidget ("rowcolumn",
       xmRowColumnWidgetClass, TF->rc,
       XmNorientation , XmVERTICAL ,
       XmNpacking, XmPACK_TIGHT,
@@ -3197,10 +3377,11 @@ void SUMA_CreateTable(  Widget parent,
       XmNmarginWidth, 0, 
       NULL);
 
-   /* must fill up row by row, each column is a separate bloody rc to allow for alignments */
+   /* must fill up row by row, each column is a separate bloody rc 
+      to allow for alignments */
    for (i=0; i<TF->Ni; ++i) {   /* for each row */
       rcc = XtVaCreateManagedWidget ("rowcolumn",
-         xmRowColumnWidgetClass, rco,
+         xmRowColumnWidgetClass, TF->rco,
          XmNorientation , XmHORIZONTAL ,
          XmNmarginHeight, 0,
          XmNmarginHeight, 0,
@@ -3224,8 +3405,8 @@ void SUMA_CreateTable(  Widget parent,
             case SUMA_ROW_TIT_CELL: /* row's title */
                if (LocalHead) 
                   fprintf( SUMA_STDERR,
-                           "%s:\nAdding [%d %d] (%d) %s\n", 
-                           FuncName, i, j, n, row_tit[i]);
+                           "%s:\nAdding RT [%d %d] (%d) %s\n", 
+                           FuncName, i, j, n, row_tit[i] );
                #if 0
                   TF->cells[n] = XtVaCreateManagedWidget(row_tit[i],  
                                                 xmLabelWidgetClass, rcc, 
@@ -3271,13 +3452,13 @@ void SUMA_CreateTable(  Widget parent,
             case SUMA_COL_TIT_CELL: /* column's title */
                if (LocalHead) 
                   fprintf( SUMA_STDERR,
-                           "%s:\nAdding [%d %d] (%d) %s\n", 
+                           "%s:\nAdding CT [%d %d] (%d) %s\n", 
                            FuncName, i, j, n, col_tit[j]);
                /* padd to fit cell entry fields*/
                if (i == 0 && j != 0 && TF->HasColTit) { 
                   titw = TF->cwidth[j]; 
                   /* set the margins to meet those of cell entries */
-                  xmw = 5;
+                  xmw = 6;
                   shad = 1;
                } else {
                   titw = TF->cwidth[j];
@@ -3378,7 +3559,7 @@ void SUMA_CreateTable(  Widget parent,
                                  XmNfontList, 
                                  SUMAg_CF->X->TableTextFontList, NULL);
                if (col_help || col_hint || row_help || row_hint)  {
-                  if (!row_tit && !col_tit && Ni == 1 && Nj == 1) {
+                  if (!row_tit && !col_tit && TF->Ni == 1 && TF->Nj == 1) {
                      if (col_help) 
                         MCW_register_help( TF->cells[n], col_help[0]) ;
                      else if (row_help) 
@@ -3388,11 +3569,11 @@ void SUMA_CreateTable(  Widget parent,
                      else if (row_hint) 
                         MCW_register_hint( TF->cells[n], row_hint[0]) ;
                   } else {
-                     MCW_register_help( TF->cells[n], "Hints and help messages\n"
-                                                      "are attached to table's\n"
+                     MCW_register_help( TF->cells[n], "Hints and help messages "
+                                                      "are attached to table's "
                                                       "column and row titles.") ;
-                     MCW_register_hint( TF->cells[n], "Hints and help messages\n"
-                                                      "are attached to table's\n"
+                     MCW_register_hint( TF->cells[n], "Hints and help messages "
+                                                      "are attached to table's "
                                                       "column and row titles.") ;
                   }
                } 
@@ -3424,8 +3605,8 @@ void SUMA_CreateTable(  Widget parent,
                SUMA_RETURNe;
                break;
          }     
-      } /* for i */
-   } /* for j */
+      } /* for j */
+   } /* for i */
    
    SUMA_RETURNe;
 }
@@ -3441,10 +3622,16 @@ int SUMA_set_slice_label(SUMA_ALL_DO *ado, char *variant, float val)
    
    SUMA_LH("called");
    
-   if (!ado || !variant) { SUMA_SL_Err("NULL ado"); SUMA_RETURN(0); }
-   
    SurfCont = SUMA_ADO_Cont(ado);
+   if (!ado || !variant || !SurfCont) { 
+      SUMA_SL_Err("NULL input"); SUMA_RETURN(0); }
    
+   if (!SurfCont->Ax_slc || !SurfCont->Ax_slc->text ||
+       !SurfCont->Sa_slc || !SurfCont->Sa_slc->text ||
+       !SurfCont->Co_slc || !SurfCont->Co_slc->text) {
+      SUMA_LH("No GUI yet"); SUMA_RETURN(1);
+   }
+
    sprintf(slabel, "%3s", MV_format_fval(val)); 
           if (variant[0] == 'A') {
       SUMA_STRING_REPLACE(SurfCont->Ax_slc->slice_num_str, slabel);
@@ -3472,9 +3659,15 @@ int SUMA_set_slice_scale(SUMA_ALL_DO *ado, char *variant, float val)
    
    SUMA_LH("called");
    
-   if (!ado || !variant) { SUMA_SL_Err("NULL ado"); SUMA_RETURN(0); }
-   
    SurfCont = SUMA_ADO_Cont(ado);
+   if (!ado || !variant || !SurfCont) { 
+      SUMA_SL_Err("NULL input"); SUMA_RETURN(0); }
+   
+   if (!SurfCont->Ax_slc || !SurfCont->Ax_slc->sl ||
+       !SurfCont->Sa_slc || !SurfCont->Sa_slc->sl ||
+       !SurfCont->Co_slc || !SurfCont->Co_slc->sl) {
+      SUMA_LH("No GUI yet"); SUMA_RETURN(1);
+   }
    
    cv = SUMA_SliceVal2ScalePos (ado, variant, &val );
 
@@ -3643,9 +3836,26 @@ int SUMA_set_slice(SUMA_ALL_DO *ado, char *variant, float *valp,
  
    SUMA_LH("Slice %s set to %f", variant, val); 
    
+   if (caller[0] == 'i') { /* incrementor */
+      /* calculate val to reflect increment */
+             if (variant[0] == 'A') {
+            val += SurfCont->Ax_slc->slice_num; 
+      } else if (variant[0] == 'S') {
+            val += SurfCont->Sa_slc->slice_num;   
+      } else if (variant[0] == 'C') {
+            val += SurfCont->Co_slc->slice_num;     
+      } else if (variant[0] == 'V') {
+            val += SurfCont->VR_fld->N_slice_num;  
+      }
+   }
+   
+   if (val < 0) val = 0;
+   else if (val >= SUMA_VO_N_Slices(VO, variant) &&
+                   variant[0] != 'V') 
+                     val = SUMA_VO_N_Slices(VO, variant)-1;  
 
    /* call this one since it is not being called as the slider is dragged. */
-   if (caller[0] != 'X') { /* Update equivalent */
+   if (caller[0] != 'X' && variant[0] != 'V') { /* Update equivalent */
       if (caller[0] != 't') { /* Caller not from text field so set that*/
          SUMA_set_slice_label(ado, variant, val);   
       }
@@ -3660,12 +3870,14 @@ int SUMA_set_slice(SUMA_ALL_DO *ado, char *variant, float *valp,
          SurfCont->Sa_slc->slice_num = val;   
    } else if (variant[0] == 'C') {
          SurfCont->Co_slc->slice_num = val;      
+   } else if (variant[0] == 'V') {
+         SurfCont->VR_fld->N_slice_num = val;      
    }
 
-   if (redisp) SUMA_RemixRedisplay(ado);
+   if (redisp) SUMA_Remixedisplay(ado);
 
    /* sad as it is */
-   SUMA_FORCE_SLICE_SCALE_WIDTH(SUMA_ADO_Cont(ado)); 
+   if (variant[0] != 'V') SUMA_FORCE_SLICE_SCALE_WIDTH(SUMA_ADO_Cont(ado)); 
    
    #if 0 /* I don't think this will be necessary */
    SUMA_ADO_Flush_Pick_Buffer(ado, NULL);
@@ -3677,15 +3889,73 @@ int SUMA_set_slice(SUMA_ALL_DO *ado, char *variant, float *valp,
    #endif
    */
    
-   {
+   if (0) {
       static int ncnt=0;
+      /* Do nothing about selection. Not sure what would be of use 
+      One could supposedly move the selection - if the selection
+      was on the slice being moved. Something to ponder for the
+      future 
+         Remember selection could be on any of the slices in the
+         montage, or even elsewhere in space....
+      */
       if (!ncnt) {
          SUMA_S_Warn("What to do about selected voxels here? Move them along?");
          ++ncnt;
       }
+      SUMA_UpdateNodeValField(ado);
+      SUMA_UpdateNodeLblField(ado);
    }
-   SUMA_UpdateNodeValField(ado);
-   SUMA_UpdateNodeLblField(ado);
+ 
+   SUMA_RETURN(1);   
+}
+
+int SUMA_set_mont(SUMA_ALL_DO *ado, char *variant, 
+                  float *val1p, float *val2p,
+                  char *caller, int redisp)
+{
+   static char FuncName[]={"SUMA_set_mont"};
+   float oval, val1, val2;
+   SUMA_X_SurfCont *SurfCont=NULL;
+   SUMA_VolumeObject *VO=(SUMA_VolumeObject *)ado;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   
+   if (!ado || !variant) SUMA_RETURN(0);
+   if (!caller) caller = "XXX"; /* Don't update other input sources */
+   
+   SurfCont = SUMA_ADO_Cont(ado);
+   
+   if (!val1p) {
+      val1 = 1;
+   } else val1 = *val1p;
+   if (!val2p) {
+      val2 = 1;
+   } else val2 = *val2p;
+ 
+      if (val1 < 1) val1 = 1;
+   else if (val1 > SUMA_VO_N_Slices(VO, variant)) 
+                     val1 = SUMA_VO_N_Slices(VO, variant);
+      if (val2 < 1) val2 = 1;
+   else if (val2 > SUMA_VO_N_Slices(VO, variant)) 
+                     val2 = SUMA_VO_N_Slices(VO, variant);
+   
+   val1 = (int)val1; val2 = (int)val2;
+   SUMA_LH("Slice %s mont set to %d %d", variant, (int)val1, (int)val2); 
+   
+
+          if (variant[0] == 'A') {
+         SurfCont->Ax_slc->mont_num = val1;
+         SurfCont->Ax_slc->mont_inc = val2;   
+   } else if (variant[0] == 'S') {
+         SurfCont->Sa_slc->mont_num = val1;
+         SurfCont->Sa_slc->mont_inc = val2;   
+   } else if (variant[0] == 'C') {
+         SurfCont->Co_slc->mont_num = val1;
+         SurfCont->Co_slc->mont_inc = val2;      
+   }
+
+   if (redisp) SUMA_Remixedisplay(ado);
  
    SUMA_RETURN(1);   
 }
@@ -3702,7 +3972,6 @@ void SUMA_CreateSliceFields(  Widget parent,
    static char FuncName[]={"SUMA_CreateSliceFields"};
    int i, j, n, titw, xmw, shad, mult;
    char *tmp, sbuf[12];
-   Widget rco, rcc;
    XtPointer cd;
    XtVarArgsList arglist=NULL;
    XtCallbackProc slcb, sllbcb, slcactcb, shwslccb;
@@ -3838,11 +4107,12 @@ void SUMA_CreateSliceFields(  Widget parent,
                          (XtPointer) SF ,
                          XtListTail ) ;     /* last in queue */
 
+   sprintf(sbuf,"%d:%d", (int)SF->mont_num, (int)SF->mont_inc);
    SF->mont = XtVaCreateManagedWidget(
                      "mont",  
                      xmTextFieldWidgetClass, SF->rc,
                      XmNuserData, (XTP_CAST)ado,
-                     XmNvalue, "1:1",
+                     XmNvalue, sbuf,
                      XmNmarginHeight, 0,
                      XmNmarginTop, 0,
                      XmNmarginBottom, 0,
@@ -3853,7 +4123,7 @@ void SUMA_CreateSliceFields(  Widget parent,
 
    if (help) MCW_register_help( SF->mont, help) ;
    if (hint) MCW_register_hint( SF->mont, hint) ;
-   XtVaSetValues(SF->mont, XmNcolumns, 3, NULL); 
+   XtVaSetValues(SF->mont, XmNcolumns, 5, NULL); 
    XtVaSetValues(SF->mont, XmNeditable, True, 
                  XmNshadowThickness , 2,         
                  XmNcursorPositionVisible, True, 
@@ -3957,17 +4227,17 @@ int SUMA_SetShowSlice(SUMA_VolumeObject *vdo, char *variant, int val)
    
    SUMA_ENTRY;
    
-   SUMA_LH("Called");
+   SUMA_LH("Called variant %s, val %d", variant?variant:"NULL", val);
    
    ado = (SUMA_ALL_DO *)vdo;
    VSaux = SUMA_ADO_VSaux(ado);
    if (!ado || !(SurfCont=SUMA_ADO_Cont(ado)) || !VSaux || !variant) { 
       SUMA_S_Warn("NULL input"); SUMA_RETURN(0); }
-      
+   
    if (!strcmp(variant, "Ax")) {
       if (VSaux->ShowAxSlc != val) {
          VSaux->ShowAxSlc = val;
-         SUMA_RemixRedisplay(ado);
+         SUMA_Remixedisplay(ado);
          #if SUMA_SEPARATE_SURF_CONTROLLERS
             SUMA_UpdateColPlaneShellAsNeeded(ado);
          #endif        
@@ -3975,7 +4245,7 @@ int SUMA_SetShowSlice(SUMA_VolumeObject *vdo, char *variant, int val)
    } else if (!strcmp(variant, "Sa")) {
       if (VSaux->ShowSaSlc != val) {
          VSaux->ShowSaSlc = val;
-         SUMA_RemixRedisplay(ado);
+         SUMA_Remixedisplay(ado);
          #if SUMA_SEPARATE_SURF_CONTROLLERS
             SUMA_UpdateColPlaneShellAsNeeded(ado);
          #endif        
@@ -3983,13 +4253,21 @@ int SUMA_SetShowSlice(SUMA_VolumeObject *vdo, char *variant, int val)
    } else if (!strcmp(variant, "Co")) {
       if (VSaux->ShowCoSlc != val) {
          VSaux->ShowCoSlc = val;
-         SUMA_RemixRedisplay(ado);
+         SUMA_Remixedisplay(ado);
          #if SUMA_SEPARATE_SURF_CONTROLLERS
             SUMA_UpdateColPlaneShellAsNeeded(ado);
          #endif        
       }
+   } else if (!strcmp(variant, "Vr")) {
+      if (VSaux->ShowVrSlc != val) {
+         VSaux->ShowVrSlc = val;
+         SUMA_Remixedisplay(ado);
+         #if SUMA_SEPARATE_SURF_CONTROLLERS
+            SUMA_UpdateColPlaneShellAsNeeded(ado);
+         #endif        
+      }
+      SUMA_LH("ShowVrSlc now %d", VSaux->ShowVrSlc);
    }
-   
    SUMA_RETURN(1);
 }
 
@@ -4010,6 +4288,62 @@ SUMA_CELL_VARIETY SUMA_cellvariety (SUMA_TABLE_FIELD *TF, int n)
    if (TF->HasRowTit && j == 0) SUMA_RETURN(SUMA_ROW_TIT_CELL);
    SUMA_RETURN(SUMA_ENTRY_CELL);
 }
+
+int SUMA_RowTitCell(SUMA_TABLE_FIELD *TF, int r)
+{
+   static char FuncName[]={"SUMA_RowTitCell"};
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   
+   if (!TF || !TF->HasRowTit || r < 0 || r >= TF->Ni) SUMA_RETURN(-1);
+   
+   SUMA_RETURN(r);
+}
+
+int SUMA_ColTitCell(SUMA_TABLE_FIELD *TF, int c)
+{
+   static char FuncName[]={"SUMA_ColTitCell"};
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   
+   if (!TF || !TF->HasColTit || c < 0 || c >= TF->Nj) SUMA_RETURN(-1);
+   
+   SUMA_RETURN(c*TF->Ni);
+}
+
+int SUMA_ObjectID_Row(SUMA_TABLE_FIELD *TF, char *id)
+{
+   static char FuncName[]={"SUMA_ObjectID_Row"};
+   int found = -1, ii=-1;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   
+   if (!TF || !TF->rowobject_id || !id) SUMA_RETURN(-1);
+
+   if (LocalHead) {
+      fprintf(SUMA_STDERR, "Seeking %s\n"
+                           "in      ", id);
+      for (ii=0; ii<TF->Ni; ++ii) {
+         fprintf(SUMA_STDERR,"%s\n        ", 
+                 TF->rowobject_id[ii]?TF->rowobject_id[ii]:"NULL");
+      }
+      fprintf(SUMA_STDERR, "\n");
+   }
+   found = -1; ii=0;
+   while (found < 0 && ii < TF->Ni) {
+      if (TF->rowobject_id[ii] &&
+          !strcmp(id, TF->rowobject_id[ii])) {
+         found = ii;
+      }
+      ++ii;
+   }
+   
+   SUMA_RETURN(found);
+}
+
 
 /*!
    \brief This function is called when mouse pointer leaves label field
@@ -4173,11 +4507,11 @@ void SUMA_SliceF_cb_mont_change (  Widget w, XtPointer client_data,
 {
    static char FuncName[]={"SUMA_SliceF_cb_mont_change"};
    SUMA_SLICE_FIELD *SF=NULL;
-   float val;
+   float val1, val2;
    int N_words = 0;
    XmAnyCallbackStruct *cbs = (XmAnyCallbackStruct *) call_data;
    void *n=NULL;
-   char *cs=NULL;
+   char *cs=NULL, *ss=NULL;
    int unt = SUMA_NO_NUM_UNITS;
    SUMA_Boolean DoCallBacks;
    SUMA_Boolean LocalHead = NOPE;
@@ -4185,7 +4519,6 @@ void SUMA_SliceF_cb_mont_change (  Widget w, XtPointer client_data,
    SUMA_ENTRY;
    
    SUMA_LH("Nothing done yet, build based on SUMA_SliceF_cb_label_change");
-   SUMA_RETURNe;
    /* make call to NewValue callback */
    SF = (SUMA_SLICE_FIELD *)client_data;
    
@@ -4214,8 +4547,15 @@ void SUMA_SliceF_cb_mont_change (  Widget w, XtPointer client_data,
          SUMA_RETURNe; 
       }
    }
+   val1 = -1;
+   val2 = -1;
    unt = SUMA_NumStringUnits(cs, 0);
-   if (SUMA_StringToNum(cs, (void *)&val, 1, 1) != 1) {
+   /* Split based on the presence of ':' */
+   if (!(ss = SUMA_NI_get_ith_string(cs, ":", 0))) {
+      SUMA_LH("Nothing in cs?");
+      SUMA_RETURNe;
+   }
+   if (SUMA_StringToNum(ss, (void *)&val1, 1, 1) != 1) {
       SUMA_BEEP;
       /* bad syntax, reset value*/
       if (LocalHead) fprintf (SUMA_STDERR, "%s: Bad syntax.\n", FuncName);
@@ -4223,30 +4563,39 @@ void SUMA_SliceF_cb_mont_change (  Widget w, XtPointer client_data,
                             "Bad value in text field", FuncName, 
                             SMT_Error, SMA_Log);
       SUMA_SliceF_SetString (SF);
-   }else {
-      if (SF->slice_num == val &&
-          SF->slice_units == unt) { 
+      val1 = SF->mont_num;
+   } else {
+      SUMA_ifree(ss);
+      if (!(ss = SUMA_NI_get_ith_string(cs, ":", 1))) {
+         SUMA_LH("No second number, assume 1");
+         val2 = 1;
+      } else if (SUMA_StringToNum(ss, (void *)&val2, 1, 1) != 1) {
+         SUMA_BEEP;
+         /* bad syntax, reset value*/
+         if (LocalHead) fprintf (SUMA_STDERR, "%s: Bad syntax.\n", FuncName);
+         SUMA_RegisterMessage (SUMAg_CF->MessageList, 
+                               "Bad value in text field", FuncName, 
+                               SMT_Error, SMA_Log);
+         SUMA_SliceF_SetString (SF);
+         val2 = SF->mont_inc;
+      }
+   }
+   SUMA_ifree(ss);
+   
+   if (val1 >= 0.0 && val2 >= 0.0) {
+      if (SF->mont_num == val1 &&
+          SF->mont_inc == val2) { 
             SUMA_LH("Same value"); 
             SUMA_RETURNe; 
       }
-      SF->slice_num = val;
-      SUMA_LH("Going to set string");
-      SF->slice_units = unt;
+      SF->mont_num = val1;
+      SF->mont_inc = val2;
       SUMA_SliceF_SetString (SF);
    }
 
    if (DoCallBacks) {
-      SUMA_S_Warn("Nothing done here, these things are not set yet");
-      if (0) {
-      if (!SF->NewValueCallbackData) {
-         SUMA_LH("No Callback data.");
-         if (SF->NewValueCallback) SF->NewValueCallback((void*)SF);
-      } else {
-         SUMA_LH("Callback data.");
-         if (SF->NewValueCallback) 
-            SF->NewValueCallback(SF->NewValueCallbackData);
-      }
-      }
+      SUMA_set_mont((SUMA_ALL_DO *)SF->NewValueCallbackData, SF->variant, 
+                     &val1, &val2, "text_field", 1);
    }
    
    SUMA_RETURNe;
@@ -4356,6 +4705,16 @@ void SUMA_TableF_cb_label_change (  Widget w, XtPointer client_data,
             TF->num_units = unt;
             SUMA_TableF_SetString (TF);
          }
+      } else if (TF->type == SUMA_string) {
+         XtVaGetValues (w, XmNvalue, &n, NULL);
+         cs = (char *)n;
+         if ( TF->str_value && TF->str_value[TF->cell_modified] &&
+             !strcmp(TF->str_value[TF->cell_modified],cs)) {
+               SUMA_LH("Same string"); 
+               TF->cell_modified = -1;
+               SUMA_RETURNe;    
+         }
+         SUMA_LH("Here now, modified %d \n", TF->cell_modified);
       }
    } else {
       SUMA_LH("no cells modified");
@@ -4616,6 +4975,11 @@ int SUMA_SetScaleThr_one(SUMA_ALL_DO *ado, SUMA_OVERLAYS *colp,
             string containing new val is reset later on*/
          TF->num_units = SUMA_NO_NUM_UNITS;
          break;
+      case SUMA_PERC_VALUE_UNITS:
+         SUMA_LH("Units in percentile value, transforming %f\n", *val);
+         *val = SUMA_OverlayPercentile(colp, 'T', *val);
+         TF->num_units = SUMA_NO_NUM_UNITS;
+         break;
       default:
          break;
    }
@@ -4653,7 +5017,7 @@ int SUMA_SetScaleThr_one(SUMA_ALL_DO *ado, SUMA_OVERLAYS *colp,
             XmNvalue, cv, 
             NULL);   
 
-   SUMA_LHv("Colorize if necessary, refisplay=%d\n", redisplay);
+   SUMA_LHv("Colorize if necessary, redisplay=%d\n", redisplay);
    /* colorize if necessary */
    if ( redisplay == 0 ||
         (redisplay == 1 && !curColPlane->OptScl->UseThr) ) { 
@@ -4665,11 +5029,12 @@ int SUMA_SetScaleThr_one(SUMA_ALL_DO *ado, SUMA_OVERLAYS *colp,
 
    SUMA_LH("Colorize");
    if (!SUMA_ColorizePlane (curColPlane)) {
-         SUMA_SLP_Err("Failed to colorize plane.\n");
-         SUMA_RETURN(0);
+      SUMA_SLP_Err("Failed to colorize plane.\n");
+      SUMA_RETURN(0);
    }
+   
    SUMA_LH("Remix redisplay");
-   SUMA_RemixRedisplay(ado);
+   SUMA_Remixedisplay(ado);
 
    SUMA_UpdateNodeLblField(ado);
    SUMA_UpdatePvalueField( ado,
@@ -4860,7 +5225,7 @@ void SUMA_NodeInput (void *data)
       SUMA_SLP_Err("Node index must be positive and \n"
                    "less than the number of nodes \n"
                    "forming the surface.\n");
-      TF->num_value[n] = SUMA_ADO_SelectedDatum(ado, NULL);
+      TF->num_value[n] = SUMA_ADO_SelectedDatum(ado, NULL, NULL);
       SUMA_TableF_SetString (TF);
       TF->cell_modified = -1;
       SUMA_RETURNe;
@@ -5033,7 +5398,7 @@ void SUMA_GNodeInput (void *data)
       SUMA_SLP_Err("Node index must be positive and \n"
                    "less than the number of nodes \n"
                    "forming the surface.\n");
-      TF->num_value[n] = GSaux->PR->AltSel[SUMA_ENODE_0];
+      TF->num_value[n] = GSaux->PR->iAltSel[SUMA_ENODE_0];
       SUMA_TableF_SetString (TF);
       TF->cell_modified = -1;
       SUMA_RETURNe;
@@ -5145,16 +5510,21 @@ int SUMA_SetRangeValueNew_one(SUMA_ALL_DO *ado,
                           int row, int col,
                           float v1, float v2,
                           int setmen, 
-                          int redisplay, float *reset) 
+                          int redisplay, float *reset,
+                          SUMA_NUMERICAL_UNITS num_units) 
 {
    static char FuncName[]={"SUMA_SetRangeValueNew_one"};
    int NewDisp=0, isCur=0;
    SUMA_X_SurfCont *SurfCont=NULL;
    SUMA_OVERLAYS *curColPlane=NULL;
-   SUMA_Boolean LocalHead = NOPE;
    SUMA_TABLE_FIELD *TF=NULL;
+   SUMA_Boolean LocalHead = NOPE;
    
    SUMA_ENTRY;
+   
+   if (LocalHead) {
+      SUMA_DUMP_TRACE("Who called SUMA_SetRangeValueNew_one?");
+   }
    
    if (!ado || !(SurfCont=SUMA_ADO_Cont(ado)) || 
        !SurfCont->SetRangeTable || !reset) {
@@ -5180,6 +5550,39 @@ int SUMA_SetRangeValueNew_one(SUMA_ALL_DO *ado,
    TF = SurfCont->SetRangeTable;
    if (!TF) setmen = 0; /* can't set nothing */
    
+   if (num_units == SUMA_PERC_VALUE_UNITS) {
+      float pr[2], prv[2], *Vsort=NULL;
+      
+      if (!colp->V) {
+         SUMA_S_Err("Cannot do percentiles without colp->V");
+         SUMA_RETURN(0);
+      }
+      if (v2 < v1) v2 = v1;
+      pr[0] = v1; pr[1] = v2;
+         /* some safety checks */
+      if (pr[1]<pr[0]) pr[1] = pr[0]+1; 
+      if (pr[1] > 100.0) pr[1] = 100.0;
+      if (pr[0] < 0.0) pr[0] = 0.0;
+      /* You should consider storing the percentil values for either the whole
+      dataset or for those columns in use. I suspect just having them in 
+      increments of 1% should be plenty good for the display, or if you 
+      want to get fancy, you can decide on the fly if a stored value exists
+      and go with it... */
+      if (!(Vsort = SUMA_PercRangeVol(colp->V, NULL, colp->N_V, pr, 2, prv, 
+                                      NULL, colp->OptScl->MaskZero, NULL))) {
+         SUMA_S_Err("Failed to get perc. range");
+         SUMA_RETURN(0);                               
+      }
+      SUMA_LH("Computed percentiles %f %f-->%f %f", 
+               pr[0], pr[1], prv[0], prv[1]);
+      v1 = prv[0]; v2 = prv[1];
+      SUMA_ifree(Vsort);
+      /* Need to update the value in the table struct */
+      if (TF) ++setmen;
+      
+      /* Remove percentile units */
+      if (TF) TF->num_units = SUMA_NO_NUM_UNITS;
+   }
    
    NewDisp = NOPE;
    /* What are we dealing with ? */
@@ -5390,7 +5793,7 @@ int SUMA_SetRangeValueNew_one(SUMA_ALL_DO *ado,
    /* Now, you need to redraw the deal */
    if (REDISP) {
       SUMA_ColorizePlane(curColPlane);
-      SUMA_RemixRedisplay(ado);
+      SUMA_Remixedisplay(ado);
    }   
    
    /* update the Xhair Info block */
@@ -5407,7 +5810,8 @@ int SUMA_SetRangeValueNew (SUMA_ALL_DO *ado,
                           int row, int col,
                           float v1, float v2,
                           int setmen, 
-                          int redisplay, float *reset)
+                          int redisplay, float *reset,
+                          SUMA_NUMERICAL_UNITS num_units)
 {
    static char FuncName[]={"SUMA_SetRangeValueNew"};
    int NewDisp=0, an=0;
@@ -5422,7 +5826,7 @@ int SUMA_SetRangeValueNew (SUMA_ALL_DO *ado,
    
    an = SUMA_SetRangeValueNew_one(ado, colp, row, col, 
                                   v1, v2, setmen, 
-                                  redisplay, reset);
+                                  redisplay, reset, num_units);
    if (an <= 0) SUMA_RETURN(an);
    
    if (ado->do_type == SO_type) {
@@ -5438,7 +5842,7 @@ int SUMA_SetRangeValueNew (SUMA_ALL_DO *ado,
                       SOC->Label, CHECK_NULL_STR(colpC->Label));
          an = SUMA_SetRangeValueNew_one((SUMA_ALL_DO *)SOC, colpC, row, col, 
                                         v1, v2, 1, 
-                                        redisplay, reset);
+                                        redisplay, reset, num_units);
       }
    }
    
@@ -5484,10 +5888,10 @@ void SUMA_cb_SetRangeValue (void *data)
       fprintf(SUMA_STDERR,"%s:\nTable cell[%d, %d]=%s\n", 
                            FuncName, row, col, (char *)cv);
    }
-   
+
    an = SUMA_SetRangeValueNew(ado, colp, row, col,
                           TF->num_value[n], 0.0,
-                          0, 1, &reset);
+                          0, 1, &reset, TF->num_units);
    if (an < 0) {
       if (an == -1 || an == -2) {
          SUMA_BEEP; 
@@ -5588,7 +5992,9 @@ int SUMA_SetClustValue_one(SUMA_ALL_DO *ado,
                                       colp->OptScl->ClustOpt->AreaLim);
             }
          } else { SUMA_SL_Err("What's going on Jane ?"); }
-         if (isCur && colp->ShowMode > 0 && colp->OptScl->Clusterize) 
+         if (isCur && 
+              colp->ShowMode > 0 && colp->ShowMode < SW_SurfCont_DsetViewXXX &&
+              colp->OptScl->Clusterize) 
                                                             NewDisp = YUP;
          break;
       default:
@@ -5599,7 +6005,7 @@ int SUMA_SetClustValue_one(SUMA_ALL_DO *ado,
    /* Now, you need to redraw the deal */
    if (REDISP) {
       SUMA_ColorizePlane(curColPlane);
-      SUMA_RemixRedisplay(ado);
+      SUMA_Remixedisplay(ado);
    }   
    
    /* update the Xhair Info block */
@@ -5756,7 +6162,9 @@ void SUMA_TableF_cb_label_Modify (Widget w, XtPointer client_data,
    SUMA_Boolean LocalHead = NOPE;
    
    SUMA_ENTRY;
+   
    SUMA_LH("Called");
+   
    TF = (SUMA_TABLE_FIELD *)client_data ;
    
    if (!TF->editable) { /* this does not apply */
@@ -5773,6 +6181,7 @@ void SUMA_TableF_cb_label_Modify (Widget w, XtPointer client_data,
       }
    } 
    XtVaGetValues(w, XmNuserData, &ud, NULL);
+   SUMA_LH("ud %d, cell modified %d", ud, TF->cell_modified);
    if (TF->cell_modified == -1) {
       /* fresh start, keep track */
       CurrentCell = ud;
@@ -6103,7 +6512,7 @@ void SUMA_set_cmap_options_SO(SUMA_ALL_DO *ado, SUMA_Boolean NewDset,
       char *row_tit[]=  {  " ", "I", "B", " " , "C", NULL};
       char *row_hint[]= {  
          "Clipping ranges ", 
-         "Intensity clipping range (much more with BHelp)", 
+         "Intensity clipping range (append '%' for percentiles, see BHelp)", 
          "Brightness modulation clipping range (much more with BHelp)", 
          "Brightness modulation factor range (much more with BHelp)" , 
          "Coordinate bias range (much more with BHelp)", NULL};
@@ -6342,7 +6751,7 @@ void SUMA_set_cmap_options_SO(SUMA_ALL_DO *ado, SUMA_Boolean NewDset,
                               colw, YUP, SUMA_float, 
                               SUMA_cb_SetClustValue, (void *)srvd,
                               SUMA_SetClustTableTit_EV, NULL,
-                              NULL, NULL,  
+                              SUMA_SetClustTableCell_EV, NULL,  
                               SurfCont->SetClustTable);
             }
             
@@ -6713,7 +7122,7 @@ void SUMA_set_cmap_options_VO(SUMA_ALL_DO *ado, SUMA_Boolean NewDset,
       char *row_tit[]=  {  " ", "I", "B", " " , "C", NULL};
       char *row_hint[]= {  
          "Clipping ranges ", 
-         "Intensity clipping range (much more with BHelp)", 
+         "Intensity clipping range (append '%' for percentiles, see BHelp)", 
          "Brightness modulation clipping range (much more with BHelp)", 
          "Brightness modulation factor range (much more with BHelp)" , 
          "Coordinate bias range (much more with BHelp)", NULL};
@@ -6902,7 +7311,8 @@ void SUMA_set_cmap_options_VO(SUMA_ALL_DO *ado, SUMA_Boolean NewDset,
          XtManageChild (rc);
       }
       
-      {/* The clustering options */
+      if (0) {/* The clustering options - NOT YET IMPLEMENTED FOR VOLUMES - 
+                 Interface OK, but callbacks do not handle volumes yet */
          char *col_tit[]= { " ", "Conn", "Area", NULL };
          char *col_hint[]={ "Clusterizing options", 
                             "Connectedness criterion",
@@ -6952,7 +7362,7 @@ void SUMA_set_cmap_options_VO(SUMA_ALL_DO *ado, SUMA_Boolean NewDset,
                               colw, YUP, SUMA_float, 
                               SUMA_cb_SetClustValue, (void *)srvd,
                               SUMA_SetClustTableTit_EV, NULL,
-                              NULL, NULL,  
+                              SUMA_SetClustTableCell_EV, NULL,  
                               SurfCont->SetClustTable);
             }
             
@@ -6965,10 +7375,10 @@ void SUMA_set_cmap_options_VO(SUMA_ALL_DO *ado, SUMA_Boolean NewDset,
          if (!XtIsManaged(SurfCont->rcclust)) 
                   XtManageChild (SurfCont->rcclust);
 
+         /* do the initialization */
+         SUMA_InitClustTable(ado); /* init the clust table values*/
       }/* The clustering options */
 
-      /* do the initialization */
-      SUMA_InitClustTable(ado); /* init the clust table values*/
       
       if (curColPlane->OptScl->ThrMode == SUMA_ABS_LESS_THAN) {
          XmToggleButtonSetState( SurfCont->AbsThresh_tb, True, NOPE);
@@ -6990,8 +7400,8 @@ void SUMA_set_cmap_options_VO(SUMA_ALL_DO *ado, SUMA_Boolean NewDset,
    
    }/*  The Color map range and selector block */
    
-   if (1){ /* The Range values block*/
-      char *col_tit[]=  {  " ", "Min", "Node", "Max", "Node", NULL};
+   { /* The Range values block*/
+      char *col_tit[]=  {  " ", "Min", "Vox", "Max", "Vox", NULL};
       char *col_hint[]= {  "Full range in Dset", 
                            "Minimum value in Dset column", 
                            "Node index at minimum", 
@@ -7019,7 +7429,7 @@ void SUMA_set_cmap_options_VO(SUMA_ALL_DO *ado, SUMA_Boolean NewDset,
             XmNrightAttachment, XmATTACH_FORM , 
             XmNleftAttachment,  XmATTACH_NONE,
             XmNtopAttachment, XmATTACH_WIDGET ,
-            XmNtopWidget, SurfCont->rcclust,
+            XmNtopWidget, SurfCont->rcclust?SurfCont->rcclust:SurfCont->opts_rc,
             NULL);
       }
       
@@ -7324,7 +7734,7 @@ void SUMA_set_cmap_options_GLDO(SUMA_ALL_DO *ado, SUMA_Boolean NewDset,
       char *row_tit[]=  {  " ", "I", "B", " " , "C", NULL};
       char *row_hint[]= {  
          "Clipping ranges ", 
-         "Intensity clipping range (much more with BHelp)", 
+         "Intensity clipping range (append '%' for percentiles, see BHelp)", 
          "Brightness modulation clipping range (much more with BHelp)", 
          "Brightness modulation factor range (much more with BHelp)" , 
          "Coordinate bias range (much more with BHelp)", NULL};
@@ -7672,6 +8082,7 @@ SUMA_Boolean SUMA_InitClustTable(SUMA_ALL_DO *ado)
    SUMA_X_SurfCont *SurfCont=NULL;
    SUMA_OVERLAYS *curColPlane=NULL;   
    SUMA_SCALE_TO_MAP_OPT *OptScl;
+   SUMA_Boolean LocalHead = NOPE;
    
    SUMA_ENTRY;
 
@@ -7679,6 +8090,12 @@ SUMA_Boolean SUMA_InitClustTable(SUMA_ALL_DO *ado)
    curColPlane = SUMA_ADO_CurColPlane(ado);
 
    if (!SurfCont) SUMA_RETURN(NOPE);
+   if (ado->do_type == VO_type) {
+      /* At the moment GUI is for interactive clustering is turned off, but
+      to be safe, return without complaints */
+      SUMA_LH("Nothing to do here until you implement clustering for volumes");
+      SUMA_RETURN(YUP);
+   }
    TFs = SurfCont->SetClustTable; 
    if (!TFs) SUMA_RETURN(NOPE);
    OptScl = curColPlane->OptScl;
@@ -7724,6 +8141,9 @@ SUMA_Boolean SUMA_InitRangeTable(SUMA_ALL_DO *ado, int what)
    
    SUMA_ENTRY;
 
+   if (LocalHead) {
+      SUMA_DUMP_TRACE("Who just called SUMA_InitRangeTable?");
+   }
    if (!ado) { 
       SUMA_SL_Err("NULL ado");
       SUMA_RETURN(NOPE);
@@ -7773,7 +8193,7 @@ SUMA_Boolean SUMA_InitRangeTable(SUMA_ALL_DO *ado, int what)
    SUMA_INSERT_CELL_STRING(TF, 1, 4, srange_maxloc);/* maxloc */
    /* TFs Range table Int*/
    if (DoIs) {
-      if (curColPlane->OptScl->AutoIntRange) { 
+      if (curColPlane->OptScl->AutoIntRange) {
          if (!curColPlane->ForceIntRange[0] && 
              !curColPlane->ForceIntRange[1]) {
             if (  OptScl->IntRange[0] != range[0] ||
@@ -8776,7 +9196,7 @@ SUMA_Boolean SUMA_SwitchColPlaneCmap(SUMA_ALL_DO *ado, SUMA_COLOR_MAP *CM)
 
    /* update the color map display NOW, no workprocess crap. ZSS Mar. 7 08*/
    #if 0
-   /* With this, the next call to SUMA_RemixRedisplay,
+   /* With this, the next call to SUMA_Remixedisplay,
    causes an error: glXSwapBuffers: no context for this drawable
    because SUMA_cmap_wid_handleRedisplay is still to be processed
    as SUMA_cmap_wid_postRedisplay puts it in as a workprocess.
@@ -8789,8 +9209,8 @@ SUMA_Boolean SUMA_SwitchColPlaneCmap(SUMA_ALL_DO *ado, SUMA_COLOR_MAP *CM)
    SUMA_cmap_wid_handleRedisplay((XtPointer)ado);
    #endif
    
-   SUMA_LH("Calling SUMA_RemixRedisplay ");          
-   SUMA_RemixRedisplay(ado);
+   SUMA_LH("Calling SUMA_Remixedisplay ");          
+   SUMA_Remixedisplay(ado);
 
    SUMA_LH("Returning");
    SUMA_RETURN(YUP);
@@ -9598,7 +10018,7 @@ void SUMA_CreateXhairWidgets_VO(Widget parent, SUMA_ALL_DO *ado)
    /* a table for a point's index */      
    SUMA_LH("Creating point table");
    {
-      int colw[]={3, 5};
+      int colw[]={3, 6};
       SUMA_CreateTable(rcch, 
          1, 2,
          I_tit, NULL,
@@ -9739,7 +10159,7 @@ void SUMA_CreateCmapWidgets(Widget parent, SUMA_ALL_DO *ado)
       #else
       { 
          int colw[]={6};
-         char *lhint[]={ "Threshold Value (append p to set by p value)", NULL};
+         char *lhint[]={ "Threshold Value (append 'p' to set by p value, '%' to set by percentile)", NULL};
          char *lhelp[]={ SUMA_SurfContHelp_SetThreshTblr0, NULL};
          if (!SurfCont->SetThrScaleTable->cells) {
             SUMA_CreateTable( rct,
@@ -10428,7 +10848,9 @@ SUMA_Boolean SUMA_UpdateXhairField(SUMA_SurfaceViewer *sv)
       ado = (SUMA_ALL_DO *)dov[SOlist[i]].OP;
       SurfCont = SUMA_ADO_Cont(ado);
       curColPlane = SUMA_ADO_CurColPlane(ado);
-
+      if (ado->do_type == MASK_type) {/* No cross hair tricks */
+         SUMA_RETURN(YUP);
+      }
       if (SurfCont) { /* does this surface have surface controller ? */
          /* is this controller, displaying information for that surface ? */
          SUMA_LHv("Working controller for %s\n", SUMA_ADO_Label(ado));
@@ -10471,7 +10893,8 @@ SUMA_Boolean SUMA_UpdateNodeField(SUMA_ALL_DO *ado)
    
    if (!ado || !(SurfCont = SUMA_ADO_Cont(ado))) SUMA_RETURN(NOPE);
    SUMA_LHv("Entry, SurfCont=%p, ado %p\n",
-            ado,   SurfCont); 
+            ado,   SurfCont);
+   if (LocalHead) SUMA_DUMP_TRACE("Who Called Me?"); 
    if (!SUMA_isSurfContWidgetCreated(SurfCont)) {
       /* No controller created yet, return quietly */
       SUMA_RETURN(YUP);
@@ -10558,7 +10981,6 @@ SUMA_Boolean SUMA_UpdateNodeField(SUMA_ALL_DO *ado)
       case GRAPH_LINK_type:
          {
          SUMA_ALL_DO *curado=NULL;
-         
          if (LocalHead && ado->do_type ==  GRAPH_LINK_type) {
             SUMA_GraphLinkDO *gldo=(SUMA_GraphLinkDO *)ado;
             SUMA_DSET *dset=NULL;
@@ -10608,8 +11030,8 @@ SUMA_Boolean SUMA_UpdateNodeField(SUMA_ALL_DO *ado)
          } else {
             SUMA_LH("No GUI Node Field Updates, but may use a whereami update");
             if (SUMAg_CF->X->Whereami_TextShell) {
-               lbls = SUMA_GetLabelsAtSelection(ado, 
-                                             SUMA_ADO_SelectedDatum(ado, NULL),
+               lbls = SUMA_GetLabelsAtSelection(ado,
+                                         SUMA_ADO_SelectedDatum(ado, NULL, NULL),
                                              SUMA_ADO_SelectedSecondary(ado));
                if (lbls) SUMA_free(lbls); lbls = NULL;
             }
@@ -10626,7 +11048,7 @@ SUMA_Boolean SUMA_UpdateNodeField(SUMA_ALL_DO *ado)
                      && Sover->rowgraph_mtd ) {
                   SUMA_OverlayGraphAtNode(Sover, 
                                           ado, 
-                                          SUMA_ADO_SelectedDatum(ado, NULL));
+                                     SUMA_ADO_SelectedDatum(ado, NULL, NULL));
                }
             }
          } else {
@@ -10636,7 +11058,7 @@ SUMA_Boolean SUMA_UpdateNodeField(SUMA_ALL_DO *ado)
                      && Sover->rowgraph_mtd ) {
                   SUMA_OverlayGraphAtNode(Sover, 
                                           ado, 
-                                          SUMA_ADO_SelectedDatum(ado, NULL));
+                                     SUMA_ADO_SelectedDatum(ado, NULL, NULL));
                }
          }
          SUMA_RETURN(YUP);
@@ -10715,13 +11137,13 @@ SUMA_Boolean SUMA_UpdatePointField(SUMA_ALL_DO*ado)
          if (SUMA_isRelated(ado, curado, 1)) {
             SUMA_LH( "Updating GUI Point Fields, ");
             if (curado == ado) {
-               if (GSaux->PR->AltSel[SUMA_ENODE_0] >= 0) {
-                  sprintf(str, "%ld", GSaux->PR->AltSel[SUMA_ENODE_0]);
+               if (GSaux->PR->iAltSel[SUMA_ENODE_0] >= 0) {
+                  sprintf(str, "%ld", GSaux->PR->iAltSel[SUMA_ENODE_0]);
                   SurfCont->FaceTable->num_value[1] = 
-                        GSaux->PR->AltSel[SUMA_ENODE_0];
+                        GSaux->PR->iAltSel[SUMA_ENODE_0];
                   XtVaSetValues(SurfCont->FaceTable->cells[1], 
                                  XmNvalue, str, NULL);
-                  fv = SUMA_GDSET_NodeXYZ(dset, GSaux->PR->AltSel[SUMA_ENODE_0],
+                  fv = SUMA_GDSET_NodeXYZ(dset, GSaux->PR->iAltSel[SUMA_ENODE_0],
                                           SUMA_ADO_variant(ado),NULL);
                   sprintf(str, "%f, %f, %f", fv[0], fv[1], fv[2]); 
                
@@ -10753,7 +11175,7 @@ SUMA_Boolean SUMA_UpdateNodeNodeField(SUMA_ALL_DO *ado)
    static char FuncName[]={"SUMA_UpdateNodeNodeField"};
    char str[100];
    SUMA_X_SurfCont *SurfCont=NULL;
-   int SelectedNode, iv4[4];
+   int SelectedNode, ivsel[SUMA_N_IALTSEL_TYPES];
    float *fv;
    SUMA_Boolean LocalHead = NOPE;
    
@@ -10764,7 +11186,7 @@ SUMA_Boolean SUMA_UpdateNodeNodeField(SUMA_ALL_DO *ado)
       SUMA_RETURN(NOPE); 
    }
    SurfCont = SUMA_ADO_Cont(ado);
-   SelectedNode = SUMA_ADO_SelectedDatum(ado, NULL);
+   SelectedNode = SUMA_ADO_SelectedDatum(ado, NULL, NULL);
    SUMA_LH("Working %d on %s\n", SelectedNode, ADO_LABEL(ado));
    if (!SurfCont || !SurfCont->NodeTable) SUMA_RETURN(NOPE);
    if (SelectedNode < 0 || SelectedNode > SUMA_ADO_Max_Datum_Index(ado)) 
@@ -10799,13 +11221,20 @@ SUMA_Boolean SUMA_UpdateNodeNodeField(SUMA_ALL_DO *ado)
          break; }
       case TRACT_type: {
          if (!SurfCont->FaceTable) SUMA_RETURN(NOPE); 
-         SUMA_ADO_SelectedDatum(ado, (void *)iv4);
+         SUMA_ADO_SelectedDatum(ado, (void *)ivsel, NULL);
          sprintf(str, "%d, %d, %d", 
-                 iv4[SUMA_NET_BUN], iv4[SUMA_BUN_TRC], iv4[SUMA_TRC_PNT]);
+                 ivsel[SUMA_NET_BUN], ivsel[SUMA_BUN_TRC], ivsel[SUMA_TRC_PNT]);
          XtVaSetValues(SurfCont->FaceTable->cells[1], XmNvalue, str, NULL);
          break; }
       case MASK_type: {
          SUMA_S_Warn("Anything for this?");
+         break; }
+      case VO_type: {
+         if (!SurfCont->FaceTable) SUMA_RETURN(NOPE); 
+         SUMA_ADO_SelectedDatum(ado, (void *)ivsel, NULL);
+         sprintf(str, "%d, %d, %d", 
+                 ivsel[SUMA_VOL_I], ivsel[SUMA_VOL_J], ivsel[SUMA_VOL_K]);
+         XtVaSetValues(SurfCont->FaceTable->cells[1], XmNvalue, str, NULL);
          break; }
       default:
          SUMA_S_Errv("No love for %s\n", ADO_TNAME(ado));
@@ -10915,7 +11344,7 @@ datum, the datum selection is adjusted properly
 int SUMA_ADO_ColPlane_SelectedDatum(SUMA_ALL_DO *ado, SUMA_OVERLAYS *Sover)
 {
    static char FuncName[]={"SUMA_ADO_ColPlane_SelectedDatum"};
-   int SelectedNode = -1, iv4[4];
+   int SelectedNode = -1, ivsel[SUMA_N_IALTSEL_TYPES];
    SUMA_Boolean LocalHead = NOPE;
 
    SUMA_ENTRY;
@@ -10931,15 +11360,16 @@ int SUMA_ADO_ColPlane_SelectedDatum(SUMA_ALL_DO *ado, SUMA_OVERLAYS *Sover)
       SUMA_RETURN(-1);
    }
    
-   SelectedNode = SUMA_ADO_SelectedDatum(ado, (void *)iv4);
+   SelectedNode = SUMA_ADO_SelectedDatum(ado, (void *)ivsel, NULL);
    SUMA_LH("Selection: %d -- %d %d %d %d",
-               SelectedNode, iv4[0], iv4[1], iv4[2], iv4[3]);
+               SelectedNode, ivsel[0], ivsel[1], ivsel[2], ivsel[3]);
    if (Sover->dtlvl != SUMA_ELEM_DAT) {
       switch (ado->do_type) {
          case TRACT_type:
-            if (Sover->dtlvl == SUMA_LEV1_DAT) SelectedNode = iv4[SUMA_NET_TRC];
+            if (Sover->dtlvl == SUMA_LEV1_DAT) 
+                     SelectedNode = ivsel[SUMA_NET_TRC];
             else if (Sover->dtlvl == SUMA_LEV2_DAT) 
-                                 SelectedNode = iv4[SUMA_NET_BUN];
+                                 SelectedNode = ivsel[SUMA_NET_BUN];
             break;
          default:
             SUMA_S_Err("Not ready for non-elementary datum for type %s\n",
@@ -11022,6 +11452,7 @@ char *SUMA_GetLabelsAtSelection(SUMA_ALL_DO *ado, int node, int sec)
       case SDSET_type:
          SUMA_S_Warn("Not ready to return labels for dsets, and should I be?");
          break;
+      case VO_type:
       case MASK_type:
       case TRACT_type:
       case GRAPH_LINK_type:
@@ -11069,17 +11500,20 @@ char *SUMA_GetLabelsAtSelection_ADO(SUMA_ALL_DO *ado, int node, int sec)
       el = dlist_head(SUMAg_CF->DsetList);
       while (el) {
          dd = (SUMA_DSET*)el->data;
-         if (SUMA_isDsetRelated(dd, SO)) {
+         if (SUMA_isDsetRelated(dd, SO) &&
+             (colplane = SUMA_Fetch_OverlayPointerByDset (
+                                 (SUMA_ALL_DO*)SO, dd, &OverInd)) &&
+             colplane->OptScl) {
             SUMA_LHv("Have Dset %s related to SO\n", SDSET_LABEL(dd));
             /* is dd a LabelDset ? */
-            if (  SUMA_is_Label_dset(dd, NULL) && node >= 0 ) {
+            if (  (SUMA_is_Label_dset(dd, NULL) || 
+                   SUMA_is_Label_dset_col(dd,colplane->OptScl->find)) 
+                && node >= 0 ) {
                SUMA_LHv("dset %s will work with SO", SDSET_LABEL(dd));
-               key = SUMA_GetDsetNodeValInCol2( dd, 0, 
+               key = SUMA_GetDsetNodeValInCol2( dd, colplane->OptScl->find, 
                                                 node, -1);
                /* get the overlay for that dset */
-               if (key >= 0 &&
-                   (colplane = SUMA_Fetch_OverlayPointerByDset (
-                        (SUMA_ALL_DO*)SO, dd, &OverInd))) {
+               if (key >= 0) {
                   /* get the colormap for that colplane */
                   if ((CM = SUMA_FindNamedColMap (colplane->cmapname)) &&
                       CM->cname) {
@@ -11100,114 +11534,134 @@ char *SUMA_GetLabelsAtSelection_ADO(SUMA_ALL_DO *ado, int node, int sec)
    }
    
   
-   if ((Sover = SUMA_ADO_CurColPlane(ado)) && 
-        SDSET_TYPE(Sover->dset_link) != SUMA_NODE_RGB ) {
-      if (!(sar = SUMA_FormNodeValFieldStrings(ado,       
-                              Sover->dset_link, 
-                              node, 
-                              Sover->OptScl->find, 
-                              Sover->OptScl->tind,
-                              Sover->OptScl->bind, 5))) {
-         SUMA_LH("No Sar");
-      } else if (1) { /* include sub-brick labels */
-         SUMA_LH("Sar");
-         if (lbls) lbls = SUMA_append_replace_string(lbls,"\n","",1);
-         if (sar[0] && sar[1] && sar[2]) {
-            if (!strcmp(sar[0],sar[1]) && !strcmp(sar[2],sar[1])) {
-               lbls = SUMA_append_replace_string(lbls, "(I,T,B)", "",1);
-               lbls = SUMA_append_replace_string(lbls, 
-                        SUMA_DsetColLabel(Sover->dset_link, Sover->OptScl->find),
-                                                 "",1);
-               lbls = SUMA_append_replace_string(lbls, sar[0], "=",1);
-            } else if (!strcmp(sar[0],sar[1])) {
-               lbls = SUMA_append_replace_string(lbls, "(I,T)", "",1);
-               lbls = SUMA_append_replace_string(lbls, 
-                        SUMA_DsetColLabel(Sover->dset_link, Sover->OptScl->find),
-                                                 "",1);
-               lbls = SUMA_append_replace_string(lbls, sar[0], "=",1);
+   if ((Sover = SUMA_ADO_CurColPlane(ado))) { 
+      if (SDSET_TYPE(Sover->dset_link) != SUMA_NODE_RGB ) {/* Have labels */
+         if (!(sar = SUMA_FormNodeValFieldStrings(ado,       
+                                 Sover->dset_link, 
+                                 node, 
+                                 Sover->OptScl->find, 
+                                 Sover->OptScl->tind,
+                                 Sover->OptScl->bind, 5))) {
+            SUMA_LH("No Sar");
+         } else if (1) { /* include sub-brick labels */
+            SUMA_LH("Sar: %s %s %s", 
+                   SUMA_CHECK_NULL_STR(sar[0]),SUMA_CHECK_NULL_STR(sar[1]),
+                   SUMA_CHECK_NULL_STR(sar[2]));
+            if (lbls) lbls = SUMA_append_replace_string(lbls,"\n","",1);
+            if (sar[0] && sar[1] && sar[2]) {
+               if (!strcmp(sar[0],sar[1]) && !strcmp(sar[2],sar[1])) {
+                  lbls = SUMA_append_replace_string(lbls, "(I,T,B)", "",1);
+                  lbls = SUMA_append_replace_string(lbls, 
+                           SUMA_DsetColLabel(Sover->dset_link, 
+                                             Sover->OptScl->find),
+                                                    "",1);
+                  lbls = SUMA_append_replace_string(lbls, sar[0], "=",1);
+               } else if (!strcmp(sar[0],sar[1])) {
+                  lbls = SUMA_append_replace_string(lbls, "(I,T)", "",1);
+                  lbls = SUMA_append_replace_string(lbls, 
+                           SUMA_DsetColLabel(Sover->dset_link, 
+                                             Sover->OptScl->find),
+                                                    "",1);
+                  lbls = SUMA_append_replace_string(lbls, sar[0], "=",1);
 
-               lbls = SUMA_append_replace_string(lbls, " (B)", "",1);
-               lbls = SUMA_append_replace_string(lbls, 
-                        SUMA_DsetColLabel(Sover->dset_link, Sover->OptScl->bind),
-                                                 "",1);                  
-               lbls = SUMA_append_replace_string(lbls, sar[2], "=", 1);
-            } else if (!strcmp(sar[1],sar[2])) {
-               lbls = SUMA_append_replace_string(lbls, "(I)", "",1);
-               lbls = SUMA_append_replace_string(lbls, 
-                        SUMA_DsetColLabel(Sover->dset_link, Sover->OptScl->find),
-                                                 "",1);
-               lbls = SUMA_append_replace_string(lbls, sar[0], "=",1);
+                  lbls = SUMA_append_replace_string(lbls, " (B)", "",1);
+                  lbls = SUMA_append_replace_string(lbls, 
+                           SUMA_DsetColLabel(Sover->dset_link, 
+                                             Sover->OptScl->bind),
+                                                    "",1);                  
+                  lbls = SUMA_append_replace_string(lbls, sar[2], "=", 1);
+               } else if (!strcmp(sar[1],sar[2])) {
+                  lbls = SUMA_append_replace_string(lbls, "(I)", "",1);
+                  lbls = SUMA_append_replace_string(lbls, 
+                           SUMA_DsetColLabel(Sover->dset_link, 
+                                             Sover->OptScl->find),
+                                                    "",1);
+                  lbls = SUMA_append_replace_string(lbls, sar[0], "=",1);
 
-               lbls = SUMA_append_replace_string(lbls, " (B,T)", "",1);
-               lbls = SUMA_append_replace_string(lbls, 
-                        SUMA_DsetColLabel(Sover->dset_link, Sover->OptScl->bind),
-                                                 "",1);                  
-               lbls = SUMA_append_replace_string(lbls, sar[2], "=", 1);
-            } else if (!strcmp(sar[0],sar[2])) {
-               lbls = SUMA_append_replace_string(lbls, "(I,B)", "",1);
-               lbls = SUMA_append_replace_string(lbls, 
-                        SUMA_DsetColLabel(Sover->dset_link, Sover->OptScl->find),
-                                                 "",1);
-               lbls = SUMA_append_replace_string(lbls, sar[0], "=",1);
+                  lbls = SUMA_append_replace_string(lbls, " (B,T)", "",1);
+                  lbls = SUMA_append_replace_string(lbls, 
+                           SUMA_DsetColLabel(Sover->dset_link, 
+                                             Sover->OptScl->bind),
+                                                    "",1);                  
+                  lbls = SUMA_append_replace_string(lbls, sar[2], "=", 1);
+               } else if (!strcmp(sar[0],sar[2])) {
+                  lbls = SUMA_append_replace_string(lbls, "(I,B)", "",1);
+                  lbls = SUMA_append_replace_string(lbls, 
+                           SUMA_DsetColLabel(Sover->dset_link, 
+                                             Sover->OptScl->find),
+                                                    "",1);
+                  lbls = SUMA_append_replace_string(lbls, sar[0], "=",1);
 
-               lbls = SUMA_append_replace_string(lbls, " (T)", "",1);
-               lbls = SUMA_append_replace_string(lbls, 
-                        SUMA_DsetColLabel(Sover->dset_link, Sover->OptScl->tind),
-                                                 "",1);                  
-               lbls = SUMA_append_replace_string(lbls, sar[1], "=", 1);
+                  lbls = SUMA_append_replace_string(lbls, " (T)", "",1);
+                  lbls = SUMA_append_replace_string(lbls, 
+                           SUMA_DsetColLabel(Sover->dset_link, 
+                                             Sover->OptScl->tind),
+                                                    "",1);                  
+                  lbls = SUMA_append_replace_string(lbls, sar[1], "=", 1);
+               } else {
+                  for (sp=0,i=0;i<3;++i) {
+                     if (sar[i]) {
+                        if (sp) 
+                           lbls = SUMA_append_replace_string(lbls," ","", 1);
+                        lbls = SUMA_append_replace_string(lbls, 
+                           SUMA_DsetColLabel(Sover->dset_link, 
+                                                i==0 ? Sover->OptScl->find : 
+                                                ( i == 1 ? Sover->OptScl->tind:
+                                                           Sover->OptScl->bind)),
+                                                    "",1); 
+                        lbls = SUMA_append_replace_string(lbls,sar[i],"=", 1);
+                        sp=1;
+                        SUMA_free(sar[i]); sar[i]=NULL;
+                     }
+                  }
+               }
             } else {
-               for (sp=0,i=0;i<3;++i) {
-                  if (sar[i]) {
-                     if (sp) lbls = SUMA_append_replace_string(lbls," ","", 1);
-                     lbls = SUMA_append_replace_string(lbls, 
-                        SUMA_DsetColLabel(Sover->dset_link, 
-                                             i==0 ? Sover->OptScl->find : 
-                                             ( i == 1 ?  Sover->OptScl->tind:
-                                                         Sover->OptScl->bind)),
-                                                 "",1); 
-                     lbls = SUMA_append_replace_string(lbls,sar[i],"=", 1);
-                     sp=1;
-                     SUMA_free(sar[i]); sar[i]=NULL;
+                  for (sp=0,i=0;i<3;++i) {
+                     if (sar[i]) {
+                        if (sp) 
+                           lbls = SUMA_append_replace_string(lbls," ","", 1);
+                        lbls = SUMA_append_replace_string(lbls, 
+                           SUMA_DsetColLabel(Sover->dset_link, 
+                                                i==0 ? Sover->OptScl->find : 
+                                                ( i == 1 ? Sover->OptScl->tind:
+                                                           Sover->OptScl->bind)),
+                                                    "",1); 
+                        lbls = SUMA_append_replace_string(lbls,sar[i],"=", 1);
+                        sp=1;
+                        SUMA_free(sar[i]); sar[i]=NULL;
+                     }
                   }
-               }
-            }
-         } else {
-               for (sp=0,i=0;i<3;++i) {
-                  if (sar[i]) {
-                     if (sp) lbls = SUMA_append_replace_string(lbls," ","", 1);
-                     lbls = SUMA_append_replace_string(lbls, 
-                        SUMA_DsetColLabel(Sover->dset_link, 
-                                             i==0 ? Sover->OptScl->find : 
-                                             ( i == 1 ?  Sover->OptScl->tind:
-                                                         Sover->OptScl->bind)),
-                                                 "",1); 
-                     lbls = SUMA_append_replace_string(lbls,sar[i],"=", 1);
-                     sp=1;
-                     SUMA_free(sar[i]); sar[i]=NULL;
-                  }
-               }
 
-         }
-         SUMA_free(sar); sar=NULL;
-         if (ado->do_type == SO_type) {
-            if ((sp=SUMA_NodeClustNumber(Sover, node, 
-                                        (SUMA_SurfaceObject *)ado, NULL))) {
-               sprintf(stmp,"\nIn cluster %d", sp);
-               if (lbls) lbls = SUMA_append_replace_string(lbls,stmp,"",1);
             }
-         }
-     } else { /* old approach to labeling, I,T, business only */
-         SUMA_LH("Old");
-         if (lbls) lbls = SUMA_append_replace_string(lbls,"\n","",1);
-         if (sar[0] && sar[1] && sar[2]) {
-            if (!strcmp(sar[0],sar[1]) && !strcmp(sar[2],sar[1])) {
-               lbls = SUMA_append_replace_string(lbls, sar[0], "I,T,B=",1);
-            } else if (!strcmp(sar[0],sar[1])) {
-               lbls = SUMA_append_replace_string(lbls, sar[0], "I,T=",1);
-               lbls = SUMA_append_replace_string(lbls, sar[2], " B=", 1);
-            } else if (!strcmp(sar[1],sar[2])) {
-               lbls = SUMA_append_replace_string(lbls, sar[0], "I=",1);
-               lbls = SUMA_append_replace_string(lbls, sar[1], " B,T=", 1);
+            SUMA_free(sar); sar=NULL;
+            if (ado->do_type == SO_type) {
+               if ((sp=SUMA_NodeClustNumber(Sover, node, 
+                                           (SUMA_SurfaceObject *)ado, NULL))) {
+                  sprintf(stmp,"\nIn cluster %d", sp);
+                  if (lbls) lbls = SUMA_append_replace_string(lbls,stmp,"",1);
+               }
+            }
+        } else { /* old approach to labeling, I,T, business only */
+            SUMA_LH("Old");
+            if (lbls) lbls = SUMA_append_replace_string(lbls,"\n","",1);
+            if (sar[0] && sar[1] && sar[2]) {
+               if (!strcmp(sar[0],sar[1]) && !strcmp(sar[2],sar[1])) {
+                  lbls = SUMA_append_replace_string(lbls, sar[0], "I,T,B=",1);
+               } else if (!strcmp(sar[0],sar[1])) {
+                  lbls = SUMA_append_replace_string(lbls, sar[0], "I,T=",1);
+                  lbls = SUMA_append_replace_string(lbls, sar[2], " B=", 1);
+               } else if (!strcmp(sar[1],sar[2])) {
+                  lbls = SUMA_append_replace_string(lbls, sar[0], "I=",1);
+                  lbls = SUMA_append_replace_string(lbls, sar[1], " B,T=", 1);
+               } else {
+                  for (i=0;i<3;++i) {
+                     if (sar[i]) {
+                        lbls = SUMA_append_replace_string(lbls,sar[i],
+                                                       seps[i], 1); 
+                        SUMA_free(sar[i]); sar[i]=NULL;
+                     }
+                  }
+               }
             } else {
                for (i=0;i<3;++i) {
                   if (sar[i]) {
@@ -11217,18 +11671,12 @@ char *SUMA_GetLabelsAtSelection_ADO(SUMA_ALL_DO *ado, int node, int sec)
                   }
                }
             }
-         } else {
-            for (i=0;i<3;++i) {
-               if (sar[i]) {
-                  lbls = SUMA_append_replace_string(lbls,sar[i],
-                                                 seps[i], 1); 
-                  SUMA_free(sar[i]); sar[i]=NULL;
-               }
-            }
+            SUMA_free(sar); sar=NULL;
          }
-         SUMA_free(sar); sar=NULL;
-      }
-      /* Any edge info ? */
+      }/* Have labels */
+      
+      /* Some coord info for select few ? */
+
       if (ado->do_type == GRAPH_LINK_type) {
          SUMA_DSET *gset=NULL;
          char *stmp=NULL, *pref=NULL;
@@ -11254,36 +11702,71 @@ char *SUMA_GetLabelsAtSelection_ADO(SUMA_ALL_DO *ado, int node, int sec)
             }
          }
       }
-      
+
       /* Bundles, tracts? */
       if (ado->do_type == TRACT_type) {
          SUMA_TractDO *tdo=(SUMA_TractDO *)ado;
          SUMA_TRACT_SAUX *TSaux = SUMA_ADO_TSaux(ado);
          char stmp[256];
          if (node >= 0) { /* spell out where you are */
-            if (TSaux->PR->AltSel[SUMA_NET_BUN] >= 0 &&
-                TSaux->PR->AltSel[SUMA_BUN_TRC] >= 0 &&
-                TSaux->PR->AltSel[SUMA_TRC_PNT] >= 0 ) {
+            if (TSaux->PR->iAltSel[SUMA_NET_BUN] >= 0 &&
+                TSaux->PR->iAltSel[SUMA_BUN_TRC] >= 0 &&
+                TSaux->PR->iAltSel[SUMA_TRC_PNT] >= 0 ) {
                 snprintf(stmp, 256,
-                  "\nPoint %ld of tract %ld in bundle %ld (tract in bundle %ld)",
-                       TSaux->PR->AltSel[SUMA_TRC_PNT], 
-                       TSaux->PR->AltSel[SUMA_BUN_TRC], 
-                       TSaux->PR->AltSel[SUMA_NET_BUN],
-                       TSaux->PR->AltSel[SUMA_NET_TRC]);
+                     "%sPnt %ld, trct %ld, bnd %ld",
+                       lbls?"\n":"",
+                       TSaux->PR->iAltSel[SUMA_TRC_PNT], 
+                       TSaux->PR->iAltSel[SUMA_BUN_TRC], 
+                       TSaux->PR->iAltSel[SUMA_NET_BUN]);
                lbls = SUMA_append_replace_string(lbls,stmp,"", 0);
             }
          }
       }
-      
+
       /* Volume object */
       if (ado->do_type == VO_type) {
-         static int wcnt=0;
-         if (!wcnt) { SUMA_S_Warn("Fill me up with love"); ++wcnt; }
+         SUMA_VolumeObject *vo=(SUMA_VolumeObject *)ado;
+         SUMA_VOL_SAUX *VSaux = SUMA_ADO_VSaux(ado);
+         char stmp[256];
+         SUMA_LH("Vol consideration with %s and node %d",
+                  lbls, node);
+         if (node >= 0) { /* spell out where you are */
+            if (VSaux->PR->iAltSel[SUMA_VOL_I] >= 0 &&
+                VSaux->PR->iAltSel[SUMA_VOL_J] >= 0 &&
+                VSaux->PR->iAltSel[SUMA_VOL_K] >= 0 ) {
+                snprintf(stmp, 256,
+                  "%sVoxel [%ld,%ld,%ld] at [%.2f,%.2f,%.2f]",
+                       lbls?"\n":"",
+                       VSaux->PR->iAltSel[SUMA_VOL_I], 
+                       VSaux->PR->iAltSel[SUMA_VOL_J], 
+                       VSaux->PR->iAltSel[SUMA_VOL_K],
+                       VSaux->PR->PickXYZ[0], 
+                       VSaux->PR->PickXYZ[1],
+                       VSaux->PR->PickXYZ[2]);
+               lbls = SUMA_append_replace_string(lbls,stmp,"", 0);
+               if (LocalHead) { /* Just for fun */
+                  char variant[8];
+                  SUMA_dset_gui_slice_from_tex_slice_d(vo->VE, 0, 
+                                 VSaux->PR->dAltSel+SUMA_VOL_SLC_EQ0, 
+                                                      0, variant,NULL);
+                  SUMA_LH("%s, slice %.2f,%.2f,%.2f, %.2f: %s\n", stmp, 
+                     VSaux->PR->dAltSel[SUMA_VOL_SLC_EQ0], 
+                     VSaux->PR->dAltSel[SUMA_VOL_SLC_EQ1], 
+                     VSaux->PR->dAltSel[SUMA_VOL_SLC_EQ2], 
+                     VSaux->PR->dAltSel[SUMA_VOL_SLC_EQ3],
+                     variant);
+               }
+            }
+         } 
       }
-      
+
       /* Mask object */
       if (ado->do_type == MASK_type) {
-         SUMA_S_Warn("Fill me up with any love you can spare");
+         char stmp[256];
+         snprintf(stmp, 256,
+                  "%sMask selected",
+                  lbls?"\n":"");
+         lbls = SUMA_append_replace_string(lbls,stmp,"", 0);
       }
    }
       
@@ -11314,7 +11797,7 @@ char *SUMA_GetLabelsAtSelection_ADO(SUMA_ALL_DO *ado, int node, int sec)
                   "Error %s: SUMA_Engine call failed.\n", FuncName);
       }
    }
-   
+   SUMA_LH("Returning %s", lbls);
    SUMA_RETURN(lbls);
 }
 
@@ -11348,7 +11831,7 @@ SUMA_NIDO *SUMA_NodeLabelToTextNIDO (char *lbls, SUMA_ALL_DO *ado,
                          SUMA_ADO_LDP(ado), NULL, NULL);
       nini = NI_new_data_element("T", 0);
    
-      v = SUMA_ADO_DatumXYZ(ado, SUMA_ADO_SelectedDatum(ado, NULL), NULL);
+      v = SUMA_ADO_DatumXYZ(ado, SUMA_ADO_SelectedDatum(ado, NULL, NULL), NULL);
       coord_type = SUMA_WORLD;
    } else {/* fixed on screen */
       nido = SUMA_BlankNIDO(NULL, "AHorseWithNoName",
@@ -11357,6 +11840,7 @@ SUMA_NIDO *SUMA_NodeLabelToTextNIDO (char *lbls, SUMA_ALL_DO *ado,
       coord_type = SUMA_SCREEN;
       NI_set_attribute(nini,"v_align", "top");
       NI_set_attribute(nini,"h_align", "center");
+      NI_set_attribute(nini,"shadow","yes"); /* Not ready for prime time */
       v = topscr;
    }
    NI_SET_FLOATv( nini, "coord", v, 3);
@@ -11446,8 +11930,8 @@ SUMA_Boolean SUMA_UpdateNodeLblField_ADO(SUMA_ALL_DO *ado)
       case SO_type: 
          /* get labels from Label Datasets, and update whereami 
             window if needed*/
-         lbls = SUMA_GetLabelsAtSelection_ADO(ado, 
-                                              SUMA_ADO_SelectedDatum(ado, NULL),
+         lbls = SUMA_GetLabelsAtSelection_ADO(ado,
+                                       SUMA_ADO_SelectedDatum(ado, NULL, NULL),
                                               SUMA_ADO_SelectedSecondary(ado));
          SUMA_LHv("Label Dsets: %s\n", lbls);
          break;
@@ -11546,12 +12030,13 @@ SUMA_Boolean SUMA_UpdateCrossHairNodeLabelField(SUMA_SurfaceViewer *sv)
    if (!(ado = (SUMA_ALL_DO *)(SUMAg_DOv[sv->Ch->adoID].OP))) {
       SUMA_RETURN(NOPE);
    }
-   
    if ( sv->ShowLabelAtXhair &&
        (lbls = SUMA_GetLabelsAtSelection(ado, sv->Ch->datumID, sv->Ch->secID))) {
+      SUMA_LH("Got %s (%d)",lbls, sv->ShowLabelAtXhair);
       SUMA_NodeLabelToTextNIDO (lbls, ado, sv);
       SUMA_free(lbls); lbls = NULL;
    } else {
+      SUMA_LH("Got NOTHING or %d", sv->ShowLabelAtXhair);
       SUMA_NodeLabelToTextNIDO ("", ado, sv);
    }
    
@@ -11572,7 +12057,7 @@ int SUMA_UpdateCrossHairNodeLabelFieldForDO(SUMA_ALL_DO *curDO)
       surface */
    for (i=0; i<SUMAg_N_SVv; ++i) {
       if (!SUMAg_SVv[i].isShaded && SUMAg_SVv[i].X->TOPLEVEL) {
-         /* is this viewer showing curSO ? */
+         /* is this viewer showing curDO ? */
          if (SUMA_isRegisteredDO(&(SUMAg_SVv[i]), SUMAg_DOv, curDO)) {
             sv = &(SUMAg_SVv[i]);
             SUMA_UpdateCrossHairNodeLabelField(sv);
@@ -11682,11 +12167,7 @@ SUMA_Boolean SUMA_Init_SurfCont_CrossHair(SUMA_ALL_DO *ado)
          }
          break; }
       case VO_type: {
-         static int ncnt;
-         if (!ncnt) {
-            ++ncnt;
-            SUMA_S_Warn("Anything for volumes?");
-         }
+         SUMA_UpdateNodeField(ado);
          break; }
       default:
          SUMA_S_Errv("Nothing to do with %s\n",
@@ -11720,7 +12201,8 @@ void SUMA_cb_Cmap_Load(Widget w, XtPointer data, XtPointer client_data)
 {
    static char FuncName[]={"SUMA_cb_Cmap_Load"};
    SUMA_LIST_WIDGET *LW=NULL;
-   SUMA_SurfaceObject *SO=NULL;
+   SUMA_ALL_DO *ado=NULL;
+   SUMA_X_SurfCont *SurfCont=NULL;
    DList *list = NULL;
    SUMA_EngineData *ED = NULL;
    DListElmt *NextElm = NULL;
@@ -11730,18 +12212,20 @@ void SUMA_cb_Cmap_Load(Widget w, XtPointer data, XtPointer client_data)
    
    SUMA_LH("Called");
    
-   SO = (SUMA_SurfaceObject *)data;
-   
+   if (!(ado = (SUMA_ALL_DO *)data) || !(SurfCont = SUMA_ADO_Cont(ado))) {
+      SUMA_S_Err("NULL input");
+      SUMA_RETURNe;
+   }
    if (!list) list = SUMA_CreateList();
    ED = SUMA_InitializeEngineListData (SE_OpenCmapFileSelection);
    if (!(NextElm = SUMA_RegisterEngineListCommand (  list, ED,
-                                          SEF_vp, (void *)SO,
+                                          SEF_vp, (void *)ado,
                                           SES_Suma, NULL, NOPE,
                                           SEI_Head, NULL))) {
       fprintf (SUMA_STDERR, "Error %s: Failed to register command.\n", FuncName);
    }
    SUMA_RegisterEngineListCommand (  list, ED,
-                                     SEF_ip, (void *)SO->SurfCont->TLS,
+                                     SEF_ip, (void *)SurfCont->TLS,
                                      SES_Suma, NULL, NOPE,
                                      SEI_In, NextElm);
    if (!SUMA_Engine (&list)) {
@@ -11799,7 +12283,6 @@ void SUMA_LoadCmapFile (char *filename, void *data)
 {
    static char FuncName[]={"SUMA_LoadCmapFile"};
    SUMA_ALL_DO *ado = NULL;
-   SUMA_OVERLAY_PLANE_DATA sopd;
    SUMA_IRGB *irgb=NULL;
    int OverInd = -1, lnp=-1, loc[2];
    char *np=NULL;
@@ -11812,7 +12295,7 @@ void SUMA_LoadCmapFile (char *filename, void *data)
    SUMA_Boolean LocalHead = NOPE;
       
    SUMA_ENTRY;
-
+   
    if (!SUMAg_CF->scm) {   
       SUMAg_CF->scm = SUMA_Build_Color_maps();
       if (!SUMAg_CF->scm) {
@@ -12218,7 +12701,7 @@ int SUMA_ADO_N_Overlays(SUMA_ALL_DO *ado)
    For surfaces, this is always SurfCont->SelectedNode
    For SDSETs, it is GSaux->PR->datum_index
 */
-int SUMA_ADO_SelectedDatum(SUMA_ALL_DO *ado, void *extra)
+int SUMA_ADO_SelectedDatum(SUMA_ALL_DO *ado, void *extra, void *extra2)
 {
    static char FuncName[]={"SUMA_ADO_SelectedDatum"};
    SUMA_Boolean LocalHead = NOPE;
@@ -12246,26 +12729,39 @@ int SUMA_ADO_SelectedDatum(SUMA_ALL_DO *ado, void *extra)
                         SUMA_ADO_Label(ado));
             return(-1);
          }
-         return(SUMA_ADO_SelectedDatum((SUMA_ALL_DO *)dset, extra));
+         return(SUMA_ADO_SelectedDatum((SUMA_ALL_DO *)dset, extra, extra2));
          break; }
       case TRACT_type: {
          SUMA_TRACT_SAUX *TSaux = SUMA_ADO_TSaux(ado);
          if (!TSaux) return(-1);
          if (extra) {
-            int *iv4 = (int *)extra;
-            iv4[SUMA_NET_BUN] = TSaux->PR->AltSel[SUMA_NET_BUN];
-            iv4[SUMA_BUN_TRC] = TSaux->PR->AltSel[SUMA_BUN_TRC];
-            iv4[SUMA_TRC_PNT] = TSaux->PR->AltSel[SUMA_TRC_PNT];
-            iv4[SUMA_NET_TRC] = TSaux->PR->AltSel[SUMA_NET_TRC];
+            int *ivsel = (int *)extra;
+            ivsel[SUMA_NET_BUN] = TSaux->PR->iAltSel[SUMA_NET_BUN];
+            ivsel[SUMA_BUN_TRC] = TSaux->PR->iAltSel[SUMA_BUN_TRC];
+            ivsel[SUMA_TRC_PNT] = TSaux->PR->iAltSel[SUMA_TRC_PNT];
+            ivsel[SUMA_NET_TRC] = TSaux->PR->iAltSel[SUMA_NET_TRC];
          }
          return(TSaux->PR->datum_index);
          break; }
       case VO_type: {
-         static int ncnt=0;
-         if (!ncnt) {
-            SUMA_S_Warn("Not ready for volume objects, returning 0"); ++ncnt;
+         SUMA_VOL_SAUX *VSaux = SUMA_ADO_VSaux(ado);
+         if (!VSaux) return(-1);
+         if (extra) {
+            int *ivsel = (int *)extra;
+            ivsel[SUMA_VOL_I] = VSaux->PR->iAltSel[SUMA_VOL_I];
+            ivsel[SUMA_VOL_J] = VSaux->PR->iAltSel[SUMA_VOL_J];
+            ivsel[SUMA_VOL_K] = VSaux->PR->iAltSel[SUMA_VOL_K];
+            ivsel[SUMA_VOL_IJK] = VSaux->PR->iAltSel[SUMA_VOL_IJK];
          }
-         return(0);
+         if (extra2) {
+            float *fvsel = (float *)extra2;
+            fvsel[SUMA_VOL_SLC_EQ0] = VSaux->PR->dAltSel[SUMA_VOL_SLC_EQ0];
+            fvsel[SUMA_VOL_SLC_EQ1] = VSaux->PR->dAltSel[SUMA_VOL_SLC_EQ1];
+            fvsel[SUMA_VOL_SLC_EQ2] = VSaux->PR->dAltSel[SUMA_VOL_SLC_EQ2];
+            fvsel[SUMA_VOL_SLC_EQ3] = VSaux->PR->dAltSel[SUMA_VOL_SLC_EQ3];
+         }
+            
+         return(VSaux->PR->datum_index);
          break; }
       case MASK_type: {
          static int ncnt=0;
@@ -12283,7 +12779,7 @@ int SUMA_ADO_SelectedDatum(SUMA_ALL_DO *ado, void *extra)
 /*!
    This function returns secondary selections a DO
    For surfaces, this is always SurfCont->SelectedFaceSet
-   For SDSETs, it is GSaux->PR->AltSel[SUMA_ENODE_0]
+   For SDSETs, it is GSaux->PR->iAltSel[SUMA_ENODE_0]
 */
 int SUMA_ADO_SelectedSecondary(SUMA_ALL_DO *ado)
 {
@@ -12302,7 +12798,7 @@ int SUMA_ADO_SelectedSecondary(SUMA_ALL_DO *ado)
          SUMA_DSET *dset=(SUMA_DSET *)ado;
          SUMA_GRAPH_SAUX *GSaux = SDSET_GSAUX(dset);
          if (!GSaux) return(-1);
-         return(GSaux->PR->AltSel[SUMA_ENODE_0]);
+         return(GSaux->PR->iAltSel[SUMA_ENODE_0]);
          break; }
       case GRAPH_LINK_type: {
          SUMA_GraphLinkDO *gldo=(SUMA_GraphLinkDO *)ado;
@@ -12364,7 +12860,8 @@ SUMA_Boolean SUMA_is_ADO_Datum_Primitive(SUMA_ALL_DO *ado,
    return(NOPE);
 }
 
-SUMA_Boolean SUMA_ADO_Set_SelectedDatum(SUMA_ALL_DO *ado, int sel, void *extra)
+SUMA_Boolean SUMA_ADO_Set_SelectedDatum(SUMA_ALL_DO *ado, int sel, 
+                                        void *extra, void *extra2)
 {
    static char FuncName[]={"SUMA_ADO_Set_SelectedDatum"};
    if (!ado) return(0);
@@ -12390,7 +12887,8 @@ SUMA_Boolean SUMA_ADO_Set_SelectedDatum(SUMA_ALL_DO *ado, int sel, void *extra)
                         SUMA_ADO_Label(ado));
             return(0);
          }
-         return(SUMA_ADO_Set_SelectedDatum((SUMA_ALL_DO *)dset, sel, extra));
+         return(SUMA_ADO_Set_SelectedDatum((SUMA_ALL_DO *)dset, sel, 
+                                           extra, extra2));
          break; }
       case TRACT_type: {
          SUMA_TractDO *tdo = (SUMA_TractDO *)ado;
@@ -12398,26 +12896,80 @@ SUMA_Boolean SUMA_ADO_Set_SelectedDatum(SUMA_ALL_DO *ado, int sel, void *extra)
          int it, ip, ib, l1, *iv = (int *)extra;
          TSaux->PR->datum_index = sel;
          if (extra) {
-            TSaux->PR->AltSel[SUMA_NET_BUN] = iv[SUMA_NET_BUN];
-            TSaux->PR->AltSel[SUMA_BUN_TRC] = iv[SUMA_BUN_TRC];
-            TSaux->PR->AltSel[SUMA_TRC_PNT] = iv[SUMA_TRC_PNT];
-            TSaux->PR->AltSel[SUMA_NET_TRC] = iv[SUMA_NET_TRC];
+            TSaux->PR->iAltSel[SUMA_NET_BUN] = iv[SUMA_NET_BUN];
+            TSaux->PR->iAltSel[SUMA_BUN_TRC] = iv[SUMA_BUN_TRC];
+            TSaux->PR->iAltSel[SUMA_TRC_PNT] = iv[SUMA_TRC_PNT];
+            TSaux->PR->iAltSel[SUMA_NET_TRC] = iv[SUMA_NET_TRC];
          } else {
-            TSaux->PR->AltSel[SUMA_NET_BUN] = TSaux->PR->AltSel[SUMA_BUN_TRC] =
-            TSaux->PR->AltSel[SUMA_TRC_PNT] = 
-            TSaux->PR->AltSel[SUMA_NET_TRC] = -1;
+            TSaux->PR->iAltSel[SUMA_NET_BUN] = TSaux->PR->iAltSel[SUMA_BUN_TRC] =
+            TSaux->PR->iAltSel[SUMA_TRC_PNT] = 
+            TSaux->PR->iAltSel[SUMA_NET_TRC] = -1;
             if (tdo && tdo->net) {
                if (Network_1P_to_PTB(tdo->net, sel, &ip, &it, &ib, &l1)) {
-                  TSaux->PR->AltSel[SUMA_NET_BUN] = ib;
-                  TSaux->PR->AltSel[SUMA_BUN_TRC] = it;
-                  TSaux->PR->AltSel[SUMA_TRC_PNT] = ip;
-                  TSaux->PR->AltSel[SUMA_NET_TRC] = l1;
+                  TSaux->PR->iAltSel[SUMA_NET_BUN] = ib;
+                  TSaux->PR->iAltSel[SUMA_BUN_TRC] = it;
+                  TSaux->PR->iAltSel[SUMA_TRC_PNT] = ip;
+                  TSaux->PR->iAltSel[SUMA_NET_TRC] = l1;
                }
             }
          }   
          break; }
       case VO_type: {
-         SUMA_S_Warn("Not ready for vo type");
+         SUMA_VolumeObject *vo = (SUMA_VolumeObject *)ado;
+         SUMA_VOL_SAUX *VSaux = SUMA_ADO_VSaux(ado);
+         SUMA_DSET *dset=NULL;
+         int *iv = (int *)extra, *dims=NULL, iv4[4];
+         int iv3[3];
+         VSaux->PR->datum_index = sel;
+         if (extra) {
+            VSaux->PR->iAltSel[SUMA_VOL_I] = iv[SUMA_VOL_I];
+            VSaux->PR->iAltSel[SUMA_VOL_J] = iv[SUMA_VOL_J];
+            VSaux->PR->iAltSel[SUMA_VOL_K] = iv[SUMA_VOL_K];
+            VSaux->PR->iAltSel[SUMA_VOL_IJK] = iv[SUMA_VOL_IJK];
+            if (extra2) {
+               float *fv = (float *)extra2;
+               if (SUMA_PLANE_NOT_SET(fv+SUMA_VOL_SLC_EQ0)) {/* a sign that there
+                                               is no good plane in input
+                                              Try updating current plane */
+                  if (vo && 
+                      SUMA_PLANE_IS_SET(VSaux->PR->dAltSel+SUMA_VOL_SLC_EQ0)) {
+                      iv3[0] = (int)VSaux->PR->iAltSel[SUMA_VOL_I];
+                      iv3[1] = (int)VSaux->PR->iAltSel[SUMA_VOL_J];
+                      iv3[2] = (int)VSaux->PR->iAltSel[SUMA_VOL_K];
+                      SUMA_SHIFT_PLANE_TO_P(
+                                 (VSaux->PR->dAltSel+SUMA_VOL_SLC_EQ0),
+                                 SUMA_VO_PointXYZ(vo, -1, iv3, NULL));
+                  } else { 
+                     /* Do nothing: Nothing set in the first place */
+                  }
+               } else {
+                  VSaux->PR->dAltSel[SUMA_VOL_SLC_EQ0] = fv[SUMA_VOL_SLC_EQ0];
+                  VSaux->PR->dAltSel[SUMA_VOL_SLC_EQ1] = fv[SUMA_VOL_SLC_EQ1];
+                  VSaux->PR->dAltSel[SUMA_VOL_SLC_EQ2] = fv[SUMA_VOL_SLC_EQ2];
+                  VSaux->PR->dAltSel[SUMA_VOL_SLC_EQ3] = fv[SUMA_VOL_SLC_EQ3];
+               }
+            }
+         } else {
+            VSaux->PR->iAltSel[SUMA_VOL_I] = VSaux->PR->iAltSel[SUMA_VOL_J] =
+            VSaux->PR->iAltSel[SUMA_VOL_K] = 
+            VSaux->PR->iAltSel[SUMA_VOL_IJK] = -1;
+            SUMA_MARK_PLANE_NOT_SET(VSaux->PR->dAltSel+SUMA_VOL_SLC_EQ0);
+            if (vo && (dset = SUMA_VO_dset(vo)) &&
+                      (dims = SUMA_GetDatasetDimensions(dset)) ) {
+               Vox1D2Vox3D(sel, dims[0], dims[0]*dims[1], iv4);
+                  VSaux->PR->iAltSel[SUMA_VOL_I] = iv4[0];
+                  VSaux->PR->iAltSel[SUMA_VOL_J] = iv4[1];
+                  VSaux->PR->iAltSel[SUMA_VOL_K] = iv4[2];
+                  VSaux->PR->iAltSel[SUMA_VOL_IJK] = sel;
+               if (SUMA_PLANE_IS_SET(VSaux->PR->dAltSel+SUMA_VOL_SLC_EQ0)) {
+                  iv3[0] = (int)VSaux->PR->iAltSel[SUMA_VOL_I];
+                  iv3[1] = (int)VSaux->PR->iAltSel[SUMA_VOL_J];
+                  iv3[2] = (int)VSaux->PR->iAltSel[SUMA_VOL_K];
+                  SUMA_SHIFT_PLANE_TO_P((VSaux->PR->dAltSel+SUMA_VOL_SLC_EQ0),
+                                        SUMA_VO_PointXYZ (vo, -1, iv3, NULL));
+               }
+            }
+         }   
          return(0);
          break; }
       case MASK_type: {
@@ -12459,6 +13011,8 @@ int SUMA_ADO_N_Datum_Lev(SUMA_ALL_DO *ado, SUMA_DATUM_LEVEL dtlvl)
          } else if (MDO_IS_SPH(MDO)) {
             SUMA_S_Err("No SO on spheres mask. Need to create your surfs");
             return(-1);
+         } else if (MDO_IS_SHADOW(MDO)){
+            return(0);
          } else {
             SUMA_S_Err("Not ready for this combo type >%s<", MDO->mtype);
             return(-1);
@@ -12628,6 +13182,32 @@ char *SUMA_ADO_sLabel(SUMA_ALL_DO *ado) {
    char *cc = SUMA_ADO_Label(ado);
    if (!cc) return("");
    else return(cc);
+}
+
+char * SUMA_ADO_CropLabel(SUMA_ALL_DO *ado, int len)
+{
+   static char FuncName[]={"SUMA_ADO_CropLabel"};
+   static char s[10][130];
+   static int icall=0;
+   char *str=NULL;
+   
+   ++icall;
+   if (icall > 9) icall = 0;
+   s[icall][0]='\0';
+   
+   if (!ado) { SUMA_S_Err("NULL input"); return(s[icall]); }
+   if (len > 127) {
+      SUMA_S_Warn("Label max length is 128, will truncate");
+      len = 128;
+   }
+   
+   str = SUMA_truncate_string(SUMA_ADO_Label(ado), len);
+   if (!str) return(s[icall]);
+   
+   strcpy(s[icall], str);
+   SUMA_ifree(str);
+   
+   return(s[icall]);
 }
 
 /* compare labels, NULL=NULL --> OK */
@@ -13036,7 +13616,9 @@ SUMA_Boolean SUMA_VO_PointXYZ_eng(SUMA_VolumeObject *vo, int point,
    }
    here[0] = here[1] = here[2] =  0.0;
    
-   if (!vo || point < 0) SUMA_RETURN(NOPE);
+   if (!vo || 
+      (point < 0 && !(IJK && IJK[0] >= 0 && IJK[1] >= 0 && IJK[2] >=0) )) 
+      SUMA_RETURN(NOPE);
    if (!(dset = SUMA_VO_dset(vo)) || 
        !(dims = SUMA_GetDatasetDimensions(dset)) ||
        !vo->VE || !vo->VE[0]) {

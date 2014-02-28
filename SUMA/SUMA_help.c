@@ -1802,7 +1802,11 @@ char * SUMA_help_message_Info(void)
       "     Shift+Ctrl+Button 3-Motion: Continuous picking and calls \n"
       "                                for dot product (InstaCorr)\n"
       "                               or GroupInCorr, while dragging.\n"
-      ); 
+      );
+   SS = SUMA_StringAppend(SS,
+      "     Wheel/Scroll: Zoom in/out\n"
+      "     Shift+Wheel/Scroll: change selected slice if applicable\n"
+      );
    SS = SUMA_StringAppend (SS, 
       "    \n");
    SS = SUMA_StringAppend (SS, 
@@ -2260,7 +2264,8 @@ char * SUMA_Help_AllSurfCont ()
          "shw 0\n%s\n"
          "\n",      
          SUMA_SurfContHelp_Col, SUMA_SurfContHelp_Bias, SUMA_SurfContHelp_Cmp,
-         SUMA_SurfContHelp_CmpNew, SUMA_SurfContHelp_AbsThr, SUMA_SurfContHelp_Isym,
+         SUMA_SurfContHelp_CmpNew, SUMA_SurfContHelp_AbsThr, 
+         SUMA_SurfContHelp_Isym,
          SUMA_SurfContHelp_Shw0);
 
    SS = SUMA_StringAppend_va(SS, 

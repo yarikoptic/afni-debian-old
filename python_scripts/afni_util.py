@@ -10,7 +10,8 @@ import pdb
 
 # global lists for basis functions
 basis_known_resp_l = ['GAM', 'BLOCK', 'dmBLOCK', 'SPMG1', 'WAV', 'MION']
-basis_one_regr_l   = ['GAM', 'BLOCK', 'SPMG1', 'WAV', 'EXPR', 'MION']
+basis_one_regr_l   = ['GAM', 'BLOCK', 'dmBLOCK', 'SPMG1', 'WAV', 'EXPR', 'MION']
+stim_types_one_reg = ['file', 'AM1', 'times']
 
 # this file contains various afni utilities   17 Nov 2006 [rickr]
 
@@ -167,7 +168,7 @@ def quotize_list(list, opt_prefix='', skip_first=0, quote_wild=0,
     for qstr in list:
         prefix = ''
         if skip_first and first: first = 0       # use current (empty) prefix
-	elif len(qstr) == 0: pass
+        elif len(qstr) == 0: pass
         elif qstr[0] == '-': prefix = opt_prefix
 
         quotize = 0
@@ -244,7 +245,7 @@ def write_afni_com_history(fname, length=0, wrap=1):
    write_text_to_file(fname, script, wrap=wrap)
 
 # get/show_process_stack(), get/show_login_shell()   28 Jun 2013 [rickr]
-def get_process_stack():
+def get_process_stack(verb=1):
    """the stack of processes up to init
 
       return an array of [pid, ppid, user, command] elements
@@ -254,18 +255,24 @@ def get_process_stack():
       try:
          pind = pids.index(pid)
       except:
-         print '** GPS pid %s not in pid list:\n%s' % (pid, plist)
-         sys.exit(1)
+         if verb > 1:
+            print '** GPS pid %s not in pid list:\n' % pid
+            print '%s' % plist
+         return -1
       return pind
+
    def get_ancestry_indlist(pids, ppids, plist):
+      """return bad status if index() fails"""
       pid = os.getpid()
       pind = get_pid_index(pids, plist, pid)
+      if pind < 0: return 1, []
       indtree = [pind]
       while pid > 1:
          pid = ppids[pind]
          pind = get_pid_index(pids, plist, pid)
+         if pind < 0: return 1, []
          indtree.append(pind)
-      return indtree
+      return 0, indtree
 
    cmd = 'ps -eo pid,ppid,user,comm'
    ac = BASE.shell_com(cmd, capture=1)
@@ -286,10 +293,60 @@ def get_process_stack():
       print '** GPS type failure in plist\n%s' % plist
       return []
 
-   indlist = get_ancestry_indlist(pids, ppids, plist)
-
-   stack = [plist[i] for i in indlist]
+   # maybe the ps list is too big of a buffer, so have a backup plan
+   rv, indlist = get_ancestry_indlist(pids, ppids, plist)
+   # if success, set stack, else get it from backup function
+   if rv == 0: stack = [plist[i] for i in indlist]
+   else:       stack = get_process_stack_slow()
    stack.reverse()
+
+   return stack
+
+def get_process_stack_slow(verb=1):
+   """use repeated calls to get stack:
+        ps h -o pid,ppid,user,comm -p PID
+   """
+   base_cmd = 'ps h -o pid,ppid,user,comm -p'
+
+   def get_cmd_entries(cmd):
+      ac = BASE.shell_com(cmd, capture=1)
+      ac.run()
+      if ac.status:
+         print '** GPSS command failure for: %s\n' % cmd
+         print 'error output:\n%s' % '\n'.join(ac.se)
+         return 1, None
+      ss = ac.so[0]
+      entries = ss.split()
+      if len(entries) == 0: return 1, None
+      
+      return 0, entries
+
+   def get_ppids(cmd, entries):
+      try:
+         pid = int(entries[0])
+         ppid = int(entries[1])
+      except:
+         print '** bad GPSS entries for cmd: %s\n  %s' % (cmd, entries)
+         return 1, -1, -1
+      return 0, pid, ppid
+
+   # get pid and ppid
+   pid = os.getpid()
+   cmd = '%s %s' % (base_cmd, pid)
+   rv, entries = get_cmd_entries(cmd)
+   if rv: return []
+   rv, pid, ppid = get_ppids(cmd, entries)
+   if rv: return []
+
+   stack = [entries] # entries is valid, so init stack
+   while pid > 1:
+      cmd = '%s %s' % (base_cmd, ppid)
+      rv, entries = get_cmd_entries(cmd)
+      if rv: return []
+      rv, pid, ppid = get_ppids(cmd, entries)
+      if rv: return []
+      stack.append(entries)
+
    return stack
 
 def show_process_stack():
@@ -523,12 +580,16 @@ def basis_is_married(basis):
     if starts_with(basis, 'dmBLOCK'): return 1
     else:                             return 0
 
-def basis_has_one_reg(basis):
+def basis_has_one_reg(basis, st='times'):
     """if the given basis function is known to have 1 regressor, return 1
     """
     if not basis: return 0
 
+    # only 'times' or 'AM1' are acceptable
+    if not st in stim_types_one_reg: return 0
+
     if starts_with_any_str(basis, basis_one_regr_l): return 1
+
     return 0
 
 def starts_with(word, sstr):

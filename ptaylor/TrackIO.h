@@ -36,6 +36,14 @@ typedef struct {
    int Longest_tract_bundle_index_in_network_private; /* longest tract bundle */ 
 } TAYLOR_NETWORK;
 
+typedef struct {
+   THD_3dim_dataset *grid;
+} INSTA_TRACT_SETUP;
+
+int Free_Insta_Tract_Setup(INSTA_TRACT_SETUP *ITS);
+INSTA_TRACT_SETUP *New_Insta_Tract_Setup(INSTA_TRACT_SETUP *ITS);
+
+float Tract_Length(TAYLOR_TRACT *tt);
 void Show_Taylor_Network(TAYLOR_NETWORK *network, FILE *out, int mx, int mxb);
 void Show_Taylor_Bundle(TAYLOR_BUNDLE *bundle, FILE *out, int mx);
 void Show_Taylor_Tract(TAYLOR_TRACT *tract, FILE *out, int mx);
@@ -81,24 +89,25 @@ NI_group * Read_NI_Network(char *name);
 int get_tract_verb(void);
 void set_tract_verb(int v);
 int get_NI_tract_type(void);
-int NI_getTractAlgOpts(NI_element *nel, float *MinFA, float *MaxAngDeg, 
-                       float *MinL, int *SeedPerV, int *M, int *bval);
-NI_element * NI_setTractAlgOpts(NI_element *nel, float *MinFA, 
-										  float *MaxAngDeg, float *MinL, 
-										  int *SeedPerV, int *M, int *bval);
-NI_element *ReadTractAlgOpts(char *fname);
-int NI_getProbTractAlgOpts(NI_element *nel, float *MinFA, float *MaxAngDeg, 
-									float *MinL, float *NmNsFr, int *Nseed, 
-									int *Nmonte, int *M, int *bval);
-NI_element * NI_setProbTractAlgOpts(NI_element *nel, float *MinFA, 
-												float *MaxAngDeg, float *MinL,
-												float *NmNsFr, int *Nseed, 
-												int *Nmonte, int *M, int *bval);
-NI_element *ReadProbTractAlgOpts(char *fname);
+
 // this currently works for both 3dTrack and 3dProbTrack!
 int WriteTractAlgOpts(char *fname, NI_element *nel); 
 
-
+// new versions for MULTI/HARDI: no M and bvals
+int NI_getTractAlgOpts_M(NI_element *nel, float *MinFA, float *MaxAngDeg, 
+                       float *MinL, int *SeedPerV);
+NI_element * NI_setTractAlgOpts_M(NI_element *nel, float *MinFA, 
+										  float *MaxAngDeg, float *MinL, 
+										  int *SeedPerV);
+NI_element *ReadTractAlgOpts_M(char *fname);
+int NI_getProbTractAlgOpts_M(NI_element *nel, float *MinFA, float *MaxAngDeg, 
+									float *MinL, float *NmNsFr, int *Nseed, 
+									int *Nmonte);
+NI_element * NI_setProbTractAlgOpts_M(NI_element *nel, float *MinFA, 
+												float *MaxAngDeg, float *MinL,
+												float *NmNsFr, int *Nseed, 
+												int *Nmonte);
+NI_element *ReadProbTractAlgOpts_M(char *fname);
 
 // TrackVis requirements for *.trk file, defining the header as a struct
 typedef struct 
@@ -151,9 +160,14 @@ typedef struct
 } tv_io_header;   
 
 // for writing trackvis track info currently
-int SimpleWriteDetNetTr(FILE *file, int ***idx, THD_3dim_dataset *FA,
-                        THD_3dim_dataset *MD, THD_3dim_dataset *L1,
-                        float **loc, int **locI, int len,
-                        int *TV, int *Dim, float *Ledge);
+int SimpleWriteDetNetTr_M(int N_HAR, FILE *file, int ***idx, 
+                           THD_3dim_dataset **PARS,
+                           int PAR_BOT, int PAR_TOP,
+                           float **loc, int **locI, int len,
+                           int *TV, int *Dim, float *Ledge);
+
+
+
+
 
 #endif

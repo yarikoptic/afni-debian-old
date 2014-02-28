@@ -1969,6 +1969,15 @@ extern mat44 THD_mat44_sqrt( mat44 A ) ;  /* matrix square root [30 Jul 2007] */
    M[3][0] = M[3][1] = M[3][2] = 0.0;\
 }
 
+#undef AFF44_CARD_LOAD
+#define AFF44_CARD_LOAD( M , d0, d1, d2) {\
+   M[0][0] = d0; M[1][1] = d1; M[2][2] = d2; M[3][3] = 1.0;\
+   M[0][1] = M[0][2] = M[0][3] = \
+   M[1][0] = M[1][2] = M[1][3] = \
+   M[2][0] = M[2][1] = M[2][3] = \
+   M[3][0] = M[3][1] = M[3][2] = 0.0;\
+}
+
 #undef AFF44_TO_V12
 #define AFF44_TO_V12( V, M ) { \
    V[0] = M[0][0]; V[1] = M[0][1]; V[2]  = M[0][2]; V[3]  = M[0][3];   \
@@ -1995,9 +2004,9 @@ extern mat44 THD_mat44_sqrt( mat44 A ) ;  /* matrix square root [30 Jul 2007] */
    a point in I */
 #undef AFF44_MULT_D
 #define AFF44_MULT_D( X, M, D ) { \
-   X[0] = M[0][0]*I[0] + M[0][1]*I[1] + M[0][2]*I[2]; \
-   X[1] = M[1][0]*I[0] + M[1][1]*I[1] + M[1][2]*I[2]; \
-   X[2] = M[2][0]*I[0] + M[2][1]*I[1] + M[2][2]*I[2]; \
+   X[0] = M[0][0]*D[0] + M[0][1]*D[1] + M[0][2]*D[2]; \
+   X[1] = M[1][0]*D[0] + M[1][1]*D[1] + M[1][2]*D[2]; \
+   X[2] = M[2][0]*D[0] + M[2][1]*D[1] + M[2][2]*D[2]; \
 }
 
 #undef  AFF44_MULT
@@ -3664,6 +3673,11 @@ extern float THD_fdrcurve_zqtot( THD_3dim_dataset *dset , int iv , float zval ) 
 extern int THD_deathcon(void) ;             /* 06 Jun 2007 */
 extern int THD_ok_overwrite(void) ;         /* Jan 2008 */
 extern void THD_force_ok_overwrite( int ) ; /* 07 Jan 2008 */
+extern void THD_set_image_globalrange(int ii); /* 27 Jan 2014 */
+extern int THD_get_image_globalrange(void);
+extern char *THD_get_image_globalrange_str(void);
+extern void THD_cycle_image_globalrange(void);
+extern void THD_set_image_globalrange_env(int ig);
 
 /*! Write only the dataset header to disk, for dataset ds */
 
@@ -4320,6 +4334,7 @@ extern int is_writable_storage_mode( int smode ) ;          /* 05 Mar 2012 */
 extern char * find_filename_extension( char * fname );
 extern char * modify_afni_prefix( char * fname , char *pref, char *suf);
 extern char * without_afni_filename_extension( char *fname);
+char * without_afni_filename_view_and_extension( char * fname );
 
 extern void THD_datablock_apply_atr( THD_3dim_dataset * ) ; /* 09 May 2005 */
 
@@ -4517,7 +4532,8 @@ extern void    THD_set_freeup( generic_func * ) ;            /* 18 Oct 2001 */
 extern Boolean THD_purge_datablock( THD_datablock * , int ) ;
 extern Boolean THD_purge_one_brick( THD_datablock * , int ) ;
 extern void    THD_force_malloc_type( THD_datablock * , int ) ;
-extern int     THD_count_databricks( THD_datablock * dblk ) ;
+extern int     THD_count_databricks( THD_datablock * ) ;
+extern int     THD_subset_loaded( THD_3dim_dataset *, int, int * ) ;
 extern void    THD_load_minc( THD_datablock * ) ;            /* 29 Oct 2001 */
 extern void    THD_load_analyze( THD_datablock * ) ;         /* 27 Aug 2002 */
 extern void    THD_load_ctfmri ( THD_datablock * ) ;         /* 04 Dec 2002 */
@@ -4745,6 +4761,9 @@ extern MRI_vectim * THD_dset_to_vectim_stend( THD_3dim_dataset *dset, byte *mask
 extern MRI_vectim * THD_dset_censored_to_vectim( THD_3dim_dataset *dset,
                                                  byte *mask , int nkeep , int *keep ) ;
 
+extern MRI_vectim * THD_dset_list_censored_to_vectim( int nds, THD_3dim_dataset **ds,
+                                                      byte *mask, int nkeep, int *keep ) ;
+
 MRI_vectim * THD_2dset_to_vectim( THD_3dim_dataset *dset1, byte *mask1 ,
                                   THD_3dim_dataset *dset2, byte *mask2 ,
                                   int ignore );
@@ -4754,6 +4773,8 @@ extern int bsearch_int( int tt , int nar , int *ar ) ;
 extern void THD_vectim_to_dset( MRI_vectim *mrv , THD_3dim_dataset *dset ) ;
 extern void THD_vectim_to_dset_indexed( MRI_vectim *mrv ,
                                         THD_3dim_dataset *dset , int *tlist ) ; /* 06 Aug 2013 */
+extern void THD_vectim_indexed_to_dset( MRI_vectim *mrv, int nlist, int *ilist,
+                                        THD_3dim_dataset *dset ) ;              /* 06 Feb 2014 */
 
 extern int THD_vectim_data_tofile( MRI_vectim *mrv , char *fnam ) ;
 extern int THD_vectim_reload_fromfile( MRI_vectim *mrv , char *fname ) ;
@@ -4887,6 +4908,7 @@ extern void THD_cubic_detrend    ( int, float * ) ;  /* 15 Nov 1999 */
 extern void THD_const_detrend    ( int, float *, float * ); /* 24 Aug 2001 */
 extern void THD_linear_detrend_complex  ( int, complex * ); /* 05 Mar 2007 */
 extern int  THD_is_constant      ( int , float * );         /* 11 May 2011 */
+extern int  THD_is_zero          ( int , float * );         /* 20 Feb 2014 */
 
 extern void THD_generic_detrend_LSQ( int, float *, int, int, float **, float *) ;
 extern void THD_generic_detrend_L1 ( int, float *, int, int, float **, float *) ;
@@ -5029,7 +5051,7 @@ extern void THD_mask_erodemany( int nx, int ny, int nz, byte *mmm, int npeel ) ;
 
 extern int THD_peel_mask( int nx, int ny, int nz , byte *mmm, int pdepth ) ;
 
-extern void THD_mask_dilate( int, int, int, byte *, int ) ;  /* 30 Aug 2002 */
+extern int THD_mask_dilate( int, int, int, byte *, int ) ;   /* 30 Aug 2002 */
 extern short *THD_mask_depth (int nx, int ny, int nz, byte *mask,
                               byte preservemask,
                               short *usethisdepth);    /* ZSS March 02 2010 */
@@ -5522,6 +5544,7 @@ extern char **atlas_chooser_formatted_labels(char *atname);
 extern float THD_spearman_corr( int,float *,float *) ;  /* 23 Aug 2001 */
 extern float THD_quadrant_corr( int,float *,float *) ;
 extern float THD_pearson_corr ( int,float *,float *) ;
+extern double THD_pearson_corrd ( int, double *, double *) ;
 extern float THD_covariance( int n, float *x , float *y );
 extern float THD_ktaub_corr   ( int,float *,float *) ;  /* 29 Apr 2010 */
 extern float THD_eta_squared  ( int,float *,float *) ;  /* 25 Jun 2010 */

@@ -262,57 +262,64 @@ echo "num TRs above out limit   : $mcount"
 echo ""
 
 # ------------------------------------------------------------
-# get tcat files and count TRs
-set tcat_files = ( `find . -maxdepth 1 -name "pb00*$subj*.HEAD" -print` )
-if ( $#tcat_files == 0 ) then
-    echo "** missing tcat files, skipping num runs and TRs per run..."
-    echo ""
-else
-    set trs = ( )
-    foreach file ( $tcat_files )
-        set trs = ( $trs `3dnvals $file` )
-    end
-    echo "num runs found            : $#tcat_files"
-    echo "num TRs per run           : $trs"
+# note number of runs, TRs per run, and possibly censored TRs per run
+set nruns = ( `1d_tool.py -infile X.xmat.1D -show_num_runs` )
+set trs   = ( `1d_tool.py -infile X.xmat.1D -show_tr_run_counts trs_no_cen` )
+echo "num runs found            : $nruns"
+echo "num TRs per run           : $trs"
+
+if ( $was_censored ) then
+   set tra = ( `1d_tool.py -infile $xmat_regress -show_tr_run_counts trs`)
+   set trc = ( `1d_tool.py -infile $xmat_regress -show_tr_run_counts trs_cen`)
+   set trf = ( `1d_tool.py -infile $xmat_regress -show_tr_run_counts frac_cen`)
+   echo "num TRs per run (applied) : $tra"
+   echo "num TRs per run (censored): $trc"
+   echo "fraction censored per run : $trf"
 endif
 
+# ------------------------------------------------------------
 # count total TRs (uncensored and censored) from X-matrix
-if ( $?xmat_uncensored ) then
-   set xmat = $xmat_uncensored
-   set rows_cols = ( `1d_tool.py -infile $xmat -show_rows_cols -verb 0` )
-   set num_trs = $rows_cols[1]
-   echo "TRs total (uncensored)    : $num_trs"
-endif
 
+# note X-matrix dimensions
 set rows_cols = ( `1d_tool.py -infile $xmat_regress -show_rows_cols -verb 0` )
 set num_trs = $rows_cols[1]
+set total_trs = $num_trs        # total might change if censoring
+
+if ( $?xmat_uncensored ) then
+   set xmat = $xmat_uncensored
+   set urc = ( `1d_tool.py -infile $xmat -show_rows_cols -verb 0` )
+   set total_trs = $urc[1]
+   echo "TRs total (uncensored)    : $total_trs"
+endif
+
 echo "TRs total                 : $num_trs"
 
-set rows_cols = ( `1d_tool.py -infile $xmat_regress -show_rows_cols -verb 0` )
 @ dof_rem = $rows_cols[1] - $rows_cols[2]
 echo "degress of freedom used   : $rows_cols[2]"
 echo "degress of freedom left   : $dof_rem"
 echo ""
 """
 
-g_censor_results_str = """
+
+g_reg_counts_str = """
 # ----------------------------------------------------------------------
-# report censoring results (if applicable)
+# report TR counts per stim, and possibly censor counts
+
+# note number of regressors of interest
+set rc = ( `1d_tool.py -infile $xstim -show_rows_cols -verb 0` )
+set nint = $rc[2]
+@ nm1 = $nint - 1
+
 if ( $was_censored ) then
     set ntr_censor = `cat $censor_dset | grep 0 | wc -l`
     echo "TRs censored              : $ntr_censor"
-    echo "censor fraction           : `ccalc $ntr_censor/$num_trs`"
-
-    # note number of regressors of interest
-    set rc = ( `1d_tool.py -infile $xstim -show_rows_cols -verb 0` )
-    set nint = $rc[2]
+    echo "censor fraction           : `ccalc $ntr_censor/$total_trs`"
     echo "num regs of interest      : $nint"
 
     # compute fractions of stimulus TRs censored in each
     set stim_trs = ()
     set stim_trs_censor = ()
     set stim_frac_censor = ()
-    @ nm1 = $nint - 1
     foreach index ( `count -digits 1 0 $nm1` )
         # count response TRs, with and without censoring
         # (their difference is the number of TRs lost to censoring)
@@ -333,9 +340,19 @@ if ( $was_censored ) then
     echo "num TRs censored per stim : $stim_trs_censor"
     echo "fraction TRs censored     : $stim_frac_censor"
     echo ""
-endif  # $was_censored
+else
+    # no censoring - just compute num TRs per regressor
+    set stim_trs = ()
+    foreach index ( `count -digits 1 0 $nm1` )
+        set st = `1deval -a $xstim"[$index]" -expr 'bool(a)' | grep 1 | wc -l`
+        set stim_trs = ( $stim_trs $st )
+    end
+    echo "num regs of interest      : $nint"
+    echo "num TRs per stim          : $stim_trs"
+endif
 
 """
+
 
 # rcr - do not include this...
 g_basic_count_sfiles = """
@@ -364,14 +381,25 @@ if ( -f $gcor_dset ) then
 endif
 """
 
-g_basic_finish_str = """
+g_basic_fstat_str = """
 # ------------------------------------------------------------
 # note maximum F-stat
 if ( -f $stats_dset ) then
-    set fmax = `3dBrickStat -slow -max $stats_dset"[Full_Fstat]"`
-    echo "maximum F-stat            : $fmax"
+  set fmax = `3dBrickStat -slow -max $stats_dset"[Full_Fstat]"`
+  echo "maximum F-stat            : $fmax"
 endif
+"""
 
+g_basic_fstat_mask_str = """
+# ------------------------------------------------------------
+# note maximum masked F-stat
+if ( -f $stats_dset && -f $mask_dset ) then
+  set fmax = `3dBrickStat -slow -max -mask $mask_dset $stats_dset"[Full_Fstat]"`
+  echo "maximum F-stat (masked)   : $fmax"
+endif
+"""
+
+g_basic_finish_str = """
 # ------------------------------------------------------------'
 # note blur estimates
 set blur_file = blur_est.$subj.1D
@@ -541,9 +569,13 @@ g_history = """
    0.26 Sep 06, 2012: print missing xmat message w/out debug as it is fatal
    0.27 Apr 29, 2013: set AFNI_NO_OBLIQUE_WARNING in scripts
    0.28 Oct 24, 2013: output global correlation, and DoF info from review_basic
+   0.29 Dec 16, 2013: fixed use of num_trs with censoring
+   0.30 Dec 26, 2013: max F (and for cluster jump) are masked, if possible
+   0.31 Dec 27, 2013: also output censored TRs per run, and fractions
+   0.32 Feb 10, 2014: show TRs per run, applied and censored
 """
 
-g_version = "gen_ss_review_scripts.py version 0.27, April 29, 2013"
+g_version = "gen_ss_review_scripts.py version 0.32, February 10, 2014"
 
 g_todo_str = """
    - figure out template_space
@@ -1679,13 +1711,19 @@ class MyInterface:
       if self.basic_overview(): return 1
 
       # most of script is just raw text
-      self.text_basic += g_censor_results_str
+      self.text_basic += g_reg_counts_str
       if self.uvars.is_not_empty('mask_dset') and \
          self.uvars.is_not_empty('tsnr_dset'):
          self.text_basic += g_basic_tsnr_str
 
       if self.uvars.is_not_empty('gcor_dset'):
          self.text_basic += g_basic_gcor_str
+
+      # maybe use mask for max F-stat
+      if self.uvars.is_not_empty('mask_dset'):
+         self.text_basic += g_basic_fstat_mask_str
+      else:
+         self.text_basic += g_basic_fstat_str
 
       self.text_basic += g_basic_finish_str
 
@@ -1711,8 +1749,8 @@ class MyInterface:
         '# make non-basline X-matrix, if one is not already here\n'          \
         'set xstim = %s\n'                                                   \
         'if ( ! -f $xstim ) then\n'                                          \
-        '   set reg_cols = `1d_tool.py -infile $xmat -show_indices_interest`\n'\
-        '   1d_tool.py -infile $xmat"[$reg_cols]" -overwrite -write $xstim\n'  \
+        '   set reg_cols = `1d_tool.py -infile $xmat_regress -show_indices_interest`\n'\
+        '   1d_tool.py -infile $xmat_regress"[$reg_cols]" -overwrite -write $xstim\n'  \
         'endif\n' % self.cvars.xstim
 
       self.text_basic += txt
@@ -1893,11 +1931,13 @@ class MyInterface:
       else: s3 = ''
 
       s4  = \
-          '# locate peak coords of biggest cluster and jump there\n'    \
-          'set maxcoords = ( `3dclust -1thresh $thresh -dxyz=1 1 2 \\\n'\
-          '    %s"[0]" | & awk \'/^ / {print $14, $15, $16}\' | head -n 1` )\n'\
-          'echo -- jumping to max coords: $maxcoords\n'                 \
-          % sset.pv()
+       '# locate peak coords of biggest masked cluster and jump there\n'  \
+       '3dcalc -a %s"[0]" -b %s -expr "a*b" \\\n'                         \
+       '       -overwrite -prefix .tmp.F\n'  \
+       'set maxcoords = ( `3dclust -1thresh $thresh -dxyz=1 1 2 .tmp.F+%s \\\n'\
+       '       | & awk \'/^ / {print $14, $15, $16}\' | head -n 1` )\n'\
+       'echo -- jumping to max coords: $maxcoords\n'                      \
+       % (sset.pv(), mset.pv(), self.uvars.final_view)
 
       txt += '# get 90 percentile for thresholding in afni GUI\n'       \
              '%s'                                                       \

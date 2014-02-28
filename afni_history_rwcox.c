@@ -43,7 +43,58 @@
 
 afni_history_struct rwcox_history[] = {
 /*=====BELOW THIS LINE=====*/
-  { 4 , DEC , 2013 , RWC , "3dTproject" , MICRO , TYPE_GENERAL ,
+  { 24 , FEB , 2014 , RWC , "afni GUI" , MICRO , TYPE_GENERAL ,
+   "Add index step size popup to 'Index' arrowval" ,
+   "For Stephen Robinson" } ,
+
+ { 19 , FEB , 2014 , RWC , "afni GUI" , MICRO , TYPE_BUG_FIX ,
+   "Some of the pbar 'flip' controls didn't redraw the overlay" ,
+   "Also, scroll wheel in the pbar label (atop the color bar) will now do\n"
+   "the flipping as well." } ,
+
+ { 18 , FEB , 2014 , RWC , "afni GUI" , MICRO , TYPE_GENERAL ,
+   "Threshold slider popup menu now pops up on p-value label" ,
+   "AND -- using the scrollwheel on the p-value label immediately pops up\n"
+   "the 'Set p-value' chooser." } ,
+
+ { 7 , FEB , 2014 , RWC , "3dQwarp" , MICRO , TYPE_BUG_FIX ,
+   "Fix problem with -allineate option" ,
+   "3dAllineate might choose to write out a .nii.gz file instead of the .nii\n"
+   "file ordered.  In that case, 3dQwarp fails to read it in.  The fix -- if\n"
+   "the .nii file doesn't exist, then add '.gz' to the end of the filename\n"
+   "and try again, before giving up and going home to mother." } ,
+
+ { 6 , FEB , 2014 , RWC , "3dttest++" , MICRO , TYPE_NEW_OPT ,
+   "-nomeans AND -notests to shut off more of the output" ,
+   NULL } ,
+
+ { 31 , JAN , 2014 , RWC , "3dttest++" , MICRO , TYPE_GENERAL ,
+   "Make I/O more efficient and streamlined for -brickwise" ,
+   NULL } ,
+
+ { 29 , JAN , 2014 , RWC , "3dttest++" , MINOR , TYPE_NEW_OPT ,
+   "-brickwise allows time-dependent t-test results" ,
+   "For Stephen Robinson" } ,
+
+ { 15 , JAN , 2014 , RWC , "3dQwarp" , MICRO , TYPE_GENERAL ,
+   "Modified help to be more clear about -allineate" ,
+   "In particular, that the output nonlinear warp also contains the affine\n"
+   "warp, so you do NOT want to catenate the affine warp again when using\n"
+   "3dNwarpApply!" } ,
+
+ { 15 , JAN , 2014 , RWC , "afni image viewer" , MINOR , TYPE_NEW_ENV ,
+   "AFNI_CROP_AUTOCENTER - automatically re-center crop sub-window" ,
+   "If set to YES, then the crop sub-window (if cropping is active) will\n"
+   "automatically re-center about the crosshair location -- as far as\n"
+   "possible.  This feature can also be set for each image viewer window\n"
+   "separately from the intensity bar right-click popup menu.  (NOW will\n"
+   "John Butman be happy?)" } ,
+
+ { 6 , DEC , 2013 , RWC , "3dTproject" , MICRO , TYPE_NEW_OPT ,
+   "Add new NTRP censor mode, just for the Spaniard." ,
+   "Where are my cookies?" } ,
+
+ { 4 , DEC , 2013 , RWC , "3dTproject" , MICRO , TYPE_GENERAL ,
    "Output count of the various regressors" ,
    NULL } ,
 
@@ -117,7 +168,7 @@ afni_history_struct rwcox_history[] = {
    "Add zero-padding" ,
    "To allow for images that run right up to the edge of the volume, where\n"
    "displacements are defined to be zero, so those parts of the volume won't\n"
-   "be warps.  Zero-padding extends the volume, which will avoid such\n"
+   "be warped.  Zero-padding extends the volume, which will avoid such\n"
    "issues.  It is turned on by default, and can be turned off by '-nopad'\n"
    "(as in 3dAllineate)." } ,
 
