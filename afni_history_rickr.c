@@ -49,6 +49,28 @@
 
 afni_history_struct rickr_history[] = {
 
+ { 21,  Mar, 2014, RCR, "afni_proc.py", MINOR, TYPE_BUG_FIX,
+   "if anaticor and censor, do not use keep_trs for blur est from errts",
+   "Thanks to J Stoddard for noting the problem."
+ } ,
+
+ { 21,  Mar, 2014, RCR, "gen_ss_review_scripts.py", MICRO, TYPE_BUG_FIX,
+   "removed -e from 'tcsh -ef @ss_review_basic', for grep failures",
+   "Macs terminate (correctly) when grep/wc return non-zero status, but\n"
+   "Linux systems do not.  Maybe tcsh authors did not like grep killing\n"
+   "scripts, either...\n"
+ } ,
+
+ { 21,  Mar, 2014, RCR, "afni_system_check.py", MINOR, TYPE_NEW_OPT,
+   "added -data_root and enhancements for class data search",
+   NULL
+ } ,
+
+ { 20,  Mar, 2014, RCR, "1dUpsample", MINOR, TYPE_BUG_FIX,
+   "fix reporting of file name in error messages; enhance said messages",
+   NULL
+ } ,
+
  { 14,  Mar, 2014, RCR, "afni_system_check.py", MINOR, TYPE_ENHANCE,
    "added some data and OS-specific tests",
    NULL
