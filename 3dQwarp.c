@@ -38,7 +38,7 @@
 
 /** constants for the mri_weightize() function (liberated from 3dAllineate) **/
 
-static int auto_weight    = 2 ;
+static int auto_weight    = 1 ;      /* 1=weighted 2=binary 3=binary+box */
 static float auto_wclip   = 0.0f ;
 static float auto_wpow    = 1.0f ;
 static int auto_dilation  = 5 ;
@@ -58,6 +58,8 @@ MRI_IMAGE * mri_weightize( MRI_IMAGE *im, int acod, int ndil, float aclip, float
    byte *mmm ;
    MRI_IMAGE *qim , *wim ;
 
+   if( Hverb ) INFO_message("Weightizing the base image") ;
+
    /*-- copy input image --*/
 
    qim = mri_to_float(im) ; wf = MRI_FLOAT_PTR(qim) ;
@@ -75,7 +77,7 @@ MRI_IMAGE * mri_weightize( MRI_IMAGE *im, int acod, int ndil, float aclip, float
    if( 5*yfade >= qim->ny ) yfade = (qim->ny-1)/5 ;
    if( 5*zfade >= qim->nz ) zfade = (qim->nz-1)/5 ;
    if( Hverb > 1 )
-     ININFO_message("Weightize: xfade=%d yfade=%d zfade=%d",xfade,yfade,zfade);
+     ININFO_message("  xfade=%d yfade=%d zfade=%d",xfade,yfade,zfade);
    for( jj=0 ; jj < ny ; jj++ )
     for( ii=0 ; ii < nx ; ii++ )
      for( ff=0 ; ff < zfade ; ff++ ) WW(ii,jj,ff) = WW(ii,jj,nz-1-ff) = 0.0f;
@@ -93,14 +95,15 @@ MRI_IMAGE * mri_weightize( MRI_IMAGE *im, int acod, int ndil, float aclip, float
          if( wf[ii] < aclip ){ nclip++; wf[ii] = 0.0f; } else nleft++ ;
        }
      }
-     if( Hverb > 1 ) ININFO_message("Weightize: user clip=%g #clipped=%d #left=%d",
-                                   aclip,nclip,nleft) ;
+     if( Hverb > 1 )
+       ININFO_message("  user clip=%g #clipped=%d #left=%d",
+                      aclip,nclip,nleft) ;
    }
 
    /*-- squash super-large values down to reasonability --*/
 
    clip = 3.0f * THD_cliplevel(qim,0.5f) ;
-   if( Hverb > 1 ) ININFO_message("Weightize: (unblurred) top clip=%g",clip) ;
+   if( Hverb > 1 ) ININFO_message("  (unblurred) top clip=%g",clip) ;
    for( ii=0 ; ii < nxyz ; ii++ ) if( wf[ii] > clip ) wf[ii] = clip ;
 
    /*-- blur a little: median then Gaussian;
@@ -126,7 +129,7 @@ MRI_IMAGE * mri_weightize( MRI_IMAGE *im, int acod, int ndil, float aclip, float
    clip  = 0.05f * mri_max(wim) ;
    clip2 = 0.33f * THD_cliplevel(wim,0.33f) ;
    clip  = MAX(clip,clip2) ;
-   if( Hverb > 1 ) ININFO_message("Weightize: (blurred) bot clip=%g",clip) ;
+   if( Hverb > 1 ) ININFO_message("  (blurred) bot clip=%g",clip) ;
    for( ii=0 ; ii < nxyz ; ii++ ) mmm[ii] = (wf[ii] >= clip) ;
    THD_mask_clust( nx,ny,nz, mmm ) ;
    THD_mask_erode( nx,ny,nz, mmm, 1 ) ;  /* cf. thd_automask.c */
@@ -146,7 +149,7 @@ MRI_IMAGE * mri_weightize( MRI_IMAGE *im, int acod, int ndil, float aclip, float
    /*-- power? --*/
 
    if( apow > 0.0f && apow != 1.0f ){
-     if( Hverb > 1 ) ININFO_message("Weightize: raising to %g power",apow) ;
+     if( Hverb > 1 ) ININFO_message("  raising to %g power",apow) ;
      for( ii=0 ; ii < nxyz ; ii++ )
        if( wf[ii] > 0.0f ) wf[ii] = powf( wf[ii] , apow ) ;
    }
@@ -156,11 +159,11 @@ MRI_IMAGE * mri_weightize( MRI_IMAGE *im, int acod, int ndil, float aclip, float
 #undef  BPAD
 #define BPAD 4
    if( acod == 2 || acod == 3 ){  /* binary weight: mask=2 or maskbox=3 */
-     if( Hverb > 1 ) ININFO_message("Weightize: binarizing") ;
+     if( Hverb > 1 ) ININFO_message("  binarizing") ;
      for( ii=0 ; ii < nxyz ; ii++ ) if( wf[ii] != 0.0f ) wf[ii] = 1.0f ;
      if( ndil > 0 ){  /* 01 Mar 2007: dilation */
        byte *mmm = (byte *)malloc(sizeof(byte)*nxyz) ;
-       if( Hverb > 1 ) ININFO_message("Weightize: dilating") ;
+       if( Hverb > 1 ) ININFO_message("  dilating") ;
        for( ii=0 ; ii < nxyz ; ii++ ) mmm[ii] = (wf[ii] != 0.0f) ;
        for( ii=0 ; ii < ndil ; ii++ ){
          THD_mask_dilate     ( nx,ny,nz , mmm , 3 ) ;
@@ -180,7 +183,7 @@ MRI_IMAGE * mri_weightize( MRI_IMAGE *im, int acod, int ndil, float aclip, float
        yp += BPAD ; if( yp > ny-2 ) yp = ny-2 ;
        zp += BPAD ; if( zp > nz-2 ) zp = nz-2 ;
        if( Hverb > 1 )
-         ININFO_message("Weightize: box=%d..%d X %d..%d X %d..%d = %d voxels",
+         ININFO_message("  box=%d..%d X %d..%d X %d..%d = %d voxels",
                         xm,xp , ym,yp , zm,zp , (xp-xm+1)*(yp-ym+1)*(zp-zm+1) ) ;
        for( kk=zm ; kk <= zp ; kk++ )
         for( jj=ym ; jj <= yp ; jj++ )
@@ -310,7 +313,7 @@ void Qhelp(void)
     "                -source anatT1_US+orig -twopass -cost lpa \\\n"
     "                -1Dmatrix_save anatT1_USA.aff12.1D        \\\n"
     "                -autoweight -fineblur 3 -cmass\n"
-    "    3dQwarp -prefix anatT1_USAQ -duplo -useweight -blur 0 3 \\\n"
+    "    3dQwarp -prefix anatT1_USAQ -duplo -blur 0 3 \\\n"
     "            -base TEMPLATE+tlrc -source anatT1_USA+tlrc\n"
     "\n"
     "  You can then use the anatT1_USAQ_WARP+tlrc dataset to transform other\n"
@@ -323,6 +326,7 @@ void Qhelp(void)
     "  For example, if you want a warped copy of the original anatT1+orig dataset\n"
     "  (without the 3dUnifize and 3dSkullStrip modifications), put 'anatT1' in\n"
     "  place of 'NEWSOURCE' in the above command.\n"
+    "\n"
     "  Note that the '-nwarp' option to 3dNwarpApply has TWO filenames inside\n"
     "  single quotes.  This feature tells that program to compose (catenate) those\n"
     "  2 spatial transformations before applying the resulting warp.  See the -help\n"
@@ -368,9 +372,9 @@ void Qhelp(void)
     "  Various functions, such as volume change fraction (Jacobian determinant)\n"
     "  can be calculated from the warp dataset via program 3dNwarpFuncs.\n"
     "\n"
-    "-------\n"
-    "OPTIONS\n"
-    "-------\n"
+    "--------------------\n"
+    "COMMAND LINE OPTIONS\n"
+    "--------------------\n"
     " -base   base_dataset   = Alternative way to specify the base dataset.\n"
     " -source source_dataset = Alternative way to specify the source dataset.\n"
     "                         * You can either use both '-base' and '-source',\n"
@@ -415,8 +419,8 @@ void Qhelp(void)
     " -allineate   = This option will make 3dQwarp run 3dAllineate first, to align\n"
     "   *OR*         the source dataset to the base with an affine transformation.\n"
     " -allin         It will then use that alignment as a starting point for the\n"
-    "                nonlinear warping.\n"
-    "               * With -allineate, the source dataset does NOT have to be on\n"
+    "   *OR*         nonlinear warping.\n"
+    " -allinfast    * With -allineate, the source dataset does NOT have to be on\n"
     "                 the same 3D grid as the base, since the intermediate output\n"
     "                 of 3dAllineate (the substitute source) will be on the grid\n"
     "                 as the base.\n"
@@ -432,7 +436,7 @@ void Qhelp(void)
     "                 output by the '-allineate' option in combination with the\n"
     "                 nonlinear warp output by 3dQwarp (say, when using 3dNwarpApply),\n"
     "                 since the affine warp would then be applied twice -- which would\n"
-    "                 be WRONG.\n"
+    "                 be WRONG WRONG WRONG.\n"
     "          -->>** The final output warped dataset is warped directly from the\n"
     "                 original source dataset, NOT from the substitute source.\n"
     "               * The intermediate files from 3dAllineate (the substitute source\n"
@@ -497,10 +501,13 @@ void Qhelp(void)
     "\n"
     " -nopenalty   = Don't use a penalty on the cost function; the goal\n"
     "                of the penalty is to reduce grid distortions.\n"
+    "               * If there penalty is turned off AND you warp down to\n"
+    "                 a fine scale (e.g., '-minpatch 11'), you will probably\n"
+    "                 get strange-looking results.\n"
     " -penfac ff   = Use the number 'ff' to weight the penalty.\n"
     "                The default value is 1.  Larger values of 'ff' mean the\n"
     "                penalty counts more, reducing grid distortions,\n"
-    "                insha'Allah. '-nopenalty' is the same as '-penfac 0'.\n"
+    "                insha'Allah; '-nopenalty' is the same as '-penfac 0'.\n"
     "           -->>* [23 Sep 2013] -- Zhark increased the default value of\n"
     "                 the penalty by a factor of 5, and also made it get\n"
     "                 progressively larger with each level of refinement.\n"
@@ -513,13 +520,14 @@ void Qhelp(void)
     "                 reason (e.g., to keep compatibility with older results),\n"
     "                 use the option '-penold'.  To be completely compatible with\n"
     "                 the older 3dQwarp, you'll also have to use '-penfac 0.2'.\n"
-    " -useweight   = Normally, each voxel in the automask of the base dataset\n"
-    "                counts the same.  With '-useweight', each voxel is weighted\n"
+    "\n"
+    " -useweight   = With '-useweight', each voxel in the base automask is weighted\n"
     "                by the intensity of the (blurred) base image.  This makes\n"
     "                white matter count more in T1-weighted volumes, for example.\n"
-    "           -->>* This option is generally recommended, and may become the\n"
-    "                 default someday soon.\n"
-    "\n"
+    "           -->>* [24 Mar 2014] This option is is now the default.\n"
+    " -noweight    = If you want a binary weight (the old default), use this option.\n"
+    "                That is, each voxel in the base volume automask will be\n"
+    "                weighted the same in the computation of the cost functional.\n"
     " -weight www  = Instead of computing the weight from the base dataset,\n"
     "                directly input the weight volume from dataset 'www'.\n"
     "               * Useful if you know what over parts of the base image you\n"
@@ -559,7 +567,7 @@ void Qhelp(void)
     "                 [ phase if '-emask' is used here in 3dQwarp.             ]\n"
     "               * Applications: exclude a tumor or resected region\n"
     "                 (e.g., draw a mask in the AFNI Drawing plugin).\n"
-    "               * Note that the emask applies to the base dataset,\n"
+    "           -->>* Note that the emask applies to the base dataset,\n"
     "                 so if you are registering a pre- and post-surgery\n"
     "                 volume, you would probably use the post-surgery\n"
     "                 dataset as the base.  If you eventually want the\n"
@@ -607,9 +615,9 @@ void Qhelp(void)
     "               * The combination of -inilev and -iniwarp lets you take the\n"
     "                 results of a previous 3dQwarp run and refine them further:\n"
     "                   3dQwarp -prefix Q25 -source SS+tlrc -base TEMPLATE+tlrc \\\n"
-    "                           -duplo -minpatch 25 -useweight -blur 0 3\n"
+    "                           -duplo -minpatch 25 -blur 0 3\n"
     "                   3dQwarp -prefix Q11 -source SS+tlrc -base TEMPLATE+tlrc \\\n"
-    "                           -inilev 7 -iniwarp Q25_WARP+tlrc -useweight -blur 0 2\n"
+    "                           -inilev 7 -iniwarp Q25_WARP+tlrc -blur 0 2\n"
     "                 Note that the source dataset in the second run is the SAME as\n"
     "                 in the first run.  If you don't see why this is necessary,\n"
     "                 then you probably need to seek help from an AFNI guru.\n"
@@ -1169,7 +1177,12 @@ int main( int argc , char *argv[] )
        auto_weight = 1 ;
        if( argv[nopt][10] == '*' && argv[nopt][11] == '*' && isnumeric(argv[nopt][12]) )
          auto_wpow = (float)strtod(argv[nopt]+12,NULL) ;
+       if( Hverb && auto_wpow != 1.0f ) INFO_message("-useweight is now the default") ;
        nopt++ ; continue ;
+     }
+
+	  if( strcasecmp(argv[nopt],"-noweight") == 0 ){
+       auto_weight = 2 ; nopt++ ; continue ;
      }
 
      if( strcasecmp(argv[nopt],"-penfac") == 0 ){
@@ -1489,11 +1502,16 @@ STATUS("load datasets") ;
      for( ii=0 ; ii < qim->nvox ; ii++ ) if( qar[ii] < cv ) qar[ii] = 0.0f ;
      MRI_autobbox( qim, &bpad_xm,&bpad_xp, &bpad_ym,&bpad_yp, &bpad_zm,&bpad_zp ) ;
      mri_free(qim) ;
+#if 0
      cv = 0.33f * THD_cliplevel(sim,0.22f) ;       /* set threshold on source */
      qim = mri_copy(sim); qar = MRI_FLOAT_PTR(qim);
      for( ii=0 ; ii < qim->nvox ; ii++ ) if( qar[ii] < cv ) qar[ii] = 0.0f ;
      MRI_autobbox( qim, &spad_xm,&spad_xp, &spad_ym,&spad_yp, &spad_zm,&spad_zp ) ;
      mri_free(qim) ;
+#else
+     spad_xm = bpad_xm ; spad_ym = bpad_ym ; spad_zm = bpad_zm ;
+     spad_xp = bpad_xp ; spad_yp = bpad_yp ; spad_zp = bpad_zp ;
+#endif
      pad_xm = MIN(bpad_xm,spad_xm) ; pad_xp = MAX(bpad_xp,spad_xp) ;
      pad_ym = MIN(bpad_ym,spad_ym) ; pad_yp = MAX(bpad_yp,spad_yp) ;
      pad_zm = MIN(bpad_zm,spad_zm) ; pad_zp = MAX(bpad_zp,spad_zp) ;
