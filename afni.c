@@ -1577,6 +1577,27 @@ void AFNI_sigfunc_alrm(int sig)
      "In battle we may yet meet again, though all the hosts of Mordor stand between"  ,
      "Repeat after me: Om Mani Padme Hum, Om Mani Padme Hum, Om Mani Padme Hum ...."  ,
      "Let us therefore study the incidents of this as philosophy to learn wisdom from",
+
+     "\n  When someone says: I'm going to simplify things.\n"
+     "  They mean: Be confused. Be very, very confused"                                 ,
+
+     "\n  When someone says: I'm going to name the elephant in the room.\n"
+     "  They mean: My next observation will be startlingly banal"                       ,
+
+     "\n  When someone says: We need to show leadership.\n"
+     "  They mean: I should be in charge"                                               ,
+
+     "\n  When someone says: There needs to be a bottom-up process.\n"
+     "  They mean: Nobody asked me about this"                                          ,
+
+     "\n  When someone says: The perfect is the enemy of the good.\n"
+     "  They mean: Ignore everyone else's ideas and just use mine"                      ,
+
+     "\n  When someone says: Any other comments on this?\n"
+     "  They mean: Will everyone please, for the love of all that is holy, shut up?"    ,
+
+     "\n  When someone says: I agree 100% with your the concept,\n"
+     "  They mean: I am implacably opposed to your proposal"
    } ;
 #undef NTOP
 #ifdef USE_SONNETS
@@ -10198,6 +10219,47 @@ ENTRY("AFNI_jumpto_dicom_OLD") ;
 
 /*---------------------------------------------------------------------*/
 
+int AFNI_jump_and_seed( Three_D_View *im3d , float xx, float yy, float zz )
+{
+   THD_dataxes  *daxes ;
+   THD_fvec3 fv ; THD_ivec3 iv ;
+   int ii,jj,kk,qq ;
+   static int iil = -1, jjl = -1, kkl = -1;
+   
+ENTRY("AFNI_jump_and_seed") ;
+
+   LOAD_ANAT_VIEW(im3d) ;  /* 02 Nov 1996 */
+
+   fv = THD_dicomm_to_3dmm( im3d->anat_now , TEMP_FVEC3(xx,yy,zz) ) ;
+   iv = THD_3dmm_to_3dind ( im3d->anat_now , fv ) ;
+   ii = iv.ijk[0] ; jj = iv.ijk[1] ; kk = iv.ijk[2] ;
+
+   daxes = CURRENT_DAXES(im3d->anat_now) ;
+   if( ii >= 0 && ii < daxes->nxx &&
+       jj >= 0 && jj < daxes->nyy && kk >= 0 && kk < daxes->nzz ){
+
+      /* Note that the locations of the last click should be set
+         per im3d, perhaps within function AFNI_icor_setref_anatijk().
+         This current static storage night fail whith multiple
+         controllers.                                               */
+      if (ii != iil || jj != jjl || kk != kkl) {
+         DONT_TELL_SUMA;
+         AFNI_set_viewpoint( im3d , ii,jj,kk , REDISPLAY_OPTIONAL ) ;
+         TELL_SUMA;
+         qq = AFNI_icor_setref_anatijk(im3d,ii,jj,kk) ;
+         if( qq > 0 && im3d->giset == NULL ) AFNI_icor_setref_locked(im3d) ;
+         iil = ii; jjl = jj; kkl = kk;
+      }
+      RETURN(1) ;
+   } else {
+      BEEPIT ; 
+      WARNING_message("AFNI_icor_seed_SUMA failed -- bad coordinates?!") ;
+      RETURN(-1) ;
+   }
+}
+
+/*---------------------------------------------------------------------*/
+
 int AFNI_creepto_dicom( Three_D_View *im3d , float xx, float yy, float zz )
 {
    float xc,yc,zc , dxx,dyy,dzz ; int ndd,qq,ii  ;
@@ -10234,6 +10296,7 @@ int AFNI_jumpto_dicom( Three_D_View *im3d , float xx, float yy, float zz )
      ii = AFNI_jumpto_dicom_OLD(im3d,xx,yy,zz) ;
    return ii ;
 }
+
 
 /*----------- the two functions below date to 19 Aug 1999 -------------*/
 
