@@ -1837,7 +1837,8 @@ typedef struct {
    SUMA_PROMPT_DIALOG_STRUCT *JumpFocusNode_prmpt; /*!< structure for setting                                                   Focus Node dialog */
    SUMA_PROMPT_DIALOG_STRUCT *JumpFocusFace_prmpt; /*!< structure for setting                                                   Focus FaceSet dialog */
    SUMA_PROMPT_DIALOG_STRUCT *HighlightBox_prmpt; /*!<  structure for 
-                                             highlighting nodes in Box dialog */ 
+                                             highlighting nodes in Box dialog */
+   SUMA_PROMPT_DIALOG_STRUCT *SetRenderOrder_prmpt; 
 }SUMA_X;
 
 /*! structure containg X vars common to all viewers */
@@ -2248,8 +2249,8 @@ typedef struct {
    float lastQuat[4]; /*!< Quaternion last time we displayed*/
    Boolean ApplyMomentum;   /*!< Turn momentum ON/OFF */
    
-   float LHpry;
-   float LHpry0;
+   float vLHpry[3];
+   float vLHpry0[3];
    int LHlol;           /*!< if 1 then the left hemi starts up displayed
                              on the left side of the screen.
                              if -1 then left starts on the right.

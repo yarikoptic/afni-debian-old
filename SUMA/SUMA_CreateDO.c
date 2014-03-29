@@ -5663,12 +5663,25 @@ SUMA_Boolean SUMA_DrawMaskDO(SUMA_MaskDO *MDO, SUMA_SurfaceViewer *sv)
       MDO->SO->FaceSetDim = 4;
    }
    SUMA_SimpleDrawMesh(MDO->SO,NULL,sv);
-   if (MDO->dodop && SV_IN_PRYING(sv)) {
-      float delta[3], psize;
+   
+   /* Any doppleganger ? */
+   if (MDO->Parent_idcode_str && MDO->dodop && SV_IN_PRYING(sv)) {
+      float delta[3], psize, *xyz, *ffv=NULL;
       int pmode;
-      delta[0] = MDO->cen[0]-MDO->dopxyz[0];
-      delta[1] = MDO->cen[1]-MDO->dopxyz[1];
-      delta[2] = MDO->cen[2]-MDO->dopxyz[2];
+      SUMA_ALL_DO *ado=NULL;
+      ado = SUMA_whichADOg(MDO->Parent_idcode_str);
+      xyz = MDO->dopxyz;
+      if (ado->do_type == SO_type) {
+         SUMA_SurfaceObject *SO = (SUMA_SurfaceObject *)ado;
+         if (MDO->Parent_datum_index >= 0 && 
+             MDO->Parent_datum_index < SO->N_Node) {
+            ffv = SUMA_VisX_CoordPointer(SO);
+            if (ffv) xyz = ffv+SO->NodeDim*MDO->Parent_datum_index;
+         }
+      }
+      delta[0] = MDO->cen[0]-xyz[0];
+      delta[1] = MDO->cen[1]-xyz[1];
+      delta[2] = MDO->cen[2]-xyz[2];
       
       glPushMatrix();
       glTranslatef(-delta[0], -delta[1], -delta[2]);
@@ -5681,6 +5694,7 @@ SUMA_Boolean SUMA_DrawMaskDO(SUMA_MaskDO *MDO, SUMA_SurfaceViewer *sv)
       MDO->SO->PointSize = psize;
       glPopMatrix();
    }
+   
    if (MDO_IS_BOX(MDO)) {
       /* Return SO to triangles */
       MDO->SO->glar_FaceSetList = tFaceSet;
@@ -16905,7 +16919,7 @@ int SUMA_AllowPrying(SUMA_SurfaceViewer *sv, int *RegSO)
    SUMA_RETURN(2);
 }
 
-SUMA_Boolean SUMA_ApplyPrying(SUMA_SurfaceViewer *sv, float val, char *units, 
+SUMA_Boolean SUMA_ApplyPrying(SUMA_SurfaceViewer *sv, float val[3], char *units, 
                               int recompute_norm)
 {   
    static char FuncName[]={"SUMA_ApplyPrying"};
@@ -16922,18 +16936,38 @@ SUMA_Boolean SUMA_ApplyPrying(SUMA_SurfaceViewer *sv, float val, char *units,
             sv->GVS[sv->StdView].LHlol = SUMA_SIGN(pr);
          }
       if (units[0] == 'm') { /* mouse movememt to degrees */
-         sv->GVS[sv->StdView].LHpry = sv->GVS[sv->StdView].LHpry0+
+         sv->GVS[sv->StdView].vLHpry[0] = sv->GVS[sv->StdView].vLHpry0[0]+
                      sv->GVS[sv->StdView].LHlol*
-               (90*2.5*val/(float)(sv->WindWidth+1.0)) ; 
+               (90*2.5*val[0]/(float)(sv->WindWidth+1.0)) ; 
+         if (SUMAg_CF->Dev) { /* For the daring for now */
+         /* instead of the 300, below, you want something related to the
+            thickness along the LR axis of a hemisphere... */
+         sv->GVS[sv->StdView].vLHpry[1] = sv->GVS[sv->StdView].vLHpry0[1]+
+                     sv->GVS[sv->StdView].LHlol*
+               (300*val[1]/(float)(sv->WindWidth+1.0)) ; 
+         
+         sv->GVS[sv->StdView].vLHpry[2] = val[2];
+         }
       } else { /* assume degrees */
-         sv->GVS[sv->StdView].LHpry = val;
+         sv->GVS[sv->StdView].vLHpry[0] = val[0];
+         if (SUMAg_CF->Dev) { /* For the daring for now */
+         sv->GVS[sv->StdView].vLHpry[1] = val[1];
+         sv->GVS[sv->StdView].vLHpry[2] = val[2];
+         }
       }
+      
       /* just to be safe */
-      if (sv->GVS[sv->StdView].LHpry > 90) 
-         sv->GVS[sv->StdView].LHpry = 90;
-      else if (sv->GVS[sv->StdView].LHpry < -90) 
-         sv->GVS[sv->StdView].LHpry = -90;
-
+           if (sv->GVS[sv->StdView].vLHpry[0] >  90) 
+         sv->GVS[sv->StdView].vLHpry[0] = 90;
+      else if (sv->GVS[sv->StdView].vLHpry[0] < -90) 
+         sv->GVS[sv->StdView].vLHpry[0] = -90;
+   
+      /* clamp translation */
+           if (sv->GVS[sv->StdView].vLHpry[1] > 150) 
+         sv->GVS[sv->StdView].vLHpry[1] = 150;
+      else if (sv->GVS[sv->StdView].vLHpry[1] < 0) 
+         sv->GVS[sv->StdView].vLHpry[1] = 0;
+         
       SO1 = (SUMA_SurfaceObject *)SUMAg_DOv[RegSO[0]].OP;
       SO2 = (SUMA_SurfaceObject *)SUMAg_DOv[RegSO[1]].OP;   
       /* reset applied flag, then reapply transform*/
@@ -16974,8 +17008,12 @@ SUMA_Boolean SUMA_RecomputeNormsPrying(SUMA_SurfaceViewer *svu)
          sv = svu;
       }
 
-      if (sv->GVS[sv->StdView].LHpry || 
-          sv->GVS[sv->StdView].LHpry0) {/* just refresh normals */
+      if (sv->GVS[sv->StdView].vLHpry[0]  || 
+          sv->GVS[sv->StdView].vLHpry0[0] ||
+          sv->GVS[sv->StdView].vLHpry[1]  || 
+          sv->GVS[sv->StdView].vLHpry0[1] ||
+          sv->GVS[sv->StdView].vLHpry[2]  || 
+          sv->GVS[sv->StdView].vLHpry0[2]) {/* just refresh normals */
          N_RegSO = SUMA_RegisteredSOs (sv, SUMAg_DOv, RegSO);
          for (j=0; j<N_RegSO; ++j) {
             SO = (SUMA_SurfaceObject *)SUMAg_DOv[RegSO[j]].OP;
@@ -17008,11 +17046,19 @@ SUMA_Boolean SUMA_ResetPrying(SUMA_SurfaceViewer *svu)
          sv = svu;
       }
 
-      if (sv->GVS[sv->StdView].LHpry || 
-          sv->GVS[sv->StdView].LHpry0) {/* Cancel prying */
+      if (sv->GVS[sv->StdView].vLHpry[0] || 
+          sv->GVS[sv->StdView].vLHpry0[0]||
+          sv->GVS[sv->StdView].vLHpry[1] || 
+          sv->GVS[sv->StdView].vLHpry0[1]||
+          sv->GVS[sv->StdView].vLHpry[2] || 
+          sv->GVS[sv->StdView].vLHpry0[2]) {/* Cancel prying */
          N_RegSO = SUMA_RegisteredSOs (sv, SUMAg_DOv, RegSO);
-         sv->GVS[sv->StdView].LHpry = 0.0;
-         sv->GVS[sv->StdView].LHpry0 = 0.0;
+         sv->GVS[sv->StdView].vLHpry[0] = 0.0;
+         sv->GVS[sv->StdView].vLHpry0[0] = 0.0;
+         sv->GVS[sv->StdView].vLHpry[1] = 0.0;
+         sv->GVS[sv->StdView].vLHpry0[1] = 0.0;
+         sv->GVS[sv->StdView].vLHpry[2] = 0.0;
+         sv->GVS[sv->StdView].vLHpry0[2] = 0.0;
          sv->GVS[sv->StdView].LHlol = 0;   
          SO1 = (SUMA_SurfaceObject *)SUMAg_DOv[RegSO[0]].OP;
          SO2 = (SUMA_SurfaceObject *)SUMAg_DOv[RegSO[1]].OP;   
@@ -17168,7 +17214,7 @@ int SUMA_ComputeVisX(SUMA_SurfaceObject *SO1, SUMA_SurfaceObject *SO2,
    SUMA_SurfaceObject *SOv[2];
    SUMA_VIS_XFORM_DATUM *x0=NULL, *x1=NULL;
    float dx=0.0, dx2;
-   int splitx = 0;
+   int splitx = 0, regdeal = 0;
    int i, state;
    double A[3], B[3], C[3], D[3], AC[3], AD[3], BC[3], BD[3];
    double dot1, dot2, doti;
@@ -17349,11 +17395,13 @@ int SUMA_ComputeVisX(SUMA_SurfaceObject *SO1, SUMA_SurfaceObject *SO2,
                                   ADD_AFTER, "CoordBias");
 
       /* open up the gap */
-      rot = sv->GVS[sv->StdView].LHpry;
+      regdeal = 0;
+      rot = sv->GVS[sv->StdView].vLHpry[0];
       if (!(SUMA_IS_GEOM_SYMM(SOv[0]->isSphere) && 
             SUMA_IS_GEOM_SYMM(SOv[1]->isSphere))   &&
           !(SOv[0]->EmbedDim == 2 && SOv[1]->EmbedDim == 2) ) {
          SUMA_LH("Regular deal");
+         regdeal = 1;
          if (rot*sv->GVS[sv->StdView].LHlol >= 0) {/*rot. about posterior axes */
             /* Compute average medial Y axis (Box segment 12 from left hemi +
                                                   segment 11 from right hemi )
@@ -17407,7 +17455,7 @@ int SUMA_ComputeVisX(SUMA_SurfaceObject *SO1, SUMA_SurfaceObject *SO2,
          SUMA_NormScreenToWorld(sv, 0, 1, Pt, NULL, 1);   
          SUMA_UNIT_VEC(Pb, Pt, rotax, rotmag);
          rot = rot*2.0; /* go to +/- 180 */
-      } else if ( SOv[0]->EmbedDim == 2 && SOv[1]->EmbedDim == 2) { 
+      } else if ( SOv[0]->EmbedDim == 2 && SOv[1]->EmbedDim == 2 ) { 
                                                       /* for flatties */
          SUMA_LH("Flats!");
          C[0]  = SOv[0]->Center[0];  C[1]  = SOv[0]->Center[1]; 
@@ -17451,6 +17499,16 @@ int SUMA_ComputeVisX(SUMA_SurfaceObject *SO1, SUMA_SurfaceObject *SO2,
                x1->Xform[0][3] += -dx/2.0;
             }
          }
+         
+         if (regdeal && sv->GVS[sv->StdView].vLHpry[1] > 0) {
+            SUMA_LH("Red alert, red alert %f", 
+                    sv->GVS[sv->StdView].vLHpry[1]);
+            dx = sv->GVS[sv->StdView].vLHpry[1];
+            if (sv->GVS[sv->StdView].LHlol == -1) dx = -dx;
+            x0->Xform[0][3] += -dx/2.0;
+            x1->Xform[0][3] +=  dx/2.0;
+         }
+         
          x0->XformType = AFFINE; /* affine */
          x1->XformType = AFFINE; /* affine */
          if (!SUMA_ApplyVisXform(SOv[0], "VisX", 
