@@ -1501,6 +1501,7 @@ SUMA_Boolean SUMA_process_NIML_data( void *nini , SUMA_SurfaceViewer *sv)
                   
                   /* Are we in Mask manip mode? */
                   if (MASK_MANIP_MODE(svi)) {
+                     SUMA_MaskDO *mdo=NULL;
                      SUMA_ALL_DO *ado=NULL;
                      SUMA_LH("Moving mask");
                      if ((ado=SUMA_whichADOg(svi->MouseMode_ado_idcode_str)) && 
@@ -1510,15 +1511,31 @@ SUMA_Boolean SUMA_process_NIML_data( void *nini , SUMA_SurfaceViewer *sv)
                         SUMA_NEW_MASKSTATE();
                         SUMA_MDO_New_Cen((SUMA_MaskDO *)ado, 
                                           (float *)nel->vec[0]);
-                     }
-                     if (!list) list = SUMA_CreateList();
-                     svi->ResetGLStateVariables = YUP; 
+                        if (!list) list = SUMA_CreateList();
+                        svi->ResetGLStateVariables = YUP; 
 
-                     SUMA_REGISTER_TAIL_COMMAND_NO_DATA(list, SE_Redisplay, 
-                                                        SES_SumaFromAfni, svi);
-                     if (!SUMA_Engine (&list)) {
-                        fprintf( SUMA_STDERR, 
-                            "Error %s: SUMA_Engine call failed.\n", FuncName);
+                        /* Tell AFNI of new position */
+                        ED = SUMA_InitializeEngineListData (SE_SetAfniMask);
+                        mdo = (SUMA_MaskDO *)ado;
+                        if (!(Location=
+                                    SUMA_RegisterEngineListCommand (  list, ED, 
+                                                      SEF_fv3, (void*)mdo->cen,
+                                                      SES_Suma, (void *)sv, NOPE,
+                                                      SEI_Tail, NULL))) {
+                           SUMA_S_Err("Failed to register element\n");
+                           SUMA_RETURN (NOPE);
+                        }
+                        SUMA_RegisterEngineListCommand (  list, ED, 
+                                              SEF_s, (void *)(ADO_ID(ado)),
+                                              SES_Suma, (void *)sv, NOPE,
+                                              SEI_In, Location);
+
+                        SUMA_REGISTER_TAIL_COMMAND_NO_DATA(list, SE_Redisplay, 
+                                                     SES_SumaFromAfni, svi);
+                        if (!SUMA_Engine (&list)) {
+                           fprintf( SUMA_STDERR, 
+                               "Error %s: SUMA_Engine call failed.\n", FuncName);
+                        }
                      }
                      
                      /* Don't proceed, for now, if we're in mask nudging mode,
@@ -2049,7 +2066,7 @@ NI_element * SUMA_makeNI_SurfIXYZ (SUMA_SurfaceObject *SO)
    zc = (float *) SUMA_malloc( sizeof(float) * SO->N_Node ) ;
 
    if (!nel || !ic || !xc || !yc || !zc) {
-      fprintf(SUMA_STDERR,"Error %s: Failed to allocate for nel, ic, xc, yc or zc.\n", FuncName);
+      SUMA_S_Err("Failed to allocate for nel, ic, xc, yc or zc.\n");
       SUMA_RETURN (NULL);
    }
    
@@ -2089,6 +2106,31 @@ NI_element * SUMA_makeNI_SurfIXYZ (SUMA_SurfaceObject *SO)
    else NI_set_attribute (nel, "surface_specfile_path", "Unknown");
    
    SUMA_RETURN (nel);
+}
+
+int SUMA_offset_NI_SurfIXYZ (NI_element *nel, float *del) 
+{
+   static char FuncName[]={"SUMA_offset_NI_SurfIXYZ"};
+   float *x, *y, *z;
+   int i;
+   
+   SUMA_ENTRY;
+   
+   if (!nel || !del || nel->vec_num != 4 || nel->vec_len < 1) SUMA_RETURN(0);
+   
+   x = (float *)nel->vec[1];
+   y = (float *)nel->vec[2];
+   z = (float *)nel->vec[3];
+   
+   if (!x || !y || !z) SUMA_RETURN(0);
+   
+   for (i=0; i<nel->vec_len; ++i) {
+      x[i] += del[0];
+      y[i] += del[1];
+      z[i] += del[2];
+   }
+   
+   SUMA_RETURN(1);
 }
 
 /*------------------------------------------------------------------*/

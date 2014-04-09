@@ -5128,6 +5128,16 @@ void SUMA_input(Widget w, XtPointer clientData, XtPointer callData)
                      /* enough for now */
                      goto REDISP;
                   }
+               } else if ((ado = SUMA_SV_Focus_ADO(sv)) && 
+                           ado->do_type == GRAPH_LINK_type &&
+                           !strcmp(SUMA_ADO_variant(ado),"GMATRIX")) {
+                  SUMA_OVERLAYS *Sover = NULL;
+                  SUMA_LH("Going forward one sub-brick");
+                  Sover = SUMA_ADO_CurColPlane(ado);
+                  SUMA_SwitchColPlaneIntensity( ado, Sover, 
+                                                SUMA_FORWARD_ONE_SUBBRICK, 1);   
+                  /* redisplay done in function above ... */
+                  SUMA_RETURNe;
                }
             } else {
                if (!SUMA_Z_Key(sv, "z", "interactive")) {
@@ -5183,7 +5193,7 @@ void SUMA_input(Widget w, XtPointer clientData, XtPointer callData)
                   }
                }
                #endif
-            } else if (pButton==6 || Bev.state & ControlMask) {
+            } else if (pButton==7 || Bev.state & ControlMask) {
                SUMA_ALL_DO *ado=NULL;
                SUMA_X_SurfCont *SurfCont;
                if (MASK_MANIP_MODE(sv)) {
@@ -5209,6 +5219,16 @@ void SUMA_input(Widget w, XtPointer clientData, XtPointer callData)
                      /* enough for now */
                      goto REDISP;
                   }
+               } else if ((ado = SUMA_SV_Focus_ADO(sv)) && 
+                           ado->do_type == GRAPH_LINK_type &&
+                           !strcmp(SUMA_ADO_variant(ado),"GMATRIX")) {
+                  SUMA_OVERLAYS *Sover = NULL;
+                  SUMA_LH("Switching overlay back one");
+                  Sover = SUMA_ADO_CurColPlane(ado);
+                  SUMA_SwitchColPlaneIntensity( ado, Sover, 
+                                                SUMA_BACK_ONE_SUBBRICK, 1);   
+                  /* redisplay done in function above ... */
+                  SUMA_RETURNe;
                }
             } else {
                if (!SUMA_Z_Key(sv, "Z", "interactive")) {
@@ -5286,7 +5306,8 @@ void SUMA_input(Widget w, XtPointer clientData, XtPointer callData)
                }
                
                if (DoubleClick && !ROI_mode){/*See if you are selecting masks */
-                  SUMA_ALL_DO *mado=NULL;
+                  SUMA_ALL_DO *mado=NULL, *ado=NULL;
+                  SUMA_GRAPH_SAUX *GSaux=NULL;
                   /* you do not want to waist time doing double calculations if 
                      the user clicks twice by mistake */
                   /* make sure no viewer, other than the one clicked in is in 
@@ -5332,8 +5353,22 @@ void SUMA_input(Widget w, XtPointer clientData, XtPointer callData)
                      }
                      /* Not much else to do */
                      goto REDISP;
+                  } else if ((ado = SUMA_SV_Focus_ADO(sv)) && 
+                              ado->do_type == GRAPH_LINK_type &&
+                             (GSaux = SUMA_ADO_GSaux(ado)) && 
+                             GSaux->PR && GSaux->PR->datum_index == -1 &&
+                             GSaux->PR->iAltSel[SUMA_ENODE_0] != -1 &&
+                             GSaux->IgnoreSelection == 0) { 
+                           /* turn off node selection to allow all connections
+                              to be visible. Execute only if we have a graph
+                              in focus (in 3D drawing) and a point is selected
+                              and selection is not being ignored*/
+                        SUMA_LH("Ignoring selection for graph display");
+                        GSaux->IgnoreSelection = 1;
+                        SUMA_FlushPickBufferForDO(ado);
+                        goto REDISP;   
                   }
-                  SUMA_LH("No mask hit");
+                  SUMA_LH("No mask hit, and no selection needs ignoring");
                }
                
                if (!DoubleClick) {
@@ -6828,7 +6863,7 @@ SUMA_PICK_RESULT *SUMA_WhatWasPicked(SUMA_SurfaceViewer *sv, GLubyte *colid,
                SUMA_S_Err("No GSaux");
                SUMA_RETURN(PR);
             }
-
+            GSaux->IgnoreSelection = 0; /*reset ignore selection flag */
             if (SUMA_is_ADO_Datum_Primitive(ado, codf)) { 
                datum_index = SUMA_GDSET_EdgeRow_To_Index(dset, 
                                                          PR->primitive_index);

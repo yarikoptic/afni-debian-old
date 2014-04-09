@@ -1026,6 +1026,29 @@ SUMA_Boolean SUMA_Engine (DList **listp)
             }  
             break;
 
+         case SE_SetDsetThrough:
+            { /* sets the sphere radius for nodes of a (graph) dset, 
+               expects ADO in vp and rendering mode in i*/
+               ado = (SUMA_ALL_DO *)EngineData->vp;
+               if (!(curColPlane = SUMA_ADO_CurColPlane(ado)) ||
+                   !(SurfCont = SUMA_ADO_Cont(ado))) {
+                  SUMA_S_Err("No cur plane");
+                  break;
+               }
+                              
+               if (EngineData->i == SW_SurfCont_DsetThroughXXX) {
+                  curColPlane->Through = 
+                     -SUMA_ABS(curColPlane->Through);
+               } else {
+                  curColPlane->Through = EngineData->i;
+               }
+               SUMA_ADO_Flush_Pick_Buffer(ado, sv);
+               if (!SUMA_Remixedisplay (ado)) {
+                  SUMA_S_Err("Dunno what happened here");
+               }
+            }  
+            break;
+            
          case SE_SetDsetNodeRad:
             { /* sets the sphere radius for nodes of a (graph) dset, 
                expects ADO in vp and rendering mode in i*/
@@ -1992,11 +2015,10 @@ SUMA_Boolean SUMA_Engine (DList **listp)
                            ADO_LABEL(ado), SO);
                if (!SO->SentToAfni) {
                   SUMA_LH("Sending the whole thing, SO = %p", SO);
-                  nel = NI_new_data_element("suma_mask", 0);
+                  nel = NI_new_data_element("SUMA_mask", 0);
                   NI_set_attribute(nel, "idcode", ADO_ID(ado));
                   NI_SET_FLOATv(nel, "init_cen", mdo->init_cen, 3);
-                  if (EngineData->fv3) 
-                     NI_SET_FLOATv(nel, "new_cen", EngineData->fv3, 3);
+                  NI_SET_FLOATv(nel, "new_cen", EngineData->fv3, 3);
                   if ((nn = NI_write_element( 
                               SUMAg_CF->ns_v[SUMA_AFNI_STREAM_INDEX] , nel , 
                                              NI_TALK_MODE ))<0) {
@@ -2007,7 +2029,13 @@ SUMA_Boolean SUMA_Engine (DList **listp)
                   nel = NULL;
                   ++nels_sent;
                   if (1) {
+                     float delta[3] = {0, 0, 0};
+                     delta[0] = mdo->init_cen[0] - EngineData->fv3[0];
+                     delta[1] = mdo->init_cen[1] - EngineData->fv3[1];
+                     delta[2] = mdo->init_cen[2] - EngineData->fv3[2];
                      nel = SUMA_makeNI_SurfIXYZ (SO);
+                     /* Undo the offset in the surface coords ... */
+                     SUMA_offset_NI_SurfIXYZ(nel, delta);
                      /* label this object as being the surface of a mask */
                      if (!nel) {
                         fprintf(SUMA_STDERR,
@@ -2015,7 +2043,7 @@ SUMA_Boolean SUMA_Engine (DList **listp)
                                  FuncName);
                         break;
                      }
-                     NI_set_attribute(nel,"parent_type", "suma_mask");
+                     NI_set_attribute(nel,"parent_type", "SUMA_mask");
                      NI_set_attribute(nel,"parent_idcode", ADO_ID(ado));
                      /* set up some defaults color 
                         (see matlab's rgbdectohex for visual aid) 
@@ -2029,6 +2057,8 @@ SUMA_Boolean SUMA_Engine (DList **listp)
                                  SUMA_RGB_to_hex(mdo->init_col, NULL));
                            NI_set_attribute(nel,
                               "afni_surface_controls_plusminus","none");
+                           NI_SET_INT(nel,
+                                 "afni_surface_controls_linewidth", 10 );
 
                      /* send surface nel */
                      if (LocalHead) 
@@ -2053,7 +2083,7 @@ SUMA_Boolean SUMA_Engine (DList **listp)
                         SUMA_S_Err("SUMA_makeNI_SurfINORM failed");
                         break;
                      }
-                     NI_set_attribute(nel,"parent_type", "suma_mask");
+                     NI_set_attribute(nel,"parent_type", "SUMA_mask");
                      NI_set_attribute(nel,"parent_idcode", ADO_ID(ado));
                      /* send surface nel */
                      if (LocalHead)    
@@ -2077,7 +2107,7 @@ SUMA_Boolean SUMA_Engine (DList **listp)
                         SUMA_S_Err("SUMA_makeNI_SurfIJK failed");
                         break;
                      }
-                     NI_set_attribute(nel,"parent_type", "suma_mask");
+                     NI_set_attribute(nel,"parent_type", "SUMA_mask");
                      NI_set_attribute(nel,"parent_idcode", ADO_ID(ado));
                      /* send surface nel */
                      if (LocalHead)    
@@ -2102,9 +2132,9 @@ SUMA_Boolean SUMA_Engine (DList **listp)
                   }
                }
                
-               if (EngineData->fv3) {
+               if (1) {
                   SUMA_LH("Sending new center, SO = %p", SO);
-                  nel = NI_new_data_element("suma_mask", 0);
+                  nel = NI_new_data_element("SUMA_mask", 0);
                   NI_set_attribute(nel, "idcode", ADO_ID(ado));
                   NI_SET_FLOATv(nel, "new_cen", EngineData->fv3, 3);
                   if ((nn = NI_write_element( 
