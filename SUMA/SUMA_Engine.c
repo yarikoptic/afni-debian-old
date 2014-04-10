@@ -4522,6 +4522,14 @@ SUMA_Boolean SUMA_Engine (DList **listp)
                                  SUMA_S_Err("Failed in Key function.");
                               }
                               break;
+                           case XK_F10:
+                              /* strgval can be used to set the value directly
+                                 in the future. But it is not implemented
+                                 in SUMA_F10_Key yet ... */
+                              if (!SUMA_F10_Key(sv,stmp, "drivesuma", strgval)) {
+                                 SUMA_S_Err("Failed in Key function.");
+                              }
+                              break;
                            case XK_F11:
                               if (!SUMA_F11_Key(sv, stmp,"drivesuma", strgval)) {
                                  SUMA_S_Err("Failed in Key function.");
@@ -4819,7 +4827,8 @@ void *SUMA_nimlEngine2Engine(NI_group *ngr)
    if (!sv) {
       sv = &(SUMAg_SVv[0]);
    }
-
+   SUMA_LH("Viewer id %s, isv=%d sv=%p",svid?svid:"NULL", isv, sv);
+   
    ado = NULL;
    if (!(adoid = NI_get_attribute(ngr,"SO_idcode")) &&
        !(adoid = NI_get_attribute(ngr,"DO_idcode"))) 
