@@ -43,7 +43,18 @@
 
 afni_history_struct rwcox_history[] = {
 /*=====BELOW THIS LINE=====*/
-  { 15 , APR , 2014 , RWC , "3dQwarp" , MINOR , TYPE_GENERAL ,
+  { 16 , APR , 2014 , RWC , "afni GUI" , MICRO , TYPE_NEW_ENV ,
+   "AFNI_SLAVE_THROLAY sets up Thr=OLay or Thr=OLay+1, for Paul Taylor" ,
+   NULL } ,
+
+ { 16 , APR , 2014 , RWC , "3dNwarpAdjust" , MINOR , TYPE_GENERAL ,
+   "Changes for grid size requirements" ,
+   "Now the warps don't all have to be on the same grid (just conformant\n"
+   "grids), and they will be extended to match each other.  And the source\n"
+   "datasets (if present) don't have to be on the same grid as the warps,\n"
+   "but DO have to be on the same grid as each other -- as before." } ,
+
+ { 15 , APR , 2014 , RWC , "3dQwarp" , MINOR , TYPE_GENERAL ,
    "and other warping functions" ,
    "Changes to index warps, to extend them past their defining box by linear\n"
    "extrapolation from the last 5 layers on each face (vs. the previous\n"

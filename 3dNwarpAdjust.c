@@ -62,24 +62,37 @@ int main( int argc , char *argv[] )
       "All these calculcations could be done with other programs and a script,\n"
       "but the goal of this program is to make them faster and simpler to combine.\n"
       "It is intended to be used in an incremental template-building script, and\n"
-      "probably has no other utility.\n"
+      "probably has no other utility (cf. the script @toMNI_Qwarpar).\n"
       "\n"
       "OPTIONS:\n"
       "--------\n"
       " -nwarp  w1 w2 ... = List of input 3D warp datasets (at least 5).\n"
       "                     The list ends when a command line argument starts\n"
       "                     with a '-' or the command line itself ends.\n"
-      "                     * This 'option' is required!\n"
+      "                     * This 'option' is REQUIRED!\n"
       "                -->>** Each input warp is adjusted, and the altered warp\n"
-      "                       over-writes the input dataset.\n"
+      "                       over-writes the input dataset. (Therefore, there is\n"
+      "                       no reason to run 3dNwarpAdjust twice over the same\n"
+      "                       collection of warp datasets!)\n"
+      "                     * These input warps do not have to be defined on\n"
+      "                       exactly the same grids, but the grids must be\n"
+      "                       'conformant' -- that is, they have to have the\n"
+      "                       the same orientation and grid spacings.  Warps\n"
+      "                       will be extended to match the minimum containing\n"
+      "                       3D rectangular grid, as needed.\n"
       "\n"
-      " -source d1 d2 ... = List of input 3D datasets to be warped.  There must\n"
-      "                     be exactly as many of these datasets as there are\n"
-      "                     input warps.\n"
-      "                     * This option is not required.\n"
+      " -source d1 d2 ... = List of input 3D datasets to be warped by the adjusted\n"
+      "                     warp datasets.  There must be exactly as many of these\n"
+      "                     datasets as there are input warps.\n"
+      "                     * This option is NOT required.\n"
       "                     * These datasets will NOT be altered by this program.\n"
+      "                     * These datasets DO have to be on the same 3D grid\n"
+      "                       (so they can be averaged after warping).\n"
       "\n"
       " -prefix ppp       = Use 'ppp' for the prefix of the output mean dataset.\n"
+      "                     (Only needed if the '-source' option is also given.)\n"
+      "                     The output dataset will be on the common grid shared\n"
+      "                     by the source datasets.\n"
      ) ;
 
      PRINT_AFNI_OMP_USAGE("3dNwarpAdjust",NULL) ; PRINT_COMPILE_DATE ;
@@ -202,6 +215,8 @@ int main( int argc , char *argv[] )
      ERROR_exit("Unknown, Illegal, and Fattening option '%s' :-( :-( :-(",argv[iarg]) ;
    }
 
+   Hverb = (verb > 0) ;  /* for IW3D_invert */
+
    /*-------- check inputs to see if the user is completely demented ---------*/
 
    if( dset_nwarp == NULL )
@@ -212,7 +227,7 @@ int main( int argc , char *argv[] )
 
 
    if( verb && nsset > 0 && ( nx != nxs || ny != nys || nz != nzs ) )
-     INFO_message("warp grid = %dx%dx%d is padded from source grid = %dx%dx%d (this is not a problem)",
+     INFO_message("warp grid = %dx%dx%d is bigger than source grid = %dx%dx%d (this is NOT a problem)",
                   nx,ny,nz , nxs,nys,nzs ) ;
 
    /*--- the actual work (bow your head in reverence) ---*/
