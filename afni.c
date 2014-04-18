@@ -1506,6 +1506,7 @@ void AFNI_sigfunc_alrm(int sig)
      "What's your favorite kind of cookie?"                          ,
      "Step slowly away from the keyboard, and remain calm"           ,
      "Time for a nice walk, don't you think?"                        ,
+     "Meet me at the Leshan Dafo in Sichuan at 3pm next Wednesday"   ,
      "Meet me in Namche Bazaar next Thursday"                        ,
      "Meet me at Dashashwamedh Ghat in Varanasi for Agni Puja"       ,
      "See you in Dingboche next Christmas"                           ,
@@ -1554,7 +1555,15 @@ void AFNI_sigfunc_alrm(int sig)
      "I'm sick of thinking about p-values -- how about you?"         ,
      "Did you fail to negate the opposite of the null hypothesis?"   ,
      "All suspicion points to a Frost-Bellgowan plot"                ,
+     "I'd like to live as a poor man with lots of money"             ,
+     "Wine is proof that God loves us and wants to see us happy"     ,
+     "If two wrongs don't make a right, then try three; then four"   ,
+     "Life is hard; after all, it kills you"                         ,
+     "I'm sorry; if you were right, I'd agree with you"              ,
+     "Like dreams, statistics are a form of wish fulfillment"        ,
 
+     "A p-value of 0.05 means the null hypothesis is 29% likely to be correct"        ,
+     "There are lots of people who mistake their imagination for their memory"        ,
      "I'm off to get some hot chocolate in Warsaw -- want to join me?"                ,
      "Money can't buy happiness -- but I'm willing to give it a fair chance"          ,
      "In ancient times, there were no statistics, so they just had to lie"            ,
@@ -1583,25 +1592,25 @@ void AFNI_sigfunc_alrm(int sig)
      "Let us therefore study the incidents of this as philosophy to learn wisdom from",
 
      "\n  When someone says: I'm going to simplify things.\n"
-     "  They mean:           Be confused. Be very, very confused"                               ,
+     "  They mean:         Be confused. Be very, very confused"                               ,
 
      "\n  When someone says: I'm going to name the elephant in the room.\n"
-     "  They mean:           My next observation will be startlingly banal"                     ,
+     "  They mean:         My next observation will be startlingly banal"                     ,
 
      "\n  When someone says: We need to show leadership.\n"
-     "  They mean:           I should be in charge"                                             ,
+     "  They mean:         I should be in charge"                                             ,
 
      "\n  When someone says: There needs to be a bottom-up process.\n"
-     "  They mean:           Nobody asked me about this"                                        ,
+     "  They mean:         Nobody asked me about this"                                        ,
 
      "\n  When someone says: The perfect is the enemy of the good.\n"
-     "  They mean:           Ignore everyone else's ideas and just use mine"                    ,
+     "  They mean:         Ignore everyone else's ideas and just use mine"                    ,
 
      "\n  When someone says: Any other comments on this?\n"
-     "  They mean:           Will everyone please, for the love of all that is holy, shut up?"  ,
+     "  They mean:         Will everyone please, for the love of all that is holy, shut up?"  ,
 
      "\n  When someone says: I agree 100% with your concept,\n"
-     "  They mean:           I am implacably opposed to your proposal"
+     "  They mean:         I am implacably opposed to your proposal"
    } ;
 #undef NTOP
 #ifdef USE_SONNETS
