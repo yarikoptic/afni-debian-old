@@ -4378,14 +4378,14 @@ At rendering time, instead of making one call to DrawNIDO, one calls
 DrawNIDO for each node that has a NIDO 
 */
 SUMA_NIDO ** SUMA_Multiply_NodeNIDOObjects ( SUMA_SurfaceObject *SO, 
-                                      SUMA_DO *DO )
+                                      SUMA_DO *DO, int *NodeID, int N_NodeID )
 {
    static char FuncName[]={"SUMA_Multiply_NodeNIDOObjects"};
    SUMA_NIDO **NIDOv = NULL;
    SUMA_NIDO *nido=NULL, *niout=NULL;
    void *vel=NULL;
    char *atr=NULL;
-   int i=0;
+   int i=0, N_Nodes=0, node=0;
    SUMA_Boolean LocalHead = NOPE;
    
    SUMA_ENTRY;
@@ -4406,14 +4406,30 @@ SUMA_NIDO ** SUMA_Multiply_NodeNIDOObjects ( SUMA_SurfaceObject *SO,
          /* drawNIDO without much headaches */
          
          /* Now for each node, create a new copy of that element */
-         for (i=0; i<SO->N_Node; ++i) {
+         if (NodeID) N_Nodes = N_NodeID;
+         else N_Nodes = SO->N_Node;
+         for (i=0; i<N_Nodes; ++i) {
+            if (!NodeID) node = i;
+            else {
+               node = NodeID[i]; 
+               if (node >= SO->N_Node || node < 0) {
+                  static int nwarn = 0;
+                  if (!nwarn) {
+                     SUMA_S_Warn("Node %d is outside range for surface\n"
+                              "This node and others like it will be ignored\n",
+                              node);
+                  }
+                  ++nwarn;
+                  continue;
+               }
+            }
             if ((vel = NI_duplicate(nido->ngr, 1))) {
                /* assign object to the node */
-               NI_SET_INT((NI_element *)vel, "default_node", i);
+               NI_SET_INT((NI_element *)vel, "default_node", node);
                niout = SUMA_Alloc_NIDO(NULL, 
                         "from_CommonNodeObject", SO->idcode_str);
                niout->ngr = vel;
-               NIDOv[i] = niout; niout = NULL;
+               NIDOv[node] = niout; niout = NULL;
             } else {
                SUMA_S_Err("Failed to create duplicate element");
                SUMA_RETURN(NULL);
@@ -10654,8 +10670,10 @@ SUMA_Boolean SUMA_DrawGSegmentDO (SUMA_GRAPH_SAUX *GSaux, SUMA_SurfaceViewer *sv
             n = SDO->NodeID[i];  
             n1 = SDO->NodeID1[i];
             si = SUMA_GDSET_EdgeRow_To_Index(dset,i);
-            if (n==79 || n1==79) LocalHead=YUP;
-            else LocalHead = NOPE;
+            /* 
+               if (n==79 || n1==79) LocalHead=YUP;
+               else LocalHead = NOPE; 
+            */
             /* Do we have a tract for this monster ? */
             if (GSaux->ShowBundles) 
                nelitp = SUMA_GDSET_Edge_Bundle(dset, GSaux, si, -1);
@@ -10853,8 +10871,8 @@ SUMA_Boolean SUMA_DrawGSegmentDO (SUMA_GRAPH_SAUX *GSaux, SUMA_SurfaceViewer *sv
       r0 = SUMA_GDSET_EdgeIndex_To_Row(dset,si);
       n = SDO->NodeID[i]; 
       n1 = SDO->NodeID1[i]; 
-            if (n==79 || n1==79) LocalHead=YUP;
-            else LocalHead = NOPE;
+            /* if (n==79 || n1==79) LocalHead=YUP;
+               else LocalHead = NOPE; */
       SUMA_LHv("Highlight: i = %d edge row %d/%d, edge index %d [%d,%d] (%d)\n", 
                i, r0, SDO->N_n, si, n, n1, DDO.N_Node);
       /* get position of node n in NodeList */
@@ -11041,9 +11059,10 @@ SUMA_Boolean SUMA_DrawGSegmentDO (SUMA_GRAPH_SAUX *GSaux, SUMA_SurfaceViewer *sv
          } else {
             n = i;
          }
-         
+         /*
             if (n==79 || n==2 || n==7) LocalHead=YUP;
             else LocalHead = NOPE;
+         */
          if (wmask) showword = wmask[i];
          else showword = 255;
                    
@@ -16496,7 +16515,8 @@ void SUMA_DrawMesh(SUMA_SurfaceObject *SurfObj, SUMA_SurfaceViewer *sv)
                SUMA_S_Err("Failed to apply data to node objects2");
             }
             for (i=0; i<SurfObj->N_Node; ++i) {
-               if (!(SUMA_DrawNIDO (SurfObj->NodeNIDOObjects[i], sv) ) ) {
+               if (SurfObj->NodeNIDOObjects[i] &&
+                   !(SUMA_DrawNIDO (SurfObj->NodeNIDOObjects[i], sv) ) ) {
                   SUMA_S_Err("Failed to draw NodeObjects");
                }
             }
@@ -16832,7 +16852,7 @@ int SUMA_ApplyVisXform(SUMA_SurfaceObject *SO, char *which,
    SUMA_LHv("SO %s, which %s, direction %d, recompute_norm %d\n", 
             SO->Label, CHECK_NULL_STR(which), direction, recompute_norm);
    if (LocalHead) {
-      SUMA_DUMP_TRACE(FuncName);
+      SUMA_DUMP_TRACE("%s",FuncName);
    }
    /* select transform to apply */
    if (!strcmp(which,"VisX0")) {
@@ -18192,6 +18212,11 @@ char *SUMA_SurfaceObject_Info (SUMA_SurfaceObject *SO, DList *DsetList)
             break;
          case SUMA_OPENDX_MESH: 
             SS = SUMA_StringAppend_va (SS,"OpenDX surface.\n");
+            SS = SUMA_StringAppend_va (SS,"FileName: %s\n", SO->Name.FileName);
+            SS = SUMA_StringAppend_va (SS,"Path: %s\n", SO->Name.Path);
+            break;
+         case SUMA_OBJ_MESH: 
+            SS = SUMA_StringAppend_va (SS,"OBJ surface.\n");
             SS = SUMA_StringAppend_va (SS,"FileName: %s\n", SO->Name.FileName);
             SS = SUMA_StringAppend_va (SS,"Path: %s\n", SO->Name.Path);
             break;

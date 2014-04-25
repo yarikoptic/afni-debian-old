@@ -2119,6 +2119,9 @@ read.AFNI.labeltable <- function (ltfile=NULL,
 
 
 write.AFNI.matrix <- function (m, fname='test.1D') {
+   if (class(m) == "AFNI_c_dataset") {
+      m <- m$brk
+   }
    if (is.vector(m)) {
       write(m, fname, ncolumns=1)
    } else if (is.matrix(m)) { #Need to transpose matrix
@@ -2368,6 +2371,11 @@ dset.attr <- function (dset, name=NULL, colwise=FALSE, num=FALSE,
             return(get.c.AFNI.attribute(hatr, "DELTA"))
          } else if (name == 'hist') {
             return(get.c.AFNI.attribute(hatr, "HISTORY_NOTE"))
+         } else if (name == "TR") {
+            dd <- get.c.AFNI.attribute(hatr, "TAXIS_NUMS")
+            ee <- get.c.AFNI.attribute(hatr, "TAXIS_FLOATS")
+            if (dd[3] == 77001) ee[2] = ee[2]/1000; #From msec to sec
+            return(ee[2])
          } else {
             return(get.c.AFNI.attribute(hatr, name))
          }
@@ -2399,7 +2407,14 @@ dset.attr <- function (dset, name=NULL, colwise=FALSE, num=FALSE,
          } else if (name == "statsym") {
             hatr <- set.c.AFNI.attribute(hatr, "BRICK_STATSYM",
                                  statsym.list2code(statsym=val), strsep=';')
-         } else {
+         } else if (name == "TR") {
+            dd <- get.c.AFNI.attribute(hatr, "TAXIS_NUMS");
+            ee <- get.c.AFNI.attribute(hatr, "TAXIS_FLOATS");
+            dd[2] <- 77002; #seconds
+            ee[2] <- val;
+            hatr <- set.c.AFNI.attribute(hatr, "TAXIS_NUMS", val=dd);
+            hatr <- set.c.AFNI.attribute(hatr, "TAXIS_FLOATS", val = ee);
+         } else{
             hatr <- set.c.AFNI.attribute(hatr, name, val, tp=tp)
          }
          if (!is.null(dset$NI_head)) {
