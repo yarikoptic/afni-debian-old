@@ -2599,6 +2599,7 @@ SUMA_SurfaceObject * SUMA_find_named_SOp_inDOv( char *coordnamei,
             case SUMA_FREE_SURFER:
             case SUMA_FREE_SURFER_PATCH:
             case SUMA_INVENTOR_GENERIC:
+            case SUMA_OBJ_MESH:
             case SUMA_OPENDX_MESH:
             case SUMA_PREDEFINED:
             case SUMA_BRAIN_VOYAGER:
@@ -4923,19 +4924,22 @@ SUMA_Boolean SUMA_ExecuteCallback(SUMA_CALLBACK *cb,
   
    SUMA_ENTRY;
    
+   SUMA_LH("Calling FunctionPtr(cb)");
    cb->FunctionPtr((void *)cb);  
 
+   SUMA_LH("Set callback pending");
    SUMA_SetCallbackPending(cb, 0, SES_Empty);
    
    /* flush event specific parameters */
    SUMA_FlushCallbackEventParameters(cb);
-   
+   SUMA_LH("Flushing done");
    if (refresh) {/* Now decide on what needs refreshing */
       if (!ado) {
          curSO = NULL;
       } else {
          curSO = SUMA_Cont_SO(SUMA_ADO_Cont(ado));
-      }           
+      }
+      SUMA_LH("curSO = %p, ado = %p", curSO, ado);         
       for (i=0; i<cb->N_parents; ++i) {
          if (SUMA_is_ID_4_DSET(cb->parents[i], &targetDset)) {
             targetSO = SUMA_findSOp_inDOv(cb->parents_domain[i],

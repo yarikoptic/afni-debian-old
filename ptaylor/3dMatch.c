@@ -7,6 +7,8 @@
 
 	Dec. 2012: fixed silly bug in indices.
 
+   Apr 2014: fixed something that caused errors on Linux machines, but 
+             not on other machines.  Weird. 
 */
 
 
@@ -30,16 +32,22 @@ void usage_Match(int detail)
 "\n"
 "  3dMatch, written by PA Taylor (Nov., 2012), part of FATCAT (Taylor & Saad,\n"
 "    2013) in AFNI.\n\n"
+"\n"
+"* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *\n"
+"\n"
 "  Find similar subbricks and rearrange order to ease comparison\n\n"
 "  Comparison simply done by comparing (weighted) correlation maps of\n"
 "  values, which may include thresholding of either refset or inset\n"
 "  values. The weighting is done by squaring each voxel value (whilst\n"
 "  maintaining its original sign). The Dice coefficient is also calculated\n"
-"  to quantify overlap of regions.\n\n"
+"  to quantify overlap of regions.\n"
+"\n"
+"* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *\n"
+"\n"
 "  + COMMANDS: \n"
 "    3dMatch -inset FILE1 -refset FILE2 {-mask FILE3} {-in_min THR1} \\ \n"
 "           {-in_max THR2} {-ref_min THR3} {-ref_max THR4} -prefix FILE4 \\\n"
-"           {-dice_only_thr} \n"
+"           {-only_dice_thr} \n"
 "    where:\n"
 "     -inset  FILE1  :file with M subbricks of data to match against another\n"
 "                     file.\n"
@@ -56,20 +64,20 @@ void usage_Match(int detail)
 "     -in_min  THR1  :during the correlation/matching analysis, values below\n"
 "                     THR1 in the `-inset' will be zeroed (and during Dice\n"
 "                     coefficient calculation, excluded from comparison).\n"
-"                     (See `-dice_only_thr' option, below.)\n"
+"                     (See `-only_dice_thr' option, below.)\n"
 "     -in_max  THR2  :during the correlation/matching analysis, values above\n"
 "                     THR2 in the `-inset' will be zeroed (and during Dice\n"
 "                     coefficient calculation, excluded from comparison).\n"
 "     -ref_min  THR3 :during the correlation/matching analysis, values below\n"
 "                     THR3 in the `-refset' will be zeroed (and during Dice\n"
 "                     coefficient calculation, excluded from comparison).\n"
-"                     (See `-dice_only_thr' option, below.)\n"
+"                     (See `-only_dice_thr' option, below.)\n"
 "     -ref_max  THR4 :during the correlation/matching analysis, values above\n"
 "                     THR4 in the `-refset' will be zeroed (and during Dice\n"
 "                     coefficient calculation, excluded from comparison).\n"
 "     -prefix FILE4  :prefix out output name for both *BRIK/HEAD files, as\n"
 "                     well as for the *_coeff.vals text files (see below).\n"
-"     -dice_only_thr :if option is included in command line, the thresholding\n"
+"     -only_dice_thr :if option is included in command line, the thresholding\n"
 "                     above is only applied during Dice evaluation, not \n"
 "                     during spatial correlation.\n\n"
 "  + OUTPUTS, named using prefix; \n"
@@ -98,20 +106,31 @@ void usage_Match(int detail)
 "                     reordered in the output *_IN+orig file. Cols. 1&2-\n"
 "                     orig `-inset' and `-refset' indices, respectively;\n"
 "                     Col. 3- weighted correlation coefficient; Col 4.-\n"
-"                     simple Dice coefficient.\n\n"
+"                     simple Dice coefficient.\n"
+"\n"
+"* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *\n"
+"\n"
 "  + EXAMPLE:\n"
-"      3dMatch -inset CORREL_DATA+orig  -refset STANDARD_RSNs+orig \\\n"
-"          -mask mask+orig  -in_min 0.4 -ref_min 2.3 -prefix MATCHED \\\n"
-"          -only_dice_thr .\n"
+"      3dMatch                           \\\n"
+"         -inset CORREL_DATA+orig        \\\n"
+"         -refset STANDARD_RSNs+orig     \\\n"
+"         -mask mask+orig                \\\n"
+"         -in_min 0.4                    \\\n"
+"         -ref_min 2.3                   \\\n"
+"         -prefix MATCHED                \\\n"
+"         -only_dice_thr\n"
+"\n"
+"* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *\n"
 "\n"
 "  If you use this program, please reference the introductory/description\n"
 "  paper for the FATCAT toolbox:\n"
-"    Taylor PA, Saad ZS (2013). FATCAT: (An Efficient) Functional And\n"
-"    Tractographic Connectivity Analysis Toolbox. Brain Connectivity.\n\n");
+"        Taylor PA, Saad ZS (2013).  FATCAT: (An Efficient) Functional\n"
+"        And Tractographic Connectivity Analysis Toolbox. Brain \n"
+"        Connectivity 3(5):523-535.\n"
+"____________________________________________________________________________\n"
+);
 	return;
 }
-
-
 
 
 int main(int argc, char *argv[]) {
@@ -122,6 +141,7 @@ int main(int argc, char *argv[]) {
 	char in_name[300];
 	int THR=0.;
 	char *prefix="NAME_Match";
+   int HAVEPREFIX=0;
 	THD_3dim_dataset *insetREF = NULL;
 	THD_3dim_dataset *insetMASK = NULL;
 	THD_3dim_dataset *outset=NULL;
@@ -145,6 +165,7 @@ int main(int argc, char *argv[]) {
 	int Nvox=0, Larray=0; 
 
 	int *Dim=NULL; 
+   short *minimask=NULL;
 	int REFBRIKS=0;
 	double **Data_Ref=NULL, **Data_In=NULL;
 	// just really big magn numbers, essentially `no bounds'
@@ -168,6 +189,7 @@ int main(int argc, char *argv[]) {
 
    //	INFO_message("version: BETA");
 	Dim = (int *)calloc(4,sizeof(int));
+   INFO_message("Loading data.");
 
 	// scan args
 	if (argc == 1) { usage_Match(1); exit(0); }
@@ -248,6 +270,7 @@ int main(int argc, char *argv[]) {
 
 			if( !THD_filename_ok(prefix) ) 
 				ERROR_exit("Illegal name after '-prefix'");
+         HAVEPREFIX=1;
 
 			iarg++ ; continue ;
 		}
@@ -275,15 +298,7 @@ int main(int argc, char *argv[]) {
 							ERROR_exit("Need argument after '-mask'");
 			
 			sprintf(in_MASK,"%s", argv[iarg]); 
-			insetMASK = THD_open_dataset(in_MASK) ;
-			if( (insetMASK == NULL ))
-				ERROR_exit("Can't open time series dataset '%s'.",in_MASK);
 			
-			DSET_load(insetMASK); CHECK_LOAD_ERROR(insetMASK);
-			if((Dim[0] != DSET_NX(insetMASK)) || (Dim[1] != DSET_NY(insetMASK)) ||
-				(Dim[2] != DSET_NZ(insetMASK)) )
-				ERROR_exit("The xyz-dimensions of maskset and inset don't match");
-
 			HAVEMASK=1;
 
 			iarg++ ; continue ;
@@ -315,26 +330,53 @@ int main(int argc, char *argv[]) {
 		ERROR_message("Too few options. Try -help for details.\n");
 		exit(1);
 	}
-
-			if((Dim[0] != DSET_NX(insetREF)) || (Dim[1] != DSET_NY(insetREF)) ||
-				(Dim[2] != DSET_NZ(insetREF)) )
-				ERROR_exit("The xyz-dimensions of refset and inset don't match");
-
-
+   
+   if((Dim[0] != DSET_NX(insetREF)) || (Dim[1] != DSET_NY(insetREF)) ||
+      (Dim[2] != DSET_NZ(insetREF)) )
+      ERROR_exit("The xyz-dimensions of refset and inset don't match");
+   
+   
 	// ****************************************************************
 	// ****************************************************************
 	//                    make inset storage
 	// ****************************************************************
 	// ****************************************************************
+   
+   minimask = (short *)calloc(Nvox,sizeof(short));
+   INFO_message("Setting up arrays.");
 
 	if(HAVEMASK) {
+
+      insetMASK = THD_open_dataset(in_MASK) ;
+      if( (insetMASK == NULL ))
+         ERROR_exit("Can't open time series dataset '%s'.",in_MASK);
+      
+      DSET_load(insetMASK); CHECK_LOAD_ERROR(insetMASK);
+      if((Dim[0] != DSET_NX(insetMASK)) || (Dim[1] != DSET_NY(insetMASK)) ||
+         (Dim[2] != DSET_NZ(insetMASK)) )
+         ERROR_exit("The xyz-dimensions of maskset and inset don't match");
+
+
 		Larray=0;
 		for ( i = 0 ; i < Nvox ; i++ ) 
-			if( THD_get_voxel(insetMASK,i,0)>0 ) 
+			if( THD_get_voxel(insetMASK,i,0)>0 ) {
+            minimask[i]=1;
 				Larray++;
+         }
+
+      DSET_delete(insetMASK);
+      free(insetMASK);
+      
 	}
-	else
+	else {		
+      for ( i = 0 ; i < Nvox ; i++ ) 
+         minimask[i]=1;
 		Larray=Nvox;
+   }
+      
+   
+
+
 
 	Data_Ref = calloc( REFBRIKS, sizeof(double *) );
 	for ( j = 0 ; j < REFBRIKS ; j++ ) 
@@ -370,18 +412,20 @@ int main(int argc, char *argv[]) {
 	// ****************************************************************
 	// ****************************************************************
 
-	idx=0;
-	for ( i = 0 ; i < Nvox ; i++ ) {
-		for( m=0 ; m<REFBRIKS ; m++ ) {
-			Data_Ref[m][idx] = THD_get_voxel(insetREF,i,m)*dabs(THD_get_voxel(insetREF,i,m));
-		}
-		for( m=0 ; m<Dim[3] ; m++ ) 
-			Data_In[m][idx] = THD_get_voxel(inset,i,m)*
-				dabs(THD_get_voxel(inset,i,m));
-		if( (HAVEMASK && ( THD_get_voxel(insetMASK,i,0)>0 )) || (HAVEMASK==0) )
-			idx++;
-		
-	}
+   
+	for ( i = 0 ; i < Nvox ; i++ ) 
+      if( minimask[i] ) {
+         for( m=0 ; m<REFBRIKS ; m++ ) {
+            Data_Ref[m][idx] = THD_get_voxel(insetREF,i,m)*
+               dabs(THD_get_voxel(insetREF,i,m));
+         }
+         for( m=0 ; m<Dim[3] ; m++ ) 
+            Data_In[m][idx] = THD_get_voxel(inset,i,m)*
+               dabs(THD_get_voxel(inset,i,m));
+         idx++;
+      }
+   
+   INFO_message("Correlating.");
 
 	if(ONLY_DICE_THR)
 		for( m=0 ; m< REFBRIKS ; m++ ) 
@@ -457,6 +501,7 @@ int main(int argc, char *argv[]) {
 			printf("\t%.4f",Stats_Matr[n][m][0]);
 		}}
 		printf("\n");*/
+   INFO_message("Final counting and writing.");
 
 		
 	// to find where any unmatches are
@@ -518,10 +563,12 @@ int main(int argc, char *argv[]) {
 		ERROR_exit("Can't overwrite existing dataset '%s'",
 					  DSET_HEADNAME(outset));
 	
-	temp_arr = calloc( REFBRIKS,sizeof(temp_arr));//+Nunmatch_IN,sizeof(temp_arr));//@@
+	temp_arr = calloc( REFBRIKS,sizeof(temp_arr));
+   //+Nunmatch_IN,sizeof(temp_arr));//@@
 	for(i=0 ; i<REFBRIKS ; i++) //+Nunmatch_IN ; i++) 
 		temp_arr[i] = calloc( Nvox,sizeof(float) ); 
-	MatchCC = calloc( Dim[3],sizeof(MatchCC));//+Nunmatch_IN,sizeof(MatchCC));//@@
+	MatchCC = calloc( Dim[3],sizeof(MatchCC));
+   //+Nunmatch_IN,sizeof(MatchCC));//@@
 	for(i=0 ; i<Dim[3] ; i++) //+Nunmatch_IN ; i++) 
 		MatchCC[i] = calloc( Nvox,sizeof(float) ); 
 
@@ -640,6 +687,19 @@ int main(int argc, char *argv[]) {
 	fclose(fout1);    
 
 
+   INFO_message("DONE.  You can now check your outputs as follows:");
+   INFO_message("%s is a reorganized form of the refset -> best match per "
+                "inset brick.\n"
+                "\t Overlay on the inset '%s' to check matches visually.\n"
+                "\t The associated correlation & Dice quantities are in '%s'.",
+                prefix2, in_name, out_corr2);
+   INFO_message("%s is a reorganized form of the inset -> best match per "
+                "refset brick.\n"
+                "\t Overlay on the refset '%s' to check matches visually.\n"
+                "\t The associated correlation & Dice quantities are in '%s'.",
+                prefix1, in_REF, out_corr);
+
+
 	// ************************************************************
 	// ************************************************************
 	//                    Freeing
@@ -652,8 +712,6 @@ int main(int argc, char *argv[]) {
 	free(insetREF);
 	free(outset);
 	free(outset2);
-	DSET_delete(insetMASK);
-	free(insetMASK);
 
 	for( i=0 ; i<Dim[3] ; i++)
 		for( j=0 ; j<REFBRIKS ; j++)
@@ -674,7 +732,9 @@ int main(int argc, char *argv[]) {
 	free(InvMatchList2);
 
 	free(Dim); 
-	free(prefix);
+   if( HAVEPREFIX )
+      free(prefix);
+	free(minimask);
 
 	return 0;
 }

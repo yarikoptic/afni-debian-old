@@ -135,11 +135,11 @@ class RegWrap:
              helpstr="Resolution used for computing initial transform (cubic only)\n")
       self.valid_opts.add_opt('-affine_input_xmat', 1,deflist=['AUTO'],\
              helpstr="Affine transform to put input in standard space.\n"\
-                     "Special values are 'AUTO' to use @auto_tlrc\n"\
-                     "                   'ID' to do nothing\n"\
-                     "                   'FILE.1D' for a pre-computed matrix\n"\
-                     "                             FILE.1D will get applied to\n"\
-                     "                             the input before Qwarping\n")
+                     "Special values are:\n"\
+                     "    'AUTO' to use @auto_tlrc\n"\
+                     "    'ID' to do nothing\n"\
+                     "    'FILE.1D' for a pre-computed matrix FILE.1D will\n"\
+                     "              get applied to the input before Qwarping\n")
       self.valid_opts.add_opt('-smooth_anat', -1,[],\
              helpstr="Smooth anatomy before registration\n")
       self.valid_opts.add_opt('-smooth_base', -1,[],\
@@ -150,9 +150,9 @@ class RegWrap:
              helpstr="Set directory for output datasets\n")
       
       self.valid_opts.add_opt('-followers', npar=-1, deflist=[],\
-             helpstr="Spercify follower datasets\n")
+             helpstr="Specify follower datasets\n")
       self.valid_opts.add_opt('-affine_followers_xmat', npar=-1, deflist=[],\
-             helpstr="Spercify follower datasets' affine transforms\n")    
+             helpstr="Specify follower datasets' affine transforms\n")    
       self.valid_opts.trailers = 0   # do not allow unknown options
         
   
@@ -340,8 +340,11 @@ class RegWrap:
                print "   %-20s   %s" % \
                   ("   allowed:" , string.join(opt.acceptlist,', '))
             if (opt.deflist):
-               print "   %-20s   %s" % \
-                  ("   default:",string.join(opt.deflist,' '))
+               if type(opt.deflist[0]) != str:  # 31 Mar 2014 [rickr]
+                  print "   %-20s   %s" % ("   default:",opt.deflist)
+               else:
+                  print "   %-20s   %s" % \
+                     ("   default:",string.join(opt.deflist,' '))
       return 1
    
    # remove all the temporary files for epi and anat base names
@@ -683,7 +686,7 @@ class RegWrap:
       
       return (n,w)
       
-   def qwarp_applying(self, a, aff, wrp, prefix=None, dxyz=0.0):
+   def qwarp_applying(self, a, aff, wrp, prefix=None, dxyz=0.0, master=None):
       self.info_msg( "Applying warps to %s" % \
            ( a.input() ))
       if (prefix==None):
@@ -700,15 +703,20 @@ class RegWrap:
             dxopt = ""
          else:
             dxopt = "-dxyz %f" % dxyz
+
+         # warp datasets may need to grow, so allow for a different master
+         if master == None: mast_str = "NWARP"
+         else:              mast_str = "%s" % master.input()
+
          com = shell_com(  \
                 "3dNwarpApply          "\
                 "-nwarp %s             "\
-                "-master NWARP         "\
+                "-master %s            "\
                 "     %s   %s          "\
                 "-source %s            "\
                 "-prefix %s            "\
-                % ( wrp.input(), waff, dxopt, a.input(), n.input()), \
-                ps.oexec)
+                % ( wrp.input(), mast_str, waff, dxopt, a.input(), n.input()),
+                    ps.oexec)
          com.run()
          if (not n.exist() and not ps.dry_run()):
             n.show()
@@ -781,7 +789,9 @@ if __name__ == '__main__':
    a, ps.warp_input_xform = ps.qwarping(a=a, b=b)
    
    #apply warps
-   aw = ps.qwarp_applying(a=ps.input, aff=ps.affine_input_xmat, wrp=ps.warp_input_xform)
+   # warp datasets may grow, so pass base as master     26 Mar 2014 [rcr/zss]
+   aw = ps.qwarp_applying(a=ps.input, aff=ps.affine_input_xmat,
+                          wrp=ps.warp_input_xform, master=b)
    
    ps.save_history(aw, ps.oexec)
    

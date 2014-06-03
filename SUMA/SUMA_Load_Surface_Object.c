@@ -352,6 +352,10 @@ SUMA_Boolean SUMA_Save_Surface_Object (void * F_name, SUMA_SurfaceObject *SO,
       SUMA_RETURN(NOPE);
    }
    switch (SO_FT) {
+      case SUMA_OBJ_MESH:
+         SUMA_S_Err("Nothing for OBJ_MESH yet");
+         SUMA_RETURN(NOPE);
+         break;
       case SUMA_OPENDX_MESH:
          if (!SUMA_OpenDX_Write ((char *)F_name, SO)) {
             fprintf (SUMA_STDERR, 
@@ -600,7 +604,7 @@ SUMA_Boolean SUMA_PrepSO_GeomProp_GL(SUMA_SurfaceObject *SO)
    #ifdef DO_SCALE
    /* Now do some scaling */
    SUMA_LH("In scale section");
-   if ((SO->aMaxDims - SO->aMinDims) > SUMA_TESSCON_DIFF_FLAG) {
+   if ( (SO->aMaxDims - SO->aMinDims) > SUMA_TESSCON_DIFF_FLAG) {
       fprintf (stdout,  "\n"
                         "\n"
                         "WARNING %s:\n"
@@ -860,6 +864,8 @@ SUMA_SurfaceObject * SUMA_Load_Surface_Object_eng (
          break;
       case SUMA_PLY:
          break;
+      case SUMA_OBJ_MESH:
+         break;
       case SUMA_MNI_OBJ:
          break;
       case SUMA_OPENDX_MESH:
@@ -980,12 +986,42 @@ SUMA_SurfaceObject * SUMA_Load_Surface_Object_eng (
                   SO->SUMA_VolPar_Aligned = YUP;
                   /*SUMA_Show_VolPar(SO->VolPar, NULL);*/
                }
-         }
+            }
          } else { 
             SO->SUMA_VolPar_Aligned = NOPE;
          }
 
          SO->normdir = -1;  /* negative */
+         break;
+     case SUMA_OBJ_MESH:
+         { 
+            if (!(SUMA_OBJ_Read_SO((char *)SO_FileName_vp, SO, NULL))) {
+               SUMA_S_Err("Failed to read %s", (char *)SO_FileName_vp);
+               SUMA_RETURN(NULL);
+            }
+            /* Don't change ID here, that is done inside SUMA_OBJ_Read_SO */     
+            /* change coordinates to align them with volparent data set, 
+               if possible */
+            if (VolParName != NULL) {
+               SO->VolPar = SUMA_VolPar_Attr (VolParName);
+               if (SO->VolPar == NULL) {
+                  SUMA_S_Err("Failed to load parent volume attributes.\n");
+               } else {
+                  if (!SUMA_Align_to_VolPar (SO, NULL)) 
+                     SO->SUMA_VolPar_Aligned = NOPE;
+                  else {
+                     SO->SUMA_VolPar_Aligned = YUP;
+                     /*SUMA_Show_VolPar(SO->VolPar, NULL);*/
+                  }
+               }
+            } else { 
+               SO->SUMA_VolPar_Aligned = NOPE;
+            }
+
+            SO->normdir = -1;  /* negative */
+            break;
+            
+         }
          break;
      case SUMA_PREDEFINED:
          i1 = SUMA_is_predefined_SO_name((char *)SO_FileName_vp, &par, 
@@ -3311,8 +3347,8 @@ SUMA_SurfaceObject * SUMA_Load_Spec_Surf(
    } /* load MNI_OBJ format surface */
 
    if (!brk && SUMA_iswordin(Spec->SurfaceType[i], "OpenDX") == 1) {
-
-      SO = SUMA_Load_Surface_Object_eng ((void *)Spec->SurfaceFile[i], SUMA_OPENDX_MESH, SUMA_ASCII, tmpVolParName, debug);
+      SO = SUMA_Load_Surface_Object_eng ((void *)Spec->SurfaceFile[i], 
+                        SUMA_OPENDX_MESH, SUMA_ASCII, tmpVolParName, debug);
 
       if (SO == NULL)   {
          fprintf(SUMA_STDERR,"Error %s: could not load SO\n", FuncName);
@@ -3321,6 +3357,19 @@ SUMA_SurfaceObject * SUMA_Load_Spec_Surf(
       SurfIn = YUP;
       brk = YUP;
    } /* load OpenDX format surface */
+   
+   if (!brk && SUMA_iswordin(Spec->SurfaceType[i], "OBJ") == 1) {
+      SO = SUMA_Load_Surface_Object_eng ((void *)Spec->SurfaceFile[i], 
+                        SUMA_OBJ_MESH, SUMA_ASCII, tmpVolParName, debug);
+
+      if (SO == NULL)   {
+         fprintf(SUMA_STDERR,"Error %s: could not load SO\n", FuncName);
+         SUMA_RETURN(NULL);
+      }
+      SurfIn = YUP;
+      brk = YUP;
+   } /* load OBJ_MESH format surface */
+   
    
    if (!brk && SUMA_iswordin(Spec->SurfaceType[i], "Predefined") == 1) {
 
@@ -3684,8 +3733,8 @@ SUMA_Boolean SUMA_Load_SO_NodeMarker(SUMA_SurfaceObject *SO,
          if (SO->NodeNIDOObjects[i]) SUMA_free_NIDO(SO->NodeNIDOObjects[i]);
       SUMA_free(SO->NodeNIDOObjects);   SO->NodeNIDOObjects = NULL;
    }
-   SO->NodeNIDOObjects = SUMA_Multiply_NodeNIDOObjects( 
-                                                SO,  SO->CommonNodeObject);
+   SO->NodeNIDOObjects = 
+      SUMA_Multiply_NodeNIDOObjects(SO,  SO->CommonNodeObject, NULL, -1);
    #endif
    
    SUMA_RETURN(YUP);
@@ -4586,6 +4635,7 @@ char * SUMA_SurfaceFileName (SUMA_SurfaceObject * SO, SUMA_Boolean MitPath)
       case SUMA_FREE_SURFER_PATCH:
       case SUMA_BRAIN_VOYAGER:
       case SUMA_OPENDX_MESH:
+      case SUMA_OBJ_MESH:
       case SUMA_BYU:
       case SUMA_GIFTI:
       case SUMA_PREDEFINED:
@@ -4613,6 +4663,7 @@ char * SUMA_SurfaceFileName (SUMA_SurfaceObject * SO, SUMA_Boolean MitPath)
       case SUMA_FREE_SURFER_PATCH:
       case SUMA_PLY:
       case SUMA_OPENDX_MESH:
+      case SUMA_OBJ_MESH:
       case SUMA_BYU:
       case SUMA_GIFTI:
       case SUMA_PREDEFINED:
@@ -4659,6 +4710,7 @@ char SUMA_GuessAnatCorrect(SUMA_SurfaceObject *SO)
       case SUMA_FREE_SURFER:
       case SUMA_FREE_SURFER_PATCH:
       case SUMA_OPENDX_MESH:
+      case SUMA_OBJ_MESH:
       case SUMA_PLY:
       case SUMA_BYU:
       case SUMA_MNI_OBJ:
@@ -4787,6 +4839,7 @@ SUMA_SO_SIDE SUMA_GuessSide(SUMA_SurfaceObject *SO)
       case SUMA_FT_ERROR:
          break;
       case SUMA_OPENDX_MESH:
+      case SUMA_OBJ_MESH:
       case SUMA_BYU:
       case SUMA_MNI_OBJ:
       case SUMA_PREDEFINED:
@@ -4891,6 +4944,7 @@ int SUMA_SetSphereParams(SUMA_SurfaceObject *SO, float tol)
          case SUMA_FT_ERROR:
             break;
          case SUMA_OPENDX_MESH:
+         case SUMA_OBJ_MESH:
          case SUMA_MNI_OBJ:
          case SUMA_PLY:
             break;
@@ -5485,20 +5539,18 @@ int SUMA_is_predefined_SO_name(char *name, int *upar,
                   !strcasecmp(nisa->str[ii],"rl") ) {  /* side */
          side = SUMA_LR;           
       } else if (!leftover) { /* state/surf name, potentially */
-         leftover = nisa->str[ii];
+         if (nisa->str[ii] && nisa->str[ii][0] != '\0') leftover = nisa->str[ii];
       } else { /* Uncool, get out */
          StdOK = 0;
       }
    }
    
-   SUMA_LH("aa");
    if (!template && leftover) { /* Not a standard name */
       SUMA_free_NI_str_array(nisa); nisa = NULL;
       if (upar) *upar = -1;
       SUMA_RETURN(0);
    }
    
-   SUMA_LH("bb");
    if (!template) {
       SUMA_free_NI_str_array(nisa); nisa = NULL;
       if (upar) *upar = par;
@@ -5524,7 +5576,7 @@ int SUMA_is_predefined_SO_name(char *name, int *upar,
             specname = SUMA_append_replace_string(specname,"_both.spec",spref,1);
             break;
       }
-      ss = find_afni_file(specname, 0);
+      ss = find_afni_file(specname, 0, NULL);
       if (ss[0] == '\0') {
          SUMA_S_Errv("Spec file %s not found despite effort\n", specname);
          SUMA_ifree(specname); specname = NULL;
@@ -5535,13 +5587,13 @@ int SUMA_is_predefined_SO_name(char *name, int *upar,
          SUMA_free(specname); specname = SUMA_copy_string(ss);
          tp = 3;
       }
-   SUMA_LH("bbcc %s", specname);
+   
       svname = SUMA_append_replace_string(template,spref,"/",0);
       svname = SUMA_append_replace_string(svname,"_SurfVol.nii","",1);
-      ss = find_afni_file(svname, 0);
+      ss = find_afni_file(svname, 0, NULL);
       if (ss[0] == '\0') {/* try one more time */
          svname = SUMA_append_replace_string(svname,".gz","",1);
-         ss = find_afni_file(svname, 0);
+         ss = find_afni_file(svname, 0, NULL);
       }
       if (ss[0] == '\0') {
          SUMA_S_Warnv("No sv found for %s\n", specname);
@@ -5550,7 +5602,7 @@ int SUMA_is_predefined_SO_name(char *name, int *upar,
          SUMA_free(svname); svname=SUMA_copy_string(ss);
       }
    }
-   SUMA_LH("cc %s, leftover %s", svname, leftover);
+
    /* So now we have a template spec, do we have a request for a particular 
       surface ? */
    if (leftover) {

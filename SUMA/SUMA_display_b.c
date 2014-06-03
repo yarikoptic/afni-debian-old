@@ -1226,7 +1226,7 @@ void SUMA_MaskTableLabel_EV ( Widget w , XtPointer cd ,
          case 0:
             if (bev->button == Button1) {
                /* Add a new mask and update the table */
-               if (SUMA_NewSymMaskDO()<0) {
+               if (SUMA_NewSymMaskDO(NULL)<0) {
                   SUMA_S_Err("Failed create new mask");
                   SUMA_RETURNe;
                } 
@@ -2196,55 +2196,83 @@ SUMA_Boolean  SUMA_InitMasksTable(SUMA_X_SurfCont *SurfCont)
    SUMA_RETURN(YUP);
 }
 
-int SUMA_NewSymMaskDO(void) 
+int SUMA_NewSymMaskDO(SUMA_ALL_DO *ado) 
 {
    static char FuncName[]={"SUMA_NewSymMaskDO"};
    SUMA_MaskDO *mdo=NULL;
+   float cen[3] = {0, 0, 0};
    int ido;
    static int icall=0;
    char mtype[32], hid[32];
+   char symstr[256]={"sphere(0, 0, 0; 20, 20, 20)"};
    SUMA_Boolean LocalHead = NOPE;
    
    SUMA_ENTRY;
    
    ido = -1;
    sprintf(hid,"msk%d", icall); 
-   mdo = SUMA_SymMaskDO("sphere(0, 0, 0; 20, 20, 20)", mtype, hid, 0);
+   mdo = SUMA_SymMaskDO(symstr, mtype, hid, 0);
+   
+   if (!ado) {
+      ado = (SUMA_ALL_DO *)SUMA_findanyTDOp_inDOv(SUMAg_DOv, SUMAg_N_DOv, NULL);
+   }
+   if (ado) {
+      SUMA_ADO_Center(ado, cen);
+   }
+   
    switch(icall) {
       case 0:{
          float cc[4] = {1, 1, 1, 1};
+         SUMA_Set_MaskDO_Cen(mdo, cen);
          SUMA_Set_MaskDO_Color(mdo, cc, -1);
          break; }
       case 1:{
          float cc[4] = {1, 0, 0, 1};
-         float cen[3] = {37, -66, -19};
+         cen[0] += 40; 
+         cen[1] -= 65;
+         cen[2] -= 20;
          SUMA_Set_MaskDO_Color(mdo, cc, -1);
          SUMA_Set_MaskDO_Cen(mdo, cen);
          break; }
       case 2:{
          float cc[4] = {0, 1, 0, 1};
-         float cen[3] = {-26, -76, -6};
+         cen[0] -= 25; 
+         cen[1] -= 65;
+         cen[2] -= 5;
          SUMA_Set_MaskDO_Color(mdo, cc, -1);
          SUMA_Set_MaskDO_Cen(mdo, cen);
          break; }
       case 3:{
          float cc[4] = {0, 0, 1, 1};
-         float cen[3] = {-24,-73,-8.5};
+         cen[0] += 0; 
+         cen[1] += 35;
+         cen[2] += 10;
          SUMA_Set_MaskDO_Color(mdo, cc, -1);
          SUMA_Set_MaskDO_Cen(mdo, cen);
          break; }
       case 4: {
          float cc[4] = {1, 1, 0, 1};
-         float cen[3] = {59.2,-7.2,-42};
+         cen[0] += 60; 
+         cen[1] -= 10;
+         cen[2] -= 40;
          SUMA_Set_MaskDO_Color(mdo, cc, -1);
+         SUMA_Set_MaskDO_Cen(mdo, cen);
          break; }
       case 5: {
          float cc[4] = {0, 1, 1, 1};
+         cen[0] += 20; 
+         cen[1] -= 40;
+         cen[2] += 10;
          SUMA_Set_MaskDO_Color(mdo, cc, -1);
+         SUMA_Set_MaskDO_Cen(mdo, cen);
          break; }
       case 6: {
          float cc[4] = {1, 0, 1, 1};
+         cen[0] -= 20; 
+         cen[1] += 40;
+         cen[2] -= 10;
          SUMA_Set_MaskDO_Color(mdo, cc, -1);
+         SUMA_Set_MaskDO_Cen(mdo, cen);
          break; }
       default: {
          float cc[4] = {1, 0, 1, 1};
@@ -2369,7 +2397,7 @@ void SUMA_cb_Mask (Widget w, XtPointer client_data, XtPointer callData)
       SUMA_ShadowMaskDO(NULL);   
       /* Now Need to create a new Mask for real*/
       SUMA_LH("Need a new mask");
-      if ((ido = SUMA_NewSymMaskDO())<0) {
+      if ((ido = SUMA_NewSymMaskDO(NULL))<0) {
          SUMA_S_Err("Failed to create SymMask");
          SUMA_RETURNe;
       }
@@ -2415,6 +2443,7 @@ void SUMA_cb_Mask_Delete(Widget wcall, XtPointer cd1, XtPointer cbs)
    int found=0, ii, rownum=-1;
    char *ado_id = NULL;
    SUMA_X_SurfCont *SurfCont = NULL;
+   SUMA_SurfaceViewer *sv=NULL;
    SUMA_Boolean LocalHead = NOPE;
    
    SUMA_ENTRY;
@@ -2519,6 +2548,23 @@ void SUMA_cb_Mask_Delete(Widget wcall, XtPointer cd1, XtPointer cbs)
                   }
                }
             }
+            
+            /* Make sure  object is not the one selected for mouse movement */
+            for (ii=0; ii<SUMAg_N_SVv; ++ii) {
+               sv = SUMAg_SVv+ii;
+               if ( sv && sv->MouseMode_ado_idcode_str) {
+                  if ( !strcmp(sv->MouseMode_ado_idcode_str, ado_id)) {
+                     SUMA_LH("Mask selected mask will be deleted, leave mask"
+                             "manip mode.");
+                     if (!SUMA_SetMouseMode(sv,SUMA_MASK_MANIP_MMODE,NULL)) {
+                        SUMA_S_Warn("Mask manip mode could not be set");
+                     }
+                  } 
+               }
+            }
+   
+
+            
             /* unregister do from all viewers */
             SUMA_UnRegisterDO_idcode(ado_id,NULL);
       
@@ -2572,6 +2618,7 @@ SUMA_Boolean SUMA_DeleteMask(char *ado_id)
    SUMA_ALL_DO *ado = NULL, *curDO = NULL;
    int found = -1, OKtable=0, ii;
    SUMA_X_SurfCont *SurfCont = NULL;
+   SUMA_SurfaceViewer *sv = NULL;
    SUMA_Boolean LocalHead = NOPE;
    
    SUMA_ENTRY;
@@ -2614,6 +2661,19 @@ SUMA_Boolean SUMA_DeleteMask(char *ado_id)
       }
    }
    
+   /* Make sure this object is not the one selected for mouse movement */
+   for (ii=0; ii<SUMAg_N_SVv; ++ii) {
+      sv = SUMAg_SVv+ii;
+      if ( sv && sv->MouseMode_ado_idcode_str) {
+         if ( !strcmp(sv->MouseMode_ado_idcode_str, ado_id)) {
+            SUMA_LH("Woops, can't be in mask manip mode any more");
+            if (!SUMA_SetMouseMode(sv,SUMA_MASK_MANIP_MMODE,NULL)) {
+               SUMA_S_Warn("Mask manip mode could not be set");
+            }
+         } 
+      }
+   }
+   
    /* unregister do from all viewers */
    SUMA_UnRegisterDO_idcode(ado_id,NULL);
 
@@ -2622,7 +2682,7 @@ SUMA_Boolean SUMA_DeleteMask(char *ado_id)
       SUMA_S_Err("Failed to dump DO");
       SUMA_RETURNe;
    }
-
+   
    if (found >= 0 && SurfCont && SurfCont->MaskTable) {
       if (!SUMA_ModifyTable(SurfCont->MaskTable, 
                            SurfCont->MaskTable->Ni-1)) {
@@ -3256,6 +3316,26 @@ void SUMA_cb_ShowVrF_toggled(Widget w, XtPointer data, XtPointer client_data)
    SUMA_RETURNe;
 }
 
+void SUMA_cb_VSliceAtXYZ_toggled(Widget w, XtPointer data, XtPointer client_data)
+{
+   static char FuncName[]={"SUMA_cb_VSliceAtXYZ_toggled"};
+   SUMA_ALL_DO *ado = NULL;
+   SUMA_X_SurfCont *SurfCont=NULL;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   
+   SUMA_LH("Called");
+   
+   ado = (SUMA_ALL_DO *)data;
+   if (!ado || !(SurfCont=SUMA_ADO_Cont(ado))) { 
+      SUMA_S_Warn("NULL input"); SUMA_RETURNe; }
+      
+   SUMA_SetShowSlice((SUMA_VolumeObject *)ado, "AtXYZ", 
+                      XmToggleButtonGetState (SurfCont->VSliceAtXYZ_tb));
+   SUMA_RETURNe;
+}
+
 /*!
    \brief This function is called when mouse pointer leaves slice field
    modeled after SUMA_leave_SliceField
@@ -3840,3 +3920,127 @@ SUMA_Boolean SUMA_SaveMultiMasks_eng (char *filename)
    SUMA_RETURN(YUP);
 }
 
+/* 
+   *************** Convolution functions *************** 
+   based on example in glut's convolve.c by  
+   Tom McReynolds, SGI 
+   *****************************************************
+*/
+
+/* identity filter */
+void SUMA_C_identity(SUMA_C_FILTER *mat)
+{
+  int n, size;
+  size = mat->rows * mat->cols;
+
+  mat->array[0] = 1.f;
+  for(n = 1; n < size; n++)
+    mat->array[n] = 0.f;
+
+  mat->scale = 1.f;
+  mat->bias = 0.f;
+}
+
+
+/* create a new filter with identity filter in it */
+SUMA_C_FILTER * SUMA_C_newfilter(int rows, int cols)
+{
+  SUMA_C_FILTER *mat;
+
+  mat = (SUMA_C_FILTER *)malloc(sizeof(SUMA_C_FILTER));
+  mat->rows = rows;
+  mat->cols = cols;
+  mat->array = (GLfloat *)malloc(rows * cols * sizeof(GLfloat));
+  SUMA_C_identity(mat);
+  
+  return(mat);
+}
+
+void SUMA_C_free(SUMA_C_FILTER *mat)
+{
+   if (!mat) return;
+   if (mat->array) free(mat->array);
+   free(mat);
+   return;
+}
+
+/* doesn't re-initialize matrix */
+void SUMA_C_resize(SUMA_C_FILTER *mat, int rows, int cols)
+{
+  if(mat->rows != rows ||
+     mat->cols != cols) {
+    mat->array = (GLfloat *)realloc(mat->array, rows * cols * sizeof(GLfloat));
+  }
+  mat->rows = rows;
+  mat->cols = cols;
+}
+
+
+/* box filter blur */
+void SUMA_C_box(SUMA_C_FILTER *mat)
+{
+  int n, count;
+  GLfloat blur;
+
+  count = mat->cols * mat->rows;
+  blur = 1.f/count;
+  for(n = 0; n < count; n++)
+     mat->array[n] = blur;
+
+  mat->scale = 1.f;
+  mat->bias = 0.f;
+}
+
+/* sobel filter */
+void SUMA_C_sobel(SUMA_C_FILTER *mat)
+{
+  static GLfloat sobel[] = {-.5f, 0.f, .5f,
+                            -1.f, 0.f, 1.f,
+                            -.5f, 0.f, .5f};
+
+  /* sobel is fixed size */
+  SUMA_C_resize(mat, 3, 3); /* will do nothing if size is right already */
+  
+  memcpy(mat->array, sobel, sizeof(sobel));
+
+  mat->scale = 2.f;
+  mat->bias = 0.f;
+}
+
+/* laplacian filter */
+void SUMA_C_laplace(SUMA_C_FILTER *mat)
+{
+  static GLfloat laplace[] = {  0.f, -.25f,   0.f,
+                              -.25f,   1.f, -.25f,
+                                0.f, -.25f,   0.f};
+
+  /* sobel is fixed size */
+  SUMA_C_resize(mat, 3, 3); /* will do nothing if size is right already */
+  
+  memcpy(mat->array, laplace, sizeof(laplace));
+
+  mat->scale = 4.f;
+  mat->bias = .125f;
+}
+
+void SUMA_C_convolve(SUMA_SurfaceViewer *csv, SUMA_DO *dov, SUMA_C_FILTER *mat)
+{
+  int i, j;
+  int imax, jmax;
+
+  imax = mat->cols;
+  jmax = mat->rows;
+  for(j = 0; j < jmax; j++) {
+      for(i = 0; i < imax; i++) {
+        glViewport(-i, -j, csv->X->aWIDTH - i, csv->X->aHEIGHT - j);
+        SUMA_display_one(csv, dov);
+        glAccum(GL_ACCUM, mat->array[i + j * imax]);
+      }
+  }
+  if (jmax > 0 && imax > 0) {
+   glViewport(0, 0, csv->X->aWIDTH, csv->X->aHEIGHT);
+  }
+}
+
+
+/* *************** End Convolution utilities *************** */

@@ -285,8 +285,8 @@ void AFNI_syntax(void)
      "-----------------------------------------------------\n"
      "USAGE 2: read in images for 'quick and dirty' viewing\n"
      "-----------------------------------------------------\n"
-     "(Most advanced features of AFNI will be disabled.)\n"
-     "(The aiv program can be used now instead of AFNI.)\n"
+     "** Most advanced features of AFNI will be disabled **\n"
+     "** The aiv program can be used now instead of AFNI **\n"
      "\n"
      "   afni -im [options] im1 im2 im3 ...\n"
      "\n"
@@ -347,6 +347,10 @@ void AFNI_syntax(void)
      "where 'dname1' is the name of a dataset, etc.  With this option, only\n"
      "the chosen datasets are read in, and they are all put in the same\n"
      "'session'.  Follower datasets are not created.\n"
+     "* If you wish to be very tricksy, you can read in .1D files as datasets\n"
+     "  using the \\' transpose syntax, as in\n"
+     "     afni Fred.1D\\'\n"
+     "  However, this isn't very useful (IMHO).\n"
      "\n"
     MASTER_HELP_STRING
      "\n"
@@ -359,6 +363,7 @@ void AFNI_syntax(void)
      "GENERAL OPTIONS (for any usage)\n"
      "-------------------------------\n"
      "\n"
+     "   -papers      Prints out the list of AFNI papers, and exits.\n"
      "   -q           Tells afni to be 'quiet' on startup\n"
      "   -Dname=val   Sets environment variable 'name' to 'val' inside AFNI;\n"
      "                  will supersede any value set in .afnirc.\n"
@@ -392,6 +397,7 @@ void AFNI_syntax(void)
      "   -nomall      Disables use of the mcw_malloc() library routines.\n"
 #endif
      "   -motif_ver   Show the applied motif version string.\n"
+     "   -no_detach   Do not detach from the terminal.\n"
      "   -get_processed_env   Show applied AFNI/NIFTI environment varables.\n"
      "   -global_opts Show options that are global to all AFNI programs.\n"
      "   -goodbye     Print a 'goodbye' message and exit (just for fun).\n"
@@ -436,81 +442,8 @@ void AFNI_syntax(void)
 #endif
    ) ;
 
+   AFNI_list_papers(NULL) ;  /* 02 May 2014 */
    printf(
-    "\n"
-    "-----------------------------------------------------------------\n"
-    "REFERENCES and some light bedtime reading (if you have insomnia)\n"
-    "-----------------------------------------------------------------\n"
-    "The following papers describe some of the components of the AFNI package.\n"
-    "\n"
-    "RW Cox.  AFNI: Software for analysis and visualization of functional\n"
-    "  magnetic resonance neuroimages.  Computers and Biomedical Research,\n"
-    "  29: 162-173, 1996.\n"
-    "\n"
-    "  * The first AFNI paper, and the one I prefer you cite if you want to\n"
-    "    refer to the AFNI package as a whole.\n"
-    " ** http://afni.nimh.nih.gov/sscc/rwcox/papers/CBM_1996.pdf\n"
-    "\n"
-    "RW Cox, A Jesmanowicz, and JS Hyde.  Real-time functional magnetic\n"
-    "  resonance imaging.  Magnetic Resonance in Medicine, 33: 230-236, 1995.\n"
-    "\n"
-    "  * The first paper on realtime FMRI; describes the algorithm used in\n"
-    "    3dfim+, the interactive FIM calculations, and in the realtime plugin.\n"
-    "  * http://afni.nimh.nih.gov/sscc/rwcox/papers/Realtime_FMRI.pdf\n"
-    "\n"
-    "RW Cox and JS Hyde.  Software tools for analysis and visualization of\n"
-    "  FMRI Data.  NMR in Biomedicine, 10: 171-178, 1997.\n"
-    "\n"
-    "  * A second paper about AFNI and design issues for FMRI software tools.\n"
-    "\n"
-    "RW Cox and A Jesmanowicz.  Real-time 3D image registration for\n"
-    "  functional MRI.  Magnetic Resonance in Medicine, 42: 1014-1018, 1999.\n"
-    "\n"
-    "  * Describes the algorithm used for image registration in 3dvolreg\n"
-    "    and in the realtime plugin.\n"
-    "  * I think the first paper to demonstrate realtime MRI volume image\n"
-    "    registration running on a standard workstation (not a supercomputer).\n"
-    "  * http://afni.nimh.nih.gov/sscc/rwcox/papers/RealtimeRegistration.pdf\n"
-    "\n"
-    "ZS Saad, KM Ropella, RW Cox, and EA DeYoe.  Analysis and use of FMRI\n"
-    "  response delays.  Human Brain Mapping, 13: 74-93, 2001.\n"
-    "\n"
-    "  * Describes the algorithm used in 3ddelay (cf. '3ddelay -help').\n"
-    "  * http://afni.nimh.nih.gov/sscc/rwcox/papers/Delays2001.pdf\n"
-    "\n"
-    "ZS Saad, G Chen, RC Reynolds, PP Christidis, KR Hammett, PSF Bellgowan,\n"
-    "  and RW Cox.  FIAC Analysis According to AFNI and SUMA.\n"
-    "  Human Brain Mapping, 27: 417-424, 2006.\n"
-    "\n"
-    "  * Describes how we used AFNI to analyze the FIAC contest data.\n"
-    "  * http://dx.doi.org/10.1002/hbm.20247\n"
-    "  * http://afni.nimh.nih.gov/sscc/rwcox/papers/FIAC_AFNI_2006.pdf\n"
-    "\n"
-    "ZS Saad, DR Glen, G Chen, MS Beauchamp, R Desai, RW Cox.\n"
-    "  A new method for improving functional-to-structural MRI alignment\n"
-    "  using local Pearson correlation.  NeuroImage 44: 839-848, 2009.\n"
-    "\n"
-    "  * Describes the algorithm used in 3dAllineate (and thence in\n"
-    "    align_epi_anat.py) for EPI-to-structural volume image registration.\n"
-    "  * http://dx.doi.org/10.1016/j.neuroimage.2008.09.037\n"
-    "  * http://afni.nimh.nih.gov/sscc/rwcox/papers/LocalPearson2009.pdf\n"
-    "\n"
-    "ZS Saad, RC Reynolds, BD Argall, S Japee, RW Cox.\n"
-    "  SUMA: An interface for surface-based intra- and inter-subject analysis\n"
-    "  within AFNI.  2004 IEEE International Symposium on Biomedical Imaging:\n"
-    "  from Nano to Macro.  IEEE, Arlington VA, pp. 1510-1513.\n"
-    "\n"
-    "  * A brief description of SUMA.\n"
-    "  * http://dx.doi.org/10.1109/ISBI.2004.1398837\n"
-    "  * http://afni.nimh.nih.gov/sscc/rwcox/papers/SUMA2004paper.pdf\n"
-    "\n"
-    "BD Argall, ZS Saad, MS Beauchamp.\n"
-    "  Simplified intersubject averaging on the cortical surface using SUMA.\n"
-    "  Human Brain Mapping 27: 14-27, 2006.\n"
-    "\n"
-    "  * Describes the 'standard mesh' surface approach used in SUMA.\n"
-    "  * http://dx.doi.org/10.1002/hbm.20158\n"
-    "  * http://afni.nimh.nih.gov/sscc/rwcox/papers/SUMA2006paper.pdf\n"
     "\n"
     "POSTERS on varied subjects from the AFNI development group can be found at\n"
     "  * http://afni.nimh.nih.gov/sscc/posters\n"
@@ -1212,6 +1145,12 @@ ENTRY("AFNI_parse_args") ;
          narg++ ; continue ;  /* go to next arg */
       }
 
+      /*----- -no_detach option -----*/
+
+      if( strncmp(argv[narg],"-no_detach",7) == 0 ){/* was handled in main() */
+         narg++ ; continue ;  /* go to next arg */
+      }
+
       /*----- -q option -----*/
 
       if( strcmp(argv[narg],"-q") == 0 ){            /* was handled in main() */
@@ -1385,6 +1324,7 @@ void AFNI_sigfunc_alrm(int sig)
 #undef  NMSG
 #define NMSG (sizeof(msg)/sizeof(char *))
    static char *msg[] = {
+     "All suspicion points to a Frost-Bellgowan conspiracy"          ,
      "Farewell, my friend"                                           ,
      "Farewell?  A long farewell to all my greatness"                ,
      "Sweet is the memory of distant friends"                        ,
@@ -1431,6 +1371,7 @@ void AFNI_sigfunc_alrm(int sig)
      "Little by little, one travels far"                             ,
      "Beyond all hope, set free to light"                            ,
      "Divide By Cucumber Error; Please Reinstall Universe and Reboot",
+     "Please re-inflate the multiverse and try again later"          ,
      "Out of Cheese Error; Please Install Wensleydale and Try Again" ,
      "Out of Cheese Error; Please Install Stilton and Try Again"     ,
      "Out of Wine Error: Please Install Port and Try Again"          ,
@@ -1473,11 +1414,13 @@ void AFNI_sigfunc_alrm(int sig)
      "Some cause happiness wherever they go; others whenever they go",
      "A man who does not think for himself does not think at all"    ,
      "The truth is rarely pure and never simple"                     ,
-     "Remember this: Everything popular is wrong"                    ,
      "I have nothing to declare except my genius"                    ,
      "In matters of opinion, all my adversaries are insane"          ,
+     "Everything is a matter of opinion: mine matters, yours doesn't",
+     "It's not a phase, it's a lifestyle"                            ,
      "Go to Heaven for the climate, Hell for the company"            ,
      "Am I the crazy one, or is it everyone else on Earth?"          ,
+     "Everyone's crazy but you and me (and I'm not sure about you)"  ,
      "Be sure to put your feet in the right place, then stand firm"  ,
      "May your cupcakes always have lots of rich creamy frosting"    ,
      "Never take a chocolate cupcake from an eel"                    ,
@@ -1494,6 +1437,7 @@ void AFNI_sigfunc_alrm(int sig)
      "What's your favorite kind of cookie?"                          ,
      "Step slowly away from the keyboard, and remain calm"           ,
      "Time for a nice walk, don't you think?"                        ,
+     "Meet me at the Leshan Dafo in Sichuan at 3pm next Wednesday"   ,
      "Meet me in Namche Bazaar next Thursday"                        ,
      "Meet me at Dashashwamedh Ghat in Varanasi for Agni Puja"       ,
      "See you in Dingboche next Christmas"                           ,
@@ -1514,12 +1458,47 @@ void AFNI_sigfunc_alrm(int sig)
      "I am not bound to please thee with my statistics"              ,
      "I will praise any man that will praise me"                     ,
      "If you have tears, prepare to shed them now"                   ,
-     "Remember -- nothing is always absolutely so"                   ,
+     "Remember -- Nothing is always absolutely so"                   ,
      "Remember -- 90% of everything is cr*p"                         ,
      "Remember -- Good things always take longer than you expect"    ,
      "Remember -- 'New and Improved' is neither"                     ,
      "Remember -- Murphy was an optimist"                            ,
+     "Remember -- Statistics are no substitute for judgment"         ,
+     "Remember -- A thing can be true, and still be desperate folly" ,
+     "Remember -- Everything popular is wrong"                       ,
+     "Forgive your enemy -- but remember the bastard's name"         ,
+     "If the facts don't fit the theory, change the facts"           ,
+     "All generalizations are false, including this one"             ,
+     "Facts are stubborn, but statistics are pliable"                ,
+     "I can prove anything with statistics, except the truth"        ,
+     "The chief function of the body is to carry the brain around"   ,
+     "Humor is the most significant activity of the human brain"     ,
+     "Tears are not a sign of weakness, but a sign of a pure heart"  ,
+     "Eventually, everything goes away"                              ,
+     "You never know what you had until you've lost it"              ,
+     "Gone. The saddest word in any language"                        ,
+     "An ounce of practice is worth more than a ton of preaching"    ,
+     "Even if you a minority of one, the truth is still the truth"   ,
+     "Money talks, but usually just to say 'Goodbye'"                ,
+     "Are you a Bayesian Heretic or a Frequentist True Believer?"    ,
+     "Are you ready for the Big Rip?"                                ,
+     "I hereby declare the Null Hypothesis to be ........ Falsified" ,
+     "I'm sick of thinking about p-values -- how about you?"         ,
+     "Did you fail to negate the opposite of the null hypothesis?"   ,
+     "All suspicion points to a Frost-Bellgowan plot"                ,
+     "I'd like to live as a poor man with lots of money"             ,
+     "Wine is proof that God loves us and wants to see us happy"     ,
+     "If two wrongs don't make a right, then try three; then four"   ,
+     "Life is hard; after all, it kills you"                         ,
+     "I'm sorry; if you were right, I'd agree with you"              ,
+     "Like dreams, statistics are a form of wish fulfillment"        ,
 
+     "A p-value of 0.05 means the null hypothesis is 29% likely to be correct"        ,
+     "There are lots of people who mistake their imagination for their memory"        ,
+     "I'm off to get some hot chocolate in Warsaw -- want to join me?"                ,
+     "Money can't buy happiness -- but I'm willing to give it a fair chance"          ,
+     "In ancient times, there were no statistics, so they just had to lie"            ,
+     "If your experiment needs statistics, you need a better experiment"              ,
      "Wirth's law -- software gets slower faster than hardware gets faster"           ,
      "How wouldst thou worst, I wonder, than thou dost, defeat, thwart me?"           ,
      "Meet me at the Torre Pendente di Pisa on the feast of St Rainerius"             ,
@@ -1542,6 +1521,27 @@ void AFNI_sigfunc_alrm(int sig)
      "In battle we may yet meet again, though all the hosts of Mordor stand between"  ,
      "Repeat after me: Om Mani Padme Hum, Om Mani Padme Hum, Om Mani Padme Hum ...."  ,
      "Let us therefore study the incidents of this as philosophy to learn wisdom from",
+
+     "\n  When someone says: I'm going to simplify things.\n"
+     "  They mean:         Be confused. Be very, very confused"                               ,
+
+     "\n  When someone says: I'm going to name the elephant in the room.\n"
+     "  They mean:         My next observation will be startlingly banal"                     ,
+
+     "\n  When someone says: We need to show leadership.\n"
+     "  They mean:         I should be in charge"                                             ,
+
+     "\n  When someone says: There needs to be a bottom-up process.\n"
+     "  They mean:         Nobody asked me about this"                                        ,
+
+     "\n  When someone says: The perfect is the enemy of the good.\n"
+     "  They mean:         Ignore everyone else's ideas and just use mine"                    ,
+
+     "\n  When someone says: Any other comments on this?\n"
+     "  They mean:         Will everyone please, for the love of all that is holy, shut up?"  ,
+
+     "\n  When someone says: I agree 100% with your concept,\n"
+     "  They mean:         I am implacably opposed to your proposal"
    } ;
 #undef NTOP
 #ifdef USE_SONNETS
@@ -1701,22 +1701,31 @@ int main( int argc , char *argv[] )
      dienow++ ;
    }
 
+   if( check_string("-papers",argc,argv) ){
+     AFNI_list_papers(NULL) ; dienow++ ;
+   }
+
    /*** if ordered, die right now ***/
 
    if( dienow ) exit(0) ;
 
    /*** otherwise, perhaps become all detached from reality ***/
 
-   PUTENV("AFNI_DETACH","YES") ;            /* Apr 2013 */
-   { char *eee = getenv("AFNI_DETACH") ;    /* 31 May 2011 */
-     if( YESSISH(eee) ){
-       ii = (int)fork();
-       if( ii != 0 ){         /* parent process dies now */
-         AFNI_sleep(2345) ;   /* msec */
-         fprintf(stderr,"++ AFNI is detached from terminal.\n") ;
-         _exit(0) ;
-       }
-     }
+   /* Since AFNI_DETACH is applied before machdep() or other my_getenv
+      calls, -D cannot be used to apply this env var, so add an option.
+                                                     7 Mar 2014 [rickr] */
+   if( ! check_string("-no_detach",argc,argv) ) {
+      PUTENV("AFNI_DETACH","YES") ;            /* Apr 2013 */
+      { char *eee = getenv("AFNI_DETACH") ;    /* 31 May 2011 */
+        if( YESSISH(eee) ){
+          ii = (int)fork();
+          if( ii != 0 ){         /* parent process dies now */
+            AFNI_sleep(2345) ;   /* msec */
+            fprintf(stderr,"++ AFNI is detached from terminal.\n") ;
+            _exit(0) ;
+          }
+        }
+      }
    }
 
    /*--- Initialize some stuff ---*/
@@ -3009,17 +3018,35 @@ STATUS("creating memplot for image overlay") ;
      create_memplot_surely( "SUMA_plot" , 1.0 ) ;
      mp = get_active_memplot() ;
 
-     /* plot surface stuff, if any */
+     /* plot surface stuff, if any (this is long) */
 
     if( do_surf ){
-     int ks ;
-     int kbest=-1 , ibest=-1 ;          /* 24 Feb 2003 */
+     int ks , qs , rs ;
+     int kbest=-1 , ibest=-1 ;              /* 24 Feb 2003 */
+     int nsurf; SUMA_surface **aglist=NULL; /* 07 Apr 2014 */
 
      AFNI_get_xhair_node( im3d , &kbest , &ibest ) ;   /* 24 Feb 2003 */
 
-     for( ks=0 ; ks < suss->su_num ; ks++ ){  /* 14 Aug 2002: loop over surfaces */
-      SUMA_surface *ag = suss->su_surf[ks] ;
-      int nn , ii,jj ;
+     /* Find all the surfaces to draw -- more complex after 07 Apr 2014 */
+
+     nsurf = suss->su_num ;
+     for( qs=0 ; qs < suss->su_nummask ; qs++ )
+       nsurf += suss->su_mask[qs]->num_surf ;
+
+     aglist = (SUMA_surface **)calloc(nsurf,sizeof(SUMA_surface *)) ;
+
+     for( qs=0 ; qs < suss->su_num ; qs++ ){
+       aglist[qs] = suss->su_surf[qs] ;
+     }
+     for( ks=qs,qs=0 ; qs < suss->su_nummask ; qs++ ){
+       for( rs=0 ; rs < suss->su_mask[qs]->num_surf ; rs++ ){
+         aglist[ks] = suss->su_mask[qs]->surf[rs] ;
+       }
+     }
+
+     for( ks=0 ; ks < nsurf ; ks++ ){      /* 14 Aug 2002: loop over surfaces */
+      SUMA_surface *ag = aglist[ks] ; SUMA_mask *msk = NULL ;
+      int nn , ii,jj , relxyz=0 ;
       SUMA_ixyz *nod ;
       THD_ivec3 iv,ivp,ivm ;
       THD_fvec3 fv,fvp,fvm ;
@@ -3034,10 +3061,19 @@ STATUS("creating memplot for image overlay") ;
       int skip_boxes=1 , skip_lines=0 , skip_lcen=0, skip_ledg=1 ;
       float boxsize=RX , linewidth=0.0 ;      /* 23 Feb 2003 */
       int firstb ;                            /* 23 Jan 2004 */
+      float xrel=0.0f,yrel=0.0f,zrel=0.0f ;
 
       if( ag == NULL ) continue ;             /* skip this non-existent one */
       nn = ag->num_ixyz ; nod = ag->ixyz ;
-      if( nn < 1 || nod == NULL ) continue ;  /* nothing to do */
+      if( nn < 1 || nod == NULL ) continue ;  /* nothing can be done */
+
+      if( ag->parent_type == SUMA_MASK_TYPE ){        /* relative coords */
+        relxyz = 1 ; msk = (SUMA_mask *)ag->parent ;  /* in a mask surf? */
+        xrel = msk->show_cen.xyz[0] - msk->init_cen.xyz[0] ;
+        yrel = msk->show_cen.xyz[1] - msk->init_cen.xyz[1] ;
+        zrel = msk->show_cen.xyz[2] - msk->init_cen.xyz[2] ;
+/** INFO_message("SUMA_mask draw: xyz rel = %g %g %g",xrel,yrel,zrel) ; **/
+      }
 
       /* define parameters for node boxes and triangle lines */
 
@@ -3075,6 +3111,13 @@ STATUS("defining surface drawing parameters") ;
           boxsize   = swid->boxsize_av->ival   * 0.1   ;  /* 23 Feb 2003 */
           linewidth = swid->linewidth_av->ival * 0.002 ;
         }
+
+      } else if( msk != NULL ){ /* set from inside the surf struct [Apr 2014] */
+
+        DC_parse_color( im3d->dc , ag->line_color , &rr_lin,&gg_lin,&bb_lin ) ;
+        DC_parse_color( im3d->dc , ag->box_color  , &rr_box,&gg_box,&bb_box ) ;
+        linewidth = ag->line_width * 0.002f ;
+		  skip_boxes = 1 ; skip_lines = 0 ; skip_lcen = 0; skip_ledg = 1 ;
 
       } else {                                   /* the old way    */
                                                  /* to set colors:  */
@@ -3162,13 +3205,16 @@ STATUS("defining surface drawing parameters") ;
 
       if( fabs(fvm.xyz[0]-fvp.xyz[0]) > dxyz ){               /* search x */
          float xb=fvm.xyz[0] , xt=fvp.xyz[0] , xm,xw ;        /* range of  */
+         float nodx,nody,nodz ;
          if( xb > xt ){ float t=xb ; xb=xt ; xt=t ; }         /* x in slice */
          xm = 0.5*(xb+xt); xw = 0.25*(xt-xb); xb = xm-xw; xt = xm+xw;
 STATUS(" - x plane") ;
          if( !skip_boxes ){
           for( ii=0 ; ii < nn ; ii++ ){
-            if( nod[ii].x >= xb && nod[ii].x <= xt ){         /* inside?  */
-               LOAD_FVEC3(fv,nod[ii].x,nod[ii].y,nod[ii].z) ; /* convert  */
+            nodx = nod[ii].x ; nody = nod[ii].y ; nodz = nod[ii].z ;
+            if( relxyz ){ nodx += xrel ; nody += yrel ; nodz += zrel ; }
+            if( nodx >= xb && nodx <= xt ){         /* inside?  */
+               LOAD_FVEC3(fv,nodx,nody,nodz) ;                /* convert  */
                fv = THD_dicomm_to_3dmm( udset , fv ) ;        /* coords   */
                fv = THD_3dmm_to_3dfind( udset , fv ) ;        /* to slice */
                fv = THD_3dfind_to_fdfind( br , fv ) ;         /* indexes  */
@@ -3199,13 +3245,16 @@ STATUS(" - x plane") ;
       }
       else if( fabs(fvm.xyz[1]-fvp.xyz[1]) > dxyz ){          /* search y */
          float yb=fvm.xyz[1] , yt=fvp.xyz[1] , ym,yw ;
+         float nodx,nody,nodz ;
          if( yb > yt ){ float t=yb ; yb=yt ; yt=t ; }
          ym = 0.5*(yb+yt); yw = 0.25*(yt-yb); yb = ym-yw; yt = ym+yw;
 STATUS(" - y plane") ;
          if( !skip_boxes ){
           for( ii=0 ; ii < nn ; ii++ ){
-            if( nod[ii].y >= yb && nod[ii].y <= yt ){
-               LOAD_FVEC3(fv,nod[ii].x,nod[ii].y,nod[ii].z) ;
+            nodx = nod[ii].x ; nody = nod[ii].y ; nodz = nod[ii].z ;
+            if( relxyz ){ nodx += xrel ; nody += yrel ; nodz += zrel ; }
+            if( nody >= yb && nody <= yt ){
+               LOAD_FVEC3(fv,nodx,nody,nodz) ;
                fv = THD_dicomm_to_3dmm( udset , fv ) ;
                fv = THD_3dmm_to_3dfind( udset , fv ) ;
                fv = THD_3dfind_to_fdfind( br , fv ) ;
@@ -3236,12 +3285,15 @@ STATUS(" - y plane") ;
       }
       else if( fabs(fvm.xyz[2]-fvp.xyz[2]) > dxyz ){          /* search z */
          float zb=fvm.xyz[2] , zt=fvp.xyz[2] , zm,zw ;
+         float nodx,nody,nodz ;
          if( zb > zt ){ float t=zb ; zb=zt ; zt=t ; }
          zm = 0.5*(zb+zt); zw = 0.25*(zt-zb); zb = zm-zw; zt = zm+zw;
 STATUS(" - z plane") ;
          if( !skip_boxes ){
           for( ii=0 ; ii < nn ; ii++ ){
-            if( nod[ii].z >= zb && nod[ii].z <= zt ){
+            nodx = nod[ii].x ; nody = nod[ii].y ; nodz = nod[ii].z ;
+            if( relxyz ){ nodx += xrel ; nody += yrel ; nodz += zrel ; }
+            if( nodz >= zb && nodz <= zt ){
                LOAD_FVEC3(fv,nod[ii].x,nod[ii].y,nod[ii].z) ;
                fv = THD_dicomm_to_3dmm( udset , fv ) ;
                fv = THD_3dmm_to_3dfind( udset , fv ) ;
@@ -3317,6 +3369,12 @@ STATUS("drawing triangle lines") ;
             LOAD_FVEC3(fvijk[0], nod[id].x, nod[id].y, nod[id].z) ;
             LOAD_FVEC3(fvijk[1], nod[jd].x, nod[jd].y, nod[jd].z) ;
             LOAD_FVEC3(fvijk[2], nod[kd].x, nod[kd].y, nod[kd].z) ;
+
+            if( relxyz ){  /* 07 Apr 2014 */
+              fvijk[0].xyz[0] += xrel; fvijk[1].xyz[0] += xrel; fvijk[2].xyz[0] += xrel;
+              fvijk[0].xyz[1] += yrel; fvijk[1].xyz[1] += yrel; fvijk[2].xyz[1] += yrel;
+              fvijk[0].xyz[2] += zrel; fvijk[1].xyz[2] += zrel; fvijk[2].xyz[2] += zrel;
+            }
 
             /* want 1 node on one size of plane, and 2 on the other */
 
@@ -6138,6 +6196,7 @@ static char * AFNI_image_help =
  "Ctrl+m = cycle through image global range settings\n"
  "o = toggle (color) overlay on/off\n"
  "u = toggle background from underlay/overlay dataset\n"
+ "e = toggle edge detection in underlay\n"
  "#/3 = toggle underlay/overlay checkerboard display\n"
  "v/V = Video image sequence up/down\n"
  "r/R = Ricochet image sequence up/down\n"
@@ -10152,6 +10211,47 @@ ENTRY("AFNI_jumpto_dicom_OLD") ;
       RETURN(1) ;
    } else {
       BEEPIT ; WARNING_message("Jumpto DICOM failed -- bad coordinates?!") ;
+      RETURN(-1) ;
+   }
+}
+
+/*---------------------------------------------------------------------*/
+
+int AFNI_jump_and_seed( Three_D_View *im3d , float xx, float yy, float zz )
+{
+   THD_dataxes  *daxes ;
+   THD_fvec3 fv ; THD_ivec3 iv ;
+   int ii,jj,kk,qq ;
+   static int iil = -1, jjl = -1, kkl = -1;
+
+ENTRY("AFNI_jump_and_seed") ;
+
+   LOAD_ANAT_VIEW(im3d) ;  /* 02 Nov 1996 */
+
+   fv = THD_dicomm_to_3dmm( im3d->anat_now , TEMP_FVEC3(xx,yy,zz) ) ;
+   iv = THD_3dmm_to_3dind ( im3d->anat_now , fv ) ;
+   ii = iv.ijk[0] ; jj = iv.ijk[1] ; kk = iv.ijk[2] ;
+
+   daxes = CURRENT_DAXES(im3d->anat_now) ;
+   if( ii >= 0 && ii < daxes->nxx &&
+       jj >= 0 && jj < daxes->nyy && kk >= 0 && kk < daxes->nzz ){
+
+      /* Note that the locations of the last click should be set
+         per im3d, perhaps within function AFNI_icor_setref_anatijk().
+         This current static storage night fail whith multiple
+         controllers.                                               */
+      if (ii != iil || jj != jjl || kk != kkl) {
+         DONT_TELL_SUMA;
+         AFNI_set_viewpoint( im3d , ii,jj,kk , REDISPLAY_OPTIONAL ) ;
+         TELL_SUMA;
+         qq = AFNI_icor_setref_anatijk(im3d,ii,jj,kk) ;
+         if( qq > 0 && im3d->giset == NULL ) AFNI_icor_setref_locked(im3d) ;
+         iil = ii; jjl = jj; kkl = kk;
+      }
+      RETURN(1) ;
+   } else {
+      BEEPIT ;
+      WARNING_message("AFNI_icor_seed_SUMA failed -- bad coordinates?!") ;
       RETURN(-1) ;
    }
 }

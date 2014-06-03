@@ -1,6 +1,9 @@
 #ifndef _RSFC_HEADER_
 #define _RSFC_HEADER_
 
+
+#define MAX_R (0.9999999999999999)
+
 /*
   Fisher Z transform of correlation value R
 */
@@ -44,7 +47,19 @@ int FindVoxHood(int *LIST, int **HS,
 float ReHoIt(int *LIST, float **RANKS, int *TIED, int *DIM, 
 				 int *realHOOD);
 
-
+int WB_netw_corr(int Do_r, 
+                 int Do_Z,
+                 int HAVE_ROIS, 
+                 char *prefix, 
+                 int *NROI_REF,
+                 int *Dim,
+                 double ***ROI_AVE_TS,
+                 int **ROI_LABELS_REF,
+                 THD_3dim_dataset *insetTIME,
+                 byte *mskd2,
+                 int Nmask,
+                 int argc,
+                 char *argv[]);
 
 
 #endif /* _RSFC_HEADER_ */

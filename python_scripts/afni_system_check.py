@@ -37,6 +37,7 @@ action options:
 
    -check_all           : perform all system checks
                           - see section, "details displayed via -check_all"
+   -data_root DDIR      : search for class data under DDIR
    -find_prog PROG      : search PATH for PROG
                           - default is *PROG*, case-insensitive
                           - see also -casematch, -exact
@@ -71,14 +72,12 @@ R Reynolds    July, 2013
 g_todo = """
 todo: afni_system_check.py
 
-   - add some help
-   - for Unix or OSX, run ldd or 'otool -L' to check for shared libs in:
-      - afni, suma, 3dSkullStrip, 
-      - NOTE: 'otool -L' does not show whether libraries resolve
-   - check for gcc for mac?  can we tell whether openMP is supported?
+   - mac: check for gcc?  can we tell whether openMP is supported?
+          fink?  homebrew?  macports?
 
    - check for .afnirc/.sumarc .afni/help
    - check for data under any passed -data_root
+        - this was started
    - check disk space
 """
 
@@ -96,9 +95,18 @@ g_history = """
         - system check is now run via -check_all
         - added -find_prog to search for PROG in PATH
         - added -casematch and -exact as options for -find_prog
+   0.6  Mar 14, 2014 - added some data and OS-specific tests
+   0.7  Mar 21, 2014
+        - improved class data search
+        - added -data_root for class data search
+   0.8  May 16, 2014
+        - if no AFNI binaries found, try path to this program
+        - look for history files in data directories
+        - print comments at the end, so they are easier to notice
+   0.9  May 20, 2014 - macs: look for PyQt4 from homebrew and fink
 """
 
-g_version = "afni_system_check.py version 0.5, August 26, 2013"
+g_version = "afni_system_check.py version 0.9, May 20, 2014"
 
 
 class CmdInterface:
@@ -119,6 +127,7 @@ class CmdInterface:
       # general variables
       self.act             = 0          # perform SOME action
       self.casematch       = -1         # >= 0 means user-specified
+      self.data_root       = ''
       self.exact           = 0          # use exact matching or not
       self.verb            = 1
 
@@ -146,11 +155,15 @@ class CmdInterface:
                       helpstr='yes/no: specify case sensitivity in -find_prog')
       self.valid_opts.add_opt('-check_all', 0, [],      \
                       helpstr='perform all system checks')
+      self.valid_opts.add_opt('-data_root', 1, [],      \
+                      helpstr='directory to check for class data')
       self.valid_opts.add_opt('-exact', 1, [],          \
                       acplist=['yes','no'],
                       helpstr='yes/no: use exact matching in -find_prog')
       self.valid_opts.add_opt('-find_prog', 1, [],      \
                       helpstr='search path for *PROG*')
+      self.valid_opts.add_opt('-verb', 1, [],            \
+                      helpstr='set verbosity level (default=1)')
 
       return 0
 
@@ -207,6 +220,10 @@ class CmdInterface:
             self.sys_check = 1
             continue
 
+         if opt.name == '-data_root':
+            self.data_root = opt.parlist[0]
+            continue
+
          if opt.name == '-exact':
             if OL.opt_is_yes(opt):
                self.exact = 1
@@ -220,6 +237,10 @@ class CmdInterface:
             self.find_prog = opt.parlist[0]
             continue
 
+         # already processing options: just continue
+
+         if opt.name == '-verb': continue
+
          # an unhandled option
          print '** option %s not yet supported' % opt.name
          return 1
@@ -232,15 +253,9 @@ class CmdInterface:
 
    def show_system_info(self):
 
-      print UTIL.section_divider(g_version, hchar='=')
-      print 
+      self.sinfo = SC.SysInfo(verb=self.verb, data_root=self.data_root)
 
-      self.sinfo = SC.SysInfo()
-
-      self.sinfo.show_general_sys_info()
-      self.sinfo.show_general_afni_info()
-      self.sinfo.show_python_lib_info(['PyQt4'], verb=3)
-      self.sinfo.show_path_vars()
+      self.sinfo.show_all_sys_info()
 
    def execute(self):
 

@@ -40,6 +40,9 @@ if __name__ == '__main__':
 #
 #   27 Feb 2013 [rickr]:
 #     - added Ziad's apsearch options: -all_opts, -h_find, -h_view
+#
+#   09 May 2014 [rickr]:
+#     - added find_opt_index, which allows for popping
 # ---------------------------------------------------------------------------
 
 # ---------------------------------------------------------------------------
@@ -105,6 +108,19 @@ class OptionList:
                 if index == nth: return com
         return None
 
+    def find_opt_index(self, name, nth=1): # same, but return the index
+        """return nth comopt index where name=name, else -1
+           same as find_opt, but return index
+        """
+        index = 0
+        cind = 0        # avoid enumerate, since python might be old?
+        for com in self.olist:
+            if com.name == name:
+                index += 1
+                if index == nth: return cind
+            cind += 1
+        return -1
+
     def find_all_opts(self, name):
         """return all comopts where name=name"""
         olist = []
@@ -165,6 +181,18 @@ class OptionList:
                   (opt_name, opt.parlist)
             return default, 1
         return opt.parlist[0], 0
+
+    def get_joined_strings(self, opt_name=None, opt=None, prefix=''):
+        """like get_string_list(), but join any list together and only
+           return a string
+
+           only apply 'prefix' if something is found"""
+        olist, rv = self.get_string_list(opt_name=opt_name, opt=opt)
+        if rv or olist == None: return ''
+        if len(olist) < 1:      return ''
+
+        # we have something
+        return prefix + ' '.join(UTIL.quotize_list(olist))
 
     def get_string_list(self, opt_name=None, opt=None):
         """return the option parameter string and an error code

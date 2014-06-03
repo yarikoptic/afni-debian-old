@@ -43,7 +43,116 @@
 
 afni_history_struct rwcox_history[] = {
 /*=====BELOW THIS LINE=====*/
-  { 27 , FEB , 2014 , RWC , "afni GUI" , MICRO , TYPE_GENERAL ,
+  { 02 , MAY , 2014 , RWC , "afni" , MICRO , TYPE_NEW_OPT ,
+   "add -papers option, to list AFNI papers" ,
+   "The list of papers is maintained in file afni_papers.txt\n"
+   "which is turned into afni_papers.h via program quotize." } ,
+
+  { 24 , APR , 2014 , RWC , "3dClustSim" , MICRO , TYPE_NEW_OPT ,
+   "add -ssave:TYPE option for saving the volumes as dataset" ,
+   NULL } ,
+
+ { 16 , APR , 2014 , RWC , "afni GUI" , MICRO , TYPE_NEW_ENV ,
+   "AFNI_SLAVE_THROLAY sets up Thr=OLay or Thr=OLay+1, for Paul Taylor" ,
+   NULL } ,
+
+ { 16 , APR , 2014 , RWC , "3dNwarpAdjust" , MINOR , TYPE_GENERAL ,
+   "Changes for grid size requirements" ,
+   "Now the warps don't all have to be on the same grid (just conformant\n"
+   "grids), and they will be extended to match each other.  And the source\n"
+   "datasets (if present) don't have to be on the same grid as the warps,\n"
+   "but DO have to be on the same grid as each other -- as before." } ,
+
+ { 15 , APR , 2014 , RWC , "3dQwarp" , MINOR , TYPE_GENERAL ,
+   "and other warping functions" ,
+   "Changes to index warps, to extend them past their defining box by linear\n"
+   "extrapolation from the last 5 layers on each face (vs. the previous\n"
+   "method of just constant extrapolation).  Also use this in 3dNwarpApply\n"
+   "to extend the warp before using it, so as to deal with peculiar results\n"
+   "with non-padded inverse warps from 3dQwarp when there was a big\n"
+   "displacement via '-allin'.  Speaking of which, I also extended the\n"
+   "zero-padding in 3dQwarp to allow for the large displacments.  By\n"
+   "default, WARP outputs from 3dQwarp are not truncated any more, but can\n"
+   "be with the new '-nopadWARP' option.  Next up -- changes to\n"
+   "@toMNI_Qwarpar to allow for collections of warps that may be on\n"
+   "different grids." } ,
+
+ { 8 , APR , 2014 , RWC , "coxplot" , MICRO , TYPE_GENERAL ,
+   "Change to X11 line drawing for thick lines" ,
+   "Use 'CAP_ROUND' style of drawing for thicker lines, so that drawn\n"
+   "figures (like SUMA surfaces) look better in AFNI interface -- the weird\n"
+   "disjunction between short thick lines is mostly gone now." } ,
+
+ { 8 , APR , 2014 , RWC , "afni" , MINOR , TYPE_GENERAL ,
+   "Draw mask surface sent from SUMA, for delectation." ,
+   "Add a SUMA_mask struct type to afni_suma.h, and then process its\n"
+   "corresponding NIML element in afni_niml.c.  Masks are stored in the\n"
+   "THD_session struct, and are re-drawn when their center is altered by a\n"
+   "simple command (unlike normal surfaces).  Also changed -- always send\n"
+   "change of crosshairs to SUMA even if no surfaces are present -- let SUMA\n"
+   "figure out what to do with it (e.g., move the mask)." } ,
+
+ { 2 , APR , 2014 , RWC , "3dQwarp" , MICRO , TYPE_GENERAL ,
+   "Changes to way warps are combined" ,
+   "In particular, outside their domain, warp displacements are now linearly\n"
+   "extrapolated rather than set to zero.  Also, a number of smaller tweaks\n"
+   "to the zero padding and iterative process." } ,
+
+ { 31 , MAR , 2014 , RWC , "messages" , MICRO , TYPE_NEW_ENV ,
+   "AFNI_MESSAGE_PREFIX will go before program messages to stderr" ,
+   "The purpose of this is to allow the user to distinguish between messages\n"
+   "from various instances of programs running in parallel, as in\n"
+   "  foreach fred ( 1 2 3 )\n"
+   "    setenv AFNI_MESSAGE_PREFIX case$fred\n"
+   "    run_some_program -option $fred &\n"
+   "  end" } ,
+
+ { 24 , MAR , 2014 , RWC , "3dQwarp" , MICRO , TYPE_NEW_OPT ,
+   "-useweight is now the default; -noweight turns it off" ,
+   NULL } ,
+
+ { 21 , MAR , 2014 , RWC , "3dQwarp" , MICRO , TYPE_BUG_FIX ,
+   "problem with zeropadding plus -iniwarp" ,
+   "Zeropad produces a warp that is bigger than the dataset.  That's OK\n"
+   "(even in 3dNwarpApply), but 3dQwarp would cut it off when writing it\n"
+   "out.  That's still OK for 3dNwarpApply, but NOT OK for re-start with\n"
+   "-iniwarp -- the zeropadded initial warp will have a discontinuity at the\n"
+   "edge of the volume, and that's bad.  The fix is to allow input of the\n"
+   "initial warp to be either at the dataset size OR at the zeropadded size.\n"
+   "\n"
+   "Also add the -pencut option, to give finer control over the penalty. \n"
+   "This needs some experimentation." } ,
+
+ { 13 , MAR , 2014 , RWC , "AFNI" , MICRO , TYPE_BUG_FIX ,
+   "Didn't properly turn off dplot in Boxed graphing mode" ,
+   NULL } ,
+
+ { 13 , MAR , 2014 , RWC , "fdrval" , MICRO , TYPE_BUG_FIX ,
+   "two changes" ,
+   "(a) bug fix in interp_inverse_floatvec(), where the last interval wasn't\n"
+   "used -- in the context of fdrval, tiny qval (big zval at end of range)\n"
+   "would be missed, giving bogus output\n"
+   "(b) alteration in THD_fdrcurve_zqtot(), where if the input zval is past\n"
+   "the end of the range, then the largest value in the threshold sub-brick\n"
+   "is returned if it is bigger than the value returned by\n"
+   "interp_inverse_floatvec()" } ,
+
+ { 11 , MAR , 2014 , RWC , "3dttest++" , MICRO , TYPE_GENERAL ,
+   "Modify way copy of data into vectim works for -brickwise" ,
+   "Makes it run much faster -- change is actually in thd_dset_to_vectim.c" } ,
+
+ { 10 , MAR , 2014 , RWC , "3dttest++" , MICRO , TYPE_BUG_FIX ,
+   "Fix memory handling errors" ,
+   "(1) when loading a NIfTI dataset, it should be unloaded first to avoid\n"
+   "memory leakage\n"
+   "(2) when creating a vectim from a censored list, the correct check is if\n"
+   "the subset is NOT loaded -- the test was backwards :-(" } ,
+
+ { 4 , MAR , 2014 , RWC , "3dClustSim" , MICRO , TYPE_GENERAL ,
+   "Change format of pthr and athr to allow for tiny values - for Gang" ,
+   NULL } ,
+
+ { 27 , FEB , 2014 , RWC , "afni GUI" , MICRO , TYPE_GENERAL ,
    "Add control to set (and fix) q-value" ,
    NULL } ,
 

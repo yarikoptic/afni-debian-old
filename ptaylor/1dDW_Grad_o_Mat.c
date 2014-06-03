@@ -1,5 +1,13 @@
 // PA Taylor, Dec 2013
 
+/*
+  Feb, 2014:
+  + fixing a bit of helpfile listing
+
+  April 2014:
+  + adding row output
+
+*/
 
 // 3dDWItoDT: Bxx, Byy, Bzz, Bxy, Bxz, Byz
 // TORTOISE:  b_xx 2b_xy 2b_xz b_yy 2b_yz b_zz
@@ -25,7 +33,7 @@ int GradConv_Gsign_from_BmatA( float *grad, float *matr );
 int GradConv_BmatA_from_Gsign( float *matr, float *grad );
 
 
-void usage_1dDW_grad_o_mat(int detail) 
+void usage_1dDW_Grad_o_Mat(int detail) 
 {
 	printf(
 "  \n"
@@ -33,7 +41,10 @@ void usage_1dDW_grad_o_mat(int detail)
 "files, and b-/g-matrices. Let: g_i be one of Ng spatial gradients\n"
 "in three dimensions; the g-matrix is G_{ij} = g_i*g_j (i.e., dyad\n"
 "of gradients, without b-value included); and the DW-scaled\n"
-"b-matrix is B_{ij} = b*g_i*g_j.\n\n"
+"b-matrix is B_{ij} = b*g_i*g_j.\n"
+"\n"
+"* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *\n"
+"\n"
 "As of right now, one can input:\n"
 "  + 3 rows of gradients (as output from dcm2nii, for example);\n"
 "  + 3 columns of gradients;\n"
@@ -59,21 +70,24 @@ void usage_1dDW_grad_o_mat(int detail)
 "  + 6 columns of g- or b-matrices, in 'row-first' order;\n" 
 "  + as well as including a column of b-values (such as used in;\n" 
 "    DTI-Studio);\n"
-"  + as well as including a row of zeros at the top;\n\n"
-"RUNNING:\n"
-"    1dDW_GradOrMat \\\n"
-"         { -in_grad_rows | -in_grad_cols | -in_gmatT_cols | \n"
+"  + as well as including a row of zeros at the top;\n"
+"\n"
+"* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *\n"
+"\n"
+" + RUNNING:\n"
+"    1dDW_GradOrMat                                                  \\\n"
+"         { -in_grad_rows | -in_grad_cols | -in_gmatT_cols |         \\\n"
 "           -in_gmatA_cols | -in_bmatT_cols | -in_bmatA_cols} INFILE \\\n"
-"         { -flip_x -flip_y -flip_z } \\\n"
-"         { -keep_b0s -put_zeros_top -out_bval_col } \\\n"
-"         { -in_bvals BVAL_IN } \\\n"
-"         { -bmax_ref THRESH } \\\n"
-"         { -out_grad_cols | -out_gmatT_cols | -out_gmatA_cols | \n"
-"           -out_bmatT_cols | -out_gmatA_cols } OUTFILE \n\n"
+"         { -flip_x -flip_y -flip_z }                                \\\n"
+"         { -keep_b0s -put_zeros_top -out_bval_col }                 \\\n"
+"         { -in_bvals BVAL_IN }                                      \\\n"
+"         { -bmax_ref THRESH }                                       \\\n"
+"         { -out_grad_cols | -out_gmatT_cols | -out_gmatA_cols |     \\\n"
+"           -out_bmatT_cols | -out_gmatA_cols | -out_grad_rows } OUTFILE \n\n"
 "    where:\n"
 "        (one of the following six formats of input must be given):\n"
 "    -in_grad_rows INFILE  :input file of 3 rows of gradients (e.g., dcm2nii-\n"
-"                           format output)."
+"                           format output).\n"
 "    -in_grad_cols INFILE  :input file of 3 columns of gradients.  \n"
 "    -in_gmatA_cols INFILE :input file of 6 columns of g-matrix in 'A(FNI)'\n"
 "                           `diagonal first'-format. (See above.)\n"
@@ -84,34 +98,45 @@ void usage_1dDW_grad_o_mat(int detail)
 "    -in_bmatT_cols INFILE :input file of 6 columns of b-matr in 'T(ORTOISE)'\n"
 "                           `row first'-format. (See above.)\n"
 "        (one of the following five formats of output must be given):\n"
-"    -out_grad_cols INFILE  :output file of 3 columns of gradients.  \n"
-"    -out_gmatA_cols INFILE :output file of 6 columns of g-matrix in 'A(FNI)'\n"
+"  -out_grad_cols OUTFILE  :output file of 3 columns of gradients.  \n"
+"  -out_gmatA_cols OUTFILE :output file of 6 columns of g-matrix in 'A(FNI)'\n"
 "                           `diagonal first'-format. (See above.)\n"
-"    -out_gmatT_cols INFILE :output file of 6 columns of g-matr in 'T(ORTOISE)'\n"
+"  -out_gmatT_cols OUTFILE :output file of 6 cols of g-matr in 'T(ORTOISE)'\n"
 "                           `row first'-format. (See above.)\n"
-"    -out_bmatA_cols INFILE :output file of 6 columns of b-matrix in 'A(FNI)'\n"
+"  -out_bmatA_cols OUTFILE :output file of 6 columns of b-matrix in 'A(FNI)'\n"
 "                           `diagonal first'-format. (See above.)\n"
-"    -out_bmatT_cols INFILE :output file of 6 columns of b-matr in 'T(ORTOISE)'\n"
-"                           `row first'-format. (See above.)\n"
+"  -out_bmatT_cols OUTFILE :output file of 6 cols of b-matr in 'T(ORTOISE)'\n"
+"                          `row first'-format. (See above.)\n"
+"  -out_grad_rows OUTFILE  :output file of 3 rows of gradients.\n"
 "        (and any of the following options may be used):\n"
 "    -flip_x               :change sign of first column of gradients\n"
 "    -flip_y               :change sign of second column of gradients\n"
 "    -flip_z               :change sign of third column of gradients\n"
-"    -keep_b0s             :default function is to get rid of all reference image,\n"
-"                           but this option acts as switch to keep them.\n"
-"    -put_zeros_top        :whatever the output format is, add a row at the top \n"
-"                           with all zeros.\n"
-"    -in_bvals BVAL_IN     :BVAL_IN is a file of b-values, such as the 'bval' file\n"
-"                           generated by dcm2nii.\n"
-"    -bmax_ref THRESH      :BVAL_IN is a scalar number below which b-values are\n"
-"                           considered `zero' or non-reference; sometimes, \n"
-"                           for the reference images, the scanner has b=5 s/mm^2\n"
-"                           instead of b=0 strictly. One can still flag as being\n"
-"                           a reference image and filter it out, using, for\n"
-"                           here, '-bvals 5.1'\n"
-"    -out_bval_col         :switch to put a column of the bvalues as the first\n"
-"                           column in the output data.\n\n"
-          );
+"    -keep_b0s             :default function is to get rid of all reference\n"
+"                           image, but this option acts as switch to keep\n"
+"                           them.\n"
+"    -put_zeros_top        :whatever the output format is, add a row at the\n"
+"                           top with all zeros.\n"
+"    -in_bvals BVAL_IN     :BVAL_IN is a file of b-values, such as the 'bval'\n"
+"                           file generated by dcm2nii.\n"
+"    -bmax_ref THRESH      :BVAL_IN is a scalar number below which b-values\n"
+"                           are considered `zero' or non-reference; \n"
+"                           sometimes, for the reference images, the scanner\n"
+"                           has b=5 s/mm^2 instead of b=0 strictly. One can\n"
+"                           still flag as being a reference image and filter\n"
+"                           it out, using, for here, '-bvals 5.1'\n"
+"    -out_bval_col         :switch to put a column of the bvalues as the\n"
+"                           first column in the output data.\n"
+"\n"
+"* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *\n"
+"\n"
+"  If you use this program, please reference the introductory/description\n"
+"  paper for the FATCAT toolbox:\n"
+"        Taylor PA, Saad ZS (2013).  FATCAT: (An Efficient) Functional\n"
+"        And Tractographic Connectivity Analysis Toolbox. Brain \n"
+"        Connectivity 3(5):523-535.\n"
+"____________________________________________________________________________\n"
+);
 	return;
 }
 
@@ -149,13 +174,15 @@ int main(int argc, char *argv[])
    int HAVE_BMAX_REF=0 ; // referring to user input value
    int count_in=0, count_out=0;
 
-   if (argc == 1) { usage_1dDW_grad_o_mat(1); exit(0); }
+	mainENTRY("1dDW_Grad_o_Mat"); machdep();
+    
+   if (argc == 1) { usage_1dDW_Grad_o_Mat(1); exit(0); }
 
    iarg = 1;
 	while( iarg < argc && argv[iarg][0] == '-' ){
 		if( strcmp(argv[iarg],"-help") == 0 || 
 			 strcmp(argv[iarg],"-h") == 0 ) {
-         usage_1dDW_grad_o_mat(strlen(argv[iarg])>3 ? 2:1);
+         usage_1dDW_Grad_o_Mat(strlen(argv[iarg])>3 ? 2:1);
 			exit(0);
 		}
       
@@ -240,15 +267,27 @@ int main(int argc, char *argv[])
          iarg++ ; continue ;
 		}
 
+      if( strcmp(argv[iarg],"-out_grad_rows") == 0 ){
+			if( ++iarg >= argc ) 
+				ERROR_exit("Need argument after '-out_grad_cols'\n") ;
+
+         Fname_output = argv[iarg];
+         count_out++;
+         OUT_FORM = 0;
+
+         iarg++ ; continue ;
+		}
       if( strcmp(argv[iarg],"-out_grad_cols") == 0 ){
 			if( ++iarg >= argc ) 
 				ERROR_exit("Need argument after '-out_grad_cols'\n") ;
 
          Fname_output = argv[iarg];
          count_out++;
+         OUT_FORM = 1;
 
          iarg++ ; continue ;
 		}
+
       if( strcmp(argv[iarg],"-out_gmatT_cols") == 0 ){
 			if( ++iarg >= argc ) 
 				ERROR_exit("Need argument after '-out_gmatT_cols'\n") ;
@@ -550,51 +589,71 @@ int main(int argc, char *argv[])
    // 4 is bmatrRow col T;
    // 5 is bmatrDiag col A;
 
-   if( EXTRA_ZEROS ) {
-      if( BVAL_OUT )
-         fprintf(fout,"%8d  ", 0);
-
-      if( OUT_FORM == 1 )
-         for( k=1 ; k<4 ; k++ )
-            fprintf(fout,"%11.5f  ", 0.0);
-      else if ( OUT_FORM > 1 ) // bit superfluous at this point
-         for( k=1 ; k<7 ; k++ )
-            fprintf(fout,"%11.5f  ", 0.0);
-      fprintf(fout,"\n");
-   }
-
-   for(i=0 ; i<idx ; i++){ 
-      if(FLAG[i]) {
-
+   if( OUT_FORM>0) {
+      if( EXTRA_ZEROS ) {
          if( BVAL_OUT )
-            fprintf(fout,"%8d  ", (int) OUT_GRAD[i][0]);
+            fprintf(fout,"%8d  ", 0);
          
-         if( (OUT_FORM == 4) || (OUT_FORM ==5) )
-            for( k=1 ; k<7 ; k++ )
-               OUT_MATR[i][k]*= OUT_MATR[i][0];
-
-         if( OUT_FORM == 1 ) // grad col
+         if( OUT_FORM == 1 )
             for( k=1 ; k<4 ; k++ )
-               fprintf(fout,"%11.5f  ", OUT_GRAD[i][k]);
-         
-         else if( (OUT_FORM == 3) || (OUT_FORM == 5) ) { // gmat
-            for( k=1 ; k<6 ; k++ )
-               fprintf(fout,"%11.5f  ", OUT_MATR[i][k]);
-            fprintf(fout,"%11.5f", OUT_MATR[i][k]);
-         }
-         else if ( (OUT_FORM == 2 ) || (OUT_FORM ==4)) { // bmat
-            fprintf(fout,"%11.5f  ", OUT_MATR[i][1]);
-            fprintf(fout,"%11.5f  ", 2*OUT_MATR[i][4]);
-            fprintf(fout,"%11.5f  ", 2*OUT_MATR[i][5]);
-            fprintf(fout,"%11.5f  ", OUT_MATR[i][2]);
-            fprintf(fout,"%11.5f  ", 2*OUT_MATR[i][6]);
-            fprintf(fout,"%11.5f",   OUT_MATR[i][3]);
-         }
+               fprintf(fout,"%11.5f  ", 0.0);
+         else if ( OUT_FORM > 1 ) // bit superfluous at this point
+            for( k=1 ; k<7 ; k++ )
+               fprintf(fout,"%11.5f  ", 0.0);
+         fprintf(fout,"\n");
+      }
+      
+      for(i=0 ; i<idx ; i++){ 
+         if(FLAG[i]) {
             
+            if( BVAL_OUT )
+               fprintf(fout,"%8d  ", (int) OUT_GRAD[i][0]);
+            
+            if( (OUT_FORM == 4) || (OUT_FORM ==5) )
+               for( k=1 ; k<7 ; k++ )
+                  OUT_MATR[i][k]*= OUT_MATR[i][0];
+            
+            if( OUT_FORM == 1 ) // grad col
+               for( k=1 ; k<4 ; k++ )
+                  fprintf(fout,"%11.5f  ", OUT_GRAD[i][k]);
+            
+            else if( (OUT_FORM == 3) || (OUT_FORM == 5) ) { // gmat
+               for( k=1 ; k<6 ; k++ )
+                  fprintf(fout,"%11.5f  ", OUT_MATR[i][k]);
+               fprintf(fout,"%11.5f", OUT_MATR[i][k]);
+            }
+            else if ( (OUT_FORM == 2 ) || (OUT_FORM ==4)) { // bmat
+               fprintf(fout,"%11.5f  ", OUT_MATR[i][1]);
+               fprintf(fout,"%11.5f  ", 2*OUT_MATR[i][4]);
+               fprintf(fout,"%11.5f  ", 2*OUT_MATR[i][5]);
+               fprintf(fout,"%11.5f  ", OUT_MATR[i][2]);
+               fprintf(fout,"%11.5f  ", 2*OUT_MATR[i][6]);
+               fprintf(fout,"%11.5f",   OUT_MATR[i][3]);
+            }
+            
+            fprintf(fout,"\n");
+         }
+      }
+   }
+   else if(OUT_FORM ==0) {
+      if(BVAL_OUT)
+         WARNING_message("Ignoring '-out_bval_col' option, since "
+                         " you are outputting in rows.");
+      
+      for( k=1 ; k<4 ; k++ ) {
+         if(EXTRA_ZEROS)
+            fprintf(fout,"% -11.5f  ", 0.0);
+         for(i=0 ; i<idx ; i++)
+            if(FLAG[i])
+               fprintf(fout,"% -11.5f  ", OUT_GRAD[i][k]);
          fprintf(fout,"\n");
       }
    }
+
+
    fclose(fout);
+
+
 
    mri_free(preREADIN);
    if( HAVE_BVAL )

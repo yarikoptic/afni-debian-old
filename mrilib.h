@@ -880,6 +880,8 @@ extern MRI_IMAGE * mri_read_ascii_ragged_complex(char *,float); /* 08 Mar 2007 *
 extern MRI_IMAGE * mri_read_ascii_ragged_fvect( char *, float, int ) ;
 extern MRI_IMARR * mri_fvect_to_imarr( MRI_IMAGE *inim ) ;
 extern MRI_IMAGE * mri_imarr_to_fvect( MRI_IMARR *imar ) ;
+extern MRI_IMAGE * mri_float_arrays_to_image(float **vecs, int vec_len, 
+                                             int vec_num); /* 16 Apr 2014 */
 extern MRI_IMAGE * mri_pair_to_fvect( MRI_IMAGE *, MRI_IMAGE * ) ;
 extern MRI_IMAGE * mri_triple_to_fvect( MRI_IMAGE *, MRI_IMAGE *, MRI_IMAGE *) ;
 extern MRI_IMAGE * mri_fvect_subimage( MRI_IMAGE *inim , int kk ) ;
@@ -2144,7 +2146,10 @@ extern int mri_principal_vectors( MRI_IMARR *imar, int nvec, float *sval, float 
 typedef struct {
   int    nx ,  ny ,  nz ;
   float *xd , *yd , *zd , *hv , *je , *se ;
-  mat33 emat ; int use_emat ;
+  int   use_es ;
+  float es_xd_xp, es_xd_xm, es_xd_yp, es_xd_ym, es_xd_zp, es_xd_zm,
+        es_yd_xp, es_yd_xm, es_yd_yp, es_yd_ym, es_yd_zp, es_yd_zm,
+        es_zd_xp, es_zd_xm, es_zd_yp, es_zd_ym, es_zd_zp, es_zd_zm ;
    /* stuff below here is for conversion to/from 3D dataset format */
   mat44 cmat , imat ;      /* cmat: i->x ; imat: x->i */
   char *geomstring ;

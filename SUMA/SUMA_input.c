@@ -139,6 +139,8 @@ int SUMA_KeyPress(char *keyin, char *keynameback)
       if (SUMA_iswordsame_ci(keyname,"f7") == 1) SUMA_RETURN(XK_F7);
       if (SUMA_iswordsame_ci(keyname,"f8") == 1) SUMA_RETURN(XK_F8);
       if (SUMA_iswordsame_ci(keyname,"f9") == 1) SUMA_RETURN(XK_F9);
+      if (SUMA_iswordsame_ci(keyname,"f10") == 1) SUMA_RETURN(XK_F10);
+      if (SUMA_iswordsame_ci(keyname,"f11") == 1) SUMA_RETURN(XK_F11);
       if (SUMA_iswordsame_ci(keyname,"f12") == 1) SUMA_RETURN(XK_F12);
 
       SUMA_S_Errv("Key '%s' not yet supported, complain to author.\n", keyname);
@@ -245,8 +247,9 @@ int SUMA_bracketleft_Key(SUMA_SurfaceViewer *sv, char *key, char *callmode)
          }
          if (!Nwarn_bracket && callmode && 
                strcmp(callmode, "interactive") == 0) { 
-            SUMA_SLP_Note("%s",stmp); ++Nwarn_bracket;
+            SUMA_SLP_Note("%s",stmp); 
          } else { SUMA_S_Note("%s",stmp); } 
+         ++Nwarn_bracket;
          break;
       default:
          SUMA_S_Err("Il ne faut pas etre la");
@@ -289,8 +292,9 @@ int SUMA_bracketright_Key(SUMA_SurfaceViewer *sv, char *key, char *callmode)
          }
          if (!Nwarn_bracket && callmode && 
                strcmp(callmode, "interactive") == 0) { 
-            SUMA_SLP_Note("%s",stmp); ++Nwarn_bracket;
+            SUMA_SLP_Note("%s",stmp); 
          } else { SUMA_S_Note("%s",stmp); } 
+         ++Nwarn_bracket;
          break;
       default:
          SUMA_S_Err("Il ne faut pas etre la");
@@ -871,6 +875,7 @@ int SUMA_F8_Key(SUMA_SurfaceViewer *sv, char *key, char *callmode)
       case XK_F8:
          sv->ortho = !sv->ortho;
          {
+            static int inote = 0;
             char stmp[200];
             if (sv->ortho) {
                sprintf(stmp,"Using orthographic projection viewing");
@@ -879,7 +884,8 @@ int SUMA_F8_Key(SUMA_SurfaceViewer *sv, char *key, char *callmode)
                sprintf(stmp,"Using perspective viewing");
                sv->FOV[sv->iState] = sv->FOV[sv->iState] * 2.0;
             }
-            if (callmode && strcmp(callmode, "interactive") == 0) { 
+            ++inote;
+            if (callmode && strcmp(callmode, "interactive") == 0 && inote < 3) { 
                   SUMA_SLP_Note("%s",stmp); }
             else { SUMA_S_Note("%s",stmp); }
          }
@@ -938,6 +944,106 @@ int SUMA_F9_Key(SUMA_SurfaceViewer *sv, char *key, char *callmode)
    SUMA_RETURN(1);
 }
 
+int SUMA_F10_Key(SUMA_SurfaceViewer *sv,char *key, char *callmode, char *strgval)
+{
+   static char FuncName[]={"SUMA_F10_Key"};
+   char tk[]={"F10"}, keyname[100];
+   int k, nc;
+   SUMA_EngineData *ED = NULL; 
+   DList *list = NULL;
+   DListElmt *NextElm= NULL;
+   static int inote = 0;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+
+   SUMA_KEY_COMMON;
+   
+   /* do the work */
+   switch (k) {
+      case XK_F10:
+         if (sv->PryAx == 2) sv->PryAx = 3;
+         else if (sv->PryAx == 3) sv->PryAx = 2;
+         else { 
+            SUMA_S_Err("Bad PryAx of %d. Reverting to 3", sv->PryAx);
+            sv->PryAx = 3;
+         }
+         {
+            char stmp[200];
+            if (sv->PryAx == 3) {
+               sprintf(stmp,"Prying about Z axis");
+            } else {
+               sprintf(stmp,"Prying about Y axis");
+            }
+            if (callmode && strcmp(callmode, "interactive") == 0 && inote < 2) { 
+               SUMA_SLP_Note("%s",stmp); ++inote;}
+            else { SUMA_S_Note("%s",stmp); }
+         }
+         SUMA_postRedisplay(sv->X->GLXAREA, NULL, NULL);
+         break; 
+      default:
+         SUMA_S_Err("Il ne faut pas etre la dessous");
+         SUMA_RETURN(0);
+         break;
+   }
+
+   SUMA_RETURN(1);
+}
+
+int SUMA_F11_Key(SUMA_SurfaceViewer *sv, char *key, char *callmode, 
+                 char *strgval)
+{
+   static char FuncName[]={"SUMA_F11_Key"};
+   char tk[]={"F11"}, keyname[100];
+   int k, nc;
+   SUMA_EngineData *ED = NULL; 
+   DList *list = NULL;
+   DListElmt *NextElm= NULL;
+   static int inote = 0;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+
+   SUMA_KEY_COMMON;
+   
+   /* do the work */
+   switch (k) {
+      case XK_F11: {
+         if ( (callmode && strcmp(callmode, "interactive") == 0) ||
+             !strgval /* why not? this way the 
+                        Driver can pop the interactive window */) {     
+            sv->X->SetRenderOrder_prmpt = SUMA_CreatePromptDialogStruct(
+                                 SUMA_OK_APPLY_CLEAR_CANCEL, 
+                            "Set Object Display Order:\n"
+                            "(e.g. VSG for: Volume, Surface, Graph)):", 
+                                 "VSG",
+                                 sv->X->TOPLEVEL, YUP,
+                                 SUMA_APPLY_BUTTON,
+                                 SUMA_SV_SetRenderOrder, (void *)sv,
+                                 NULL, NULL,
+                                 NULL, NULL,
+                                 SUMA_VerifyRenderOrder, NULL,  
+                                 sv->X->SetRenderOrder_prmpt);
+
+            sv->X->SetRenderOrder_prmpt = SUMA_CreatePromptDialog(
+                              sv->X->Title, sv->X->SetRenderOrder_prmpt);
+         } else {
+            if (!strgval) {
+               SUMA_S_Err("Have NULL string");
+               SUMA_RETURN(0);
+            }
+            SUMA_SV_SetRenderOrder(strgval, (void *)sv);
+         }   
+         break; } 
+      default:
+         SUMA_S_Err("Il ne faut pas etre hawn");
+         SUMA_RETURN(0);
+         break;
+   }
+
+   SUMA_RETURN(1);
+}
+
 int SUMA_F12_Key(SUMA_SurfaceViewer *sv, char *key, char *callmode)
 {
    static char FuncName[]={"SUMA_F12_Key"};
@@ -967,7 +1073,7 @@ int SUMA_F12_Key(SUMA_SurfaceViewer *sv, char *key, char *callmode)
             SUMA_STRING *SS = NULL;
             FILE *fout=NULL;
 
-            if (callmode && strcmp(callmode, "drivesuma")) {
+            if (callmode && !strcmp(callmode, "drivesuma")) {
                fout = fopen(fnameout,"w");
             }
             SS = SUMA_StringAppend (NULL, NULL);
@@ -2140,7 +2246,7 @@ int SUMA_O_Key(SUMA_SurfaceViewer *sv, char *key, char *callmode)
          if (SUMA_CTRL_KEY(key)) {
          
          } else {   
-            sv->TransMode = ((sv->TransMode-4) % (STM_N_TransModes));
+            sv->TransMode = ((sv->TransMode-4) % (STM_N_TransModes-2));
             if (sv->TransMode <= STM_ViewerDefault) sv->TransMode = STM_16;
            
             SUMA_postRedisplay(sv->X->GLXAREA, NULL, NULL);
@@ -2284,30 +2390,32 @@ int SUMA_R_Key(SUMA_SurfaceViewer *sv, char *key, char *callmode)
          } else {
             GLvoid *pixels=NULL;
             double rat;
-            int oh=-1,ow=-1;
+            int oareah=-1,oareaw=-1, owindh=-1, owindw=-1;
             /* Control for GL_MAX_VIEWPORT_DIMS */
             if (SUMAg_CF->SUMA_SnapshotOverSampling > 1) {
                glGetIntegerv(GL_MAX_VIEWPORT_DIMS,&k);
                mm = SUMA_MAX_PAIR(
-                     SUMAg_CF->SUMA_SnapshotOverSampling*sv->X->HEIGHT,          
-                     SUMAg_CF->SUMA_SnapshotOverSampling*sv->X->WIDTH);
+                     SUMAg_CF->SUMA_SnapshotOverSampling*sv->X->aHEIGHT, 
+                     SUMAg_CF->SUMA_SnapshotOverSampling*sv->X->aWIDTH);
                if (mm > k) { /* too big, find best new dimesnions */
                   rat = (double)mm/(double)k; 
                      /*window shrinking factor to allow for stitching*/
                   SUMA_S_Notev(  "%d/%d (H/W) Too big for oversampling\n"
                                  " reducing resolution by %f.\n", 
-                                 sv->X->HEIGHT, sv->X->WIDTH, rat);
+                                 sv->X->aHEIGHT, sv->X->aWIDTH, rat);
                   /* store original size */
-                  ow = sv->X->WIDTH; oh = sv->X->HEIGHT;
-                  sv->WindHeight = sv->X->HEIGHT = 
-                     (int)((double)sv->X->HEIGHT/rat)-1;
-                  sv->WindWidth = sv->X->WIDTH = 
-                     (int)((double)sv->X->WIDTH/rat)-1;
+                  oareaw = sv->X->aWIDTH; oareah = sv->X->aHEIGHT;
+                  owindw = sv->wWindWidth; owindh = sv->wWindHeight;  
+                  sv->X->aHEIGHT = 
+                     (int)((double)sv->X->aHEIGHT/rat)-1;
+                  sv->X->aWIDTH = 
+                     (int)((double)sv->X->aWIDTH/rat)-1;
+                  SUMA_SV_WindDims_From_DrawAreaDims(sv);
                   SUMA_WidgetResize (sv->X->TOPLEVEL , 
-                                     sv->X->WIDTH, sv->X->HEIGHT);
+                                     sv->wWindWidth, sv->wWindHeight);
                   sv->rdc = SUMA_RDC_X_RESIZE;
                   glViewport( 0, 0, 
-                                 sv->X->WIDTH, sv->X->HEIGHT);  
+                                 sv->X->aWIDTH, sv->X->aHEIGHT);  
                   SUMA_handleRedisplay((XtPointer)sv->X->GLXAREA); 
                } else {
                   SUMA_S_Note("Size OK");
@@ -2331,8 +2439,8 @@ int SUMA_R_Key(SUMA_SurfaceViewer *sv, char *key, char *callmode)
                               SUMAg_CF->SUMA_SnapshotOverSampling,
                            k,
                            SUMA_MAX_PAIR( SUMAg_CF->SUMA_SnapshotOverSampling * 
-                              sv->X->HEIGHT,
-                           SUMAg_CF->SUMA_SnapshotOverSampling*sv->X->WIDTH)  );
+                              sv->X->aHEIGHT,
+                           SUMAg_CF->SUMA_SnapshotOverSampling*sv->X->aWIDTH)  );
                      } else {
                         /* sometimes you have repeated black areas when 
                         oversampling, allow that after very first 'tant' */
@@ -2340,12 +2448,12 @@ int SUMA_R_Key(SUMA_SurfaceViewer *sv, char *key, char *callmode)
                      }
                      /* start from top left, move to right then go down 
                         one row (Row Major, starting on top left ) */
-                     glViewport(-ii*sv->X->WIDTH,  
+                     glViewport(-ii*sv->X->aWIDTH,  
                                 -(SUMAg_CF->SUMA_SnapshotOverSampling - jj - 1) *
-                                  sv->X->HEIGHT, 
-                                SUMAg_CF->SUMA_SnapshotOverSampling*sv->X->WIDTH,
+                                  sv->X->aHEIGHT, 
+                               SUMAg_CF->SUMA_SnapshotOverSampling*sv->X->aWIDTH,
                                 SUMAg_CF->SUMA_SnapshotOverSampling * 
-                                 sv->X->HEIGHT);
+                                 sv->X->aHEIGHT);
                      SUMA_handleRedisplay((XtPointer)sv->X->GLXAREA);
                      #if 0 /* problem should be fixed by SUMA_grabRenderedPixels
                               Throw section out if no new problems arise.
@@ -2403,9 +2511,9 @@ int SUMA_R_Key(SUMA_SurfaceViewer *sv, char *key, char *callmode)
                      #endif
                   }
                   pixels = SUMA_grabRenderedPixels(sv, 3, 
-                                       sv->X->WIDTH, sv->X->HEIGHT, 0);
+                                       sv->X->aWIDTH, sv->X->aHEIGHT, 0);
                   if (pixels) {
-                    ISQ_snapsave (sv->X->WIDTH, -sv->X->HEIGHT, 
+                    ISQ_snapsave (sv->X->aWIDTH, -sv->X->aHEIGHT, 
                                   (unsigned char *)pixels, sv->X->GLXAREA ); 
                     SUMA_free(pixels);
                   }else {
@@ -2417,14 +2525,16 @@ int SUMA_R_Key(SUMA_SurfaceViewer *sv, char *key, char *callmode)
             }
             if (SUMAg_CF->SUMA_SnapshotOverSampling > 1) {  
                         /* Now return the window to its previous size */
-               if (ow > 0) {
-                  sv->WindHeight = sv->X->HEIGHT = oh;
-                  sv->WindWidth = sv->X->WIDTH = ow;
-                  SUMA_WidgetResize (sv->X->TOPLEVEL , ow, oh);   
+               if (owindw > 0) {
+                  sv->wWindHeight = owindh;
+                  sv->X->aHEIGHT = oareah;
+                  sv->wWindWidth = owindw;
+                  sv->X->aWIDTH = oareaw;
+                  SUMA_WidgetResize (sv->X->TOPLEVEL , owindw, owindh);   
                }
                sv->rdc = SUMA_RDC_X_RESIZE;
                glViewport( 0, 0, 
-                           sv->X->WIDTH, sv->X->HEIGHT);
+                           sv->X->aWIDTH, sv->X->aHEIGHT);
                SUMA_handleRedisplay((XtPointer)sv->X->GLXAREA);
             }
             if (SUMAg_CF->NoDuplicatesInRecorder) SNAP_NoDuplicates();
@@ -2580,6 +2690,8 @@ int SUMA_Add_to_SaveList(DList **SLp, char *type,
       SL = (DList*)SUMA_malloc(sizeof(DList));
       dlist_init(SL, SUMA_free_Save_List_El);
    }
+   SUMA_LH("Searching for possible identifier >%s<", 
+            identifier?identifier:"NULL");
    /* first make sure identifier is not there already */
    el = dlist_head(SL);
    while (el && identifier) {
@@ -2898,7 +3010,7 @@ int SUMA_Up_Key(SUMA_SurfaceViewer *sv, char *key, char *caller)
                /*fprintf (SUMA_STDERR,"%s: Shift up\n", FuncName);*/
                sv->GVS[sv->StdView].translateVec[1] += 
                 (GLfloat)sv->GVS[sv->StdView].ArrowtranslateDeltaY / 
-                (float)sv->WindHeight*sv->GVS[sv->StdView].TranslateGain;
+                (float)sv->X->aHEIGHT*sv->GVS[sv->StdView].TranslateGain;
                SUMA_postRedisplay(w, NULL, NULL);
             }else if (SUMA_CTRL_KEY(key)){
                /*fprintf (SUMA_STDERR,"%s: Control Up\n", FuncName);*/
@@ -2970,7 +3082,7 @@ int SUMA_Up_Key(SUMA_SurfaceViewer *sv, char *key, char *caller)
                }
                sv->GVS[sv->StdView].spinDeltaX = 0;
                sv->GVS[sv->StdView].spinDeltaY = 
-                                    2.0*ArrowDeltaRot*sv->WindHeight;
+                                    2.0*ArrowDeltaRot*sv->X->aHEIGHT;
                SUMA_postRedisplay(w, NULL, NULL);
                   
             }
@@ -3025,7 +3137,7 @@ int SUMA_Down_Key(SUMA_SurfaceViewer *sv, char *key, char *caller)
                /*sv->GVS[sv->StdView].translateVec[0] += 0;*/
                sv->GVS[sv->StdView].translateVec[1] -=  
                   (GLfloat)sv->GVS[sv->StdView].ArrowtranslateDeltaY /           
-                  (float)sv->WindHeight*sv->GVS[sv->StdView].TranslateGain;
+                  (float)sv->X->aHEIGHT*sv->GVS[sv->StdView].TranslateGain;
                SUMA_postRedisplay(w, NULL, NULL);
             }else if (SUMA_CTRL_KEY(key)){
                /*fprintf (SUMA_STDERR,"%s: Control down\n", FuncName);*/
@@ -3086,7 +3198,7 @@ int SUMA_Down_Key(SUMA_SurfaceViewer *sv, char *key, char *caller)
                  fprintf(stdout,"\n");*/
                sv->GVS[sv->StdView].spinDeltaX = 0;
                sv->GVS[sv->StdView].spinDeltaY = 
-                           -2.0*ArrowDeltaRot*sv->WindHeight;
+                           -2.0*ArrowDeltaRot*sv->X->aHEIGHT;
                SUMA_postRedisplay(w, NULL, NULL);
             }
             
@@ -3140,7 +3252,7 @@ int SUMA_Left_Key(SUMA_SurfaceViewer *sv, char *key, char *caller)
                /*fprintf (SUMA_STDERR,"%s: Shift down\n", FuncName);*/
                sv->GVS[sv->StdView].translateVec[0] -=
                   (GLfloat)sv->GVS[sv->StdView].ArrowtranslateDeltaX       /     
-                  (float)sv->WindWidth*sv->GVS[sv->StdView].TranslateGain;
+                  (float)sv->X->aWIDTH*sv->GVS[sv->StdView].TranslateGain;
                /*sv->GVS[sv->StdView].translateVec[1] -= 0;*/
                SUMA_postRedisplay(w, NULL, NULL);
             }else if (SUMA_CTRL_KEY(key)){
@@ -3193,7 +3305,7 @@ int SUMA_Left_Key(SUMA_SurfaceViewer *sv, char *key, char *caller)
                            sv->GVS[sv->StdView].currentQuat, 
                            sv->GVS[sv->StdView].currentQuat);
                sv->GVS[sv->StdView].spinDeltaX = 
-                              -2.0*ArrowDeltaRot*sv->WindWidth;
+                              -2.0*ArrowDeltaRot*sv->X->aWIDTH;
                sv->GVS[sv->StdView].spinDeltaY = 0;
                SUMA_postRedisplay(w, NULL, NULL);
             }
@@ -3248,7 +3360,7 @@ int SUMA_Right_Key(SUMA_SurfaceViewer *sv, char *key, char *caller)
                /*fprintf (SUMA_STDERR,"%s: Shift down\n", FuncName);*/
                sv->GVS[sv->StdView].translateVec[0] += 
                   (GLfloat)sv->GVS[sv->StdView].ArrowtranslateDeltaX /
-                  (float)sv->WindWidth*sv->GVS[sv->StdView].TranslateGain;
+                  (float)sv->X->aWIDTH*sv->GVS[sv->StdView].TranslateGain;
                /*sv->GVS[sv->StdView].translateVec[1] -= 0;*/
                SUMA_postRedisplay(w,  NULL, NULL);
             }else if (SUMA_CTRL_KEY(key)){
@@ -3300,7 +3412,7 @@ int SUMA_Right_Key(SUMA_SurfaceViewer *sv, char *key, char *caller)
                add_quats (sv->GVS[sv->StdView].deltaQuat, 
                           sv->GVS[sv->StdView].currentQuat, 
                           sv->GVS[sv->StdView].currentQuat);
-               sv->GVS[sv->StdView].spinDeltaX = 2.0*ArrowDeltaRot*sv->WindWidth;
+               sv->GVS[sv->StdView].spinDeltaX = 2.0*ArrowDeltaRot*sv->X->aWIDTH;
                sv->GVS[sv->StdView].spinDeltaY = 0;
                SUMA_postRedisplay(w,  NULL, NULL);
             }
@@ -3321,8 +3433,439 @@ int SUMA_Right_Key(SUMA_SurfaceViewer *sv, char *key, char *caller)
 #define SUMA_ALTHELL ( (Kev.state & Mod1Mask) || \
                        (Kev.state & Mod2Mask) ||  \
                        (Kev.state & SUMA_APPLE_AltOptMask) )
-                       
-/*! Mouse and Keyboard input handler function for SUMA's viewer*/
+
+char *SUMA_Butts2String(SUMA_EVENT *ev)
+{
+   static char ccs[10][32];
+   static int icall=0;
+   char *cc;
+   int nb=0, mot;
+   
+   ++icall; if (icall>9) icall=0;
+   cc = (char *)ccs[icall]; cc[0]='\0';
+   
+   if (ev->b1) {cc[nb++]='1'; cc[nb++]='&'; mot = 0;}
+   if (ev->b2) {cc[nb++]='2'; cc[nb++]='&'; mot = 0;}
+   if (ev->b3) {cc[nb++]='3'; cc[nb++]='&'; mot = 0;}
+   if (ev->b4) {cc[nb++]='4'; cc[nb++]='&'; mot = 0;}
+   if (ev->b5) {cc[nb++]='5'; cc[nb++]='&'; mot = 0;}
+   if (ev->b6) {cc[nb++]='6'; cc[nb++]='&'; mot = 0;}
+   if (ev->b7) {cc[nb++]='6'; cc[nb++]='&'; mot = 0;}
+   if (ev->b1m) {cc[nb++]='1'; cc[nb++]='&'; mot = 1;}
+   if (ev->b2m) {cc[nb++]='2'; cc[nb++]='&'; mot = 1;}
+   if (ev->b3m) {cc[nb++]='3'; cc[nb++]='&'; mot = 1;}
+   if (ev->b4m) {cc[nb++]='4'; cc[nb++]='&'; mot = 1;}
+   if (ev->b5m) {cc[nb++]='5'; cc[nb++]='&'; mot = 1;}
+   
+   if (nb>1) nb = nb-1; /* Get rid of last & */
+   cc[nb] = '\0';
+   return(cc);
+}
+
+char *SUMA_KeyType2String(int kt) 
+{
+   switch(kt) {
+      case KeyPress:
+         return("key");
+      case ButtonRelease:
+         return("release");
+      case ButtonPress:
+         return("press");
+      case MotionNotify:
+         return("motion");
+      default:
+         return("UNKNOWN");
+   }
+}
+
+void SUMA_ShowEvent(SUMA_EVENT *ev, int opt, char *pre) 
+{
+   static char FuncName[]={"SUMA_ShowEvent"};
+   static int icall=0;
+   char *s = NULL;
+   SUMA_STRING *SS = NULL;
+   FILE *out = stderr;
+   
+   SUMA_ENTRY;
+
+   SS = SUMA_StringAppend(NULL, NULL);
+
+   if (pre) SUMA_StringAppend(SS,pre);
+   if (!ev) {
+      SUMA_StringAppend(SS,"NULL ev\n"); goto OUT;
+   }
+   ++icall;
+   if (!opt) {
+      SUMA_StringAppend_va(SS,"Event Struct (set %d, callid %d)\n"
+                        "   ktype %d kstate %d transl %s\n"
+                        "   keysym %d mtype %d mstate %d\n"
+                        "   bButton %d mButton %d\n"
+                        "   bTime %ld  mTime %ld\n"
+                        "   mX %d mY %d bX %d bY %d\n"
+                        "   mDelta %d, mDeltaX %d, mDeltaY %d\n"
+               "   shift %d control %d mod1 %d mod2 %d mod3 %d mod4 %d mod5 %d\n"
+                        "   ApplAltOpt %d DoubleClick %d\n"
+                        "   b1 %d b2 %d b3 %d b4 %d b5 %d b6 %d b7 %d\n"
+                        "   b1m %d b2m %d b3m %d b4m %d b5m %d\n",
+                        ev->set, icall,
+                        ev->ktype, ev->kstate, ev->transl,
+                        ev->keysym, ev->mtype, ev->mstate,
+                        ev->bButton, ev->mButton,
+                        ev->bTime, ev->mTime,
+                        ev->mX, ev->mY, ev->bX, ev->bY,
+                        ev->mDelta, ev->mDeltaX, ev->mDeltaY,
+      ev->Shift, ev->Control, ev->Mod1, ev->Mod2, ev->Mod3, ev->Mod4, ev->Mod5,
+                        ev->AppleAltOpt, ev->DoubleClick,
+                        ev->b1, ev->b2, ev->b3, ev->b4, ev->b5, ev->b6, ev->b7,
+                        ev->b1m, ev->b2m, ev->b3m, ev->b4m, ev->b5m);
+   } else {
+      /* More readable mode */
+      SUMA_StringAppend_va(SS,"Input Event %d: %s   \n", 
+            icall, ev->set ? "":"WARNING Event Struct Not Set!" );
+      if (ev->ktype == KeyPress) {
+         SUMA_StringAppend_va(SS,"%s: char>>%s<< sym>>%d<< ", 
+                           SUMA_KeyType2String(ev->ktype),
+                           ev->transl, (int)ev->keysym);
+      } else {
+         SUMA_StringAppend_va(SS,"Mouse %s %s%s: ", 
+            SUMA_Butts2String(ev),
+            SUMA_KeyType2String(ev->ktype), 
+            ev->DoubleClick ? " double click":"");
+         if (ev->b1) SUMA_StringAppend_va(SS,"b1 ",ev->b1);
+         if (ev->b2) SUMA_StringAppend_va(SS,"b2 ",ev->b2);
+         if (ev->b3) SUMA_StringAppend_va(SS,"b3 ",ev->b3);
+         if (ev->b4) SUMA_StringAppend_va(SS,"b4 ",ev->b4);
+         if (ev->b5) SUMA_StringAppend_va(SS,"b5 ",ev->b5);
+         if (ev->b6) SUMA_StringAppend_va(SS,"b6 ",ev->b6);
+         if (ev->b7) SUMA_StringAppend_va(SS,"b7 ",ev->b7);
+         if (ev->b1m) SUMA_StringAppend_va(SS,"m1 ",ev->b1m);
+         if (ev->b2m) SUMA_StringAppend_va(SS,"m2 ",ev->b2m);
+         if (ev->b3m) SUMA_StringAppend_va(SS,"m3 ",ev->b3m);
+         if (ev->b4m) SUMA_StringAppend_va(SS,"m4 ",ev->b4m);
+         if (ev->b5m) SUMA_StringAppend_va(SS,"m5 ",ev->b5m);
+      }
+      if (ev->Shift) {
+         SUMA_StringAppend_va(SS,"Shift ");
+      }
+      if (ev->Control){
+         SUMA_StringAppend_va(SS,"Control ");
+      }
+      if (ev->Mod1){
+         SUMA_StringAppend_va(SS,"alt ");
+      }
+      if (ev->Mod2){
+         SUMA_StringAppend_va(SS,"Mod2 (command on mac) ");
+      }
+      if (ev->Mod3){
+         SUMA_StringAppend_va(SS,"Mod3 ");
+      }
+      if (ev->Mod4){
+         SUMA_StringAppend_va(SS,"Mod4 ");
+      }
+      if (ev->Mod5){
+         SUMA_StringAppend_va(SS,"Mod5 ");
+      }
+      if (ev->Mod2){
+         SUMA_StringAppend_va(SS,"Mod2 ");
+      }
+      if (ev->AppleAltOpt){
+        SUMA_StringAppend_va(SS,"Apple Alt/Opt ");
+      }
+      SUMA_StringAppend_va(SS,"k/mstate [%d/%d]\n\n", ev->kstate, ev->mstate);
+   }
+   OUT:
+   SUMA_SS2S(SS,s);
+   
+   fprintf(out,"%s",s);
+   
+   SUMA_ifree(s);
+   
+   SUMA_RETURNe;
+}
+
+#define evALT ((ev->Mod1 || ev->Mod2 || ev->AppleAltOpt))
+int SUMA_ShftCont_Event(SUMA_EVENT *ev) 
+{
+   if (!ev) ev = SUMAg_CF->lev;
+   if (!ev || !ev->set) return(0);
+   if (ev->Shift && ev->Control && !evALT) return(1);
+   return(0);
+}
+int SUMA_Cont_Event(SUMA_EVENT *ev) 
+{
+   if (!ev) ev = SUMAg_CF->lev;
+   if (!ev || !ev->set) return(0);
+   if (!ev->Shift && ev->Control && !evALT) return(1);
+   return(0);
+}
+int SUMA_Shft_Event(SUMA_EVENT *ev) 
+{
+   if (!ev) ev = SUMAg_CF->lev;
+   if (!ev || !ev->set) return(0);
+   if (ev->Shift && !ev->Control && !evALT) return(1);
+   return(0);
+}
+int SUMA_ShftContAlt_Event(SUMA_EVENT *ev) 
+{
+   if (!ev) ev = SUMAg_CF->lev;
+   if (!ev || !ev->set) return(0);
+   if (ev->Shift && ev->Control && evALT ) return(1);
+   return(0);
+}
+int SUMA_ContAlt_Event(SUMA_EVENT *ev) 
+{
+   if (!ev) ev = SUMAg_CF->lev;
+   if (!ev || !ev->set) return(0);
+   if (!ev->Shift && ev->Control && evALT ) return(1);
+   return(0);
+}
+int SUMA_ShftAlt_Event(SUMA_EVENT *ev) 
+{
+   if (!ev) ev = SUMAg_CF->lev;
+   if (!ev || !ev->set) return(0);
+   if (ev->Shift && !ev->Control && evALT ) return(1);
+   return(0);
+}
+int SUMA_Alt_Event(SUMA_EVENT *ev) 
+{
+   if (!ev) ev = SUMAg_CF->lev;
+   if (!ev || !ev->set) return(0);
+   if (!ev->Shift && !ev->Control && evALT) return(1);
+   return(0);
+}
+int SUMA_Plain_Event(SUMA_EVENT *ev) 
+{
+   if (!ev) ev = SUMAg_CF->lev;
+   if (!ev || !ev->set) return(0);
+   if (!ev->Shift && !ev->Control && !evALT) return(1);
+   return(0);
+}
+
+/*! Get a record of events.
+    Contents based on logic used in SUMA_input()
+    Ideally, all should be done here and SUMA_input()
+    should use the results of this call. But we're not
+    there yet....
+    Once I start using this one call, then the logic
+    can be revisited at varied points in there.
+*/                       
+SUMA_EVENT *SUMA_RecordEvent( XEvent *event, 
+                              SUMA_EVENT *ev)
+{
+   static char FuncName[]={"SUMA_RecordEvent"};
+   XKeyEvent Kev;
+   XButtonEvent Bev;
+   XMotionEvent Mev;
+   static SUMA_EVENT lev;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   
+   if (!event) {
+      SUMA_S_Err("Null event");
+      if (ev) memset(ev, 0, sizeof(SUMA_EVENT));
+      SUMA_RETURN(ev);
+   }
+   
+   if (!ev) {
+      if (!(ev = SUMAg_CF->lev)) {
+         memset(&lev, 0, sizeof(SUMA_EVENT));
+         SUMAg_CF->lev = (SUMA_EVENT *)SUMA_malloc(1*sizeof(SUMA_EVENT));   
+      }
+      ev = SUMAg_CF->lev;
+   }
+   if (!ev) SUMA_RETURN(NULL);
+   memset(ev, 0, sizeof(SUMA_EVENT));
+   
+   Kev = *(XKeyEvent *) &event->xkey; /* RickR's suggestion to comply with 
+                                 ANSI C, no type casting of structures  July 04*/
+   Bev = *(XButtonEvent *) &event->xbutton;
+   Mev = *(XMotionEvent *) &event->xmotion;
+
+   ev->set = 1;
+   /* The copied parameters */
+   ev->ktype = Kev.type;
+   ev->kstate = Kev.state;
+   ev->mtype = Mev.type;
+   ev->mstate = Mev.state;
+   ev->bTime = Bev.time;
+   ev->mTime = Mev.time;
+   ev->bButton = Bev.button;
+   ev->mButton = 0; /* Not sure this one was all that necessary */
+   ev->mX = Mev.x;
+   ev->mY = Mev.y;
+   ev->bX = Bev.x;
+   ev->bY = Bev.y;
+   
+   /* The inferred parameters */
+   if ((Kev.state & ShiftMask) || (Bev.state & ShiftMask)) ev->Shift = 1;
+   if ((Kev.state & ControlMask) || (Bev.state & ControlMask)) ev->Control = 1;
+   if (Kev.state & Mod1Mask) ev->Mod1 = 1;
+   if (Kev.state & Mod2Mask) ev->Mod2 = 1;
+   if (Kev.state & Mod3Mask) ev->Mod3 = 1;
+   if (Kev.state & Mod4Mask) ev->Mod4 = 1;
+   if (Kev.state & Mod5Mask) ev->Mod5 = 1;
+   if (Kev.state & SUMA_APPLE_AltOptMask) ev->AppleAltOpt = 1;
+   
+   switch(ev->ktype) {
+      case KeyPress:
+         ev->transl[0] = ev->transl[15] = '\0';
+         XLookupString( (XKeyEvent *)event, ev->transl, 14, 
+                              &ev->keysym, NULL);
+         break;
+         break;
+      case ButtonPress:
+         if (Bev.state & Button1Mask) ev->b1 = 1;
+         if (Bev.state & Button2Mask) ev->b2 = 1;
+         if (Bev.state & Button3Mask) ev->b3 = 1;
+         if (Bev.state & Button4Mask) ev->b4 = 1;
+         if (Bev.state & Button5Mask) ev->b5 = 1;
+         if (ev->bButton == 6) ev->b6 = 1; /* on macs Button6 not in X.h */
+         if (ev->bButton == 7) ev->b7 = 1; /* on macs Button7 not in X.h */
+         
+         switch (ev->bButton) {
+            case Button1:
+            case Button2:
+            case Button3:
+            case Button4:
+            case Button5:
+            case 6: 
+            case 7:
+            default:
+               SUMA_LH("ButtonPress %d not known", ev->bButton);
+               break;
+         }
+         
+         /* trap for double click */
+         if (Bev.time - lev.bTime < SUMA_DOUBLE_CLICK_MAX_DELAY) {
+            ev->DoubleClick = YUP;
+         } else {
+            ev->DoubleClick = NOPE;
+         }
+         
+         if (  SUMAg_CF->SwapButtons_1_3 || 
+               (SUMAg_CF->ROI_mode && SUMAg_CF->Pen_mode)) {
+            int kk=ev->b1;
+            ev->b1 = ev->b3;
+            ev->b3 = kk;
+         }
+
+         break;
+      case ButtonRelease:
+         ev->mTime = 0;
+         if (Bev.state & Button1Mask) ev->b1 = 1;
+         if (Bev.state & Button2Mask) ev->b2 = 1;
+         if (Bev.state & Button3Mask) ev->b3 = 1;
+         if (Bev.state & Button4Mask) ev->b4 = 1;
+         if (Bev.state & Button5Mask) ev->b5 = 1;
+         if (ev->bButton == 6) ev->b6 = 1; /* on macs Button6 not in X.h */
+         if (ev->bButton == 7) ev->b7 = 1; /* on macs Button7 not in X.h */
+         
+         if (SUMAg_CF->SwapButtons_1_3 || 
+             (SUMAg_CF->ROI_mode && SUMAg_CF->Pen_mode)) {
+            int kk=ev->b1;
+            ev->b1 = ev->b3;
+            ev->b3 = kk;
+         }
+         break;
+         
+      case MotionNotify:
+         if (Mev.state & Button1MotionMask) ev->b1m = 1;
+         if (Mev.state & Button2MotionMask) ev->b2m = 1;
+         if (Mev.state & Button3MotionMask) ev->b3m = 1;
+         if (Mev.state & Button4MotionMask) ev->b4m = 1;
+         if (Mev.state & Button5MotionMask) ev->b5m = 1;
+         if (Mev.state) { SUMA_LH("   Something mot\n"); }
+         
+         /* The conditions and new assignments of mButton
+         below is stupid. But I won't touch it until I 
+         have to. Reassignments should be to b1m, b2m, etc.
+         mButton should not be touched. 
+         Also, there should be no need for these numerous
+         conditions. If swapping is needed, b1m and b3m 
+         values should be swaped. Things like SUMA_Button_12_Motion
+         should be made into functions that return an answer
+         based on ev's contents */
+         if (  SUMAg_CF->SwapButtons_1_3 || 
+               (SUMAg_CF->ROI_mode && SUMAg_CF->Pen_mode)) {
+           if (((Mev.state & Button3MotionMask) && 
+                                             (Mev.state & Button2MotionMask)) 
+            || ((Mev.state & Button2MotionMask) && (Mev.state & ShiftMask))) {
+               int kk=ev->b1m;
+               ev->b1m = ev->b3m;
+               ev->b3m = kk;
+               ev->mButton = SUMA_Button_12_Motion;
+            } else if(Mev.state & Button3MotionMask) {
+               ev->mButton = SUMA_Button_1_Motion;
+               int kk=ev->b1m;
+               ev->b1m = ev->b3m;
+               ev->b3m = kk;
+            }else if(Mev.state & Button2MotionMask) { 
+               ev->mButton = SUMA_Button_2_Motion;
+            }else if(Mev.state & Button1MotionMask) {
+                
+               ev->mButton = SUMA_Button_3_Motion;
+            }else {
+               break;
+            } 
+         } else {
+            if (((Mev.state & Button1MotionMask) && 
+                                                (Mev.state & Button2MotionMask))
+             || ((Mev.state & Button2MotionMask) && (Mev.state & ShiftMask))) {
+               ev->mButton = SUMA_Button_12_Motion;
+            } else if(Mev.state & Button1MotionMask) {
+               ev->mButton = SUMA_Button_1_Motion;
+            }else if(Mev.state & Button2MotionMask) { 
+               ev->mButton = SUMA_Button_2_Motion;
+            } else if(Mev.state & Button3MotionMask) { 
+               ev->mButton = SUMA_Button_3_Motion;
+            }else {
+               break;
+            }
+         }
+         switch (ev->mButton) {
+            case SUMA_Button_12_Motion:
+            case SUMA_Button_2_Shift_Motion:
+               if (ev->mTime) {
+                  ev->mDelta = Mev.time - lev.mTime;
+                  ev->mDeltaX = Mev.x - lev.mX;
+                  ev->mDeltaY = Mev.y - lev.mY;
+               } else {
+                  ev->mDelta  = 0;
+                  ev->mDeltaX = 0;
+                  ev->mDeltaY = 0;
+               }
+               break;
+            case SUMA_Button_2_Motion:
+               break;
+            case SUMA_Button_3_Motion:
+               break;
+      }
+               
+   }
+   if (LocalHead) {
+      SUMA_ShowEvent(ev, 0, "EventRecord:\n");
+      SUMA_ShowEvent(ev, 1, "EventRecord:\n");
+   } else if (SUMAg_CF->Echo_KeyPress) {
+      SUMA_ShowEvent(ev, 1, "EventRecord:\n");
+   }
+   
+   /* keep local copy of last event */
+   memcpy(&lev, ev, sizeof(SUMA_EVENT));
+   
+   SUMA_RETURN(ev);   
+}
+
+/*! Mouse and Keyboard input handler function for SUMA's viewer 
+    START shifting to SUMA_RecordEvent() and its helper functions
+    like SUMA_Alt_Event(), etc. 
+    You should also split SUMA_input() into SUMA_input_Xevent()
+    and SUMA_input_eng(). Where SUMA_input_Xevent() just sets
+    SUMAg_CF->lev and SUMA_input_eng() works entirely off of
+    SUMAg_CF->lev . This way you would be able to completely
+    drive SUMA_input_eng() without any mouse movement/X structs
+    etc. All you need is to manipulate the content of lev.
+*/
 void SUMA_input(Widget w, XtPointer clientData, XtPointer callData)
 {
    static char FuncName[]= {"SUMA_input"};
@@ -3368,7 +3911,18 @@ void SUMA_input(Widget w, XtPointer clientData, XtPointer callData)
    }
    SUMA_LH("A call from SUMA_SurfaceViewer[%d], Pointer %p\n", isv, sv);
    
-
+   /* ******** ABOUT EVENT HANDLING ************** */
+   /* Eventually you should use the structure
+      created by RecordEvent to decide on what was clicked
+      and how. While a little less efficient than 
+      what is done below, RecordEvent will eventually
+      be considerably more flexible, and easier to debug.
+      But for now, so that visible progress can be made,
+      I will leave button processing and queries below
+      as is, and try to make the switch gradually */
+   
+   SUMAg_CF->lev = SUMA_RecordEvent( cd->event, SUMAg_CF->lev);
+                              
    Kev = *(XKeyEvent *) &cd->event->xkey; /* RickR's suggestion to comply with 
                                  ANSI C, no type casting of structures  July 04*/
    Bev = *(XButtonEvent *) &cd->event->xbutton;
@@ -4303,6 +4857,16 @@ void SUMA_input(Widget w, XtPointer clientData, XtPointer callData)
             }
             break;
             
+         case XK_F10: /*F10 */
+            if (!SUMA_F10_Key(sv, "F10", "interactive", NULL)) {
+               SUMA_S_Err("Failed in key func.");
+            }
+            break;
+         case XK_F11: /* F11 */
+            if (!SUMA_F11_Key(sv, "F11", "interactive", NULL)) {
+               SUMA_S_Err("Failed in key func.");
+            }
+            break;   
          case XK_F12: /* F12 */
             if (!SUMA_F12_Key(sv, "F12", "interactive")) {
                SUMA_S_Err("Failed in key func.");
@@ -4593,6 +5157,47 @@ void SUMA_input(Widget w, XtPointer clientData, XtPointer callData)
                   }
                } 
                #endif
+            } else if (pButton==6 || Bev.state & ControlMask) {
+               SUMA_ALL_DO *ado=NULL;
+               SUMA_X_SurfCont *SurfCont;
+               if (MASK_MANIP_MODE(sv)) {
+                  ado = SUMA_whichADOg(sv->MouseMode_ado_idcode_str);
+                  if (ado && ado->do_type == MASK_type) {
+                     SUMA_MaskDO *mdo = (SUMA_MaskDO *)ado;
+                     float fv[3];
+                     int irow=-1;
+                     {
+                        fv[0] = mdo->hdim[0]-(0.2*mdo->init_hdim[0]); 
+                        fv[1] = mdo->hdim[1]-(0.2*mdo->init_hdim[1]); 
+                        fv[2] = mdo->hdim[2]-(0.2*mdo->init_hdim[2]);
+                        if (fv[0] < 0 || fv[1] < 0 || fv[2] < 0) {
+                           SUMA_BEEP;
+                           break;
+                        }
+                        SUMA_MDO_New_Dim(mdo, fv);
+                     }
+                     if ((SurfCont=SUMA_ADO_Cont(ado))) {
+                        irow = SUMA_ObjectID_Row(SurfCont->MaskTable, 
+                                                 ADO_ID(ado));
+                        if (irow >= 0) {
+                           SUMA_InitMasksTable_row(SurfCont,mdo, irow);
+                        }
+                     }
+                     SUMA_NEW_MASKSTATE();
+                     /* enough for now */
+                     goto REDISP;
+                  }
+               } else if ((ado = SUMA_SV_Focus_ADO(sv)) && 
+                           ado->do_type == GRAPH_LINK_type &&
+                           !strcmp(SUMA_ADO_variant(ado),"GMATRIX")) {
+                  SUMA_OVERLAYS *Sover = NULL;
+                  SUMA_LH("Going forward one sub-brick");
+                  Sover = SUMA_ADO_CurColPlane(ado);
+                  SUMA_SwitchColPlaneIntensity( ado, Sover, 
+                                                SUMA_FORWARD_ONE_SUBBRICK, 1);   
+                  /* redisplay done in function above ... */
+                  SUMA_RETURNe;
+               }
             } else {
                if (!SUMA_Z_Key(sv, "z", "interactive")) {
                   SUMA_S_Err("Failed in key func.");
@@ -4647,12 +5252,50 @@ void SUMA_input(Widget w, XtPointer clientData, XtPointer callData)
                   }
                }
                #endif
+            } else if (pButton==7 || Bev.state & ControlMask) {
+               SUMA_ALL_DO *ado=NULL;
+               SUMA_X_SurfCont *SurfCont;
+               if (MASK_MANIP_MODE(sv)) {
+                  ado = SUMA_whichADOg(sv->MouseMode_ado_idcode_str);
+                  if (ado && ado->do_type == MASK_type) {
+                     SUMA_MaskDO *mdo = (SUMA_MaskDO *)ado;
+                     float fv[3];
+                     int irow=-1;
+                     {
+                        fv[0] = mdo->hdim[0]+(0.2*mdo->init_hdim[0]); 
+                        fv[1] = mdo->hdim[1]+(0.2*mdo->init_hdim[1]); 
+                        fv[2] = mdo->hdim[2]+(0.2*mdo->init_hdim[2]);
+                        SUMA_MDO_New_Dim(mdo, fv);
+                     }
+                     if ((SurfCont=SUMA_ADO_Cont(ado))) {
+                        irow = SUMA_ObjectID_Row(SurfCont->MaskTable, 
+                                                 ADO_ID(ado));
+                        if (irow >= 0) {
+                           SUMA_InitMasksTable_row(SurfCont,mdo, irow);
+                        }
+                     }
+                     SUMA_NEW_MASKSTATE();
+                     /* enough for now */
+                     goto REDISP;
+                  }
+               } else if ((ado = SUMA_SV_Focus_ADO(sv)) && 
+                           ado->do_type == GRAPH_LINK_type &&
+                           !strcmp(SUMA_ADO_variant(ado),"GMATRIX")) {
+                  SUMA_OVERLAYS *Sover = NULL;
+                  SUMA_LH("Switching overlay back one");
+                  Sover = SUMA_ADO_CurColPlane(ado);
+                  SUMA_SwitchColPlaneIntensity( ado, Sover, 
+                                                SUMA_BACK_ONE_SUBBRICK, 1);   
+                  /* redisplay done in function above ... */
+                  SUMA_RETURNe;
+               }
             } else {
                if (!SUMA_Z_Key(sv, "Z", "interactive")) {
                   SUMA_S_Err("Failed in key func.");
                }
             }
             break;
+
          case Button2:
             if (Bev.state & ShiftMask) {
                /* setup initial zooming conditions */
@@ -4670,7 +5313,7 @@ void SUMA_input(Widget w, XtPointer clientData, XtPointer callData)
             }
             break;
             
-         case Button3:
+         case Button3: {
                SUMA_LHv("Button 3 down plain jane, "
                             "viewer #%d : X=%f, Y = %f\n", 
                             SUMA_WhichSV(sv, SUMAg_SVv, SUMAg_N_SVv),
@@ -4707,7 +5350,7 @@ void SUMA_input(Widget w, XtPointer clientData, XtPointer callData)
                   SUMA_LH("Yoking intensity to node selection");
                   SUMAg_CF->YokeIntToNode = 1;
                } else {
-                  SUMA_LH("Holding back callbacks");
+                  SUMA_LH("Holding back yoking");
                   SUMAg_CF->YokeIntToNode = 0;
                }
 
@@ -4722,7 +5365,8 @@ void SUMA_input(Widget w, XtPointer clientData, XtPointer callData)
                }
                
                if (DoubleClick && !ROI_mode){/*See if you are selecting masks */
-                  SUMA_ALL_DO *mado=NULL;
+                  SUMA_ALL_DO *mado=NULL, *ado=NULL;
+                  SUMA_GRAPH_SAUX *GSaux=NULL;
                   /* you do not want to waist time doing double calculations if 
                      the user clicks twice by mistake */
                   /* make sure no viewer, other than the one clicked in is in 
@@ -4761,8 +5405,29 @@ void SUMA_input(Widget w, XtPointer clientData, XtPointer callData)
                      }
                      /* Not much else to do */
                      goto REDISP;
+                  } else if (MASK_MANIP_MODE(sv)) { /* turn it off */
+                     SUMA_S_Note("Turning off mask manip mode");
+                     if (!SUMA_SetMouseMode(sv,SUMA_MASK_MANIP_MMODE,NULL)) {
+                        SUMA_S_Warn("Mask manip mode could not be set");
+                     }
+                     /* Not much else to do */
+                     goto REDISP;
+                  } else if ((ado = SUMA_SV_Focus_ADO(sv)) && 
+                              ado->do_type == GRAPH_LINK_type &&
+                             (GSaux = SUMA_ADO_GSaux(ado)) && 
+                             GSaux->PR && GSaux->PR->datum_index == -1 &&
+                             GSaux->PR->iAltSel[SUMA_ENODE_0] != -1 &&
+                             GSaux->IgnoreSelection == 0) { 
+                           /* turn off node selection to allow all connections
+                              to be visible. Execute only if we have a graph
+                              in focus (in 3D drawing) and a point is selected
+                              and selection is not being ignored*/
+                        SUMA_LH("Ignoring selection for graph display");
+                        GSaux->IgnoreSelection = 1;
+                        SUMA_FlushPickBufferForDO(ado);
+                        goto REDISP;   
                   }
-                  SUMA_LH("No mask hit");
+                  SUMA_LH("No mask hit, and no selection needs ignoring");
                }
                
                if (!DoubleClick) {
@@ -4898,7 +5563,7 @@ void SUMA_input(Widget w, XtPointer clientData, XtPointer callData)
                OUT:
                /* reset hold on xforms */
                SUMAg_CF->HoldClickCallbacks = 0;
-            break;
+            break; }
       } /* switch type of button Press */
       break;
       
@@ -5000,13 +5665,20 @@ void SUMA_input(Widget w, XtPointer clientData, XtPointer callData)
          break;
          case Button1:
             SUMA_LH("In Button 1 release\n");
-            if (sv->GVS[sv->StdView].LHpry0 != sv->GVS[sv->StdView].LHpry) {
+            if (sv->GVS[sv->StdView].vLHpry0[0] != 
+                                          sv->GVS[sv->StdView].vLHpry[0] ||
+                sv->GVS[sv->StdView].vLHpry0[1] != 
+                                          sv->GVS[sv->StdView].vLHpry[1] ||
+                sv->GVS[sv->StdView].vLHpry0[2] != 
+                                          sv->GVS[sv->StdView].vLHpry[2] ){
                /* update the normals just now, this would not be needed if
                  SUMA_ApplyPrying has set recompute_normals = 1*/
                SUMA_RecomputeNormsPrying(sv);
                SUMA_handleRedisplay((XtPointer)sv->X->GLXAREA);
             }
-            sv->GVS[sv->StdView].LHpry0 = sv->GVS[sv->StdView].LHpry;
+            sv->GVS[sv->StdView].vLHpry0[0] = sv->GVS[sv->StdView].vLHpry[0];
+            sv->GVS[sv->StdView].vLHpry0[1] = sv->GVS[sv->StdView].vLHpry[1];
+            sv->GVS[sv->StdView].vLHpry0[2] = sv->GVS[sv->StdView].vLHpry[2];
          break;
       } /* switch type of button Press */
       break;
@@ -5112,8 +5784,8 @@ void SUMA_input(Widget w, XtPointer clientData, XtPointer callData)
             /*fprintf(SUMA_STDERR,"%s: In motion, Butt1 \n", FuncName); */
             mevx = (float)Mev.x;
             mevy = (float)Mev.y;
-            wwid = (float)sv->WindWidth;
-            whei = (float)sv->WindHeight;
+            wwid = (float)sv->X->aWIDTH;
+            whei = (float)sv->X->aHEIGHT;
             /* spinning mode */
             if (sv->ZoomCompensate) {
                zc_fac = sv->ZoomCompensate;
@@ -5150,8 +5822,8 @@ void SUMA_input(Widget w, XtPointer clientData, XtPointer callData)
                            "spinBeginY %f \n"
                            "spinDeltaX %f \n"
                            "spinDeltaY %f \n"
-                           "WindWidth %d  \n"
-                           "WindHeight %d\n"
+                           "X->aWIDTH %d  \n"
+                           "X->aHEIGHT %d\n"
                            "ZoomCompensate %f\n"
                            "mv[xy]last [%d %d]\n"
                            "mvdelta[xy]last [%d %d]\n"
@@ -5161,7 +5833,7 @@ void SUMA_input(Widget w, XtPointer clientData, XtPointer callData)
                         sv->GVS[sv->StdView].spinBeginY, 
                         sv->GVS[sv->StdView].spinDeltaX, 
                         sv->GVS[sv->StdView].spinDeltaY, 
-                        sv->WindWidth, sv->WindHeight, sv->ZoomCompensate,
+                        sv->X->aWIDTH, sv->X->aHEIGHT, sv->ZoomCompensate,
                         mvxlast, mvylast,
                         mvdeltax, mvdeltay,
                         mvx_fac, mvy_fac
@@ -5173,7 +5845,7 @@ void SUMA_input(Widget w, XtPointer clientData, XtPointer callData)
             mvx_fac = mvy_fac = 1.0;
             if (sv->GVS[sv->StdView].spinDeltaX || 
                 sv->GVS[sv->StdView].spinDeltaY){
-               if (Mev.state & ShiftMask) {
+               if (SUMA_Shft_Event(SUMAg_CF->lev)) {
                   float a[3], cQ[4];
                   /* rotate about Z axis   */
                   a[0] = 0.0; a[1] = 0.0; a[2] = 1.0;
@@ -5185,10 +5857,14 @@ void SUMA_input(Widget w, XtPointer clientData, XtPointer callData)
                   add_quats ( cQ, 
                               sv->GVS[sv->StdView].currentQuat, 
                               sv->GVS[sv->StdView].currentQuat);
-               } if (Mev.state & ControlMask) {
-                  SUMA_ApplyPrying(sv, sv->GVS[sv->StdView].spinDeltaX, 
-                                   "mouse", 0); /* update normals at release */
-               } else {
+               } else if (SUMA_Cont_Event(SUMAg_CF->lev)) {
+                  float val[3];
+                  val[0] = sv->GVS[sv->StdView].spinDeltaX;
+                  val[1] = sv->GVS[sv->StdView].spinDeltaY;
+                  val[2] = 0.0;
+                  SUMA_ApplyPrying(sv, val, "mouse", 0); 
+                                       /* update normals at release */
+               } else if (SUMA_Plain_Event(SUMAg_CF->lev)){
                   trackball(  sv->GVS[sv->StdView].deltaQuat, 
                               (2*sv->GVS[sv->StdView].spinBeginX - wwid) /
                               wwid*zc_fac*mvx_fac, 
@@ -5202,6 +5878,9 @@ void SUMA_input(Widget w, XtPointer clientData, XtPointer callData)
                   add_quats ( sv->GVS[sv->StdView].deltaQuat, 
                               sv->GVS[sv->StdView].currentQuat, 
                               sv->GVS[sv->StdView].currentQuat);
+               } else {
+                  SUMA_LH("Not ready for event flavor");
+                  break;
                }
                ii = SUMA_WhichSV(sv, SUMAg_SVv, SUMAg_N_SVv);
                if (ii < 0) {
@@ -5273,10 +5952,10 @@ void SUMA_input(Widget w, XtPointer clientData, XtPointer callData)
             } else {
                sv->GVS[sv->StdView].translateDeltaX =  
                   (mevx - sv->GVS[sv->StdView].translateBeginX) /
-                  (float)sv->WindWidth*sv->GVS[sv->StdView].TranslateGain;
+                  (float)sv->X->aWIDTH*sv->GVS[sv->StdView].TranslateGain;
                sv->GVS[sv->StdView].translateDeltaY = 
                   -(mevy - sv->GVS[sv->StdView].translateBeginY) /
-                   (float)sv->WindHeight*sv->GVS[sv->StdView].TranslateGain;
+                   (float)sv->X->aHEIGHT*sv->GVS[sv->StdView].TranslateGain;
 
                if (  sv->GVS[sv->StdView].translateDeltaX || 
                      sv->GVS[sv->StdView].translateDeltaY){
@@ -5563,7 +6242,7 @@ SUMA_Boolean SUMA_MarkPickInBuffer4(SUMA_SurfaceViewer *sv, int InViewer,
    p2[0] = -1;
    p3[0] = -1;
             
-   n4 = sv->PickPix[1]*sv->X->WIDTH + sv->PickPix[0];
+   n4 = sv->PickPix[1]*sv->X->aWIDTH + sv->PickPix[0];
    n4 = 4*n4;
    SUMA_LHv("User pixel selection from whole buffer:"
                   " at %d %d is: %d %d %d %d\n", 
@@ -5571,7 +6250,7 @@ SUMA_Boolean SUMA_MarkPickInBuffer4(SUMA_SurfaceViewer *sv, int InViewer,
                   sv->pickrenpix4[n4] , sv->pickrenpix4[n4+1],
                   sv->pickrenpix4[n4+2] , sv->pickrenpix4[n4+3]);
    if (sv->PickPix[1] > 0) {
-      n4 = (sv->PickPix[1]-1)*sv->X->WIDTH + sv->PickPix[0];
+      n4 = (sv->PickPix[1]-1)*sv->X->aWIDTH + sv->PickPix[0];
       n4 = 4*n4;
       p0[0] = n4; p0[1] = sv->pickrenpix4[n4  ]; p0[2] = sv->pickrenpix4[n4+1]; 
                   p0[3] = sv->pickrenpix4[n4+2]; p0[4] = sv->pickrenpix4[n4+3];
@@ -5579,23 +6258,23 @@ SUMA_Boolean SUMA_MarkPickInBuffer4(SUMA_SurfaceViewer *sv, int InViewer,
          sv->pickrenpix4[n4+2] = sv->pickrenpix4[n4+3] = 255;    
    }
    if (sv->PickPix[0] > 0) {
-      n4 = sv->PickPix[1]*sv->X->WIDTH + sv->PickPix[0]-1;
+      n4 = sv->PickPix[1]*sv->X->aWIDTH + sv->PickPix[0]-1;
       n4 = 4*n4;
       p1[0] = n4; p1[1] = sv->pickrenpix4[n4  ]; p1[2] = sv->pickrenpix4[n4+1]; 
                   p1[3] = sv->pickrenpix4[n4+2]; p1[4] = sv->pickrenpix4[n4+3];
       sv->pickrenpix4[n4] = sv->pickrenpix4[n4+1] =
          sv->pickrenpix4[n4+2] = sv->pickrenpix4[n4+3] = 255;    
    }
-   if (sv->PickPix[1] < (sv->X->HEIGHT-1)) {
-      n4 = (sv->PickPix[1]+1)*sv->X->WIDTH + sv->PickPix[0];
+   if (sv->PickPix[1] < (sv->X->aHEIGHT-1)) {
+      n4 = (sv->PickPix[1]+1)*sv->X->aWIDTH + sv->PickPix[0];
       n4 = 4*n4;
       p2[0] = n4; p2[1] = sv->pickrenpix4[n4  ]; p2[2] = sv->pickrenpix4[n4+1]; 
                   p2[3] = sv->pickrenpix4[n4+2]; p2[4] = sv->pickrenpix4[n4+3];
       sv->pickrenpix4[n4] = sv->pickrenpix4[n4+1] =
          sv->pickrenpix4[n4+2] = sv->pickrenpix4[n4+3] = 255;    
    }
-   if (sv->PickPix[0] < (sv->X->WIDTH-1)) {
-      n4 = sv->PickPix[1]*sv->X->WIDTH + sv->PickPix[0]+1;
+   if (sv->PickPix[0] < (sv->X->aWIDTH-1)) {
+      n4 = sv->PickPix[1]*sv->X->aWIDTH + sv->PickPix[0]+1;
       n4 = 4*n4;
       p3[0] = n4; p3[1] = sv->pickrenpix4[n4  ]; p3[2] = sv->pickrenpix4[n4+1]; 
                   p3[3] = sv->pickrenpix4[n4+2]; p3[4] = sv->pickrenpix4[n4+3];
@@ -5603,20 +6282,20 @@ SUMA_Boolean SUMA_MarkPickInBuffer4(SUMA_SurfaceViewer *sv, int InViewer,
          sv->pickrenpix4[n4+2] = sv->pickrenpix4[n4+3] = 255;    
    }
    if (InViewer) { /* show me the money in the interactive viewer */
-      GLubyte *pp3 = (GLubyte *)SUMA_calloc(sv->X->WIDTH*sv->X->HEIGHT*3, 
+      GLubyte *pp3 = (GLubyte *)SUMA_calloc(sv->X->aWIDTH*sv->X->aHEIGHT*3, 
                                             sizeof(GLubyte));
-      for (n3=0,n=0; n<sv->X->WIDTH*sv->X->HEIGHT; ++n) {
+      for (n3=0,n=0; n<sv->X->aWIDTH*sv->X->aHEIGHT; ++n) {
          n4=4*n;
          pp3[n3++]= sv->pickrenpix4[n4++];
          pp3[n3++]= sv->pickrenpix4[n4++];
          pp3[n3++]= sv->pickrenpix4[n4++]; n4++;
       }
-      ISQ_snapsave(sv->X->WIDTH, -sv->X->HEIGHT,
+      ISQ_snapsave(sv->X->aWIDTH, -sv->X->aHEIGHT,
                     (unsigned char *)pp3, sv->X->GLXAREA );
       SUMA_ifree(pp3);
    }
    if (OnDisk) {
-      if (!SUMA_PixelsToDisk(sv, sv->X->WIDTH, -sv->X->HEIGHT,
+      if (!SUMA_PixelsToDisk(sv, sv->X->aWIDTH, -sv->X->aHEIGHT,
                           (GLvoid *)sv->pickrenpix4, 4, 1, OnDisk, 1, 0)) {
          SUMA_S_Err("Failed to write pix to disk");
       }
@@ -5763,7 +6442,7 @@ SUMA_Boolean SUMA_PickBuffer(SUMA_SurfaceViewer *sv, int action, SUMA_DO *dov)
       sv->DO_PickMode = 1;
       SUMA_display(sv, dov);
       if (!(sv->pickrenpix4 = 
-               SUMA_grabPixels(4, sv->X->WIDTH, sv->X->HEIGHT))) {
+               SUMA_grabPixels(4, sv->X->aWIDTH, sv->X->aHEIGHT))) {
          SUMA_S_Err("Failed to grab pixels");
       }
       sv->DO_PickMode = 0;
@@ -6243,7 +6922,7 @@ SUMA_PICK_RESULT *SUMA_WhatWasPicked(SUMA_SurfaceViewer *sv, GLubyte *colid,
                SUMA_S_Err("No GSaux");
                SUMA_RETURN(PR);
             }
-
+            GSaux->IgnoreSelection = 0; /*reset ignore selection flag */
             if (SUMA_is_ADO_Datum_Primitive(ado, codf)) { 
                datum_index = SUMA_GDSET_EdgeRow_To_Index(dset, 
                                                          PR->primitive_index);
@@ -6672,9 +7351,13 @@ SUMA_PICK_RESULT *SUMA_New_Pick_Result(SUMA_PICK_RESULT *PR)
    for (i=0; i<SUMA_N_DALTSEL_TYPES; ++i) PR->dAltSel[i] = 0.0;
    SUMA_ifree(PR->primitive);
    SUMA_ifree(PR->ado_idcode_str);
-
+   /* Imprint with event structure */
+   PR->evr = (SUMA_EVENT *)malloc(sizeof(SUMA_EVENT));
+   if (SUMAg_CF->lev) memcpy(PR->evr, SUMAg_CF->lev, sizeof(SUMA_EVENT));
+   else memset(PR->evr, 0, sizeof(SUMA_EVENT));
+   /* SUMA_ShowEvent(PR->evr, 0, "From New Pick Result\n"); */
    return(PR);
-}   
+}
 
 SUMA_PICK_RESULT *SUMA_free_PickResult(SUMA_PICK_RESULT *PR)
 {
@@ -6684,6 +7367,7 @@ SUMA_PICK_RESULT *SUMA_free_PickResult(SUMA_PICK_RESULT *PR)
    SUMA_ifree(PR->primitive);
    SUMA_ifree(PR->ado_idcode_str);
    SUMA_ifree(PR->dset_idcode_str);
+   SUMA_ifree(PR->evr);
    SUMA_free(PR);
    SUMA_RETURN(NULL);
 }
@@ -6706,6 +7390,20 @@ SUMA_Boolean SUMA_ADO_StorePickResult(SUMA_ALL_DO *ado, SUMA_PICK_RESULT **PRP)
       case SDSET_type: {
          SUMA_DSET *dset=(SUMA_DSET *)ado;
          SUMA_GRAPH_SAUX *Saux = SDSET_GSAUX(dset);
+         /* Is the selection type changed? If so, then
+         you need to flush the pick buffer */
+
+         if (Saux->PR) {
+            if ( (Saux->PR->datum_index * (*PRP)->datum_index < 0) ||
+                 ((*PRP)->datum_index == -1 && 
+                  (Saux->PR->iAltSel[SUMA_ENODE_0] != 
+                              (*PRP)->iAltSel[SUMA_ENODE_0])) )  {
+               /* Going from edge selection to node selection, in general
+                  But there is no need to get picky */
+              SUMA_FlushPickBufferForDO((SUMA_ALL_DO *)SUMA_find_Dset_GLDO(dset, 
+                                                 "G3D",NULL));            
+            }
+         }
          SUMA_free_PickResult(Saux->PR);
          Saux->PR = *PRP; *PRP = NULL;
          SUMA_RETURN(YUP);
@@ -6964,11 +7662,11 @@ int SUMA_ComputeLineDOsIntersect (SUMA_SurfaceViewer *sv, SUMA_DO *dov,
    SUMA_LH("DO pickin");
    
    if (sv->PickPix[0] < 0 || sv->PickPix[1] < 0 ||
-       sv->PickPix[0] >= sv->X->WIDTH ||  sv->PickPix[1] >= sv->X->HEIGHT) {
+       sv->PickPix[0] >= sv->X->aWIDTH ||  sv->PickPix[1] >= sv->X->aHEIGHT) {
       /* This happens when you select and drag outside of the viewing area
       Don't return in error */
       SUMA_LHv("Bad PickPix=[%d %d] for viewport %d %d\n",
-                 sv->PickPix[0], sv->PickPix[1], sv->X->WIDTH, sv->X->HEIGHT); 
+                 sv->PickPix[0], sv->PickPix[1], sv->X->aWIDTH, sv->X->aHEIGHT); 
       SUMA_RETURN(0);
    }
 
@@ -7012,7 +7710,7 @@ int SUMA_ComputeLineDOsIntersect (SUMA_SurfaceViewer *sv, SUMA_DO *dov,
          /* get pixel at click */
          i = sv->PickPix[0]; j = sv->PickPix[1];
          if (SUMA_GetColidInPickBuffer4(sv->pickrenpix4, 
-                              sv->X->WIDTH, sv->X->HEIGHT,
+                              sv->X->aWIDTH, sv->X->aHEIGHT,
                               &i, &j, 2, colans)) {
             if (LocalHead) { 
                /* Just for debugging, draw the crosshair point */
@@ -7235,8 +7933,36 @@ int SUMA_Apply_PR_DO(SUMA_SurfaceViewer *sv, SUMA_ALL_DO *ado,
                   "%s: Notifying Afni of CrossHair XYZ\n", FuncName);
       /* register a call to SetAfniCrossHair */
       if (!list) list = SUMA_CreateList();
-      SUMA_REGISTER_TAIL_COMMAND_NO_DATA( list, SE_SetAfniCrossHair, 
-                                          SES_Suma, sv);
+      it = SUMA_ShftCont_Event(PR->evr);
+      ED = SUMA_InitializeEngineListData (SE_SetAfniCrossHair);
+      if (!SUMA_RegisterEngineListCommand (  list, ED, 
+                                          SEF_i, (void*)&it,
+                                          SES_Suma, (void *)sv, NOPE,
+                                          SEI_Tail, NULL)) {
+         fprintf(SUMA_STDERR,"Error %s: Failed to register element\n", FuncName);
+         SUMA_RETURN (-1);
+      }
+      if (MASK_MANIP_MODE(sv) && SUMAg_CF->Dev) {
+         SUMA_ALL_DO *ado = SUMA_whichADOg(sv->MouseMode_ado_idcode_str);
+         DListElmt *Location=NULL;
+         SUMA_LH("Might be telling afni about mask...");
+         if (ado && ado->do_type == MASK_type) {
+            SUMA_MaskDO *mdo = (SUMA_MaskDO *)ado;
+            ED = SUMA_InitializeEngineListData (SE_SetAfniMask);
+            if (!(Location=SUMA_RegisterEngineListCommand (  list, ED, 
+                                                SEF_fv3, (void*)mdo->cen,
+                                                SES_Suma, (void *)sv, NOPE,
+                                                SEI_Tail, NULL))) {
+               SUMA_S_Err("Failed to register element\n");
+               SUMA_RETURN (-1);
+            }
+            SUMA_RegisterEngineListCommand (  list, ED, 
+                                           SEF_s, (void *)(ADO_ID(ado)),
+                                           SES_Suma, (void *)sv, NOPE,
+                                           SEI_In, Location);
+         }
+      }
+      
       if (!SUMA_Engine (&list)) {
          fprintf( SUMA_STDERR, 
                   "Error %s: SUMA_Engine call failed.\n", FuncName);
@@ -7291,24 +8017,35 @@ int SUMA_Apply_PR(SUMA_SurfaceViewer *sv, SUMA_PICK_RESULT **PR)
       SUMA_ifree(sv->LastSel_ado_idcode_str);
       sv->LastSel_ado_idcode_str = SUMA_copy_string((*PR)->ado_idcode_str);
       /* Just move the selected mask */
-      ado = SUMA_whichADOg(sv->MouseMode_ado_idcode_str);
+      if (!(ado = SUMA_whichADOg(sv->MouseMode_ado_idcode_str))) {
+         SUMA_S_Err("Yikes, got not ado for MouseMode_ado_idcode_str %s",
+              sv->MouseMode_ado_idcode_str?sv->MouseMode_ado_idcode_str:"NULL");
+         SUMA_RETURN(-1);
+      }
       if (ado->do_type != MASK_type) {
          SUMA_S_Err("Bad ID for mouse mode value");
          SUMA_RETURN(-1);
       }
+      /* Set the parent as the ado_pick */
+      SUMA_MDO_New_parent((SUMA_MaskDO *)ado, (*PR)->ado_idcode_str,
+                          (*PR)->datum_index);
+      
       if (ado_pick->do_type == SO_type) {
          SUMA_SurfaceObject *SO = (SUMA_SurfaceObject *)ado_pick;
          /* PickXYZ might be under VisX */
          xyz = SO->NodeList+SO->NodeDim* (*PR)->datum_index;
+         SUMA_MDO_New_Doppel((SUMA_MaskDO *)ado, (*PR)->PickXYZ);
       } else {
          xyz = (*PR)->PickXYZ;
+         SUMA_MDO_New_Doppel((SUMA_MaskDO *)ado, NULL);
       }
       if (LocalHead) SUMA_DUMP_TRACE("Box motion");
       SUMA_NEW_MASKSTATE();
-      SUMA_RETURN(SUMA_MDO_New_Cen((SUMA_MaskDO *)ado, xyz));
-   } else {
+      SUMA_MDO_New_Cen((SUMA_MaskDO *)ado, xyz);
+   }
+   
+   {
       ado = SUMA_whichADOg((*PR)->ado_idcode_str);
-      SUMA_LH("Here %s", ADO_LABEL(ado));
       SUMA_ifree(sv->LastSel_ado_idcode_str);
       sv->LastSel_ado_idcode_str = SUMA_copy_string((*PR)->ado_idcode_str);
       switch (ado->do_type) {
@@ -7461,7 +8198,7 @@ int SUMA_ComputeLineMaskIntersect (SUMA_SurfaceViewer *sv, SUMA_DO *dov,
          SUMA_S_Err("NULL ado at this point? imin = %d", imin);
          SUMA_RETURN(-1);
       }
-      PR = (SUMA_PICK_RESULT *)SUMA_calloc(1, sizeof(SUMA_PICK_RESULT));
+      PR = SUMA_New_Pick_Result(NULL);
       if (pado) *pado = ado; /* user want answer back */
       PR->ado_idcode_str = SUMA_copy_string(ADO_ID(ado));
       PR->datum_index = MTI->inodemin;
@@ -7624,7 +8361,7 @@ int SUMA_ComputeLineSurfaceIntersect (SUMA_SurfaceViewer *sv, SUMA_DO *dov,
          SUMA_S_Err("NULL ado at this point?");
          SUMA_RETURN(-1);
       }
-      PR = (SUMA_PICK_RESULT *)SUMA_calloc(1, sizeof(SUMA_PICK_RESULT));
+      PR = SUMA_New_Pick_Result(NULL);
       if (pado) *pado = ado; /* user want answer back */
       PR->ado_idcode_str = SUMA_copy_string(ADO_ID(ado));
       PR->datum_index = MTI->inodemin;
@@ -7661,7 +8398,7 @@ int SUMA_Apply_PR_SO(SUMA_SurfaceViewer *sv, SUMA_SurfaceObject *SO,
    SUMA_Boolean LocalHead = NOPE;
    
    SUMA_ENTRY;
-   SUMA_LH("Here");
+
    if (!sv || !SO || !PRi || !*PRi) { SUMA_S_Err("Niente"); SUMA_RETURN(-1); }
     
    /* Mark intersection Facsets */
@@ -7780,8 +8517,33 @@ int SUMA_Apply_PR_SO(SUMA_SurfaceViewer *sv, SUMA_SurfaceObject *SO,
                   "%s: Notifying Afni of CrossHair XYZ\n", FuncName);
       /* register a call to SetAfniCrossHair */
       if (!list) list = SUMA_CreateList();
-      SUMA_REGISTER_TAIL_COMMAND_NO_DATA( list, SE_SetAfniCrossHair, 
-                                          SES_Suma, sv);
+      it = SUMA_ShftCont_Event(PR->evr);
+      ED = SUMA_InitializeEngineListData (SE_SetAfniCrossHair);
+      if (!SUMA_RegisterEngineListCommand (  list, ED, 
+                                          SEF_i, (void*)&it,
+                                          SES_Suma, (void *)sv, NOPE,
+                                          SEI_Tail, NULL)) {
+         fprintf(SUMA_STDERR,"Error %s: Failed to register element\n", FuncName);
+         SUMA_RETURN (-1);
+      }
+      if (MASK_MANIP_MODE(sv) && SUMAg_CF->Dev) {
+         SUMA_ALL_DO *ado = SUMA_whichADOg(sv->MouseMode_ado_idcode_str);
+         if (ado && ado->do_type == MASK_type) {
+            SUMA_MaskDO *mdo = (SUMA_MaskDO *)ado;
+            ED = SUMA_InitializeEngineListData (SE_SetAfniMask);
+            if (!(Location=SUMA_RegisterEngineListCommand (  list, ED, 
+                                                SEF_fv3, (void*)mdo->cen,
+                                                SES_Suma, (void *)sv, NOPE,
+                                                SEI_Tail, NULL))) {
+               SUMA_S_Err("Failed to register element\n");
+               SUMA_RETURN (-1);
+            }
+            SUMA_RegisterEngineListCommand (  list, ED, 
+                                           SEF_s, (void *)(ADO_ID(ado)),
+                                           SES_Suma, (void *)sv, NOPE,
+                                           SEI_In, Location);
+         }
+      }
       if (!SUMA_Engine (&list)) {
          fprintf( SUMA_STDERR, 
                   "Error %s: SUMA_Engine call failed.\n", FuncName);
@@ -7817,6 +8579,7 @@ int SUMA_Apply_PR_SO(SUMA_SurfaceViewer *sv, SUMA_SurfaceObject *SO,
       NOTE: You do not always have SetNodeElem because the list might 
       get emptied in the call to AFNI notification.
       You should just put the next call at the end of the list.*/
+   SUMA_LH("Cross hair locking");
    if (!list) list = SUMA_CreateList();
    ED = SUMA_InitializeEngineListData (SE_LockCrossHair);
    if (!SUMA_RegisterEngineListCommand (  list, ED, 
@@ -7827,11 +8590,12 @@ int SUMA_Apply_PR_SO(SUMA_SurfaceViewer *sv, SUMA_SurfaceObject *SO,
       SUMA_RETURN (-1);
    }
 
+   SUMA_LH("Cross hair locking Engine call");
    if (!SUMA_Engine (&list)) {
       fprintf(SUMA_STDERR, "Error %s: SUMA_Engine call failed.\n", FuncName);
       SUMA_RETURN (-1);
    }
-    
+   SUMA_LH("Returning"); 
    SUMA_RETURN (1); /* OK */
 }/* determine intersection */
 
@@ -8020,8 +8784,15 @@ int SUMA_MarkLineCutplaneIntersect (SUMA_SurfaceViewer *sv, SUMA_DO *dov,
                      "%s: Notifying Afni of CrossHair XYZ\n", FuncName);
          /* register a call to SetAfniCrossHair */
          if (!list) list = SUMA_CreateList();
-         SUMA_REGISTER_TAIL_COMMAND_NO_DATA( list, SE_SetAfniCrossHair, 
-                                             SES_Suma, sv);
+         it = 0; /* Might want someday: SUMA_ShftCont_Event(PR->evr); */
+         ED = SUMA_InitializeEngineListData (SE_SetAfniCrossHair);
+         if (!SUMA_RegisterEngineListCommand (  list, ED, 
+                                             SEF_i, (void*)&it,
+                                             SES_Suma, (void *)sv, NOPE,
+                                             SEI_Tail, NULL)) {
+            SUMA_S_Err("Failed to register element\n");
+            SUMA_RETURN (-1);
+         }
          if (!SUMA_Engine (&list)) {
             fprintf( SUMA_STDERR, 
                      "Error %s: SUMA_Engine call failed.\n", FuncName);
@@ -8103,10 +8874,13 @@ int SUMA_ComputeLineVOslicesIntersect (SUMA_SurfaceViewer *sv, SUMA_DO *dov,
 {/* determine intersection */
    static char FuncName[]={"SUMA_ComputeLineVOslicesIntersect"};
    float P0f[3], P1f[3], pinter[3], I[3];
-   int NP, N_Hit; 
+   int NP, N_Hit, okinten=0; 
    float delta_t_tmp, dmin, val; 
    struct timeval tt_tmp; 
-   int ip, it, id, ii, imin, I1d, Irw, Hit, ive, icolplane;
+   int ip, it, id, ii, imin, I1d, Irw, Hit, ive, icolplane, indef=-1;
+   int *MembDOs=NULL, N_MembDOs, UseAlphaTresh=1;
+   float valpha=0.0;
+   SUMA_DO_Types ttv[12];
    char sfield[100], sdestination[100], CommString[SUMA_MAX_COMMAND_LENGTH];
    SUMA_VolumeObject *VO=NULL;
    SUMA_Boolean NodeIgnored = NOPE;
@@ -8127,15 +8901,17 @@ int SUMA_ComputeLineVOslicesIntersect (SUMA_SurfaceViewer *sv, SUMA_DO *dov,
    P1f[0] = sv->Pick1[0];
    P1f[1] = sv->Pick1[1];
    P1f[2] = sv->Pick1[2];
-   
+
+   ttv[0] = VO_type; ttv[1] = NOT_SET_type;
+   MembDOs = SUMA_ViewState_Membs(&(sv->VSv[sv->iState]), ttv, &N_MembDOs);
    SUMA_LHv("Searching for hit: %f %f %f --> %f %f %f\n", 
             P0f[0], P0f[1], P0f[2], P1f[0], P1f[1], P1f[2]);   
    N_Hit = 0;
-   for (ii=0; ii<SUMAg_N_DOv; ++ii) {
-      if (SUMA_isVO(SUMAg_DOv[ii])) {
-         VO = (SUMA_VolumeObject *)(SUMAg_DOv[ii].OP);
+   for (ii=0; ii<N_MembDOs; ++ii) {
+      {
+         VO = (SUMA_VolumeObject *)(dov[MembDOs[ii]].OP);
          ado = (SUMA_ALL_DO *)VO;
-         VSaux = SUMA_ADO_VSaux(ado);
+         if (!(VSaux = SUMA_ADO_VSaux(ado))) continue;
          SUMA_LH("%d slices on %s", dlist_size(VSaux->slcl), ADO_LABEL(ado));
          if (!dlist_size(VSaux->slcl)) continue;
          /* now compute intersection from the top down */
@@ -8181,16 +8957,44 @@ int SUMA_ComputeLineVOslicesIntersect (SUMA_SurfaceViewer *sv, SUMA_DO *dov,
                               colplane->OptScl->ThreshRange[0], 
                               colplane->OptScl->ThreshRange[1]);
                       
+                      /* Do we meet intensity thresholds? */
+                      okinten = 0;
                       if ( SUMA_VAL_MEETS_THRESH(val, 
                                     colplane->OptScl->ThreshRange,
                                     colplane->OptScl->ThrMode ) && 
-                           (val != 0.0f || !colplane->OptScl->MaskZero) ) {
-                           SUMA_LH("FOUND IT, on VE %s, IJK [%d %d %d], val %f," 
-                                   "thresh[%f %f]",
+                           (val != 0.0f || !colplane->OptScl->MaskZero)) {
+                        okinten = 1;
+                      }
+                      
+                      indef = -1;
+                      UseAlphaTresh = 1;/* control from interface someday */
+                      valpha = 2.0; /* no masking */
+                      if (UseAlphaTresh && okinten && colplane->ColAlpha) {
+                        /* Also mask if value is below alpha thresh 
+                           This is a slow search... So you may not want
+                           to use it all the time. 
+                           Problem is finding the row of the voxel in
+                           NodeDef, and that's too slow for a big 
+                           volume to be run repeatedly...Would
+                           be easier if I had a function to recompute
+                           a voxel's alpha, rather than search for it
+                           in ColAlpha. Oh, well, someday I guess. For
+                           now we search*/
+                        if ((indef=SUMA_GetSortedNodeOverInd(colplane, I1d))>=0){
+                           valpha = colplane->ColAlpha[indef]/255.0;
+                        }
+                      }
+                      
+                      if ( okinten && (valpha > colplane->AlphaThresh) ) {
+                        SUMA_LH("FOUND IT, on VE %s, IJK [%d %d %d], val %f," 
+                               "thresh[%f %f], UseAlphaTresh = %d, "
+                               "valpha=%f, ColAlphaThresh=%f\n",
                                    SUMA_VE_Headname(VO->VE, ive), 
                                    (int)I[0], (int)I[1], (int)I[2], val,
                                    colplane->OptScl->ThreshRange[0], 
-                                   colplane->OptScl->ThreshRange[1]);
+                                   colplane->OptScl->ThreshRange[1],
+                                   UseAlphaTresh,
+                                   valpha, colplane->AlphaThresh*255);
                            PR = SUMA_New_Pick_Result(NULL);
                            PR->ado_idcode_str = SUMA_replace_string(
                                            PR->ado_idcode_str, ADO_ID(ado));
@@ -8207,6 +9011,9 @@ int SUMA_ComputeLineVOslicesIntersect (SUMA_SurfaceViewer *sv, SUMA_DO *dov,
                            PR->iAltSel[SUMA_VOL_J] = I[1];
                            PR->iAltSel[SUMA_VOL_K] = I[2];
                            PR->iAltSel[SUMA_VOL_IJK] = I1d;
+                           PR->iAltSel[SUMA_VOL_SLC_NUM] = rslc->slc_num;
+                           PR->iAltSel[SUMA_VOL_SLC_VARIANT] = 
+                                 (int)SUMA_SlcVariantToCode(rslc->variant);
                            PR->dAltSel[SUMA_VOL_SLC_EQ0] = rslc->Eq[0];
                            PR->dAltSel[SUMA_VOL_SLC_EQ1] = rslc->Eq[1];
                            PR->dAltSel[SUMA_VOL_SLC_EQ2] = rslc->Eq[2];
@@ -8377,11 +9184,38 @@ int SUMA_Apply_PR_VO(SUMA_SurfaceViewer *sv, SUMA_VolumeObject *VO,
    /* check to see if AFNI needs to be notified */
    if (SUMAg_CF->Connected_v[SUMA_AFNI_STREAM_INDEX] && 
        sv->LinkAfniCrossHair) {
+      int it;
       SUMA_LH("Notifying Afni of CrossHair XYZ");
       /* register a call to SetAfniCrossHair */
       if (!list) list = SUMA_CreateList();
-      SUMA_REGISTER_TAIL_COMMAND_NO_DATA(list, 
-                              SE_SetAfniCrossHair, SES_Suma, sv);
+      it = SUMA_ShftCont_Event(PR->evr);
+      ED = SUMA_InitializeEngineListData (SE_SetAfniCrossHair);
+      if (!SUMA_RegisterEngineListCommand (  list, ED, 
+                                          SEF_i, (void*)&it,
+                                          SES_Suma, (void *)sv, NOPE,
+                                          SEI_Tail, NULL)) {
+         fprintf(SUMA_STDERR,"Error %s: Failed to register element\n", FuncName);
+         SUMA_RETURN (-1);
+      }
+      if (MASK_MANIP_MODE(sv) && SUMAg_CF->Dev) {
+         SUMA_ALL_DO *ado = SUMA_whichADOg(sv->MouseMode_ado_idcode_str);
+         DListElmt *Location=NULL;
+         if (ado && ado->do_type == MASK_type) {
+            SUMA_MaskDO *mdo = (SUMA_MaskDO *)ado;
+            ED = SUMA_InitializeEngineListData (SE_SetAfniMask);
+            if (!(Location=SUMA_RegisterEngineListCommand (  list, ED, 
+                                                SEF_fv3, (void*)mdo->cen,
+                                                SES_Suma, (void *)sv, NOPE,
+                                                SEI_Tail, NULL))) {
+               SUMA_S_Err("Failed to register element\n");
+               SUMA_RETURN (-1);
+            }
+            SUMA_RegisterEngineListCommand (  list, ED, 
+                                           SEF_s, (void *)(ADO_ID(ado)),
+                                           SES_Suma, (void *)sv, NOPE,
+                                           SEI_In, Location);
+         }
+      }
       if (!SUMA_Engine (&list)) {
          fprintf(stderr, "Error %s: SUMA_Engine call failed.\n", FuncName);
          SUMA_RETURN(-1);
@@ -10381,6 +11215,27 @@ void SUMA_LookAtCoordinates (char *s, void *data)
    SUMA_RETURNe;
 }
 
+void SUMA_SV_SetRenderOrder(char *s, void *data)
+{
+   static char FuncName[]={"SUMA_SV_SetRenderOrder"};
+   SUMA_SurfaceViewer *sv = NULL;
+   SUMA_Boolean LocalHead = NOPE; 
+
+   SUMA_ENTRY;
+
+   if (!s) SUMA_RETURNe;
+   
+   sv = (SUMA_SurfaceViewer *)data;
+   if (!sv) {
+      SUMA_S_Err("Null sv");
+      SUMA_RETURNe;
+   }
+   
+   sv->N_otseq = SUMA_SetObjectDisplayOrder(s, sv->otseq);
+      
+   SUMA_RETURNe;
+}
+
 void SUMA_JumpIndex (char *s, void *data)
 {
    static char FuncName[]={"SUMA_JumpIndex"};
@@ -10544,8 +11399,16 @@ void SUMA_JumpIndex_SO (char *s, SUMA_SurfaceViewer *sv, SUMA_SurfaceObject *SO)
       if (LocalHead) 
          fprintf(SUMA_STDERR,"%s: Notifying Afni of CrossHair XYZ\n", FuncName);
       /* register a call to SetAfniCrossHair */
-      SUMA_REGISTER_TAIL_COMMAND_NO_DATA(list, 
-                              SE_SetAfniCrossHair, SES_Suma, sv);
+      it = 0; /* Set to 1 if you want instacorr notice to AFNI */
+      ED = SUMA_InitializeEngineListData (SE_SetAfniCrossHair);
+      if (!SUMA_RegisterEngineListCommand (  list, ED, 
+                                          SEF_i, (void*)&it,
+                                          SES_Suma, (void *)sv, NOPE,
+                                          SEI_Tail, NULL)) {
+         fprintf(SUMA_STDERR,"Error %s: Failed to register element\n", FuncName);
+         SUMA_RETURNe;
+      }
+
    }
 
    /* and if GICOR needs some love */
@@ -10673,9 +11536,16 @@ void SUMA_JumpIndex_GDSET (char *s, SUMA_SurfaceViewer *sv,
    if (SUMAg_CF->Connected_v[SUMA_AFNI_STREAM_INDEX] && sv->LinkAfniCrossHair) {
       if (LocalHead) 
          fprintf(SUMA_STDERR,"%s: Notifying Afni of CrossHair XYZ\n", FuncName);
-      /* register a call to SetAfniCrossHair */
-      SUMA_REGISTER_TAIL_COMMAND_NO_DATA(list, 
-                              SE_SetAfniCrossHair, SES_Suma, sv);
+      it = 0;
+      ED = SUMA_InitializeEngineListData (SE_SetAfniCrossHair);
+      if (!SUMA_RegisterEngineListCommand (  list, ED, 
+                                          SEF_i, (void*)&it,
+                                          SES_Suma, (void *)sv, NOPE,
+                                          SEI_Tail, NULL)) {
+         fprintf(SUMA_STDERR,"Error %s: Failed to register element\n", FuncName);
+         SUMA_RETURNe;
+      }
+
    }
 
    /* call with the list */
@@ -10834,9 +11704,16 @@ void SUMA_JumpIndex_TDO (char *s, SUMA_SurfaceViewer *sv,
    if (SUMAg_CF->Connected_v[SUMA_AFNI_STREAM_INDEX] && sv->LinkAfniCrossHair) {
       if (LocalHead) 
          fprintf(SUMA_STDERR,"%s: Notifying Afni of CrossHair XYZ\n", FuncName);
-      /* register a call to SetAfniCrossHair */
-      SUMA_REGISTER_TAIL_COMMAND_NO_DATA(list, 
-                              SE_SetAfniCrossHair, SES_Suma, sv);
+      it = 0;
+      ED = SUMA_InitializeEngineListData (SE_SetAfniCrossHair);
+      if (!SUMA_RegisterEngineListCommand (  list, ED, 
+                                          SEF_i, (void*)&it,
+                                          SES_Suma, (void *)sv, NOPE,
+                                          SEI_Tail, NULL)) {
+         fprintf(SUMA_STDERR,"Error %s: Failed to register element\n", FuncName);
+         SUMA_RETURNe;
+      }
+
    }
 
    /* call with the list */
@@ -11003,9 +11880,16 @@ void SUMA_JumpIndex_VO (char *s, SUMA_SurfaceViewer *sv,
    if (SUMAg_CF->Connected_v[SUMA_AFNI_STREAM_INDEX] && sv->LinkAfniCrossHair) {
       if (LocalHead) 
          fprintf(SUMA_STDERR,"%s: Notifying Afni of CrossHair XYZ\n", FuncName);
-      /* register a call to SetAfniCrossHair */
-      SUMA_REGISTER_TAIL_COMMAND_NO_DATA(list, 
-                              SE_SetAfniCrossHair, SES_Suma, sv);
+      it = 0;
+      ED = SUMA_InitializeEngineListData (SE_SetAfniCrossHair);
+      if (!SUMA_RegisterEngineListCommand (  list, ED, 
+                                          SEF_i, (void*)&it,
+                                          SES_Suma, (void *)sv, NOPE,
+                                          SEI_Tail, NULL)) {
+         fprintf(SUMA_STDERR,"Error %s: Failed to register element\n", FuncName);
+         SUMA_RETURNe;
+      }
+
    }
 
    /* call with the list */
@@ -11167,9 +12051,16 @@ void SUMA_JumpIndex_MDO (char *s, SUMA_SurfaceViewer *sv, SUMA_MaskDO *mo)
    if (SUMAg_CF->Connected_v[SUMA_AFNI_STREAM_INDEX] && sv->LinkAfniCrossHair) {
       if (LocalHead) 
          fprintf(SUMA_STDERR,"%s: Notifying Afni of CrossHair XYZ\n", FuncName);
-      /* register a call to SetAfniCrossHair */
-      SUMA_REGISTER_TAIL_COMMAND_NO_DATA(list, 
-                              SE_SetAfniCrossHair, SES_Suma, sv);
+      it = 0;
+      ED = SUMA_InitializeEngineListData (SE_SetAfniCrossHair);
+      if (!SUMA_RegisterEngineListCommand (  list, ED, 
+                                          SEF_i, (void*)&it,
+                                          SES_Suma, (void *)sv, NOPE,
+                                          SEI_Tail, NULL)) {
+         fprintf(SUMA_STDERR,"Error %s: Failed to register element\n", FuncName);
+         SUMA_RETURNe;
+      }
+
    }
 
    /* call with the list */
@@ -11258,11 +12149,19 @@ void SUMA_JumpXYZ (char *s, void *data)
 
    /* check to see if AFNI needs to be notified */
    if (SUMAg_CF->Connected_v[SUMA_AFNI_STREAM_INDEX] && sv->LinkAfniCrossHair) {
+      int it;
       if (LocalHead) 
          fprintf(SUMA_STDERR,"%s: Notifying Afni of CrossHair XYZ\n", FuncName);
-      /* register a call to SetAfniCrossHair */
-      SUMA_REGISTER_TAIL_COMMAND_NO_DATA(list, SE_SetAfniCrossHair, 
-                                         SES_Suma, sv);
+      it = 0;
+      ED = SUMA_InitializeEngineListData (SE_SetAfniCrossHair);
+      if (!SUMA_RegisterEngineListCommand (  list, ED, 
+                                          SEF_i, (void*)&it,
+                                          SES_Suma, (void *)sv, NOPE,
+                                          SEI_Tail, NULL)) {
+         fprintf(SUMA_STDERR,"Error %s: Failed to register element\n", FuncName);
+         SUMA_RETURNe;
+      }
+
    }
 
    /* call with the list */

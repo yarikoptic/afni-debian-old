@@ -1407,7 +1407,7 @@ typedef struct {
       float yydel ;  /*!< Spacings between voxel centers (mm) - may be negative */
       float zzdel ;  /*!< Spacings between voxel centers (mm) - may be negative */
 
-      float xxmin ;  /*!< Bounding box for grid */
+      float xxmin ;  /*!< Bounding box for grid [cf THD_set_daxes_bbox()] */
       float xxmax ;  /*!< Bounding box for grid */
       float yymin ;  /*!< Bounding box for grid */
       float yymax ;  /*!< Bounding box for grid */
@@ -1421,7 +1421,7 @@ typedef struct {
       THD_mat33 to_dicomm ; /*!< Orthogonal matrix transforming from
                                 dataset coordinates to DICOM coordinates */
 
-      /*** 06 Dec 2005: extensions to allow arbitrarily oriented volumes ***/
+      /*** 06 Dec 2005: extensions to allow arbitrarily oriented volumes [cf thd_matdaxes.c] ***/
 
       mat44 ijk_to_dicom ;  /* matrix taking ijk indexes to DICOM xyz coords */
       mat44 dicom_to_ijk ;  /* inverse of above */
@@ -1507,11 +1507,24 @@ typedef struct {
     (cax)->yyorient == (dax)->yyorient          && \
     (cax)->zzorient == (dax)->zzorient    )
 
+#define EQUIV_DATADELTAXYZ(cax,dax)                \
+  ( ISVALID_DATAXES((cax))                      && \
+    ISVALID_DATAXES((dax))                      && \
+    fabs( (cax)->xxdel - (dax)->xxdel ) < 0.001 && \
+    fabs( (cax)->yydel - (dax)->yydel ) < 0.001 && \
+    fabs( (cax)->zzdel - (dax)->zzdel ) < 0.001 && \
+    (cax)->xxorient == (dax)->xxorient          && \
+    (cax)->yyorient == (dax)->yyorient          && \
+    (cax)->zzorient == (dax)->zzorient    )
+
 #define EQUIV_GRIDS(d1,d2) \
  ( ISVALID_DSET(d1) && ISVALID_DSET(d2) && EQUIV_DATAXES((d1)->daxes,(d2)->daxes) )
 
 #define EQUIV_GRIDXYZ(d1,d2) \
  ( ISVALID_DSET(d1) && ISVALID_DSET(d2) && EQUIV_DATAXYZ((d1)->daxes,(d2)->daxes) )
+
+#define EQUIV_DELTAXYZ(d1,d2) \
+ ( ISVALID_DSET(d1) && ISVALID_DSET(d2) && EQUIV_DATADELTAXYZ((d1)->daxes,(d2)->daxes) )
 
 extern void THD_edit_dataxes( float , THD_dataxes * , THD_dataxes * ) ;
 
@@ -2000,7 +2013,7 @@ extern mat44 THD_mat44_sqrt( mat44 A ) ;  /* matrix square root [30 Jul 2007] */
    X[2] = M[2][0]*I[0] + M[2][1]*I[1] + M[2][2]*I[2] + M[2][3]; \
 }
 
-/* This macro is for transforming a direction D, rather than 
+/* This macro is for transforming a direction D, rather than
    a point in I */
 #undef AFF44_MULT_D
 #define AFF44_MULT_D( X, M, D ) { \
@@ -2050,7 +2063,7 @@ extern mat44 THD_mat44_sqrt( mat44 A ) ;  /* matrix square root [30 Jul 2007] */
    Mi = MAT44_INV( M ); \
    MAT44_TO_AFF44 ( Ai, Mi ); \
 }
-   
+
 
 #undef AFF44_LOAD
 #define AFF44_LOAD( C, a,b,c,d, e,f,g,h, i,j,k,l ) {\
@@ -3594,6 +3607,22 @@ extern float THD_fdrcurve_zqtot( THD_3dim_dataset *dset , int iv , float zval ) 
   do{ if( DSET_VALID_BSTAT(dset,ii) )                             \
          INVALIDATE_BSTAT((dset)->stats->bstat[(ii)]) ; } while(0)
 
+/*! Return the ii-th volume's min value from bstat, if present */
+
+#define DSET_BSTAT_MIN(dset,ii)  \
+  ( DSET_VALID_BSTAT(dset,ii) ? (dset)->stats->bstat[(ii)].min : 0.0f )
+
+/*! Return the ii-th volume's max value from bstat, if present */
+
+#define DSET_BSTAT_MAX(dset,ii)  \
+  ( DSET_VALID_BSTAT(dset,ii) ? (dset)->stats->bstat[(ii)].max : 0.0f )
+
+/*! Return the ii-th volume's max abs value from bstat, if present */
+
+#define DSET_BSTAT_MAXABS(dset,ii)  \
+  ( DSET_VALID_BSTAT(dset,ii) ?     \
+      MAX(fabsf((dset)->stats->bstat[(ii)].max),fabsf((dset)->stats->bstat[(ii)].min)) : 0.0f )
+
 /*! Delete all the sub-brick statistics for dataset ds. */
 
 #define DSET_KILL_STATS(ds)                                \
@@ -3912,6 +3941,9 @@ typedef struct {
       int su_numgroup ;                  /*!< Number of surface groups */
       SUMA_surfacegroup **su_surfgroup ; /*!< Surface group array */
 
+      int su_nummask ;          /*!< Number of SUMA masks (moveable surfaces) */
+      SUMA_mask **su_mask ;     /*!< array of pointers to SUMA masks */
+
       XtPointer parent ;        /*!< generic pointer to "owner" of session */
 } THD_session ;
 
@@ -3953,22 +3985,20 @@ int get_nspaces(void);
       int id , vv ;                                                           \
       (ss)->num_dsset = 0 ;                                                   \
       (ss)->su_num    = 0 ; (ss)->su_surf = NULL ;                            \
+      (ss)->su_nummask= 0 ; (ss)->su_mask = NULL ;                            \
       (ss)->su_numgroup = 0 ; (ss)->su_surfgroup = NULL ;                     \
       (ss)->warptable = NULL ; (ss)->dsrow = NULL;                            \
       for( id=0 ; id < THD_MAX_SESSION_SIZE ; id++ )                          \
-        for( vv=0 ; vv < get_nspaces() ; vv++ )                              \
+        for( vv=0 ; vv < get_nspaces() ; vv++ )                               \
            SET_SESSION_DSET(NULL, ss, id, vv);                                \
   }
 
-/*      for( id=0 ; id < THD_MAX_SESSION_SIZE ; id++ )                          \
-        for( vv=0 ; vv <= LAST_VIEW_TYPE ; vv++ )                             \
-           SET_SESSION_DSET(NULL, ss, id, vv);                       \*/
-
 /*! Determine if session has SUMA surface data attached. */
 
-#define SESSION_HAS_SUMA(ss) ( (ss)!=NULL           &&  \
-                               (ss)->su_surf!=NULL  &&  \
-                               (ss)->su_num > 0        )
+#define SESSION_HAS_SUMA(ss) ( (ss) != NULL &&                                         \
+                               ( ( (ss)->su_surf != NULL && (ss)->su_num     > 0 ) ||  \
+                                 ( (ss)->su_mask != NULL && (ss)->su_nummask > 0 )   ) \
+                             )
 
 #define SESSIONLIST_TYPE 107
 
@@ -3979,7 +4009,7 @@ int get_nspaces(void);
 
 typedef struct {
       int type , num_sess ;
-      THD_session * ssar[THD_MAX_NUM_SESSION] ;
+      THD_session *ssar[THD_MAX_NUM_SESSION] ;
       XtPointer parent ;
 } THD_sessionlist ;
 
@@ -4185,7 +4215,7 @@ extern int THD_mkdir       ( char * ) ;  /* 19 Dec 2002 */
 extern int THD_cwd         ( char * ) ;  /* 19 Dec 2002 */
 extern int THD_equiv_files ( char * , char * ) ;
 extern long long THD_filesize( char * pathname ) ;
-extern int THD_filetime_diff( char *pathname, 
+extern int THD_filetime_diff( char *pathname,
                               int year, int month, int day);
 extern char *THD_filetime( char *pathname );
 extern char *THD_homedir(byte withslash);
@@ -4198,7 +4228,7 @@ extern char *THD_get_helpdir(byte withslash);
 extern char *THD_datadir(byte withslash);
 extern char *THD_get_datadir(byte withslash);
 extern char *THD_abindir(byte withslash);
-extern char *find_afni_file(char * nimlname, int niname);
+extern char *find_afni_file(char * nimlname, int niname, char *altpath);
 char *THD_helpsearchlog(int createpath);
 
 extern THD_string_array * THD_get_all_subdirs( int , char * ) ;
@@ -4619,7 +4649,7 @@ extern float * TS_parse_tpattern( int, float, char * ) ;  /* 11 Dec 2007 */
 
 extern THD_fvec3 THD_dataset_center( THD_3dim_dataset * ) ;  /* 01 Feb 2001 */
 extern THD_fvec3 THD_cmass( THD_3dim_dataset *xset , int iv , byte *mmm );
-extern float *THD_roi_cmass(THD_3dim_dataset *xset , int iv , 
+extern float *THD_roi_cmass(THD_3dim_dataset *xset , int iv ,
                             int *rois, int N_rois);
 extern int THD_dataset_mismatch(THD_3dim_dataset *, THD_3dim_dataset *) ;
 extern double THD_diff_vol_vals(THD_3dim_dataset *d1, THD_3dim_dataset *d2,
@@ -4845,6 +4875,7 @@ extern int         THD_instacorr_cmeth_needs_normalize( int cmeth );
 
 extern int THD_extract_array      ( int, THD_3dim_dataset *, int, void * ) ;
 extern int THD_extract_float_array( int, THD_3dim_dataset *, float * ) ;
+extern float THD_get_float_value( int, int, THD_3dim_dataset * ) ;
 
 extern MRI_IMAGE * THD_extract_float_brick( int , THD_3dim_dataset * ) ;
 extern MRI_IMAGE * THD_extract_double_brick( int , THD_3dim_dataset * ) ;
@@ -5549,7 +5580,10 @@ extern float THD_covariance( int n, float *x , float *y );
 extern float THD_ktaub_corr   ( int,float *,float *) ;  /* 29 Apr 2010 */
 extern float THD_eta_squared  ( int,float *,float *) ;  /* 25 Jun 2010 */
 extern double THD_eta_squared_masked(int,float *,float *,byte *);/* 16 Jun'11 */
-
+extern THD_3dim_dataset * THD_Tcorr1D(THD_3dim_dataset *xset, 
+                              byte *mask, int nmask,
+                              MRI_IMAGE *ysim,
+                              char *smethod, char *prefix); /* Apr. 2014 */
 extern float THD_quantile_corr( int,float *,float *) ;  /* 10 May 2012 */
 extern float quantile_corr( int n , float *x , float rv , float *r ) ;
 extern void THD_quantile_corr_setup( int ) ;

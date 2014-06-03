@@ -49,6 +49,224 @@
 
 afni_history_struct rickr_history[] = {
 
+ { 30,  May, 2014, RCR, "plug_realtime", MINOR, TYPE_ENHANCE,
+   "if PREFIX ends in .nii, all saved datasets will be in NIFTI format",
+   "Added for V Roopchansingh."
+ } ,
+
+ { 20,  May, 2014, RCR, "afni_system_check.py", MINOR, TYPE_ENHANCE,
+   "macs: look for PyQt4 from homebrew and fink",
+   NULL
+ } ,
+
+ { 19,  May, 2014, RCR, "column_cat", MICRO, TYPE_NEW_OPT,
+   "added -line option, e.g. to print only (0-based) line 17",
+   NULL
+ } ,
+
+ { 16,  May, 2014, RCR, "afni_proc.py", MINOR, TYPE_MODIFY,
+   "changed default of -anat_unif_GM to no",
+   "Use of -GM in 3dUnifiize was leading to some skull stripping failures.\n"
+   "Thanks to J Stoddard for noting the problem."
+ } ,
+
+ { 16,  May, 2014, RCR, "afni-general", MINOR, TYPE_BUG_FIX,
+   "make space in case compression programs have longer paths",
+   "Thanks to D Thompson for finding the problematic code."
+ } ,
+
+ { 16,  May, 2014, RCR, "afni_system_check.py", MINOR, TYPE_ENHANCE,
+   "a few updates:",
+   "  - if no AFNI binaries in path, try path to ASC.py\n"
+   "  - look for history files in data directories\n"
+   "  - print comments at end, so they are easier to notice"
+ } ,
+
+ { 13,  May, 2014, RCR, "gen_ss_review_scripts.py", MINOR, TYPE_ENHANCE,
+   "allow for no stats dset",
+   "With resting state and 3dTproject, afni_proc.py will not create stats."
+ } ,
+
+ { 12,  May, 2014, RCR, "afni_proc.py", MINOR, TYPE_NEW_OPT,
+   "added -regress_use_tproject, and made the default=yes",
+   "This will apply 3dTproject instead of 3dDeconvolve for resting\n"
+   "state analysis.  It is much faster, and creates the same result."
+ } ,
+
+ { 12,  May, 2014, RCR, "3dTproject", MICRO, TYPE_ENHANCE,
+   "allow for multiple -input dataset, without requiring quotes around them",
+   NULL
+ } ,
+
+ { 12,  May, 2014, RCR, "timing_tool.py", MICRO, TYPE_BUG_FIX,
+   "-part_init 0 is not appropriate for -partition",
+   "Text labels now apply, and the default is '-part_init INIT'."
+ } ,
+
+ {  9,  May, 2014, RCR, "timing_tool.py", MICRO, TYPE_NEW_OPT,
+   "added -part_init option; removed -chrono option",
+   NULL
+ } ,
+
+ {  1,  May, 2014, RCR, "@update.afni.binaries", MINOR, TYPE_BUG_FIX,
+   "added -quick option; fixed recursive backups",
+   NULL
+ } ,
+
+ { 29,  Apr, 2014, RCR, "uber_subject.py", MICRO, TYPE_MODIFY,
+   "micro fix to clarify 'initialization' help",
+   "Thanks to Ziad for noting it"
+ } ,
+
+ { 29,  Apr, 2014, RCR, "timing_tool.py", MICRO, TYPE_MODIFY,
+   "update to run number display in case of -multi_timing_to_event_list",
+   NULL
+ } ,
+
+ { 24,  Apr, 2014, RCR, "timing_tool.py", MINOR, TYPE_NEW_OPT,
+   "added -multi_timing_to_event_list",
+   "This allows one to generate simple or details event lists, or to\n"
+   "partition one event class by its predecessors.\n"
+   "Partitioning added for W Tseng."
+ } ,
+
+ { 24,  Apr, 2014, RCR, "afni_base.py", MICRO, TYPE_MODIFY,
+   "shell_exec2() should always set so,se as arrays",
+   NULL
+ } ,
+
+ { 24,  Apr, 2014, RCR, "afni_util.py", MICRO, TYPE_MODIFY,
+   "changed use of nlines in limited_shell_exec()",
+   NULL
+ } ,
+
+ { 24,  Apr, 2014, RCR, "afni_history", MICRO, TYPE_BUG_FIX,
+   "added proto for restrict_hlist()",
+   NULL
+ } ,
+
+ { 16,  Apr, 2014, RCR, "afni_proc.py", MINOR, TYPE_ENHANCE,
+   "added MIN_OUTLIER parameter option for -volreg_base_dset",
+   "Using '-volreg_base_dset MIN_OUTLIER' will result in the volume with\n"
+   "the minimum outlier fraction to be extracted as the volreg base.\n"
+   "Thanks to T Ross for the good suggestion, so long ago"
+ } ,
+
+ { 16,  Apr, 2014, RCR, "afni_proc.py", MICRO, TYPE_ENHANCE,
+   "internal re-org, should have no effect",
+   NULL
+ } ,
+
+ { 15,  Apr, 2014, RCR, "afni_util.py", MINOR, TYPE_ENHANCE,
+   "added optional 'pid' parameter to the get_process_stack() functions",
+   NULL
+ } ,
+
+ { 10,  Apr, 2014, RCR, "afni-general", MINOR, TYPE_BUG_FIX,
+   "@afni.run.me never made it into Makefile.INCLUDE for distribution",
+   NULL
+ } ,
+
+ { 10,  Apr, 2014, RCR, "1d_tool.py", MINOR, TYPE_NEW_OPT,
+   "added -index_to_run_tr, intended for use by afni_proc.py",
+   NULL
+ } ,
+
+ {  9,  Apr, 2014, RCR, "gen_ss_review_table.py", MAJOR, TYPE_NEW_PROG,
+   "parse output from @ss_review_basic text into spreadsheet format",
+   "This makes it easy to flag outlier subject values.\n"
+   "Thanks to J Jarcho for encouragement."
+ } ,
+
+ {  9,  Apr, 2014, RCR, "gen_ss_review_scripts.py", MICRO, TYPE_MODIFY,
+   "give priority to GCOR files with 'out' in the name",
+   NULL
+ } ,
+
+ {  4,  Apr, 2014, RCR, "afni-general", MINOR, TYPE_BUG_FIX,
+   "fixed reading NIFTI obliquity w/dglen (lost Mar 22)",
+   "Thanks to P Kundu for noting the problem."
+ } ,
+
+ { 31,  Mar, 2014, RCR, "afni_proc.py", MINOR, TYPE_NEW_OPT,
+   "added -anat_unif_GM (def=yes); improved message for bad ricor input",
+   NULL
+ } ,
+
+ { 31,  Mar, 2014, RCR, "auto_warp.py", MICRO, TYPE_MODIFY,
+   "some help text indentation and fix for display of non-string defaults",
+   NULL
+ } ,
+
+ { 26,  Mar, 2014, RCR, "auto_warp.py", MINOR, TYPE_BUG_FIX,
+   "in 3dNwarpApply, use the base dataset as the -master, rather than WARP",
+   "The WARP dataset is now often bigger, to handle warps to the dataset\n"
+   "edges.  The result from auto_warp.py should match the template/base.\n"
+   "Note: the problem applies to binaries from 3/21 until 3/25 (now).\n"
+   "Thanks to V Zachariou for noting the problem."
+ } ,
+
+ { 25,  Mar, 2014, RCR, "afni_proc.py", MINOR, TYPE_NEW_OPT,
+   "added options -anat_uniform_method and -anat_opts_unif",
+   "This correction may be particularly useful along with either\n"
+   "-tlrc_NL_warp or -mask_segment_anat."
+ } ,
+
+ { 24,  Mar, 2014, RCR, "afni_proc.py", MINOR, TYPE_NEW_OPT,
+   "added -regress_anaticor_radius",
+   "This specifies the radius for the local white matter average.\n"
+   "Option requested by S Torrisi."
+ } ,
+
+ { 21,  Mar, 2014, RCR, "afni_proc.py", MINOR, TYPE_BUG_FIX,
+   "if anaticor and censor, do not use keep_trs for blur est from errts",
+   "Thanks to J Stoddard for noting the problem."
+ } ,
+
+ { 21,  Mar, 2014, RCR, "gen_ss_review_scripts.py", MICRO, TYPE_BUG_FIX,
+   "removed -e from 'tcsh -ef @ss_review_basic', for grep failures",
+   "Macs terminate (correctly) when grep/wc return non-zero status, but\n"
+   "Linux systems do not.  Maybe tcsh authors did not like grep killing\n"
+   "scripts, either...\n"
+ } ,
+
+ { 21,  Mar, 2014, RCR, "afni_system_check.py", MINOR, TYPE_NEW_OPT,
+   "added -data_root and enhancements for class data search",
+   NULL
+ } ,
+
+ { 20,  Mar, 2014, RCR, "1dUpsample", MINOR, TYPE_BUG_FIX,
+   "fix reporting of file name in error messages; enhance said messages",
+   NULL
+ } ,
+
+ { 14,  Mar, 2014, RCR, "afni_system_check.py", MINOR, TYPE_ENHANCE,
+   "added some data and OS-specific tests",
+   NULL
+ } ,
+
+ { 12,  Mar, 2014, RCR, "afni_proc.py", MINOR, TYPE_ENHANCE,
+   "set errts_pre in anaticor block; apply extends in blur no scale",
+   NULL
+ } ,
+
+ { 11,  Mar, 2014, RCR, "gen_ss_review_scripts.py", MICRO, TYPE_ENHANCE,
+   "added gen_ss_review_scripts.py command comment at bottom of _basic script",
+   NULL
+ } ,
+
+ { 7,  Mar, 2014, RCR, "afni", MICRO, TYPE_NEW_OPT,
+   "added -no_detach, to prevent detaching from the terminal",
+   "Useful since -DAFNI_DETACH=NO cannot work as written."
+ } ,
+
+ {  6,  Mar, 2014, RCR, "gen_ss_review_scripts.py", MINOR, TYPE_MODIFY,
+   "changed some censoring and per-stim behavior",
+   "- if censoring, create X.stim.xmat.1D from uncensored matrix\n"
+   "- if no censor, still report num regs of interest and TRs per stim\n"
+   "- report per-stim censoring only with stim classes"
+ } ,
+
  { 24,  Feb, 2014, RCR, "realtime_receiver.py", MICRO, TYPE_ENHANCE,
    "added a little more detail to the demo example",
    NULL
@@ -3488,7 +3706,7 @@ afni_history_struct rickr_history[] = {
    NULL
  } ,
 
- { 22, JUL, 2009, RCR, "realtime_receiver.py", MAJOR, TYPE_NEW_OPT,
+ { 22, JUL, 2009, RCR, "realtime_receiver.py", MAJOR, TYPE_NEW_PROG,
    "python replacement for serial helper",
    "New 'data_choice' options can be added to compute_data_for_serial_port\n"
    "for sending results of a different computation to the serial port."
@@ -3496,11 +3714,6 @@ afni_history_struct rickr_history[] = {
 
  { 16, JUL, 2009, RCR, "@update.afni.binaries", MICRO, TYPE_MODIFY,
    "check for 'wget' and whine to user if missing",
-   NULL
- } ,
-
- { 16, JUL, 2009, RCR, "realtime_receiver.py", MAJOR, TYPE_NEW_PROG,
-   "replacement for serial_helper",
    NULL
  } ,
 

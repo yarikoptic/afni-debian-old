@@ -1711,6 +1711,19 @@ char * SUMA_help_message_Info(void)
       "     F9: Labels at cross hair, toggle.\n"
       );
    SS = SUMA_StringAppend (SS, 
+      "     F10: Toggle prying axis between surfaces' Z and Y axes.\n"
+      );
+   SS = SUMA_StringAppend (SS, 
+      "     F11: Change object rendering order.\n"
+      "          This order will affect the resultant image in\n"
+      "          the few instances where alpha transparency is\n"
+      "          used. The order can be specified for only three types of \n"
+      "          objects for now: graphs, surfaces, and volumes. \n"
+      "          If you want to render graphs first, followed by volumes then\n"
+      "          surfaces then set SUMA_ObjectDisplayOrder to something like:\n"
+      "          'graph,vol,surf', or 'GVS'"
+      );
+   SS = SUMA_StringAppend (SS, 
       "     F12: Time 20 scene renderings.\n\n");
    SS = SUMA_StringAppend (SS, 
       "     HOME: reset zoom and recenter surfaces.\n"
@@ -1746,6 +1759,9 @@ char * SUMA_help_message_Info(void)
       "       about the Y axis passing through its center. Also, prying\n"
       "       is only enabled when the state you are viewing contains two \n"
       "       surfaces, one on the left and one on the right.\n"
+      "       in 3D views, left right mouse movement cause a rotation about\n"
+      "       the front or rear I/S axis. Up down movements cause a shift\n"
+      "       along the left/right direction.\n" 
       "     Control+Button 1-DoubleClick to get back to original setting\n"
       "       You can select nodes (Button 3) on pried surfaces and still\n"
       "       have AFNI jump to the proper location, and vice versa. However\n"
@@ -1788,7 +1804,23 @@ char * SUMA_help_message_Info(void)
       "                          many sub-bricks as the surface has nodes. \n"
       "                          K is an integer.\n"
       "     Shift+Ctrl+Button 3-Press: Pick and initiate call in Dot xform\n"
-      "                               mode, or to GroupInCorr\n");
+      "                               mode, or to GroupInCorr\n"
+      "     Button 3-DoubleClick: If double clicking on a tract mask, select\n"
+      "                           the tract mask and turn the viewer into Mask\n"
+      "                           Manipulation Mode. In this mode, the mask is\n"
+      "                           shown as a wiremesh, and selections on any \n"
+      "                           object will move the mask to that location.\n"
+      "                           New tract/masks intersections are computed\n"
+      "                           at the new location.\n"
+      "                           To leave Mask Manipulation Mode, double \n"
+      "                           click with button 3 either on the mask or \n"
+      "                           in an area void of any objects.\n" 
+      "                           If double clicking with a graph object in \n"
+      "                           focus and only connections from one node  \n"
+      "                           are shown, then revert to showing all graph\n"
+      "                           connections. Without this, you can loose all\n"
+      "                           other clickables if a certain node is not \n"
+      "                           connected to anything.\n");
    SS = SUMA_StringAppend (SS, 
       "     Button 3-Motion: continuous picking whenever surface are present.\n"
       "                      No calls for dot product (InstaCorr)\n"
@@ -1805,7 +1837,11 @@ char * SUMA_help_message_Info(void)
       );
    SS = SUMA_StringAppend(SS,
       "     Wheel/Scroll: Zoom in/out\n"
-      "     Shift+Wheel/Scroll: change selected slice if applicable\n"
+      "     Shift+Wheel/Scroll: change selected slice if current selected\n"
+      "                         object is a volume.\n"
+      "     Ctrl+Wheel/Scroll: change the size of the currently selected \n"
+      "                        tract mask. This only works when you're in\n"
+      "                        mask manipulation mode.\n"
       );
    SS = SUMA_StringAppend (SS, 
       "    \n");

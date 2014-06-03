@@ -65,6 +65,255 @@
 
 afni_history_struct ziad_history[] = {
 /*=====BELOW THIS LINE=====*/
+ 
+ { 21, May, 2014, ZSS, "3dinfo", MINOR, TYPE_NEW_OPT,
+   "Option -iname to give filename as appearing on the command line",
+   NULL
+ },
+  
+ { 05, May, 2014, ZSS, "suma", MINOR, TYPE_NEW_ENV,
+   "SUMA_HomeAfterPrying to avoid a 'home' reset with prying",
+   NULL
+ },
+  
+ { 24, Apr, 2014, ZSS, "suma", MINOR, TYPE_NEW_OPT,
+   "Reading of OBJ file format for triangular meshes.",
+   NULL
+ },
+  
+ { 24, Apr, 2014, ZSS, "AFNIio.R", MICRO, TYPE_MODIFY,
+   "Improvements for write.AFNI & read.AFNI to handle 1D files more smoothly",
+   "Also added 'TR' to dset.attr() function."
+ },
+  
+ { 18, Apr, 2014, ZSS, "suma", MINOR, TYPE_MODIFY,
+   "Allow graph dataset bundle references to be located based on gdset's path",
+   "This way if a graph dataset named GDSET refers to a tract file TRACT \n"
+   "using a relative path (./TRACT) and you use suma -gdset SOMEPATH/GDSET\n"
+   "to load the graph, then the search for TRACT will also consider SOMEPATH/\n"
+   "as an option"
+ },
+  
+ { 18, Apr, 2014, ZSS, "suma", MINOR, TYPE_BUG_FIX,
+   "Color map changes/thresholding changes now working with multi-viewers",
+   "This was not the case before. Problem was that Texture had to be reloaded\n"
+   "for all viewers displaying the volume, once the viewer's rendering context\n"
+   "is current. That's all handled via per_sv_extra[]"
+ },
+  
+ { 17, Apr, 2014, ZSS, "DriveSuma", MINOR, TYPE_NEW_OPT,
+   "Added -controller_position to position object controller window",
+   NULL
+ },
+  
+ { 17, Apr, 2014, ZSS, "suma", MICRO, TYPE_MODIFY,
+   "Distinguishing  window size and glxarea size in SUMA_SurfaceViewer struct",
+   "The two are slightly different in size because of window decorations.\n"
+   "This correct a silly resizing of the SUMA window when a new view state is\n"
+   "loaded."
+ },
+  
+ { 16, Apr, 2014, ZSS, "suma", MINOR, TYPE_BUG_FIX,
+   "Fixed problem with opening new controllers when cont. window is closed",
+   "See Apr. 16 2014 note in function SUMA_viewSurfaceCont()\n"
+ },
+  
+ { 16, Apr, 2014, ZSS, "3dTcorr1D", MINOR, TYPE_MODIFY,
+   "Turned heart of main() into a standalone function in thd_Tcorr1D.c",
+   "This way we can run the equivalent of 3dTcorr1D from other C programs\n"
+   "such as 3dNetCorr"
+ },
+  
+ { 16, Apr, 2014, ZSS, "3dRprogDemo", MINOR, TYPE_NEW_PROG,
+   "A toy program to show how to write a command line R program with AFNI",
+   "Created to help Cesar Caballero and Natalia Petridou implement their\n"
+   "Paradigm Free Mapping method."
+ },
+  
+ { 8, Apr, 2014, ZSS, "suma", MINOR, TYPE_NEW_OPT,
+   "Added 'F10' to toggle prying axis between Z and Y",
+   NULL 
+ },
+  
+ { 8, Apr, 2014, ZSS, "afni", MICRO, TYPE_NEW_ENV,
+   "AFNI_ICORR_UBER_USER allows access to special InstaCorr distance measures",
+   "Set variable to YES to have access to special distance measures in\n"
+   "the plugin"
+ },
+  
+ { 8, Apr, 2014, ZSS, "suma", MINOR, TYPE_NEW_ENV,
+   "SUMA_VO_InitSlices controls how volumes slices are shown at startup",
+   "See ~/.sumarc for details, run suma -update_env if variable is missing."
+ },
+  
+ { 4, Apr, 2014, ZSS, "suma", MICRO, TYPE_MODIFY,
+   "Improved autopositioning of surf. controller. Better with dual displays.",
+   "Also canceled repositioning after very first opening of controllers"
+ },
+  
+ { 4, Apr, 2014, ZSS, "suma", MINOR, TYPE_MODIFY,
+   "Made prying do both hinge rotation and translation",
+   "Difference is in the direction of mouse motion.\n"
+   "Also made vertical prying cause rotation about screen x axis for spheres"
+ },
+  
+ { 4, Apr, 2014, ZSS, "suma", MINOR, TYPE_NEW_ENV,
+   "SUMA_Dset_NodeConnections controls how connections to a node are displayed",
+   "See ~/.sumarc for details, run suma -update_env if variable is missing."
+ },
+  
+ { 4, Apr, 2014, ZSS, "suma", MINOR, TYPE_NEW_OPT,
+   "Added three modes for controlling how connections to a node are shown.",
+   "This makes it possible to greatly reduce the clutter of the display.\n"
+   "See menu 'CN' that controls this"
+ },
+  
+ { 4, Apr, 2014, ZSS, "suma", MINOR, TYPE_NEW_OPT,
+   "A double select click makes all graph edges appear.",
+   "This only has an effect if the current object in focus is a\n"
+   "graph object"
+ },
+  
+ { 3, Apr, 2014, ZSS, "suma", MINOR, TYPE_NEW_ENV,
+   "SUMA_Dset_Font to initialize text in graph datasets",
+   "See ~/.sumarc for details, run suma -update_env if variable is missing."
+ },
+  
+ { 2, Apr, 2014, ZSS, "suma", MINOR, TYPE_NEW_OPT,
+   "Made AFNI's crosshair changes move tract mask in SUMA",
+   "This happens when the viewer is in Mask Manipulation Mode."
+ },
+  
+ { 2, Apr, 2014, ZSS, "suma", MINOR, TYPE_MODIFY,
+   "Made SUMA_crosshair_xyz carry information on overlay dataset",
+   "This is in response to a request by Nick Oosterhoff"
+ },
+  
+ { 28, Mar, 2014, ZSS, "suma", MINOR, TYPE_NEW_OPT,
+   "Added 'F11' to allow users to set the object rendering order",
+   "This is an interactive version of env: SUMA_ObjectDisplayOrder" 
+ },
+  
+ { 28, Mar, 2014, ZSS, "suma", MINOR, TYPE_NEW_OPT,
+   "Implemented doppleganger for masks on pried surfaces",
+   NULL 
+ },
+  
+ { 28, Mar, 2014, ZSS, "suma", MINOR, TYPE_NEW_OPT,
+   "Added prying along the horizontal direction too",
+   "This is most handy when you want to travel along the \n"
+   "lateral surface and still see what gives in tracts or on\n"
+   "slices." 
+ },
+  
+ { 27, Mar, 2014, ZSS, "suma-general", MICRO, TYPE_NEW_ENV,
+   "Added SUMA_ObjectDisplayOrder to control object display sequence",
+   "This only affects the rendering in the few instances where alpha\n"
+   "blending is used. Run suma -update_env then search for env in \n"
+   "~/.sumarc for details." 
+ },
+  
+ { 27, Mar, 2014, ZSS, "@auto_tlrc", MICRO, TYPE_NEW_OPT,
+   "Added -overwrite for Stephen Robinson",
+   NULL
+ },
+  
+ { 26, Mar, 2014, ZSS, "afni-general", MINOR, TYPE_NEW_OPT,
+   "Shift+Control+right click in SUMA will trigger Instacorr refresh in AFNI",
+   "This way you can click on an object in SUMA and still get AFNI to \n"
+   "so a volumetric ICOR computation, with all accompnaying talk back to SUMA.\n"
+   "etc.\n"
+ },
+  
+ { 26, Mar, 2014, ZSS, "suma", MINOR, TYPE_NEW_OPT,
+   "Made double-click right click outside of objects turn off mask movement",
+   NULL
+ },
+  
+ { 26, Mar, 2014, ZSS, "suma-general", MINOR, TYPE_NEW_OPT,
+   "Wrote a new function to handle input events",
+   "New function SUMA_RecordEvent() records X events into a structure\n"
+   "that I can clone and attach into the Pick Results struct. Without\n"
+   "this, I can't tell down the line if a pick was with shift+control\n"
+   "or without it. A problem when deciding what to tell AFNI, for example\n"
+   "The new functions (see also SUMA_ShftCont_Event() and other functions\n"
+   "around it should replace all queries in SUMA_input() about event\n"
+   "qualifiers. Still need to check about handling of button swap, or \n"
+   "conditions when drawing, etc."
+ },
+  
+ { 18, Mar, 2014, ZSS, "suma", MINOR, TYPE_BUG_FIX,
+   "Improved selection logic on slices and for graphs.",
+   "Graph selection was changed so that what is rendered is selectable.\n"
+   "The alternate was too confusing.\n"
+   "Fixed bug with selctions on matrix where selections at times were \n"
+   "going to the volume, even though it is not displayed with the matrix.\n"
+   "Fixed slice highlighting when in montage mode.\n"
+   "Added alpha value threshold condition to slice picking. This slows the\n"
+   "selection process a little, but it keeps one from selecting 'air' when\n"
+   "when clicking on voxels that meet the threshold but are alpha masked.\n"
+ },
+  
+ { 17, Mar, 2014, ZSS, "suma", MINOR, TYPE_BUG_FIX,
+   "Fixed residual surface shading after volume is selected.",
+   "Problem was caused by residual emissivitiy colored left over \n"
+   "from the highlighting of the selected slice. Also wrote functions\n"
+   "SUMA_DiffEnablingState*() to help identify such problems." 
+ },
+  
+ { 13, Mar, 2014, ZSS, "suma", MINOR, TYPE_NEW_OPT,
+   "More improvements to multiple object transparency.",
+   "There's lots more than meets the eye. See comment in functions \n"
+   "SUMA_DrawVolumeDO_3D() and SUMA_StippleMask_shift()"
+ },
+  
+ { 13, Mar, 2014, ZSS, "afni_open", MINOR, TYPE_NEW_OPT,
+   "A few more tweaks, like -aw and -d",
+   "See afni_open -help for details"
+ },
+  
+ { 12, Mar, 2014, ZSS, "afni_open", MINOR, TYPE_NEW_PROG,
+   "A simple program to help us open certain files on typical machines",
+   "There is no help for the program yet, it is also not part of the\n"
+   "compiled binaries yet. New functions such as GetAfniWebDownloader(),\n"
+   "GetAfniPDFViewer(), and GetAfniImageViewer() were added to machdep.c"
+ },
+  
+ { 12, Mar, 2014, ZSS, "afni-general", MICRO, TYPE_NEW_ENV,
+   "AFNI_IMAGE_VIEWER and AFNI_PDF_VIEWER for you know what.",
+ },
+  
+ { 12, Mar, 2014, ZSS, "suma", MICRO, TYPE_BUG_FIX,
+   "SUMA crashed if you deleted a tract mask that was being moved.",
+   "This is now a thing of the past."
+ },
+  
+ { 6, Mar, 2014, ZSS, "suma", MINOR, TYPE_NEW_OPT,
+   "Added option to make rendered slices jump to new cross hair location",
+   "See new function SUMA_VO_set_slices_XYZ() for details"
+ },
+  
+ { 5, Mar, 2014, ZSS, "suma", MINOR, TYPE_NEW_OPT,
+   "Fixed initial setting of masks to be relative to center of tracts object",
+   "This required creation of SUMA_ADO_Center() and SUMA_ADO_Range() functions."
+ },
+  
+ { 5, Mar, 2014, ZSS, "suma", MINOR, TYPE_BUG_FIX,
+   "Opening surf controller after selecting voxel on slice caused crash in demo",
+   "This happened in FATCAT_DEMO's Do_09* script, example 1 (SET1). While I am\n"
+   "still unsure what caused the Bad Window error, I now trap for it and keep\n"
+   "the program from getting shutdown. Some day I'll track the source of the\n"
+   "message, for now, recovery seems complete."
+ },
+  
+ { 4, Mar, 2014, ZSS, "suma", MINOR, TYPE_BUG_FIX,
+   "Surface-based InstaCorr stopped refreshing with new click.",
+   "The problem was caused by the failure to update the copies of I and \n"
+   "T columns in the overlay structure when a new dataset replaced an older\n"
+   "version. For the fix, search for 'ResetOverlay_Vecs' string, and see \n"
+   "function SUMA_DSET_ClearOverlay_Vecs()"
+ },
+  
  { 25, Feb, 2014, ZSS, "suma", MICRO, TYPE_NEW_OPT,
    "Secret option for Javier to make graph dsets display on top of everything",
    "The option is hidden for now, requiring the use of both -dev and \n"

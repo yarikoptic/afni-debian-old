@@ -27,10 +27,10 @@ def change_path_basename(orig, prefix, suffix):
     return "%s/%s%s" % (head, prefix, suffix)
 
 # write text to a file
-def write_text_to_file(fname, text, mode='w', wrap=0, wrapstr='\\\n', exe=0):
-    """write the given text to the given file
+def write_text_to_file(fname, tdata, mode='w', wrap=0, wrapstr='\\\n', exe=0):
+    """write the given text (tdata) to the given file
           fname   : file name to write (or append) to
-          text    : text to write
+          dtata   : text to write
           mode    : optional write mode 'w' or 'a' [default='w']
           wrap    : optional wrap flag [default=0]
           wrapstr : optional wrap string: if wrap, apply this string
@@ -39,11 +39,11 @@ def write_text_to_file(fname, text, mode='w', wrap=0, wrapstr='\\\n', exe=0):
        return 0 on success, 1 on error
     """
 
-    if not text or not fname:
+    if not tdata or not fname:
         print "** WTTF: missing text or filename"
         return 1
 
-    if wrap: text = add_line_wrappers(text, wrapstr)
+    if wrap: tdata = add_line_wrappers(tdata, wrapstr)
     
     if fname == 'stdout':   fp = sys.stdout
     elif fname == 'stderr': fp = sys.stderr
@@ -54,7 +54,7 @@ def write_text_to_file(fname, text, mode='w', wrap=0, wrapstr='\\\n', exe=0):
            print "** failed to open text file '%s' for writing" % fname
            return 1
 
-    fp.write(text)
+    fp.write(tdata)
 
     if fname != 'stdout' and fname != 'stderr':
        fp.close()
@@ -62,21 +62,46 @@ def write_text_to_file(fname, text, mode='w', wrap=0, wrapstr='\\\n', exe=0):
 
     return 0
 
-def read_text_file(fname, lines=0):
+def wrap_file_text(infile='stdin', outfile='stdout'):
+   """make a new file with line wrappers                14 Mar 2014
+
+      The default parameters makes it easy to process as a stream:
+
+          afni_util.py -eval 'wrap_file_text()' < INPUT > OUTPUT
+                or
+          afni_util.py -eval 'wrap_file_text("INPUT", "OUTPUT")'
+                or
+          afni_util.py -eval "wrap_file_text('$f1', '$f2')"
+   """
+
+   tdata = read_text_file(fname=infile)
+   if tdata != '': write_text_to_file(outfile, tdata, wrap=1)
+   
+
+def read_text_file(fname='stdin', lines=0, verb=1):
    """return the text text from the given file as either one string
       or as an array of lines"""
 
-   try: fp = open(fname, 'r')
-   except:
-     print "** read_text_file: failed to open '%s'" % fname
-     if lines: return []
-     else:     return ''
+   if fname == 'stdin' or fname == '-': fp = sys.stdin
+   else:
+      try: fp = open(fname, 'r')
+      except:
+        if verb: print "** read_text_file: failed to open '%s'" % fname
+        if lines: return []
+        else:     return ''
 
    if lines: tdata = fp.readlines()
    else:     tdata = fp.read()
 
    fp.close()
 
+   return tdata
+
+def read_top_lines(fname='stdin', nlines=1, strip=0, verb=1):
+   """use read_text_file, but return only the first 'nlines' lines"""
+   tdata = read_text_file(fname, lines=1, verb=verb)
+   tdata = tdata[0:nlines]
+   if strip: tdata = [l.strip() for l in tdata]
    return tdata
 
 def write_to_timing_file(data, fname='', nplaces=-1, verb=1):
@@ -137,7 +162,7 @@ def make_single_row_string(data, row, nplaces=3, flag_empty=0):
 
    return rstr + '\n'
 
-def quotize_list(list, opt_prefix='', skip_first=0, quote_wild=0,
+def quotize_list(inlist, opt_prefix='', skip_first=0, quote_wild=0,
                  quote_chars='', ok_chars=''):
     """given a list of text elements, return a new list where any existing
        quotes are escaped, and then if there are special characters, put the
@@ -149,7 +174,7 @@ def quotize_list(list, opt_prefix='', skip_first=0, quote_wild=0,
 
        add quote_chars to quote list, remove ok_chars
     """
-    if not list or len(list) < 1: return list
+    if not inlist or len(inlist) < 1: return inlist
 
     # okay, we haven't yet escaped any existing quotes...
 
@@ -165,7 +190,7 @@ def quotize_list(list, opt_prefix='', skip_first=0, quote_wild=0,
 
     newlist = []
     first = 1   # ugly, but easier for option processing
-    for qstr in list:
+    for qstr in inlist:
         prefix = ''
         if skip_first and first: first = 0       # use current (empty) prefix
         elif len(qstr) == 0: pass
@@ -226,12 +251,12 @@ def exec_tcsh_command(cmd, lines=0, noblank=0):
 
     return status, otext
 
-def limited_shell_exec(command, nlines=-1):
+def limited_shell_exec(command, nlines=0):
    """run a simple shell command, returning the top nlines"""
    st, so, se = BASE.shell_exec2(command, capture=1)
-   if nlines >= 0:
-      so = so[0:nlines+1]
-      se = se[0:nlines+1]
+   if nlines > 0:
+      so = so[0:nlines]
+      se = se[0:nlines]
    return st, so, se
 
 def write_afni_com_history(fname, length=0, wrap=1):
@@ -245,7 +270,7 @@ def write_afni_com_history(fname, length=0, wrap=1):
    write_text_to_file(fname, script, wrap=wrap)
 
 # get/show_process_stack(), get/show_login_shell()   28 Jun 2013 [rickr]
-def get_process_stack(verb=1):
+def get_process_stack(pid=-1, verb=1):
    """the stack of processes up to init
 
       return an array of [pid, ppid, user, command] elements
@@ -261,15 +286,16 @@ def get_process_stack(verb=1):
          return -1
       return pind
 
-   def get_ancestry_indlist(pids, ppids, plist):
+   def get_ancestry_indlist(pids, ppids, plist, pid=-1):
       """return bad status if index() fails"""
-      pid = os.getpid()
-      pind = get_pid_index(pids, plist, pid)
+      if pid >= 0: mypid = pid
+      else:        mypid = os.getpid()
+      pind = get_pid_index(pids, plist, mypid)
       if pind < 0: return 1, []
       indtree = [pind]
-      while pid > 1:
-         pid = ppids[pind]
-         pind = get_pid_index(pids, plist, pid)
+      while mypid > 1:
+         mypid = ppids[pind]
+         pind = get_pid_index(pids, plist, mypid)
          if pind < 0: return 1, []
          indtree.append(pind)
       return 0, indtree
@@ -294,17 +320,19 @@ def get_process_stack(verb=1):
       return []
 
    # maybe the ps list is too big of a buffer, so have a backup plan
-   rv, indlist = get_ancestry_indlist(pids, ppids, plist)
+   rv, indlist = get_ancestry_indlist(pids, ppids, plist, pid=pid)
    # if success, set stack, else get it from backup function
    if rv == 0: stack = [plist[i] for i in indlist]
-   else:       stack = get_process_stack_slow()
+   else:       stack = get_process_stack_slow(pid=pid)
    stack.reverse()
 
    return stack
 
-def get_process_stack_slow(verb=1):
+def get_process_stack_slow(pid=-1, verb=1):
    """use repeated calls to get stack:
         ps h -o pid,ppid,user,comm -p PID
+
+        if pid >= 0, use as seed, else use os.getpid()
    """
    base_cmd = 'ps h -o pid,ppid,user,comm -p'
 
@@ -314,10 +342,10 @@ def get_process_stack_slow(verb=1):
       if ac.status:
          print '** GPSS command failure for: %s\n' % cmd
          print 'error output:\n%s' % '\n'.join(ac.se)
-         return 1, None
+         return 1, []
       ss = ac.so[0]
       entries = ss.split()
-      if len(entries) == 0: return 1, None
+      if len(entries) == 0: return 1, []
       
       return 0, entries
 
@@ -331,27 +359,31 @@ def get_process_stack_slow(verb=1):
       return 0, pid, ppid
 
    # get pid and ppid
-   pid = os.getpid()
-   cmd = '%s %s' % (base_cmd, pid)
+   if pid >= 0: mypid = pid
+   else:        mypid = os.getpid()
+   cmd = '%s %s' % (base_cmd, mypid)
    rv, entries = get_cmd_entries(cmd)
-   if rv: return []
-   rv, pid, ppid = get_ppids(cmd, entries)
+   if rv:
+      if mypid == pid: print '** process ID %d not found' % pid
+      else:            print '** getpid() process ID %d not found' % pid
+      return []
+   rv, mypid, ppid = get_ppids(cmd, entries)
    if rv: return []
 
    stack = [entries] # entries is valid, so init stack
-   while pid > 1:
+   while mypid > 1:
       cmd = '%s %s' % (base_cmd, ppid)
       rv, entries = get_cmd_entries(cmd)
       if rv: return []
-      rv, pid, ppid = get_ppids(cmd, entries)
+      rv, mypid, ppid = get_ppids(cmd, entries)
       if rv: return []
       stack.append(entries)
 
    return stack
 
-def show_process_stack():
+def show_process_stack(pid=-1,fast=1):
    """print stack of processes up to init"""
-   pstack = get_process_stack()
+   pstack = get_process_stack(pid=pid)
    if len(pstack) == 0:
       print '** empty process stack'
       return
@@ -619,6 +651,45 @@ def get_default_polort(tr, reps):
 def run_time_to_polort(run_time):
     """direct computation: 1+floor(run_time/150)"""
     return 1+math.floor(run_time/150.0)
+
+def index_to_run_tr(index, rlens, rstyle=1, whine=1):
+    """given index and a list of run lengths,
+       return the corresponding run and TR index
+
+       rstyle: 0/1 whether the run index is 0-based or 1-based
+
+       any negative return indicates an error
+    """
+    if index < 0:
+       if whine: print '** ind2run_tr: illegal negative index: %d' % index
+       return 1, index
+    if len(rlens) == 0:
+       if whine: print '** ind2run_tr: missing run lengths'
+       return 1, index
+
+    # if there is only 1 run and it is short, compute modulo
+    rlengths = rlens
+    if len(rlens) == 1 and index >= rlens[0]:
+       rind = index // rlens[0]
+       cind = index % rlens[0]
+       if rstyle: return rind+1, cind
+       else:      return rind, cind
+
+    cind = index
+    for rind, nt in enumerate(rlengths):
+       if nt < 0:
+          if whine:
+             print '** ind2run_tr: have negative run length in %s' % rlengths
+          return -1, -1
+       if cind < nt:
+          if rstyle: return rind+1, cind
+          else:      return rind, cind
+       cind -= nt
+
+    if whine: print '** ind2run_tr, index %d outside run list %s' \
+                    % (index, rlengths)
+    return rind, cind+nt
+
 
 def get_num_warp_pieces(dset, verb=1):
     """return the number of pieces in the the WARP_DATA transformation
@@ -1836,7 +1907,7 @@ def data_to_hex_str(data):
 
    return retstr
 
-def section_divider(hname, maxlen=74, hchar='=', endchar=''):
+def section_divider(hname='', maxlen=74, hchar='=', endchar=''):
     """return a title string of 'hchar's with the middle chars set to 'hname'
        if endchar is set, put at both ends of header
        e.g. block_header('volreg', endchar='##') """
@@ -1852,6 +1923,35 @@ def section_divider(hname, maxlen=74, hchar='=', endchar=''):
     postlen = maxlen - rmlen - prelen   # other 'half'
 
     return endchar + prelen*hchar + name + postlen*hchar + endchar
+
+def get_command_str(args=[], preamble=1, comment=1, quotize=1, wrap=1):
+    """return a script generation command
+
+        args:           arguments to apply
+        preample:       start with "script generated by..."
+        comment:        have text '#' commented out
+        quotize:        try to quotize any arguments that need it
+        wrap:           add line wrappers
+    """
+
+    if args == []: args = sys.argv
+
+    if preamble: hstr = '\n# %s\n# script generated by the command:\n#\n' \
+                        % section_divider()
+    else:        hstr = ''
+
+    if comment: cpre = '# '
+    else:       cpre = ''
+
+    # note command and args
+    cmd = os.path.basename(args[0])
+    if quotize: args = ' '.join(quotize_list(args[1:],''))
+    else:       args = ' '.join(args[1:],'')
+
+    cstr = '%s%s%s %s\n' % (hstr, cpre, cmd, args)
+
+    if wrap: return add_line_wrappers(cstr)
+    else:    return cstr
 
 def max_len_in_list(vlist):
     mval = 0
@@ -2023,7 +2123,7 @@ def glob_form_matches_list(slist, ordered=1):
    return 1
    
 
-def list_minus_glob_form(slist, hpad=0, tpad=0, keep_dent_pre=0):
+def list_minus_glob_form(inlist, hpad=0, tpad=0, keep_dent_pre=0, strip=''):
    """given a list of strings, return the inner part of the list that varies
       (i.e. remove the consistent head and tail elements)
 
@@ -2033,6 +2133,7 @@ def list_minus_glob_form(slist, hpad=0, tpad=0, keep_dent_pre=0):
       hpad NPAD         : number of characters to pad at prefix
       tpad NPAD         : number of characters to pad at suffix
       keep_dent_pre Y/N : (flag) keep entire prefix from directory entry
+      strip             : one of ['', 'dir', 'file', 'ext', 'fext']
 
       If hpad > 0, then pad with that many characters back into the head
       element.  Similarly, tpad pads forward into the tail.
@@ -2052,7 +2153,37 @@ def list_minus_glob_form(slist, hpad=0, tpad=0, keep_dent_pre=0):
       Somewhat opposite glob_form_from_list().
    """
 
-   if len(slist) <= 1: return slist
+   if len(inlist) <= 1: return inlist
+
+   # init with original
+   slist = inlist
+
+   # maybe make a new list of stripped elements
+   stripnames = ['dir', 'file', 'ext', 'fext']
+   if strip != '' and strip not in stripnames:
+      print '** LMGF: bad strip %s' % strip
+      strip = ''
+
+   if strip in stripnames:
+      ss = []
+      for inname in inlist:
+         if strip == 'dir':
+            dname, fname = os.path.split(inname)
+            ss.append(fname)
+         elif strip == 'file':
+            dname, fname = os.path.split(inname)
+            ss.append(dname)
+         elif strip == 'ext':
+            fff, ext = os.path.splittext(inname)
+            ss.append(fff)
+         elif strip == 'fext':
+            fff, ext = os.path.splittext(inname)
+            ss.append(fff)
+         else:
+            print '** LMGF: doubly bad strip %s' % strip
+            break
+      # check for success
+      if len(ss) == len(slist): slist = ss
 
    if hpad < 0 or tpad < 0:
       print '** list_minus_glob_form: hpad/tpad must be non-negative'
@@ -2092,6 +2223,46 @@ def glob_list_minus_pref_suf(pref, suf):
    slen = len(suf)
 
    return [d[plen:-slen] for d in glist]
+
+def list_minus_pref_suf(slist, pref, suf, stripdir=1):
+   """just strip the prefix and suffix from string list elements
+
+      if stripdir, remove leading directories
+
+      return status, stripped list
+
+      status =  0 : all strings have prefix and suffix
+                1 : not all do
+               -1 : on error
+   """
+
+   plen = len(pref)
+   slen = len(suf)
+
+   # possibly strip of directory names
+   if stripdir:
+      flist = []
+      for sname in slist:
+         dd, ff = os.path.split(sname)
+         flist.append(ff)
+   else: flist = slist
+
+   
+   rv = 0
+   rlist = []
+   for fname in flist:
+      if fname.startswith(pref): poff = plen
+      else:                      poff = 0
+
+      if fname.endswith(suf): soff = slen
+      else:                   soff = 0
+
+      if soff: rlist.append(fname[poff:-soff])
+      else:    rlist.append(fname[poff:])
+
+      if not poff or not soff: rv = 1
+
+   return rv, rlist
 
 def okay_as_lr_spec_names(fnames, verb=0):
    """check that names are okay as surface spec files, e.g. for afni_proc.py
@@ -2247,6 +2418,15 @@ def glob_form_has_match(form):
    del(glist)
    if glen > 0: return 1
    return 0
+
+def executable_dir(ename=''):
+   """return the directory whre the ename program is located
+      (by default, use argv[0])"""
+   if ename == '': ee = sys.argv[0]
+   else:           ee = ename
+
+   dname = os.path.dirname(ee)
+   return os.path.abspath(dname)
 
 def common_dir(flist):
    """return the directory name that is common to all files (unless trivial)"""
@@ -3198,13 +3378,17 @@ def main():
       if argv[1] == '-eval':
          eval(' '.join(argv[2:]))
          return 0
+      elif argv[1] == '-lprint':
+         ret = eval(' '.join(argv[2:]))
+         print '\n'.join(['%s'%rent for rent in ret])
+         return 0
       elif argv[1] == '-print':
          print eval(' '.join(argv[2:]))
          return 0
       elif argv[1] == '-listfunc':
          do_join = 0
          argbase = 3
-         if len(argv) < argbase :
+         if len(argv) <= argbase :
             print '** -listfunc usage requires at least 3 args'
             return 1
          if argv[argbase] == '-join':

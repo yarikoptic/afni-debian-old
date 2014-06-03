@@ -66,6 +66,15 @@ typedef struct {
    SUMA_Boolean ShowBundles; /*!< Show bundles instead of edge if possible */
    SUMA_Boolean ShowUncon; /*!< Show graph points (nodes) even if not 
                                   connected */
+   SUMA_Boolean IgnoreSelection; /*!< Ignore selection mode when displaying
+                                      Currently used to show all graph, even
+                                      when one node is selected */
+   float *Center_G3D; /* Geometric center of all points in 3D variant*/
+   float *Range_G3D;  /* Min Max of X, Y, and Z of all points in 3D variant*/
+   float *Center_GMATRIX; /* Geometric center of all points in MATRIX 
+                             variant*/
+   float *Range_GMATRIX;  /* Min Max of X, Y, and Z of all points in MATRIX 
+                             variant*/
 } SUMA_GRAPH_SAUX;
 
 /*! A Tract object's Auxiliary structure for SUMA's use */
@@ -80,6 +89,9 @@ typedef struct {
    int TractMask;
    float MaskGray;
    float *tract_lengths;
+   
+   float *Center; /* Geometric center of all points */
+   float *Range;  /* Min Max of X, Y, and Z of all points */
 } SUMA_TRACT_SAUX;
 
 /*! A Mask object's Auxiliary structure for SUMA's use */
@@ -111,6 +123,8 @@ typedef struct {
 
 typedef struct {
    float Eq[4];
+   int slc_num;
+   char variant[16];
 } SUMA_RENDERED_SLICE; /*!< Information about a rendered slice */
 
 /*! A volume object's Aux structure for SUMA's use */
@@ -130,6 +144,7 @@ typedef struct {
    int ShowCoSlc;
    int ShowVrSlc;
    
+   int SlicesAtCrosshair; /* Make three slices jump to location of crosshair */
    SUMA_ATRANS_MODES TransMode; /*!< polygon transparency  */
 } SUMA_VOL_SAUX;
 
@@ -256,7 +271,7 @@ float *SUMA_VisX_CoordPointer(SUMA_SurfaceObject *SO);
 SUMA_Boolean SUMA_VisX_Pointers4Display(SUMA_SurfaceObject *SO, int fordisp);
 int SUMA_AllowPrying(SUMA_SurfaceViewer *sv, int *RegSO);
 SUMA_Boolean SUMA_ResetPrying(SUMA_SurfaceViewer *svu);
-SUMA_Boolean SUMA_ApplyPrying(SUMA_SurfaceViewer *sv, float val, char *units,
+SUMA_Boolean SUMA_ApplyPrying(SUMA_SurfaceViewer *sv, float val[3], char *units,
                               int recompute_norm);
 SUMA_Boolean SUMA_RecomputeNormsPrying(SUMA_SurfaceViewer *svu);
 int SUMA_LeftShownOnLeft(SUMA_SurfaceViewer *sv, 
@@ -340,7 +355,8 @@ SUMA_Boolean SUMA_Set_MaskDO_Label(SUMA_MaskDO *mdo, char *lab);
 #define SUMA_MDO_New_CDim(mdo, cdim) \
             SUMA_MDO_New_Params((mdo), NULL, NULL, NULL, NULL, NULL, \
                                  -1, STM_N_TransModes, cdim)
-
+int SUMA_MDO_New_Doppel(SUMA_MaskDO *mdo, float *xyz);
+int SUMA_MDO_New_parent(SUMA_MaskDO *mdo, char *parent_id, int parent_datum_id);
 int SUMA_MDO_New_Params(SUMA_MaskDO *mdo, float *cen, float *dim, 
                         float *col, char *Label, char *Type,
                         float alpha, SUMA_TRANS_MODES tran, float cdim);
@@ -366,6 +382,8 @@ SUMA_Boolean SUMA_DrawGSegmentDO (SUMA_GRAPH_SAUX *GSaux,
                                   SUMA_SurfaceViewer *sv);
 SUMA_Boolean SUMA_DrawTractDO (SUMA_TractDO *TDO, SUMA_SurfaceViewer *sv);
 SUMA_Boolean SUMA_DrawMaskDO (SUMA_MaskDO *MDO, SUMA_SurfaceViewer *sv);
+float *SUMA_ADO_Center(SUMA_ALL_DO *ado, float *here);
+float *SUMA_ADO_Range(SUMA_ALL_DO *ado, float *here);
 float *SUMA_TDO_Grid_Center(SUMA_TractDO *tdo, float *here);
 float *SUMA_MDO_Center(SUMA_MaskDO *MDO, float *here);
 float *SUMA_VO_Grid_Center(SUMA_VolumeObject *vo, float *here);
@@ -494,7 +512,7 @@ SUMA_SegmentDO *SUMA_CreateSegmentDO(  int N_n, int oriented, int NodeBased,
 SUMA_DO * SUMA_Multiply_NodeObjects ( SUMA_SurfaceObject *SO, 
                                       SUMA_DO *DO );
 SUMA_NIDO ** SUMA_Multiply_NodeNIDOObjects ( SUMA_SurfaceObject *SO, 
-                                      SUMA_DO *DO );
+                                      SUMA_DO *DO, int *NodeID, int N_Node);
 SUMA_Boolean SUMA_ApplyDataToNodeObjects(
             SUMA_SurfaceObject *SurfObj, SUMA_SurfaceViewer *sv);
 SUMA_SurfaceObject *SUMA_Cmap_To_SO (SUMA_COLOR_MAP *Cmap, float orig[3], 
@@ -570,7 +588,7 @@ int SUMA_NodeRange_DrawnROI (SUMA_DRAWN_ROI *ROI, int *min, int *max);
 int SUMA_NIDO_TexEnvMode(NI_element *nel, int def);
 const GLubyte *SUMA_StippleMask(int transp);
 const GLubyte *SUMA_StippleMask_rand(int transp);
-const GLubyte *SUMA_StippleMask_shift(int transp);
+const GLubyte *SUMA_StippleMask_shift(int transp, int btp);
 GLushort SUMA_StippleLineMask_rand(int transp, int chunkwidth, int rseed);
 void SUMA_StippleMaskResest(void);
 SUMA_GL_STEL *SUMA_FindStateTrackEl(char *state, DList *stu);

@@ -49,6 +49,46 @@
 
 
 afni_history_struct dglen_history[] = {
+{ 23 , MAY, 2014 , DRG , "whereami linkrbrain" , 
+    MINOR , TYPE_BUG_FIX, 
+    "Fixed linkrbrain coordinates and malloc/free error",
+    "Coordinates were not transformed properly from TLRC to MNI\n"
+    "space. Crashes from clusterize in afni GUI caused by mismatched\n"
+    "AFNI-friendly malloc, free in strdup function"
+} ,
+
+{ 19 , MAY, 2014 , DRG , "align_epi_anat.py" , 
+    MICRO , TYPE_BUG_FIX, 
+    "NIFTI dataset input and save_skullstrip",
+    "Fixed bug with both NIFTI input and save_skullstrip"
+} ,
+
+{ 2 , MAY, 2014 , DRG , "align_epi_anat.py" , 
+    MINOR , TYPE_GENERAL, 
+    "NIFTI dataset input",
+    "align_epi_anat.py modified to allow NIFTI input for anat,epi,\n"
+    "child_epi datasets. Output continues to be AFNI format."
+} ,
+
+{ 24 , APR, 2014 , DRG , "edge detect button in afni viewer" , 
+    MICRO , TYPE_GENERAL, 
+    "Toggle edge detection with 'e' key in viewer",
+    "Can toggle with keypress from viewer allowing plugout to drive\n"
+    "edge detection."
+} ,
+
+{ 04 , APR, 2014 , DRG , "whereami -linkrbrain" , 
+    MINOR , TYPE_NEW_OPT, 
+    "New option for getting task or gene correlation with coordinate list",
+    "Linkrbrain.org support is available in alpha form from whereami and\n"
+    "the Clusterize GUI. AFNI_LINKRBRAIN needs to be set to YES to use new\n"
+    "features."
+} ,
+
+{ 27 , MAR, 2014 , DRG , "align_epi_anat.py" , 
+    MICRO , TYPE_BUG_FIX, 
+    "h_view help added"
+} ,
 { 17 , Feb, 2014 , DRG , "@MakeLabelTable" , 
     MICRO , TYPE_BUG_FIX, 
     "-centers option incorrect for some atlases",
@@ -117,7 +157,7 @@ afni_history_struct dglen_history[] = {
 } ,
 { 29 , MAR, 2013 , DRG , "general compression" , 
     MINOR , TYPE_NEW_ENV, 
-    "pigz for faster gzip-like compression"
+    "pigz for faster gzip-like compression",
     "pigz is a gzip utility that makes use of multiple CPU's.\n"
     "It produces and uses .gz files. To use, set AFNI_COMPRESSOR to PIGZ."
 } ,
@@ -316,7 +356,7 @@ afni_history_struct dglen_history[] = {
     "Added trivial ability to invert identity transformation"
 } ,
 
-{ 06 , SEP, 2011 , DRG , "align_epi_anat.py" , 
+{ 6 , SEP, 2011 , DRG , "align_epi_anat.py" , 
     MINOR , TYPE_BUG_FIX, 
     "save_skullstrip option saved obliqued and skullstripped data",
     "Fixed to save only skullstripped"

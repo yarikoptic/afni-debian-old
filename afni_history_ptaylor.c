@@ -66,7 +66,95 @@
 afni_history_struct ptaylor_history[] = {
 /*=====BELOW THIS LINE=====*/
 
+{ 29, Apr , 2014 , PT , "3dROIMaker" , MINOR , TYPE_NEW_OPT,
+   "Freedom in neighbor defs; also can keep just N peak values per ROI.",
+   "User can specify face, edge or vertex ngbs. Also, search for N max vals.\n"
+},
 
+{ 29, Apr , 2014 , PT , "3dNetCorr" , MINOR , TYPE_NEW_OPT,
+   "Added new feature: output WB correlations as Zscores.",
+   "Can output WB maps of ROI average time series correlations as Z-scores.\n"
+},
+
+{ 21, Apr , 2014 , PT , "1dDW_Grad_o_Mat" , MICRO , TYPE_NEW_OPT,
+   "Output grads as rows-- new option switch.",
+   "Done at user request.\n"
+},
+
+{ 21, Apr , 2014 , PT , "3dEigsToDT" , SUPER , TYPE_NEW_PROG,
+   "New program: take in eigen{values,vectors} and calculate DT.",
+   "This also allows flipping/rescaling to be done.\n"
+},
+
+{ 21, Apr , 2014 , PT , "TORTOISEtoHere" , SUPER , TYPE_NEW_PROG,
+   "New program: convert TORTOISE DTs to AFNI format.",
+   "This also allows flipping/rescaling to be done.\n"
+},
+
+{ 21, Apr , 2014 , PT , "3dNetCorr" , MINOR , TYPE_NEW_OPT,
+   "Added new feature: do whole brain correlations.",
+   "Can output individual WB maps of ROI average time series correlations.\n"
+},
+
+{ 16, Apr , 2014 , PT , "3dNetCorr" , MINOR , TYPE_MODIFY,
+   "Reformatted output a bit, added features for J. Rajendra.",
+   "Can output time series with labels, and as individual files.\n"
+},
+
+{ 16, Apr , 2014 , PT , "3dROIMaker" , MICRO , TYPE_BUG_FIX,
+   "Hadn't made a problem if user didn't input 'prefix'.",
+   "Fixed aforementioned loophole..\n"
+},
+
+{ 16, Apr , 2014 , PT , "3dMatch" , MINOR , TYPE_BUG_FIX,
+   "Bug when using mask on *some* files with Linux.",
+   "Seems to be more stable criteria now.\n"
+},
+
+{ 6, Mar , 2014 , PT , "3dTrackID" , SUPERDUPER , TYPE_MODIFY,
+   "Have Cordelialy unified the three kingdoms of tracking, cLearing usage.",
+   "This program does all tracking, including HARDI and mini-probabilistic.\n"
+},
+
+{ 6, Mar , 2014 , PT , "3dProbTrackID" , SUPERDUPER , TYPE_MODIFY,
+   "Put out to pasture.",
+   "This program is now retired, with usage cleanly transferred to 3dTrackID.\n"
+},
+
+{ 6, Mar , 2014 , PT , "3dNetCorr" , MINOR , TYPE_MODIFY,
+   "Reformatted output a bit.",
+   "Make output easier to read, labelled, and matching *GRID files.\n"
+},
+
+{ 6, Mar , 2014 , PT , "3dROIMaker" , MICRO , TYPE_BUG_FIX,
+   "Make parameter appear in help file correctly.",
+   "Fixed silly Spoonerism in option names usage/help-representation.\n"
+},
+
+{ 6, Mar , 2014 , PT , "1dDW_Grad_o_Mat" , MAJOR , TYPE_NEW_PROG,
+   "Manipulate gradient/bmatrix files.",
+   "Convert row/col and grad/bmatrix/gmatrix, use bval info, filter or not.\n"
+},
+
+{ 6, Mar , 2014 , PT , "3dTrackID" , MINOR , TYPE_NEW_OPT,
+   "Changes for reading in DTI files.",
+   "Allow NIML-formatted input file, as well as globbing in ordinary case.\n"
+},
+
+{ 6, Mar , 2014 , PT , "3dDWUncert" , MINOR , TYPE_NEW_OPT,
+   "Changes for reading in DTI files.",
+   "Allow NIML-formatted input file, as well as globbing in ordinary case.\n"
+},
+
+{ 6, Mar , 2014 , PT , "3dDWUncert" , MINOR , TYPE_BUG_FIX,
+   "Silly bug-- order of options not free.",
+   "Changed how options were processed so they weren't order-dependent.\n"
+},
+
+{ 3, Mar , 2014 , PT , "3dROIMaker" , MICRO , TYPE_MODIFY,
+  "Fixing option name agreement with help file.",
+  "Modernizing language."
+},
 
 { 28, Oct , 2013 , PT , "3dROIMaker" , MINOR , TYPE_MODIFY,
   "Allow multiple-brick masks.",

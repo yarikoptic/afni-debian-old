@@ -740,6 +740,8 @@ ENTRY("new_MCW_arrowval") ;
 
    }
 
+   av->wname = NULL ;
+
    XtManageChild( av->wrowcol ) ;
 
    if( minval < maxval ){
@@ -996,6 +998,7 @@ STATUS("creating option menu") ;
    av->wdown  = XmOptionButtonGadget(av->wrowcol) ;
    av->wup    = NULL ;
    av->wtext  = NULL ;  /* signal that this is NOT really an arrowval */
+   av->wname  = NULL ;
 
    XtVaSetValues( av->wlabel ,              /* label next to menu button */
                      XmNmarginWidth  , 0 ,
@@ -1376,9 +1379,12 @@ ENTRY("refit_MCW_optmenu") ;
    "        AFNI_MAX_OPTMENU = XXX \n"
    "   under the '***ENVIRONMENT' section of your .afnirc file with XXX \n"
    "   being a suitably large number. \n"
-   "For details, search for 'AFNI_MAX_OPTMENU' in AFNI's README.environment.\n"
+   "   For details, search for 'AFNI_MAX_OPTMENU' in AFNI's README.environment.\n"
+   "You can still use the 'Index' widget in the main AFNI controller\n"
+   "   to access all sub-bricks in such large datasets.\n"
    "\n"
-   "This message is shown intermittently.\n"
+   "This message is shown intermittently.  This message is only\n"
+   "a WARNING and does not mean that anything is seriously wrong!\n"
    "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n"
             , maxbut, maxbut);
       }

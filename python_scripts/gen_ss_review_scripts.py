@@ -76,7 +76,6 @@ gen_ss_review_scripts.py - generate single subject analysis review scripts
       motion_dset          dfile_rall.1D
       volreg_dset          pb02.FT.r01.volreg+tlrc.HEAD
       xmat_regress         X.xmat.1D
-      stats_dset           stats.FT+tlrc.HEAD
       final_anat           FT_anat+tlrc.HEAD
 
    optional files/datasets (censor files are required if censoring was done):
@@ -84,6 +83,7 @@ gen_ss_review_scripts.py - generate single subject analysis review scripts
       mask_dset            full_mask.FT+tlrc.HEAD
       censor_dset          motion_FT_censor.1D
       sum_ideal            sum_ideal.1D
+      stats_dset           stats.FT+tlrc.HEAD
       xmat_uncensored      X.nocensor.xmat.1D
       tsnr_dset            TSNR.ft+tlrc.HEAD
       gcor_dset            out.gcor.1D
@@ -315,7 +315,19 @@ if ( $was_censored ) then
     echo "TRs censored              : $ntr_censor"
     echo "censor fraction           : `ccalc $ntr_censor/$total_trs`"
     echo "num regs of interest      : $nint"
+else
+    # no censoring - just compute num TRs per regressor
+    set stim_trs = ()
+    foreach index ( `count -digits 1 0 $nm1` )
+        set st = `1deval -a $xstim"[$index]" -expr 'bool(a)' | grep 1 | wc -l`
+        set stim_trs = ( $stim_trs $st )
+    end
+    echo "num regs of interest      : $nint"
+    echo "num TRs per stim          : $stim_trs"
+endif
 
+# report per-stim censoring
+if ( $was_censored && $num_stim > 0 ) then
     # compute fractions of stimulus TRs censored in each
     set stim_trs = ()
     set stim_trs_censor = ()
@@ -336,19 +348,10 @@ if ( $was_censored ) then
         set stim_frac_censor = ( $stim_frac_censor $ff )
     end
 
-    echo "num TRs per stim          : $stim_trs"
+    echo "num TRs per stim (orig)   : $stim_trs"
     echo "num TRs censored per stim : $stim_trs_censor"
     echo "fraction TRs censored     : $stim_frac_censor"
     echo ""
-else
-    # no censoring - just compute num TRs per regressor
-    set stim_trs = ()
-    foreach index ( `count -digits 1 0 $nm1` )
-        set st = `1deval -a $xstim"[$index]" -expr 'bool(a)' | grep 1 | wc -l`
-        set stim_trs = ( $stim_trs $st )
-    end
-    echo "num regs of interest      : $nint"
-    echo "num TRs per stim          : $stim_trs"
 endif
 
 """
@@ -384,7 +387,7 @@ endif
 g_basic_fstat_str = """
 # ------------------------------------------------------------
 # note maximum F-stat
-if ( -f $stats_dset ) then
+if ( -f "$stats_dset" ) then
   set fmax = `3dBrickStat -slow -max $stats_dset"[Full_Fstat]"`
   echo "maximum F-stat            : $fmax"
 endif
@@ -393,7 +396,7 @@ endif
 g_basic_fstat_mask_str = """
 # ------------------------------------------------------------
 # note maximum masked F-stat
-if ( -f $stats_dset && -f $mask_dset ) then
+if ( -f "$stats_dset" && -f $mask_dset ) then
   set fmax = `3dBrickStat -slow -max -mask $mask_dset $stats_dset"[Full_Fstat]"`
   echo "maximum F-stat (masked)   : $fmax"
 endif
@@ -508,6 +511,7 @@ g_cvars_defs.scr_basic  = '@ss_review_basic'
 g_cvars_defs.scr_drive  = '@ss_review_driver'
 g_cvars_defs.cmds_drive = '@ss_review_driver_commands'
 g_cvars_defs.xstim      = 'X.stim.xmat.1D'
+g_cvars_defs.basic_command = 'yes' # if set, include command in review_basic
 g_cvars_defs.out_prefix = ''    # if set, use as prefix to cvar files
 g_cvars_defs.exit0      = 0     # if set, return 0 even on errors
 
@@ -556,12 +560,12 @@ g_history = """
         - use 3 decimal places for TR censor fractions
    0.18 Apr 12, 2012: replace enumerate(), for backport to python 2.2
    0.19 May 01, 2012: added -prefix option; added censoring to 1dplot commands
-   0.20 May 09, 2012: accomodate more than 99 runs
+   0.20 May 09, 2012: accommodate more than 99 runs
    0.21 May 11, 2012: also output average censored motion (per TR)
    0.22 Jun 14, 2012: use afni -com instead of plugout_drive
                       (avoids issue on systems with multiple users)
                       Thanks to V Razdan and N Adleman for noting the issue.
-   0.23 Jun 25, 2012: ick, fixed uninitilaized cpad1,2 (if no censoring)
+   0.23 Jun 25, 2012: ick, fixed uninitialized cpad1,2 (if no censoring)
    0.24 Jul 17, 2012:
         - add checks for volreg and uncensored X-mat
         - probably init view from volreg
@@ -573,9 +577,19 @@ g_history = """
    0.30 Dec 26, 2013: max F (and for cluster jump) are masked, if possible
    0.31 Dec 27, 2013: also output censored TRs per run, and fractions
    0.32 Feb 10, 2014: show TRs per run, applied and censored
+   0.33 Mar 06, 2014:
+        - if censoring, create X.stim.xmat.1D from uncensored matrix
+        - if no censor, still report num regs of interest and TRs per stim
+        - report per-stim censoring only with stim classes
+   0.34 Mar 11, 2014: added GSSRS command comment at bottom of _basic script
+   0.35 Mar 21, 2014: removed -e option from "tcsh -ef @ss_review_basic"
+        - grep commands are killing it when not finding matches
+        - linux systems are not terminating there, while macs do
+   0.36 Apr 09, 2014: for GCOR files, give priority to having 'out' in name
+   0.37 May 13, 2014: allow no stats, in case of rest and 3dTproject
 """
 
-g_version = "gen_ss_review_scripts.py version 0.32, February 10, 2014"
+g_version = "gen_ss_review_scripts.py version 0.37, May 13, 2014"
 
 g_todo_str = """
    - figure out template_space
@@ -829,8 +843,8 @@ class MyInterface:
       if self.guess_rm_trs():      return 1
       if self.guess_stats_dset():  return 1
       if self.guess_sum_ideal():   return 1
-      if self.guess_final_view():  return 1
       if self.guess_volreg_dset(): return 1
+      if self.guess_final_view():  return 1
       if self.guess_enorm_dset():  return 1
       if self.guess_motion_dset(): return 1
       if self.guess_outlier_dset():return 1
@@ -1134,13 +1148,14 @@ class MyInterface:
             print '-- already set: final_view = %s' % self.uvars.final_view
          return 0
 
-      if not self.dsets.is_empty('volreg_dset'):
+      if self.dsets.is_not_empty('volreg_dset'):
          view = self.dsets.volreg_dset.view
-      elif not self.dsets.is_empty('stats_dset'):
+      elif self.dsets.is_not_empty('stats_dset'):
          view = self.dsets.stats_dset.view
       else:
          print '** no stats_dset to get final_view from'
          view = ''
+         print '== rcr - vr = %s' % self.dsets.val('volreg_dset')
 
       if len(view) != 5: # maybe surface, go after volreg explicitly for now
          vv = "+orig"
@@ -1480,7 +1495,14 @@ class MyInterface:
          print '** failed to find gcor dset, continuing...'
          return 0 # failure is not terminal
 
-      self.uvars.gcor_dset = glist[0]
+      # search for files containing 'out', but default to first
+      guse = glist[0]
+      for gfile in glist:
+         if gfile.find('out') >= 0:
+            guse = gfile
+            break
+
+      self.uvars.gcor_dset = guse
 
       return 0
 
@@ -1588,9 +1610,10 @@ class MyInterface:
       dlist = [d for d in dlist if d.find('_REMLvar+') < 0]
 
       if len(dlist) < 1:
-         print '** failed to guess at any stats dset, globstr = "%s"' % gform
-         print '   (X-matrix file "%s" may not apply)' % ax.fname
-         return 1
+         print '** failed to guess at any stats dset, resting state?'
+         print '   (else X-matrix file "%s" may not apply)' % ax.fname
+         self.uvars.stats_dset = 'NO_STATS'
+         return 0
       if len(dlist) == 1:
          sset = dlist[0]
       else:     # must pare down the list
@@ -1615,8 +1638,7 @@ class MyInterface:
 
       sb = BASE.afni_name(sname)
       if not sb.exist():
-         print '** stats dataset not found: %s' % xname
-         return 1
+         print "** warning: stats dataset not found: '%s'" % sname
 
       # set corresponding dset items and then go after uncensored
       self.dsets.stats_dset = sb
@@ -1727,6 +1749,8 @@ class MyInterface:
 
       self.text_basic += g_basic_finish_str
 
+      self.basic_add_command_string()
+
       return 0
 
    def basic_overview(self):
@@ -1735,8 +1759,7 @@ class MyInterface:
          astr = 'echo "final anatomy dset        : $final_anat"\n'
       else: astr = ''
 
-      sset = self.uvars.val('stats_dset')
-      if sset != None:
+      if self.uvars.is_not_empty('stats_dset'):
          sstr = 'echo "final stats dset          : $stats_dset"\n' \
                 'echo "final voxel resolution    : '               \
                                         '`3dinfo -ad3 $stats_dset`"\n'
@@ -1747,10 +1770,16 @@ class MyInterface:
       txt += \
         '# ------------------------------------------------------------\n'   \
         '# make non-basline X-matrix, if one is not already here\n'          \
+        'if ( $?xmat_uncensored ) then\n'                                    \
+        '    set xmat = $xmat_uncensored\n'                                  \
+        'else\n'                                                             \
+        '    set xmat = $xmat_regress\n'                                     \
+        'endif\n'                                                            \
+        '\n'                                                                 \
         'set xstim = %s\n'                                                   \
         'if ( ! -f $xstim ) then\n'                                          \
-        '   set reg_cols = `1d_tool.py -infile $xmat_regress -show_indices_interest`\n'\
-        '   1d_tool.py -infile $xmat_regress"[$reg_cols]" -overwrite -write $xstim\n'  \
+        '   set reg_cols = `1d_tool.py -infile $xmat -show_indices_interest`\n'\
+        '   1d_tool.py -infile $xmat"[$reg_cols]" -overwrite -write $xstim\n'  \
         'endif\n' % self.cvars.xstim
 
       self.text_basic += txt
@@ -1819,11 +1848,10 @@ class MyInterface:
          errs += 1
 
       var = 'stats_dset'
-      if self.uvars.is_not_empty(var):
+      val = self.uvars.val(var)
+      if val != None:
          txt += form % (var, self.uvars.val(var))
-      else:
-         print '** basic script: missing variable %s' % var
-         errs += 1
+      # else: okay - not required (resting state)
 
       var = 'censor_dset'
       if self.uvars.is_not_empty(var):
@@ -1855,10 +1883,15 @@ class MyInterface:
 
       return 0
 
+   def basic_add_command_string(self):
+      if self.cvars.val('basic_command') != 'yes': return
+
+      self.text_basic += '\n' + UTIL.get_command_str(comment=1) + '\n'
+
    def make_drive_script(self):
       # init script and commands-only text
       self.text_drive = ''
-      self.commands_drive = 'tcsh -ef %s\n' % self.cvars.val('scr_basic')
+      self.commands_drive = 'tcsh -f %s\n' % self.cvars.val('scr_basic')
 
       if self.drive_init(): return 1
       if self.drive_motion(): return 1
@@ -1881,7 +1914,7 @@ class MyInterface:
        '\n'                                                                 \
        'if ( -f %s ) then\n'                                                \
        '   echo ------------------- %s --------------------\n'              \
-       '   tcsh -ef %s\n'                                                   \
+       '   tcsh -f %s\n'                                                    \
        '   echo ---------------------------------------------------------\n'\
        '\n'                                                                 \
        '   prompt_user -pause "                      \\\n'                  \
@@ -2111,7 +2144,7 @@ class MyInterface:
          if mesg: print '** no %s dset, %s' % (dname, mesg)
          return 1
       if not dset.exist():
-         if mesg: print '** missing %s %s, %s' % (dname, dset, mesg)
+         if mesg: print '** missing %s %s, %s' % (dname, dset.prefix, mesg)
          return 1
       return 0
 

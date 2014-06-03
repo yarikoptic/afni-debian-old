@@ -2,6 +2,9 @@
 #define SUMA_COLOR_INCLUDED
 
 #define SUMA_DUNNO_GRAY 0.54321
+/* Bitmasks for per_sv_extra */
+#define PSV_NOTHING 0
+#define PSV_BIND_VOL    1
 
 
 int SUMA_a_good_col(char *name, int i, float *acol);
@@ -121,6 +124,7 @@ SUMA_Boolean SUMA_ScaleToMap_alaHASH ( float *V, int N_V,
                                        SUMA_SCALE_TO_MAP_OPT *Opt, 
                                        SUMA_COLOR_SCALED_VECT * SV);
 SUMA_Boolean SUMA_ScaleToMap_Interactive (   SUMA_OVERLAYS *Sover );
+SUMA_Boolean SUMA_DSET_ClearOverlay_Vecs(SUMA_DSET *dset);
 SUMA_Boolean SUMA_SetOverlay_Vecs(SUMA_OVERLAYS *Sover, char vec, 
                                   int colind, char *task, int perc);
 SUMA_AFNI_COLORS * SUMA_Get_AFNI_Default_Color_Maps ();
@@ -161,6 +165,7 @@ SUMA_Boolean SUMA_TransferCoordBias(SUMA_OVERLAYS *ovr,
                                     SUMA_WIDGET_INDEX_COORDBIAS BiasDim);
 SUMA_Boolean SUMA_NewSurfaceGeometry(SUMA_SurfaceObject *SO);
 int SUMA_GetNodeOverInd (SUMA_OVERLAYS *Sover, int node);
+int SUMA_GetSortedNodeOverInd (SUMA_OVERLAYS *Sover, int node);
 SUMA_Boolean SUMA_isDsetColumn_inferred(SUMA_DSET *dset, int icol);
 SUMA_Boolean SUMA_OKassign(SUMA_DSET *dset, SUMA_SurfaceObject *SO);
 SUMA_COLOR_MAP * SUMA_pbardef_to_CM(char *cmd);
@@ -207,7 +212,6 @@ SUMA_Boolean SUMA_DestroyCmapHash(SUMA_COLOR_MAP *CM);
 SUMA_Boolean SUMA_CreateCmapHash(SUMA_COLOR_MAP *CM);
 NI_group *SUMA_CmapToNICmap(SUMA_COLOR_MAP *CM);
 SUMA_COLOR_MAP *SUMA_NICmapToCmap(NI_group *ngr);
-
-
+char *SUMA_RGB_to_hex(float *fv, char *here);
 
 #endif

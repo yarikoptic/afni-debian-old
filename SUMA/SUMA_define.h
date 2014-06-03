@@ -184,7 +184,7 @@ typedef enum  { SUMA_FT_ERROR = -1, SUMA_FT_NOT_SPECIFIED,
                SUMA_INVENTOR_GENERIC, SUMA_PLY, SUMA_VEC, SUMA_CMAP_SO,
                SUMA_BRAIN_VOYAGER , 
                SUMA_OPENDX_MESH, SUMA_BYU, SUMA_GIFTI, SUMA_MNI_OBJ,
-               SUMA_PREDEFINED,
+               SUMA_PREDEFINED, SUMA_OBJ_MESH,
                   SUMA_N_SO_FILE_TYPE} SUMA_SO_File_Type; /* add types always between SUMA_FT_NOT_SPECIFIED AND SUMA_N_SO_FILE_TYPE */
 typedef enum { SUMA_FF_ERROR = -1, SUMA_FF_NOT_SPECIFIED, SUMA_ASCII, SUMA_BINARY, SUMA_BINARY_BE, SUMA_BINARY_LE, SUMA_XML_SURF, SUMA_XML_ASCII_SURF,  SUMA_XML_B64_SURF, SUMA_XML_B64GZ_SURF } SUMA_SO_File_Format;
 
@@ -230,7 +230,7 @@ typedef enum { SE_Empty,
                SE_ToggleShowSelectedNode, SE_SetSelectedFaceSet,
                SE_ToggleShowSelectedFaceSet, SE_ToggleConnected, 
                SE_SetAfniCrossHair, SE_SetAfniSurf, SE_SetAfniSurfList, 
-               SE_SetAfniThisSurf, 
+               SE_SetAfniThisSurf, SE_SetAfniMask,
                SE_SetForceAfniSurf, SE_BindCrossHair, SE_ToggleForeground, 
                SE_ToggleBackground, SE_FOVreset, SE_CloseStream4All, 
                SE_Redisplay_AllVisible, SE_RedisplayNow, SE_ResetOpenGLState, 
@@ -251,6 +251,7 @@ typedef enum { SE_Empty,
                SE_OpenDsetFile, SE_OpenColFile, SE_OneOnly, SE_OpenSurfCont,
                SE_SetSurfCont, SE_SetViewerCont, SE_SetRecorderCont,
                SE_SetDsetViewMode, SE_SetDsetFont, SE_SetDsetNodeRad, 
+               SE_SetDsetThrough, 
                SE_SetDsetNodeCol, SE_SetDsetEdgeThick, SE_SetDsetEdgeStip,
                SE_SetDsetGmatBord, SE_SetDsetTxtShad, SE_SetTractMask,
                SE_SetDsetAlphaVal, SE_SetTractStyle, SE_SetATransMode,
@@ -413,6 +414,15 @@ typedef enum { SW_SurfCont_DsetNodeRad,
                SW_SurfCont_DsetNodeRadXXX,
                SW_N_SurfCont_DsetNodeRad }
                                           SUMA_WIDGET_INDEX_SURFCONT_DSETNODERAD;
+
+typedef enum { SW_SurfCont_DsetThrough,
+               SW_SurfCont_DsetThroughEdge,
+               SW_SurfCont_DsetThroughCol,
+               SW_SurfCont_DsetThroughRad,
+               SW_SurfCont_DsetThroughCaR,
+               SW_SurfCont_DsetThroughXXX,
+               SW_N_SurfCont_DsetThrough }
+                                          SUMA_WIDGET_INDEX_SURFCONT_DSETTHROUGH;
 
 typedef enum { SW_SurfCont_DsetEdgeThick,
                SW_SurfCont_DsetEdgeThickConst,
@@ -638,7 +648,8 @@ typedef enum {  SWP_DONT_CARE,
                 SWP_TOP_LEFT,
                 SWP_POINTER, /*!< Position centered to the pointer */
                 SWP_POINTER_OFF,
-                SWP_POINTER_LEFT_BOTTOM
+                SWP_POINTER_LEFT_BOTTOM,
+                SWP_TOP_BEST /*!< Top right, else top left with no overlap */
              } SUMA_WINDOW_POSITION; /*!< Types of relative window positions */
 
 typedef enum {    SAR_Undefined,
@@ -960,6 +971,10 @@ typedef struct {
                NodeRad can be +/- most of SUMA_WIDGET_INDEX_SURFCONT_DSETNODERAD
                   It cannot be +/-SW_SurfCont_DsetNodeRadXXX
                   see SUMA_WIDGET_INDEX_SURFCONT_DSETNODERAD */
+   int Through; /*!< negative do not show, postive, 
+               Through can be +/- most of SUMA_WIDGET_INDEX_SURFCONT_DSETTHROUGH
+                  It cannot be +/-SW_SurfCont_DsetThroughXXX
+                  see SUMA_WIDGET_INDEX_SURFCONT_DSETTHROUGH */
    float NodeRadGain;
    int NodeCol; /*!< Node colors, either constant or from dset 
                   see SUMA_WIDGET_INDEX_SURFCONT_DSETNODECOL */
@@ -1581,6 +1596,7 @@ typedef struct {
    Widget SurfInfo_pb; /*!< More info push button */
    Widget SurfInfo_label; /*!< Le label */
    Widget Mask_pb; /*!< Mask push button */
+   Widget VSliceAtXYZ_tb; /*!< Make slices jump to crosshair location */
    SUMA_CREATE_TEXT_SHELL_STRUCT * SurfInfo_TextShell; /*!< structure containing 
                         widgets and options of the surface info text shell */
    SUMA_MENU_WIDGET *RenderModeMenu; /*!<[SW_N_SurfCont_Render] widgets 
@@ -1596,6 +1612,7 @@ typedef struct {
    SUMA_MENU_WIDGET *DsetTxtShadMenu; /*!<[SW_N_SurfCont_DsetTxtShad] widgets                                   controlling the shading/shadowing of txt */
    SUMA_MENU_WIDGET *DsetGmatBordMenu; /*!<[SW_N_SurfCont_DsetGmatBord] widgets                                   controlling the border thickness in GMATRIX */
    SUMA_MENU_WIDGET *DsetNodeRadMenu; /*!<[SW_N_SurfCont_DsetNodeRad] widgets                                   controlling the sizing of graph nodes */
+   SUMA_MENU_WIDGET *DsetThroughMenu; /*!<[SW_N_SurfCont_DsetThrough] widgets                          controlling the way connections from a node are displayed */
    SUMA_MENU_WIDGET *DsetEdgeThickMenu; /*!<[SW_N_SurfCont_DsetEdgeThick] widgets                                   controlling the sizing of graph nodes */
    SUMA_MENU_WIDGET *DsetEdgeStipMenu; /*!<[SW_N_SurfCont_DsetEdgeStip] widgets                                   controlling the sizing of graph nodes */
    SUMA_MENU_WIDGET *TractStyleMenu; /*!<[SW_N_SurfCont_TractStyle] widgets                                   controlling the sizing of graph nodes */
@@ -1814,7 +1831,8 @@ typedef struct {
    Bool DOUBLEBUFFER;
    char *Title; 
    int REDISPLAYPENDING, CrappyDrawable;
-   int WIDTH, HEIGHT;
+   int aWIDTH, aHEIGHT; /* These are the widths and heights of the drawing area, 
+                         rather than the whole window */
    XtWorkProcId REDISPLAYID;
    XtIntervalId MOMENTUMID;
    GC gc;
@@ -1836,7 +1854,8 @@ typedef struct {
    SUMA_PROMPT_DIALOG_STRUCT *JumpFocusNode_prmpt; /*!< structure for setting                                                   Focus Node dialog */
    SUMA_PROMPT_DIALOG_STRUCT *JumpFocusFace_prmpt; /*!< structure for setting                                                   Focus FaceSet dialog */
    SUMA_PROMPT_DIALOG_STRUCT *HighlightBox_prmpt; /*!<  structure for 
-                                             highlighting nodes in Box dialog */ 
+                                             highlighting nodes in Box dialog */
+   SUMA_PROMPT_DIALOG_STRUCT *SetRenderOrder_prmpt; 
 }SUMA_X;
 
 /*! structure containg X vars common to all viewers */
@@ -2247,8 +2266,8 @@ typedef struct {
    float lastQuat[4]; /*!< Quaternion last time we displayed*/
    Boolean ApplyMomentum;   /*!< Turn momentum ON/OFF */
    
-   float LHpry;
-   float LHpry0;
+   float vLHpry[3];
+   float vLHpry0[3];
    int LHlol;           /*!< if 1 then the left hemi starts up displayed
                              on the left side of the screen.
                              if -1 then left starts on the right.
@@ -2351,6 +2370,7 @@ typedef enum {  SUMA_NO_WAX, SUMA_THREE_WAX, SUMA_THREE_TEXT_WAX, SUMA_BOX_WAX, 
 /*! structure defining the state of a viewer window */
 
 typedef struct {
+   char Label[256];
    int ALPHA_TEST;
    int DEPTH_TEST;
    int COLOR_MATERIAL;
@@ -2372,6 +2392,9 @@ typedef struct {
    int LIGHT2;
    int BLEND;
    int LINE_SMOOTH;
+   int ColMatParam;
+   int ColMatFace;
+   GLfloat CurCol[4];
 } SUMA_EnablingRecord;
 
 /* a structure for the list of pickable objects (excluding surfaces) */
@@ -2388,23 +2411,25 @@ typedef struct {
    long int idatum;
 } SUMA_COLID_OFFSET_DATUM;
 
-#define SUMA_NET_BUN    0  /* selectedNetworkBundle */
-#define SUMA_VOL_I      0  /* selectedVoxelI */
-#define SUMA_SURF_TRI   0  /* selected triangle */
-#define SUMA_ENODE_0    0  /* 1st point/node forming edge */
+#define SUMA_NET_BUN          0  /* selectedNetworkBundle */
+#define SUMA_VOL_I            0  /* selectedVoxelI */
+#define SUMA_SURF_TRI         0  /* selected triangle */
+#define SUMA_ENODE_0          0  /* 1st point/node forming edge */
 
-#define SUMA_BUN_TRC    1  /* selectedBundleTract */
-#define SUMA_VOL_J      1  /* selectedVoxelJ */
-#define SUMA_ENODE_1    1  /* 2st point/node forming edge */
+#define SUMA_BUN_TRC          1  /* selectedBundleTract */
+#define SUMA_VOL_J            1  /* selectedVoxelJ */
+#define SUMA_ENODE_1          1  /* 2st point/node forming edge */
 
-#define SUMA_TRC_PNT    2  /* selectedTractPoint */
-#define SUMA_VOL_K      2  /* selectedVoxelK */
+#define SUMA_TRC_PNT          2  /* selectedTractPoint */
+#define SUMA_VOL_K            2  /* selectedVoxelK */
 
-#define SUMA_NET_TRC    3  /* selectedNetworkTract */
-#define SUMA_VOL_IJK    3  /* selectedVoxelIJK, 1D index */
+#define SUMA_NET_TRC          3  /* selectedNetworkTract */
+#define SUMA_VOL_IJK          3  /* selectedVoxelIJK, 1D index */
 
- 
-#define SUMA_N_IALTSEL_TYPES 4 /* If this goes over 15, make sure you 
+#define SUMA_VOL_SLC_NUM      4  /* selected slice, 1D index */
+#define SUMA_VOL_SLC_VARIANT  5  /* selected slice, 1D index */
+
+#define SUMA_N_IALTSEL_TYPES  6 /* If this goes over 15, make sure you 
                                  start using something bigger than
                                  iv15 in SUMA_Engine Calls */
 
@@ -2419,6 +2444,81 @@ typedef struct {
 #define SUMA_N_DALTSEL_TYPES 4 /* If this goes over 15, make sure you 
                                  start using something bigger than
                                  fv15 in SUMA_Engine Calls */
+
+/* 
+   *************** Convolution utilities *************** 
+   based on example in glut's convolve.c by  
+   Tom McReynolds, SGI 
+   *****************************************************
+*/
+/* convolution choices */
+typedef enum {
+      SUMA_CONV_NONE, 
+      SUMA_CONV_BOX_3X3,
+      SUMA_CONV_BOX_5X5,
+      SUMA_CONV_SOBEL_X,
+      SUMA_CONV_LAPLACE,
+      SUMA_N_CONV_MODES,
+} SUMA_CONV_MODES;
+
+/* Filter contents and size */
+typedef struct {
+  GLfloat scale; /* 1/scale applied to image to prevent overflow */
+  GLfloat bias; /* for biasing images */
+  int rows;
+  int cols;
+  GLfloat *array;
+} SUMA_C_FILTER;
+
+/* *************** End Convolution utilities *************** */
+
+typedef struct {
+      /* variables copied from the event structs */
+   int ktype;         /* Event type (Kev.type) */
+   int kstate;        /* Event state (Kev.state) */
+   char transl[16];  /* Translated event characters (buffer) */
+   KeySym keysym;       /* key symbol (keysym) */
+   int mtype;         /* Event type (Mev.type) */
+   int mstate;        /* Event state (Mev.state) */
+   int bButton;      /* (Bev.button) */
+   int mButton;      /* (Mev.button) */
+   Time bTime;       /* (Bev.time) */
+   Time mTime;       /* (Mev.time) */
+   int mX;
+   int mY;
+   int bX;
+   int bY;
+      /* inferred variables */
+   int set;
+   byte b1;
+   byte b2;
+   byte b3;
+   byte b4;
+   byte b5;
+   byte b6;
+   byte b7;
+   byte b1m;
+   byte b2m;
+   byte b3m;
+   byte b4m;
+   byte b5m;
+   byte Shift;
+   byte Control;
+   byte Mod1;
+   byte Mod2;
+   byte Mod3;
+   byte Mod4;
+   byte Mod5;
+   byte AppleAltOpt;
+   byte DoubleClick;
+   Time mDelta;
+   int mDeltaX;
+   int mDeltaY;
+   int bDeltaX;
+   int bDeltaY;
+} SUMA_EVENT; /* A record of last event sent to SUMA_input.
+                 comments in () above refer to equiv. variables
+                 in SUMA_input() function */
 
 typedef struct {
    char *ado_idcode_str;   /* id of ado that was picked */
@@ -2438,6 +2538,7 @@ typedef struct {
    
    char *dset_idcode_str; /* ID of volume where selection was made, 
                       if a volume was selected */
+   SUMA_EVENT *evr; /* A record of the pick event at the time PR was created */
 } SUMA_PICK_RESULT; /* Structure holding results of pointer selection*/
 
 
@@ -2483,8 +2584,12 @@ typedef struct {
    int ortho; /*!< Orthographic (1) or perspective (0, default) projection */
    int ShowLabelAtXhair; /*!< Show label at location of cross hair */
    float Aspect;   /*!< Aspect ratio of the viewer*/
-   int WindWidth;   /*!< Width of window */
-   int WindHeight;   /*!< Height of window */
+   int wWindWidth;   /*!< Width of whole window */
+   int wWindHeight;   /*!< Height of whole window */
+   int DrawAreaHeightOffset; /*!< Offset of GLX draw area height from enclosing
+                                  window */
+   int DrawAreaWidthOffset; /*!< Offset of GLX draw area width from enclosing
+                                  window */
    float ZoomCompensate; /*!< Compensate mouse movements by zoom factor */
    float *FOV; /*!< Field of View (affects zoom level, there is a 
                     separate FOV for each ViewState)*/
@@ -2608,6 +2713,17 @@ typedef struct {
    GLubyte *pickrenpix4; /*! An array holding the RGBA rendering buffer */
    
    int LoadedTextures[SUMA_MAX_DISPLAYABLE_OBJECTS+1];
+   
+   SUMA_C_FILTER *C_filter;
+   SUMA_CONV_MODES C_mode;
+   
+   int otseq[N_DO_TYPES]; /* Object type sequence 
+                             This is used to control the order in which 
+                             different object types are rendered.
+                             Default is: VO_type, SO_type, GRAPH_LINK_type*/
+   int N_otseq;           /* Number of types specified in otseq, 
+                             Default is 3 types*/
+   int PryAx;             /* Prying axis. 3 == Z axis, 2 == Y axis */
 } SUMA_SurfaceViewer;
 
 /*! structure defining an EngineData structure */
@@ -3078,6 +3194,7 @@ typedef struct {
    
    float *NodeList_swp; /*!< A temporary pointer copy for swapping NodeList with
                              VisX's transformed coordinates. Use sparingly */
+   float PointSize; /*! Set to negative to make it so it has no effect */
 }SUMA_SurfaceObject; /*!< \sa Alloc_SurfObject_Struct in SUMA_DOmanip.c
                      \sa SUMA_Free_Surface_Object in SUMA_Load_Surface_Object.c
                      \sa SUMA_Print_Surface_Object in SUMA_Load_Surface_Object.c
@@ -3099,7 +3216,8 @@ typedef struct {
    int N_datum; /* Here number of control points forming tracts */
    
       /* Begin specific fields */
-   char *Parent_idcode_str;
+   char *Parent_idcode_str;   /* Object a mask is attached to (positioned on)*/
+   int Parent_datum_index;    /* Datum index a mask is attached to */
    
    char mtype[64]; /* A string defining mask subtypes 
                       cube --> box
@@ -3122,6 +3240,9 @@ typedef struct {
    
    char varname[3];
    SUMA_TRANS_MODES trans;
+   
+   float dopxyz[3];
+   int dodop;
 } SUMA_MaskDO;
 
 
@@ -3550,7 +3671,9 @@ typedef struct {
    double lastcall;
    struct timeval tt;
 } SUMA_TIMER;
+
 #define SUMA_MAX_N_TIMER 50
+
 /*! structure containing information global to all surface viewers */
 typedef struct {
    SUMA_Boolean Dev; /*!< Flag for developer option 
@@ -3648,7 +3771,8 @@ typedef struct {
    DList *DsetList;  /*!< List containing datasets */
    SUMA_Boolean Allow_Dset_Replace; 
       /*!< Allow replacement of old dset with new dset having same id */
-   
+   SUMA_Boolean Home_After_Prying; 
+      /*!< Call 'Home' callback as prying is applied */
    int SUMA_ThrScalePowerBias;
    int SUMA_SnapshotOverSampling; 
    SUMA_Boolean IgnoreVolreg; 
@@ -3694,6 +3818,8 @@ typedef struct {
    DList *SaveList; /*!< List of objects set to be saved when user chooses to */
    
    SUMA_Boolean YokeIntToNode;
+   
+   SUMA_EVENT *lev; /*!< A record of the last input event */
 } SUMA_CommonFields;
 
 

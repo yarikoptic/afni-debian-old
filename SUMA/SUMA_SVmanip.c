@@ -414,14 +414,183 @@ SUMA_Boolean SUMA_DiffGeomViewStruct(SUMA_GEOMVIEW_STRUCT gvs1,
       if (gvs1.spinBeginX != gvs2.spinBeginX) SUMA_RETURN(21);
       if (gvs1.spinBeginY != gvs2.spinBeginY) SUMA_RETURN(22);
       if (gvs1.MinIdleDelta != gvs2.MinIdleDelta) SUMA_RETURN(23);
-      if (gvs1.LHpry != gvs2.LHpry) SUMA_RETURN(27);
-      if (gvs1.LHpry0 != gvs2.LHpry0) SUMA_RETURN(28);
-      if (gvs1.LHlol != gvs2.LHlol) SUMA_RETURN(29);
+      if (gvs1.vLHpry[0] != gvs2.vLHpry[0]) SUMA_RETURN(27);
+      if (gvs1.vLHpry0[0] != gvs2.vLHpry0[0]) SUMA_RETURN(28);
+      if (gvs1.vLHpry[1] != gvs2.vLHpry[1]) SUMA_RETURN(29);
+      if (gvs1.vLHpry0[1] != gvs2.vLHpry0[1]) SUMA_RETURN(30);
+      if (gvs1.vLHpry[2] != gvs2.vLHpry[2]) SUMA_RETURN(31);
+      if (gvs1.vLHpry0[2] != gvs2.vLHpry0[2]) SUMA_RETURN(32);
+      if (gvs1.LHlol != gvs2.LHlol) SUMA_RETURN(33);
    }
    
    /* if (gvs1. != gvs2.) SUMA_RETURN(); */
    
    SUMA_RETURN(0); /* no difference */
+}
+
+int SUMA_VerifyRenderOrder(char *ord, void *unused)
+{
+   static char FuncName[]={"SUMA_VerifyRenderOrder"};
+   
+   if (SUMA_SetObjectDisplayOrder(ord, NULL) < 0) return(0);
+   
+   return(1);
+}
+
+int SUMA_SetObjectDisplayOrder(char *ord, int *otseq)
+{
+   static char FuncName[]={"SUMA_SetObjectDisplayOrder"};
+   NI_str_array *sar = NULL;
+   int iii, cnt = 0, bad = 0, dummy[N_DO_TYPES], used[N_DO_TYPES];
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   
+   cnt = -1;
+   
+   if (!otseq) otseq = dummy;
+      
+   if (!ord || !strcmp(ord,"DEFAULT")) {
+      otseq[0] = VO_type;
+      otseq[1] = SO_type;
+      otseq[2] = GRAPH_LINK_type;
+      cnt = 3;
+      RETURN(cnt);
+   }
+   
+   memset(used, 0, N_DO_TYPES*sizeof(int));
+   deblank_name(ord);
+   if ((sar = SUMA_NI_decode_string_list( ord , ",;"))) {
+      cnt = 0;
+      for (iii=0; iii<sar->num; ++iii) {
+         if (sar->str[iii]) deblank_name(sar->str[iii]);
+         if (sar->str[iii]) {
+            bad = 0;
+                   if (!strncasecmp(sar->str[iii],"sur", 3)) {
+               if (!used[SO_type]) { 
+                  otseq[cnt++] = SO_type;
+                  used[SO_type] = 1;
+               } else {
+                  SUMA_S_Err("Duplicate reference to surfaces in %s", 
+                             sar->str[iii]);
+                  bad = 1;
+               }
+            } else if (!strncasecmp(sar->str[iii],"vol", 3)) {
+               if (!used[VO_type]) { 
+                  otseq[cnt++] = VO_type;
+                  used[VO_type] = 1;
+               } else {
+                  SUMA_S_Err("Duplicate reference to volumes in %s", 
+                             sar->str[iii]);
+                  bad = 1;
+               }
+            } else if (!strncasecmp(sar->str[iii],"gra", 3)) {
+               if (!used[GRAPH_LINK_type]) { 
+                  otseq[cnt++] = GRAPH_LINK_type;
+                  used[GRAPH_LINK_type] = 1;
+               } else {
+                  SUMA_S_Err("Duplicate reference to graphs in %s", 
+                             sar->str[iii]);
+                  bad = 1;
+               }
+            } else if (!strcmp(sar->str[iii],"S")) {
+               if (!used[SO_type]) { 
+                  otseq[cnt++] = SO_type;
+                  used[SO_type] = 1;
+               } else {
+                  SUMA_S_Err("Duplicate reference to surfaces in %s", 
+                             sar->str[iii]);
+                  bad = 1;
+               }
+            } else if (!strcmp(sar->str[iii],"V")) {
+               if (!used[VO_type]) { 
+                  otseq[cnt++] = VO_type;;
+                  used[VO_type] = 1;
+               } else {
+                  SUMA_S_Err("Duplicate reference to volumes in %s", 
+                             sar->str[iii]);
+                  bad = 1;
+               }
+            } else if (!strcmp(sar->str[iii],"G")) {
+               if (!used[GRAPH_LINK_type]) { 
+                  otseq[cnt++] = GRAPH_LINK_type;
+                  used[GRAPH_LINK_type] = 1;
+               } else {
+                  SUMA_S_Err("Duplicate reference to graphs in %s", 
+                             sar->str[iii]);
+                  bad = 1;
+               }
+            } else if (sar->num == 1) {
+               int OK=0, jjj;
+               char *ss=sar->str[0];
+               for (jjj=0; jjj<strlen(ss); ++jjj) {
+                  if (ss[jjj] == 'S' || ss[jjj] == 'V' || ss[jjj] == 'G') ++OK;
+               }
+               if (OK != strlen(ss)) {
+                  bad = 2;
+               }
+               for (jjj=0; jjj<strlen(ss); ++jjj) {
+                  switch (ss[jjj]) {
+                     case 'S':
+                        if (!used[SO_type]) { 
+                           otseq[cnt++] = SO_type;
+                           used[SO_type] = 1;
+                        } else {
+                           SUMA_S_Err("Duplicate reference to surfaces in %s", 
+                                      sar->str[0]);
+                           bad = 1;
+                        }
+                        break;
+                     case 'V':
+                        if (!used[VO_type]) { 
+                           otseq[cnt++] = VO_type;
+                           used[VO_type] = 1;
+                        } else {
+                           SUMA_S_Err("Duplicate reference to volumes in %s", 
+                                      sar->str[0]);
+                           bad = 1;
+                        }
+                        break;
+                     case 'G':
+                        if (!used[GRAPH_LINK_type]) { 
+                           otseq[cnt++] = GRAPH_LINK_type;
+                           used[GRAPH_LINK_type] = 1;
+                        } else {
+                           SUMA_S_Err("Duplicate reference to graphs in %s", 
+                                      sar->str[0]);
+                           bad = 1;
+                        }
+                        break;
+                  }
+               }
+            } else {
+               bad = 2;
+            }
+            if (bad) {
+               if (bad == 2 && otseq != dummy) {
+               SUMA_S_Warn("Object type %s in env SUMA_ObjectDisplayOrder '%s'\n"
+                           "was not recognized. For now only 'surface'\n"
+                           "'volume', and 'graph' are allowed.\n", 
+                           sar->str[iii], ord);
+               }
+               if (otseq == dummy) SUMA_RETURN(-1);
+            }
+         }
+      }
+      sar = SUMA_free_NI_str_array(sar);
+   }
+   if (LocalHead && otseq != dummy) {
+      SUMA_LH("Sequence now:");
+      for (iii=0; iii<cnt; ++iii) {
+         fprintf(SUMA_STDERR,"%d ", otseq[iii]);
+      }
+      fprintf(SUMA_STDERR,"\n");
+   }
+   
+   if (ord && ord[0] != '\0' && cnt < 1 && otseq == dummy) 
+            SUMA_RETURN(-1); /* an error flag used by SUMA_VerifyRenderOrder()*/
+   
+   SUMA_RETURN(cnt);
 }
 
 /*!
@@ -444,8 +613,11 @@ SUMA_SurfaceViewer *SUMA_Alloc_SurfaceViewer_Struct (int N)
    }
    for (i=0; i < N; ++i) {
       SV = &(SVv[i]);
-      SV->LoadedTextures[0] = -1; /* plug */
       memset(SV, 0, sizeof(SUMA_SurfaceViewer)); 
+      
+      SV->C_mode = SUMA_CONV_NONE;
+      SV->C_filter = SUMA_C_newfilter(1, 1);
+      SV->LoadedTextures[0] = -1; /* plug */
       SV->N_GVS = SUMA_N_STANDARD_VIEWS;
       SV->GVS = (SUMA_GEOMVIEW_STRUCT *)
                   SUMA_calloc(SV->N_GVS, sizeof(SUMA_GEOMVIEW_STRUCT));
@@ -516,9 +688,13 @@ SUMA_SurfaceViewer *SUMA_Alloc_SurfaceViewer_Struct (int N)
                SUMA_HOME_QUAT(j, SV->GVS[j].currentQuat);
                SV->GVS[j].ApplyMomentum = False;
 
-               SV->GVS[j].LHpry = 0.0;
+               SV->GVS[j].vLHpry[0] = 0.0;
+               SV->GVS[j].vLHpry0[0] = 0.0;
+               SV->GVS[j].vLHpry[1] = 0.0;
+               SV->GVS[j].vLHpry0[1] = 0.0;
+               SV->GVS[j].vLHpry[2] = 0.0;
+               SV->GVS[j].vLHpry0[2] = 0.0;
                SV->GVS[j].LHlol = 0;
-               SV->GVS[j].LHpry0 = 0.0;
                SV->GVS[j].MinIdleDelta = 1;
                SV->GVS[j].TranslateGain = TRANSLATE_GAIN;
                SV->GVS[j].ArrowtranslateDeltaX = ARROW_TRANSLATE_DELTAX;
@@ -546,9 +722,13 @@ SUMA_SurfaceViewer *SUMA_Alloc_SurfaceViewer_Struct (int N)
 
                SV->GVS[j].ApplyMomentum = False;
 
-               SV->GVS[j].LHpry = 0.0;
+               SV->GVS[j].vLHpry[0] = 0.0;
+               SV->GVS[j].vLHpry0[0] = 0.0;
+               SV->GVS[j].vLHpry[1] = 0.0;
+               SV->GVS[j].vLHpry0[1] = 0.0;
+               SV->GVS[j].vLHpry[2] = 0.0;
+               SV->GVS[j].vLHpry0[2] = 0.0;
                SV->GVS[j].LHlol = 0;
-               SV->GVS[j].LHpry0 = 0.0;
                SV->GVS[j].MinIdleDelta = 1;
                SV->GVS[j].TranslateGain = TRANSLATE_GAIN;
                SV->GVS[j].ArrowtranslateDeltaX = ARROW_TRANSLATE_DELTAX;
@@ -680,8 +860,10 @@ SUMA_SurfaceViewer *SUMA_Alloc_SurfaceViewer_Struct (int N)
          } 
       }
       
-      SV->WindWidth = 350;
-      SV->WindHeight = 350;
+      SV->wWindWidth  = 350;
+      SV->wWindHeight = 350;
+      SV->DrawAreaHeightOffset = -1; /* Not known yet */
+      SV->DrawAreaWidthOffset = -1; /* Not known yet */
       {
          char *eee = getenv("SUMA_ArrowRotAngle");
          if (eee) {
@@ -779,12 +961,13 @@ SUMA_SurfaceViewer *SUMA_Alloc_SurfaceViewer_Struct (int N)
       SV->X->JumpFocusNode_prmpt = NULL;
       SV->X->JumpFocusFace_prmpt = NULL;
       SV->X->HighlightBox_prmpt = NULL;
+      SV->X->SetRenderOrder_prmpt = NULL;
       SV->X->TOPLEVEL = NULL;
       SV->X->MOMENTUMID = 0;
       SV->X->REDISPLAYPENDING = 0;
       SV->X->DOUBLEBUFFER = True;
-      SV->X->WIDTH = SV->X->HEIGHT = 300; /* if you change this, make sure you do
-                                    so for fallbackResources in SUMA_display */
+      SV->X->aWIDTH = SV->X->aHEIGHT = 300; /* if you change this, make sure you 
+                                   do so for fallbackResources in SUMA_display */
       SV->X->ViewCont = SUMA_CreateViewContStruct();
       SV->X->DPY = NULL;
       SV->X->FORM = SV->X->FRAME = SV->X->GLXAREA = NULL;
@@ -860,6 +1043,22 @@ SUMA_SurfaceViewer *SUMA_Alloc_SurfaceViewer_Struct (int N)
       SV->pick_colid_list = NULL;
       SV->PickPix[0] = SV->PickPix[1] = -1;
       SV->pickrenpix4 = NULL;
+      
+      /* Squence of types to be displayed. Anything not in the list 
+         gets displayed first */
+      SV->N_otseq = SUMA_SetObjectDisplayOrder("DEFAULT", SV->otseq);   
+      {
+         char *eee = getenv("SUMA_ObjectDisplayOrder");
+         if (eee) {
+            if ((SV->N_otseq = SUMA_SetObjectDisplayOrder(eee, SV->otseq))<0){
+               SUMA_S_Warn("Failed to parse %s, reverting to default order", 
+                           eee);
+               SV->N_otseq = SUMA_SetObjectDisplayOrder("DEFAULT", SV->otseq);
+            }
+         }
+      }
+      
+      SV->PryAx = 3; 
    }
    SUMA_RETURN (SVv);
 }
@@ -1168,6 +1367,7 @@ SUMA_Boolean SUMA_Free_SurfaceViewer_Struct (SUMA_SurfaceViewer *SV)
    SUMA_ENTRY;
 
    if (SV->WAx) SUMA_Free_Axis(SV->WAx);
+   if (SV->C_filter) SUMA_C_free(SV->C_filter); SV->C_filter=NULL;
    if (SV->Ch) SUMA_Free_CrossHair (SV->Ch);
    if (SV->SelAdo) dlist_destroy(SV->SelAdo); SUMA_ifree(SV->SelAdo);
    SUMA_ifree(SV->LastSel_ado_idcode_str);
@@ -1185,6 +1385,8 @@ SUMA_Boolean SUMA_Free_SurfaceViewer_Struct (SUMA_SurfaceViewer *SV)
       SUMA_FreePromptDialogStruct (SV->X->JumpFocusFace_prmpt);
    if (SV->X->HighlightBox_prmpt) 
       SUMA_FreePromptDialogStruct (SV->X->HighlightBox_prmpt);
+   if (SV->X->SetRenderOrder_prmpt) 
+      SUMA_FreePromptDialogStruct (SV->X->SetRenderOrder_prmpt);
    if (SV->X->ViewCont) SUMA_FreeViewContStruct(SV->X->ViewCont);
    if (SV->X) SUMA_free(SV->X);
    if (SV->RegistDO) SUMA_free(SV->RegistDO);
@@ -1483,7 +1685,7 @@ SUMA_Boolean SUMA_FillColorList (SUMA_SurfaceViewer *sv, SUMA_ALL_DO *ADO)
       sv->ColList[sv->N_ColList] =
          (SUMA_COLORLIST_STRUCT *)SUMA_calloc(1, sizeof(SUMA_COLORLIST_STRUCT));
       sv->ColList[sv->N_ColList]->N_links = 0;
-      memset(sv->ColList[sv->N_ColList]->per_sv_extra, 0, 
+      memset(sv->ColList[sv->N_ColList]->per_sv_extra, PSV_NOTHING, 
              SUMA_MAX_SURF_VIEWERS*sizeof(int));
       sv->ColList[sv->N_ColList]->owner_id[0] = '\0';
       sv->ColList[sv->N_ColList]->LinkedPtrType = SUMA_LINKED_COLORLIST_TYPE;
@@ -2692,6 +2894,22 @@ char *SUMA_SurfaceViewer_StructInfo (SUMA_SurfaceViewer *SV, int detail)
                                  SV->GVS[SV->StdView].RotaCenter[0], 
                                  SV->GVS[SV->StdView].RotaCenter[1], 
                                  SV->GVS[SV->StdView].RotaCenter[2]);
+   SS = SUMA_StringAppend_va(SS, "   Convolution Filter = %d\n      [ ",
+                                 SV->C_mode); 
+   if (SV->C_filter) {
+      int ii, jj;
+      for(jj = 0; jj < SV->C_filter->rows; jj++) {
+         for(ii = 0; ii < SV->C_filter->cols; ii++) {
+           SS = SUMA_StringAppend_va(SS, "%.3f ",
+                            SV->C_filter->array[ii + jj * SV->C_filter->cols]);
+         }
+         if (jj < SV->C_filter->rows-1) 
+            SS = SUMA_StringAppend(SS, "\n        ");
+         else SS = SUMA_StringAppend(SS, " ]\n" );
+      }
+   } else {
+      SS = SUMA_StringAppend_va(SS, " NULL! ]\n");
+   }
    SS = SUMA_StringAppend_va(SS,
                   "   light0_position = [%f %f %f %f] (lit for %d)\n", 
                                  SV->light0_position[0], 
@@ -2705,10 +2923,10 @@ char *SUMA_SurfaceViewer_StructInfo (SUMA_SurfaceViewer *SV, int detail)
                                  SV->light1_position[2], 
                                  SV->light1_position[3]);
    SS = SUMA_StringAppend_va(SS,"   ZoomCompensate = %f\n", SV->ZoomCompensate);
-   SS = SUMA_StringAppend_va(SS,"   WindWidth/WIDTH = %d/%d\n", 
-                                    SV->WindWidth, SV->X->WIDTH);
-   SS = SUMA_StringAppend_va(SS,"   WindHeight/HEIGHT = %d/%d\n", 
-                                    SV->WindHeight, SV->X->HEIGHT);
+   SS = SUMA_StringAppend_va(SS,"   WindWidth/WIDTH/Offset = %d/%d/%d\n", 
+                        SV->wWindWidth, SV->X->aWIDTH, SV->DrawAreaWidthOffset);
+   SS = SUMA_StringAppend_va(SS,"   WindHeight/HEIGHT/Offset = %d/%d/%d\n", 
+                      SV->wWindHeight, SV->X->aHEIGHT, SV->DrawAreaHeightOffset);
    SS = SUMA_StringAppend_va(SS,"   ShowWorldAxis = %d\n", SV->ShowWorldAxis);
    if (SV->WAx) {
       SS = SUMA_StringAppend_va(SS, "   WorldAxis: Center = [%f %f %f] \n"
@@ -2761,9 +2979,14 @@ char *SUMA_SurfaceViewer_StructInfo (SUMA_SurfaceViewer *SV, int detail)
    SS = SUMA_StringAppend_va(SS,"   translateVec = [%f %f 0.0]\n", 
                SV->GVS[SV->StdView].translateVec[0], 
                SV->GVS[SV->StdView].translateVec[1]);
-   SS = SUMA_StringAppend_va(SS,"   LHpry = %f, LHpry0 = %f, LHlol = %d\n",
-                             SV->GVS[SV->StdView].LHpry, 
-                             SV->GVS[SV->StdView].LHpry0,
+   SS = SUMA_StringAppend_va(SS,
+            "   LHpry = [%f %f %f], LHpry0 = [%f %f %f], LHlol = %d\n",
+            SV->GVS[SV->StdView].vLHpry[0],
+            SV->GVS[SV->StdView].vLHpry[1],
+            SV->GVS[SV->StdView].vLHpry[2], 
+            SV->GVS[SV->StdView].vLHpry0[0],
+            SV->GVS[SV->StdView].vLHpry0[1],
+            SV->GVS[SV->StdView].vLHpry0[2],
                              SV->GVS[SV->StdView].LHlol); 
    SS = SUMA_StringAppend_va(SS,"   Show Mesh Axis %d\n", SV->ShowMeshAxis);
    SS = SUMA_StringAppend_va(SS,"   Show Eye Axis %d\n", SV->ShowEyeAxis);
@@ -2771,7 +2994,17 @@ char *SUMA_SurfaceViewer_StructInfo (SUMA_SurfaceViewer *SV, int detail)
    SS = SUMA_StringAppend_va(SS,"   PolyMode %d\n", SV->PolyMode);
    SS = SUMA_StringAppend_va(SS,"   DO_DrawMask %d\n", SV->DO_DrawMask);
    SS = SUMA_StringAppend_va(SS,"   Blend_Mode %d\n", SV->Blend_Mode);
-   
+   if (SV->N_otseq) {
+      SS = SUMA_StringAppend(SS,"Object rendering sequence:\n   ");
+      for (i=0; i<SV->N_otseq; ++i) {
+         SS = SUMA_StringAppend_va(SS,"%s%s", 
+                  SUMA_ObjectTypeCode2ObjectTypeName(SV->otseq[i]),
+                  (i<SV->N_otseq-1)?", ":"");
+      }
+      SS = SUMA_StringAppend(SS,"\n");
+   } else {
+      SS = SUMA_StringAppend(SS,"No object ordering sequence");
+   }
    SS = SUMA_StringAppend_va(SS,"   Group Name %s, indexed %d\n",
                                  SV->CurGroupName, SV->iCurGroup);
    SS = SUMA_StringAppend_va(SS,
@@ -2947,39 +3180,32 @@ int *SUMA_ViewState_Membs(SUMA_ViewState *VS, SUMA_DO_Types *ttv,
             SUMA_LHv("Checking %s type %s \n",
                      iDO_label(VS->MembDO[ii].dov_ind), 
                      SUMA_ObjectTypeCode2ObjectTypeName(tt));
+      if (iDO_type(VS->MembDO[ii].dov_ind) == tt) {
       switch (tt) {
          case SO_type:
-            if (iDO_isSO(VS->MembDO[ii].dov_ind)) {
                if (!Membs) Membs = (int *)
                         SUMA_malloc(N_ttv*(VS->N_MembDO+1)*sizeof(int));
                Membs[N_Membs++] = VS->MembDO[ii].dov_ind; 
                Membs[N_Membs]=-1;/* a plug, if uN_Membs is NULL*/
-            }
             break;
          case GRAPH_LINK_type:
-            if (iDO_isGLDO(VS->MembDO[ii].dov_ind)) {
                if (!Membs) Membs = (int *)
                         SUMA_malloc(N_ttv*(VS->N_MembDO+1)*sizeof(int));
                Membs[N_Membs++] = VS->MembDO[ii].dov_ind; 
                Membs[N_Membs]=-1;/* a plug, if uN_Membs is NULL*/
-            }
             break;
          case TRACT_type:
          case MASK_type:
          case VO_type:
-            if (iDO_isTDO(VS->MembDO[ii].dov_ind)||
-                iDO_isVO(VS->MembDO[ii].dov_ind) ||
-                iDO_isMDO(VS->MembDO[ii].dov_ind)) {
                if (!Membs) Membs = (int *)
                         SUMA_malloc(N_ttv*(VS->N_MembDO+1)*sizeof(int));
                Membs[N_Membs++] = VS->MembDO[ii].dov_ind; 
                Membs[N_Membs]=-1;/* a plug, if uN_Membs is NULL*/
-            }
             break;
          default:
             SUMA_S_Err("Not ready for this type");
             break;
-        }
+        } }
    } ++jj;}
    if (uN_Membs) *uN_Membs = N_Membs;
    
@@ -3988,7 +4214,7 @@ SUMA_CommonFields * SUMA_Create_CommonFields ()
    }
    cf->X->SC_Notebook = NULL;
    cf->X->SameSurfContOpen = 0;
-   {
+   {  /* Changed default to YES March 05 2014 */
       char *eee = getenv("SUMA_SameSurfCont");
       if (eee) {
          if (strcmp(eee,"NO") == 0) cf->X->UseSameSurfCont = NOPE;
@@ -3997,10 +4223,24 @@ SUMA_CommonFields * SUMA_Create_CommonFields ()
             fprintf (SUMA_STDERR,   
                      "Warning %s:\n"
                      "Bad value for environment variable UseSameSurfCont\n"
-                     "Assuming default of NOPE", FuncName);
-            cf->X->UseSameSurfCont = NOPE;
+                     "Assuming default of YES", FuncName);
+            cf->X->UseSameSurfCont = YUP;
          }
-      } else cf->X->UseSameSurfCont = NOPE;
+      } else cf->X->UseSameSurfCont = YUP;
+   } 
+   { 
+      char *eee = getenv("SUMA_HomeAfterPrying");
+      if (eee) {
+         if (strcmp(eee,"NO") == 0) cf->Home_After_Prying = NOPE;
+         else if (strcmp(eee,"YES") == 0) cf->Home_After_Prying = YUP;
+         else {
+            fprintf (SUMA_STDERR,   
+                     "Warning %s:\n"
+                     "Bad value for environment variable SUMA_HomeAfterPrying\n"
+                     "Assuming default of YES", FuncName);
+            cf->Home_After_Prying = YUP;
+         }
+      } else cf->Home_After_Prying = YUP;
    } 
    {
       char *eee = getenv("SUMA_NumForeSmoothing");
@@ -4045,6 +4285,8 @@ SUMA_CommonFields * SUMA_Create_CommonFields ()
          }
       } else cf->SUMA_ThrScalePowerBias = 2; 
    }
+   
+   
    {
       char *eee = getenv("SUMA_SnapshotOverSampling");
       if (eee) {
@@ -4209,6 +4451,8 @@ SUMA_CommonFields * SUMA_Create_CommonFields ()
    cf->SaveList = NULL;
    
    cf->YokeIntToNode = 0;
+   
+   cf->lev = NULL;
    return (cf);
 
 }
@@ -4570,7 +4814,8 @@ SUMA_X_SurfCont *SUMA_CreateSurfContStruct (char *idcode_str, SUMA_DO_Types tp)
       SurfCont->UseMaskLen = 0; /* leave it off, let it be activated in GUI */
    else
       SurfCont->UseMaskLen = 0;
-  return (SurfCont);
+      
+   return (SurfCont);
 }
 
 SUMA_X_SurfCont *SUMA_GlobalMaskContStruct(char *idcode)
@@ -4768,6 +5013,10 @@ SUMA_Boolean SUMA_Free_CommonFields (SUMA_CommonFields *cf)
    
    if (cf->SaveList) {
       dlist_destroy(cf->SaveList); SUMA_free(cf->SaveList);
+   }
+   
+   if (cf->lev) {
+      SUMA_free(cf->lev); cf->lev = NULL;
    }
    
    /* if (cf) free(cf); */ /* don't free this stupid pointer since it is used
@@ -5124,7 +5373,8 @@ SUMA_Boolean
    if (cSV->lit_for == 0) { /* olde way */
       /* if surface is SureFit , flip lights */
       if (SO->normdir == 0 && (  SO->FileType == SUMA_SUREFIT || 
-                                 SO->FileType == SUMA_OPENDX_MESH || 
+                                 SO->FileType == SUMA_OPENDX_MESH ||
+                                 SO->FileType == SUMA_OBJ_MESH || 
                                  SO->FileType == SUMA_BRAIN_VOYAGER)) {
          SUMA_LH("Flippo for safety");
          cSV->light0_position[0] *= -1;
@@ -5184,7 +5434,7 @@ SUMA_Boolean SUMA_SetupSVforDOs (SUMA_SurfSpecFile *Spec, SUMA_DO *DOv,
    SUMA_SurfaceObject *SO;
    SUMA_Axis *EyeAxis;
    SUMA_DO_Types ttv[10]={SO_type, GRAPH_LINK_type, TRACT_type, 
-                          MASK_type, NOT_SET_type};
+                          MASK_type, VO_type, NOT_SET_type};
    int EyeAxis_ID, *MembDOs=NULL, N_MembDOs=0;
    int haveSpec=0;
    SUMA_Boolean LocalHead = NOPE;
@@ -6075,6 +6325,54 @@ SUMA_ALL_DO *SUMA_SV_Focus_any_ADO(SUMA_SurfaceViewer *sv, int *dov_id)
    return(ado);
 }
 
+SUMA_ALL_DO *SUMA_SV_any_ADO_WithSurfContWidget(SUMA_SurfaceViewer *sv, 
+                                                int *dov_id)
+{
+   static char FuncName[]={"SUMA_SV_any_ADO_WithSurfContWidget"};
+   SUMA_ALL_DO *ado=NULL;
+   SUMA_X_SurfCont *SurfCont=NULL;
+   int ii;
+   
+   if (dov_id) *dov_id = -1;
+   
+   if (sv && sv->Focus_DO_ID >= 0 && 
+       (SurfCont = SUMA_ADO_Cont(
+                        (SUMA_ALL_DO *)(SUMAg_DOv[sv->Focus_DO_ID].OP))) &&
+       SurfCont->TLS) {
+      if (dov_id) *dov_id = sv->Focus_DO_ID;
+      return((SUMA_ALL_DO *)(SUMAg_DOv[sv->Focus_DO_ID].OP));
+   }
+   
+   /* give me anything */
+   ado = SUMA_findany_ADO_WithSurfContWidget(dov_id);
+   return(ado);
+}
+
+SUMA_ALL_DO *SUMA_findany_ADO_WithSurfContWidget(int *dov_id)
+{
+   static char FuncName[]={"SUMA_findany_ADO_WithSurfContWidget"};
+   SUMA_ALL_DO *ado=NULL;
+   SUMA_DO_Types ttv[N_DO_TYPES] = { SO_type, GRAPH_LINK_type, 
+                                     VO_type, TRACT_type,  
+                                     NOT_SET_type };
+   int ii, tt;
+   void *pp;
+   SUMA_X_SurfCont *SurfCont=NULL;
+      
+   if (dov_id) *dov_id = -1;
+   tt = 0;
+   while (ttv[tt] != NOT_SET_type) {
+      for (ii=0; ii<SUMAg_N_DOv; ++ii) {
+         if (iDO_type(ii) == ttv[tt]) {
+            ado = iDO_ADO(ii);
+            if ((SurfCont = SUMA_ADO_Cont(ado)) &&
+                SurfCont->TLS) return(ado);
+         }
+      }
+      ++tt;
+   }
+   return(NULL);
+}
 
 SUMA_ALL_DO *SUMA_SurfCont_GetcurDOp(SUMA_X_SurfCont *SurfCont)
 {
@@ -6155,6 +6453,7 @@ SUMA_Boolean SUMA_SetMouseMode(SUMA_SurfaceViewer *sv,
 {
    static char FuncName[]={"SUMA_SetMouseMode"};
    int ival;
+   SUMA_ALL_DO *ado;
    SUMA_Boolean LocalHead = NOPE;
    
    SUMA_ENTRY;
@@ -6189,11 +6488,19 @@ SUMA_Boolean SUMA_SetMouseMode(SUMA_SurfaceViewer *sv,
          if (val) {
             if (SUMAg_CF->ROI_mode == YUP) SUMAg_CF->ROI_mode = NOPE;
             sv->MouseMode = SUMA_MASK_MANIP_MMODE;
+            if ((ado=SUMA_whichADOg(sv->MouseMode_ado_idcode_str)) && 
+                 ado->do_type == MASK_type) {
+               SUMA_MDO_New_parent((SUMA_MaskDO*)ado, val, -1);   
+            }
             SUMA_ifree(sv->MouseMode_ado_idcode_str);
             sv->MouseMode_ado_idcode_str = SUMA_copy_string((char*)val);
          } else if (sv->MouseMode == SUMA_MASK_MANIP_MMODE) {
                                  sv->MouseMode = SUMA_DEF_MMODE;
             SUMA_ifree(sv->MouseMode_ado_idcode_str);
+            if ((ado=SUMA_whichADOg(sv->MouseMode_ado_idcode_str)) && 
+                 ado->do_type == MASK_type) {
+               SUMA_MDO_New_parent((SUMA_MaskDO*)ado, NULL, -1);   
+            }
          }
          SUMA_RETURN(YUP);
          break;

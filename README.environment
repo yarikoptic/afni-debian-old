@@ -140,6 +140,19 @@ piles of paper in my office, though.)
  AFNI_FIM_BKTHR           = 25.0    //                       |
  AFNI_SPLASHTIME          = 3.0     //                       v
 
+-----------------------------
+Variable: AFNI_MESSAGE_PREFIX
+-----------------------------
+Most AFNI programs output various messages prefixed by '++', '**', and
+divers variations.  If you are running several programs at once, you can
+pre-pend a string to these prefixes to distinguish them in the output
+terminal stream.  For example, a csh script might look like so:
+  foreach fred ( 1 2 3 4 )
+    setenv AFNI_MESSAGE_PREFIX case$fred
+    run_some_program -option $fred ... |& tee out${fred}.txt &
+  end
+  wait
+
 ------------------------------------
 Variable: AFNI_DONT_SORT_ENVIRONMENT
 ------------------------------------
@@ -2597,6 +2610,22 @@ you want the time index control to change ONLY the underlay sub-brick,
 then set this variable to NO.
 
 ----------------------------
+Variable: AFNI_SLAVE_THROLAY
+----------------------------
+This variable allows you to control the INITIAL setting of the widgets
+that slave (or not) the threshold index to the overlay index.  (These
+widgets are on the 'Index' right-click popup chooser and on the threshold
+slider right-click popup menu.)  The values you can set for this variable,
+and their effects, are listed below (not case sensitive):
+   'OLay'    *or*  '=='  *or*  '0'  ==> threshold index = overlay index
+   'OLay+1'  *or*  '+1'  *or*  '1'  ==> threshold index = overlay index + 1
+   ANYTHING ELSE                    ==> threshold index is free and wild
+This variable replaces the 2 variables listed below.  Again, this only
+controls the INITIAL setting of the widgets -- you can change them in the
+AFNI GUI later at any time.  Setting this variable after AFNI starts
+(e.g., from plugout_drive) will have little discernable effect.
+
+----------------------------
 Variable: AFNI_SLAVE_THRTIME       *** THIS VARIABLE IS NO LONGER USED ***
 ----------------------------
 When the underlay and overlay datasets both are time-dependent, switching
@@ -3737,6 +3766,17 @@ Variable:  AFNI_GUI_EDITOR
 --------------------------
 Set this variable to your favorite GUI text editor.
 
+----------------------------
+Variable:  AFNI_IMAGE_VIEWER
+----------------------------
+Set this variable to your favorite image viewer.
+
+----------------------------
+Variable:  AFNI_PDF_VIEWER
+----------------------------
+Set this variable to your favorite pdf viewer.
+
+
 ------------------------------------
 Variable:  AFNI_LOG_BEST_PROG_OPTION
 ------------------------------------
@@ -3751,3 +3791,9 @@ header of AFNI datasets at write time. The value of the attribute is that of
 the variable AFNI_HISTDB_SCRIPT.
 At the moment, this variable is solely for Tom Ross's nefarious history
 databasing schemes.
+
+------------------------------------
+Variable:  AFNI_ICORR_UBER_USER
+------------------------------------
+If set to YES, enable distance measures that are not ready for prime time in the 
+instacorr interface.

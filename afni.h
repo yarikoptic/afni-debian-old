@@ -447,7 +447,8 @@ typedef struct {
   Widget clust3d_pb, savetable_pb, index_lab, prefix_tf, done_pb ;
   Widget savemask_pb ;      /* 01 May 2008 */
   Widget whermask_pb ;      /* 04 Aug 2010 */
-
+  Widget linkrbrain_pb;     /* 21 Jan 2014 */
+  MCW_arrowval *linkrbrain_av;     /* 31 Mar 2014 */
   Widget dataset_pb ;       /* second row of controls */
   MCW_arrowval *from_av, *to_av, *aver_av ;
 
@@ -674,6 +675,7 @@ typedef struct {
       Widget thr_setqval_pb ;      /* 26 Feb 2014 */
       MCW_arrowval *thr_sign_av ;  /* 08 Aug 2007 */
       Widget thr_fdr_pb ;          /* 29 Jan 2008 */
+      Widget thr_pvalue_pb ;       /* 06 Mar 2014 */
 
       Widget inten_rowcol , inten_label ;
       MCW_pbar     *inten_pbar ;
@@ -840,6 +842,7 @@ typedef struct {
       Widget         misc_runscript_pb ;  /* 22 Jan 2003 */
 
       Widget         misc_readme_env_pb ; /* 05 Aug 2004 */
+      Widget         misc_pvalue_pb ;     /* 06 Mar 2014 */
 
       Widget         misc_motd_pb ;       /* 29 Nov 2005 */
       Widget         misc_hist_pb ;       /* 05 Mar 2008 */
@@ -890,6 +893,8 @@ typedef struct {
    Widget hidden_uscon_pb   ;  /* 30 Dec 2010 */
    Widget hidden_usdecl_pb  ;  /* 06 Jan 2011 */
    Widget hidden_melter_pb  ;  /* 18 Feb 2011 */
+   Widget hidden_pvalue_pb  ;  /* 06 Mar 2014 */
+   Widget hidden_papers_pb  ;  /* 02 May 2014 */
 
 #endif  /* USE_HIDDEN */
 
@@ -1516,6 +1521,10 @@ typedef struct {
    RT_status *realtime_status ;                  /* 01 Jun 2009 */
    gen_func  *realtime_callback ;
 
+   int dont_tell_suma ;            /* 1 = won't send SUMA info  */
+   int dont_overlay_suma ;  /* 1 = won't send SUMA func overlay */
+   int dont_hear_suma ;     /* 1 = I can't hear you SUMA        */
+
 } AFNI_library_type ;
 
 #define BROWN_COLOR "#553319"
@@ -1535,6 +1544,21 @@ extern void AFNI_display_hist( Widget w ) ;       /* 05 Mar 2008 */
 
 #define FIM_THR          (0.01*GLOBAL_library.fim_bkthr_perc)  /* 02 Jun 1999 */
 #define SET_FIM_bkthr(v) (GLOBAL_library.fim_bkthr_perc = (v))
+
+#define NOT_TELLING_SUMA (GLOBAL_library.dont_tell_suma==1)
+#define     TELLING_SUMA (GLOBAL_library.dont_tell_suma==0)
+#define DONT_TELL_SUMA  (GLOBAL_library.dont_tell_suma=1)
+#define      TELL_SUMA  (GLOBAL_library.dont_tell_suma=0)
+
+#define NOT_OVERLAYING_SUMA (GLOBAL_library.dont_overlay_suma==1)
+#define     OVERLAYING_SUMA (GLOBAL_library.dont_overlay_suma==0)
+#define DONT_OVERLAY_SUMA  (GLOBAL_library.dont_overlay_suma=1)
+#define      OVERLAY_SUMA  (GLOBAL_library.dont_overlay_suma=0)
+
+#define NOT_HEARING_SUMA (GLOBAL_library.dont_hear_suma==1)
+#define     HEARING_SUMA (GLOBAL_library.dont_hear_suma==0)
+#define DONT_HEAR_SUMA  (GLOBAL_library.dont_hear_suma=1)
+#define      HEAR_SUMA  (GLOBAL_library.dont_hear_suma=0)
 
 #define DISABLE_LOCK    (GLOBAL_library.ignore_lock=1)
 #define ENABLE_LOCK     (GLOBAL_library.ignore_lock=0)
@@ -1711,6 +1735,7 @@ extern void AFNI_do_many_writes      ( Widget , XtPointer , MCW_choose_cbs * ) ;
 extern void AFNI_finalize_dataset_CB ( Widget , XtPointer , MCW_choose_cbs * ) ;
 extern void AFNI_jumpto_CB           ( Widget , XtPointer , MCW_choose_cbs * ) ;
 extern int  AFNI_jumpto_dicom        ( Three_D_View * , float, float, float  ) ;
+extern int  AFNI_jump_and_seed       ( Three_D_View * , float, float, float  ) ;
 extern int  AFNI_creepto_dicom       ( Three_D_View * , float, float, float  ) ;
 extern int  AFNI_jumpto_ijk          ( Three_D_View * , int, int, int  ) ;
 extern void AFNI_jumpto_ijk_CB       ( Widget , XtPointer , MCW_choose_cbs * ) ;
@@ -1961,6 +1986,10 @@ extern void AFNI_lock_button( Three_D_View * ) ;
 extern void AFNI_misc_button( Three_D_View * ) ;
 extern void AFNI_misc_CB    ( Widget , XtPointer , XtPointer );
 extern void AFNI_editenv_CB ( Widget , XtPointer , XtPointer );
+extern void AFNI_pvalue_CB  ( Widget , XtPointer , XtPointer );
+
+extern void AFNI_papers_CB  ( Widget , XtPointer , XtPointer );
+extern void AFNI_list_papers( Widget w ) ; /* 02 May 2014 */
 
 extern void AFNI_add_timeseries( MRI_IMAGE * ) ;
 extern void AFNI_replace_timeseries( MRI_IMAGE * ) ; /* 10 May 2009 */

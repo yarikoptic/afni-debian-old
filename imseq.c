@@ -12641,6 +12641,7 @@ ENTRY("ISQ_handle_keypress") ;
 
      /* 22 Aug 2005: 'a' = fix aspect ratio */
 
+     case 'A':
      case 'a':{
        int bx = seq->opt.free_aspect ; seq->opt.free_aspect = 0 ;
        ISQ_reset_dimen( seq, seq->last_width_mm, seq->last_height_mm ) ;
@@ -12659,6 +12660,20 @@ ENTRY("ISQ_handle_keypress") ;
          int ss = (int)(10.01*seq->sharp_fac)+1 ;
          if( ss > 9 ) ss = 1 ;
          seq->sharp_fac = 0.1 * ss ;
+       }
+       ISQ_redisplay( seq , -1 , isqDR_display ) ;
+       busy=0 ; RETURN(1) ;
+     }
+     break ;
+
+     /* 24 Apr 2014: 'e' = edge detect toggle */
+
+     case 'e':{
+       if( seq->dialog_starter==NBUT_DISP ){XBell(seq->dc->display,100); break;}
+       if( !(seq->opt.improc_code & ISQ_IMPROC_SOBEL) ){
+         seq->opt.improc_code |= ISQ_IMPROC_SOBEL ;   /* turn on edge detection */
+       } else {
+         seq->opt.improc_code &= !ISQ_IMPROC_SOBEL ;  /* turn off edge detection */
        }
        ISQ_redisplay( seq , -1 , isqDR_display ) ;
        busy=0 ; RETURN(1) ;

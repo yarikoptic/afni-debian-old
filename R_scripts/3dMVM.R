@@ -28,7 +28,7 @@ greeting.MVM <- function ()
           ================== Welcome to 3dMVM ==================          
    AFNI Group Analysis Program with Multivariate Linear Modeling Approach
 #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-Version 3.0.2, Feb 20, 2014
+Version 3.0.8, May 23, 2014
 Author: Gang Chen (gangchen@mail.nih.gov)
 Website - http://afni.nimh.nih.gov/sscc/gangc/MVM.html
 SSCC/NIMH, National Institutes of Health, Bethesda MD 20892
@@ -44,7 +44,7 @@ help.MVM.opts <- function (params, alpha = TRUE, itspace='   ', adieu=FALSE) {
           ================== Welcome to 3dMVM ==================          
     AFNI Group Analysis Program with Multi-Variate Modeling Approach
 #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-Version 3.0.2, Feb 20, 2014
+Version 3.0.8, May 23, 2014
 Author: Gang Chen (gangchen@mail.nih.gov)
 Website - http://afni.nimh.nih.gov/sscc/gangc/MVM.html
 SSCC/NIMH, National Institutes of Health, Bethesda MD 20892
@@ -110,7 +110,7 @@ Usage:
 Example 1 --- three between-subjects (genotype, sex, and scanner) and two 
 within-subject (condition and emotion) variables:
    3dMVM  -prefix Example1 -jobs 4            \\
-          -model  'genotype*sex+scanner'      \\
+          -bsVars  'genotype*sex+scanner'      \\
           -wsVars \"condition*emotion\"         \\
           -num_glt 14                         \\
           -gltLabel 1 face_pos_vs_neg -gltCode  1 'condition : 1*face emotion : 1*pos -1*neg'            \\
@@ -144,7 +144,7 @@ Example 2 --- two between-subjects (genotype and sex), onewithin-subject
 (emotion) factor, plus two quantitative variables (age and IQ).f
 
    3dMVM -prefix Example2 -jobs 24        \\
-          -model  \"genotype*sex+age+IQ\"  \\
+          -bsVars  \"genotype*sex+age+IQ\"  \\
           -wsVars emotion                \\
           -qVars  \"age,IQ\"               \\
           -qVarCenters '25,105'          \\
@@ -184,7 +184,7 @@ Condition:Time are of specific interest. And these interactions can be further
 explored with GLTs in 3dMVM.
 
    3dMVM -prefix Example3 -jobs 12   \\
-         -model Group               \\
+         -bsVars Group               \\
          -wsVars 'Condition*Time'   \\
          -num_glt 32                \\
          -gltLabel 1 old_t0 -gltCode 1 'Group : 1*old Time : 1*t0' \\
@@ -241,7 +241,9 @@ read.MVM.opts.batch <- function (args=NULL, verb = 0) {
    "-prefix PREFIX: Output file name. For AFNI format, provide prefix only,",
    "         no view+suffix needed. Filename for NIfTI format should have",
    "         .nii attached, while file name for surface data is expected",
-   "         to end with .niml.dset\n", sep = '\n'
+   "         to end with .niml.dset. The sub-brick labeled with the '(Intercept)',",
+   "         if present, should be interpreted as the overall average",
+   "         across factor levels.\n", sep = '\n'
                      ) ),
 
       '-mask' = apl(n=1,  d = NA, h = paste(
@@ -256,7 +258,22 @@ read.MVM.opts.batch <- function (args=NULL, verb = 0) {
                      ) ),
 
       '-model' = apl(n = 1, d = 1, h = paste(
-   "-model FORMULA: Specify the fixed effects for between-subjects factors ",
+   "-model FORMULA: This option will phase out at some point. So use -bsVars",
+   "         instead. Specify the fixed effects for between-subjects factors ",
+   "         and quantitative variables. When no between-subject factors",
+   "         are present, simply put 1 for FORMULA. The expression FORMULA",
+   "         with more than one variable has to be surrounded within (single or double)",
+   "         quotes. Variable names in the formula should be consistent with",
+   "         the ones used in the header of -dataTable. A+B represents the",
+   "         additive effects of A and B, A:B is the interaction between A",
+   "         and B, and A*B = A+B+A:B. The effects of within-subject",
+   "         factors, if present under -wsVars are automatically assumed",
+   "         to interact with the ones specified here. Subject as a variable",
+   "         should not occur in the model specifiction here.\n", sep = '\n'
+             ) ),
+
+      '-bsVars' = apl(n = 1, d = 1, h = paste(
+   "-bsVars FORMULA: Specify the fixed effects for between-subjects factors ",
    "         and quantitative variables. When no between-subject factors",
    "         are present, simply put 1 for FORMULA. The expression FORMULA",
    "         with more than one variable has to be surrounded within (single or double)",
@@ -273,11 +290,11 @@ read.MVM.opts.batch <- function (args=NULL, verb = 0) {
    "-wsVars FORMULA: Within-subject factors, if present, have to be listed",
    "         here; otherwise the program will choke. If no within-subject ",
    "         exists, don't include this option in the script. Coding for",
-   "         additive effects and interactions is the same as in -model. The",
+   "         additive effects and interactions is the same as in -bsVars. The",
    "         FORMULA with more than one variable has to be surrounded ",
    "         within (single or double) quotes. Note that the within-subject",
    "         variables are assumed to interact with those between-subjects",
-   "         variables specified under -model. The hemodynamic response",
+   "         variables specified under -bsVars. The hemodynamic response",
    "         time course are better modeled as simultaneous outcomes through",
    "         option -mVar, and not as the levels of a within-subject factor.",
    "         The varialbes under -wsVars and -mVar are exclusive from each",
@@ -462,6 +479,7 @@ read.MVM.opts.batch <- function (args=NULL, verb = 0) {
       lop$mVar   <- NA
       lop$qVars  <- NA
       lop$vVars  <- NA
+      lop$vQV    <- NA
       lop$qVarCenters    <- NA
       lop$vVarCenters    <- NA
       lop$num_glt <- 0
@@ -483,6 +501,7 @@ read.MVM.opts.batch <- function (args=NULL, verb = 0) {
              mask = lop$maskFN <- ops[[i]],
              jobs   = lop$nNodes <- ops[[i]],
              model  = lop$model  <- ops[[i]],
+             bsVars = lop$model  <- ops[[i]],
              wsVars = lop$wsVars  <- ops[[i]],
              mVar = lop$mVar  <- ops[[i]],
              qVars  = lop$qVars <- ops[[i]],
@@ -507,7 +526,8 @@ read.MVM.opts.batch <- function (args=NULL, verb = 0) {
 }# end of read.MVM.opts.batch
 
 # construct a glt list for testInteraction in phia
-# how to deal with basis functions?????????????
+# NEED to solve the problem when a quantitative variable is tested alone:
+# with pairwise = NULL!!!                                                
 gltConstr <- function(cStr, dataStr) {
    pos <- which(cStr==":")
    vars  <- cStr[pos-1]
@@ -534,9 +554,10 @@ gltConstr <- function(cStr, dataStr) {
    } else errex.AFNI(paste("Incorrect variable name in GLT coding: ", vars[which(!varsOK)], " \n   "))
 }
 
-# test
+# test: pairwise = NULL
 # gltConstr(clist[[1]], lop$dataStr)
-
+# QVpos <- which(lop$gltCode[[n]] %in% lop$QV)
+# gltConstr(lop$gltCode[[n]][-c(QVpos, QVpos+1)], lop$dataStr)
 
 #Change options list to 3dMVM variable list 
 process.MVM.opts <- function (lop, verb = 0) {
@@ -595,23 +616,23 @@ process.MVM.opts <- function (lop, verb = 0) {
       # or if(!is.na(lop$qVars)) for(jj in lop$QV) lop$dataStr[,jj] <- as.numeric(levels(lop$dataStr[,jj]))[as.integer(lop$dataStr[,jj])]
       if(!is.na(lop$vVars[1])) for(jj in lop$vQV) lop$dataStr[,jj] <- as.character(lop$dataStr[,jj])
    }
-
-   
+  
    if (lop$num_glt > 0) {
       lop$gltList    <- vector('list', lop$num_glt)
       lop$slpList    <- vector('list', lop$num_glt)
-      for (n in 1:lop$num_glt) { # assuming each GLT has one slope involved
+      for (n in 1:lop$num_glt) { # assuming each GLT has one slope involved and placed last
          #if(!is.na(lop$qVars)) { if(any(lop$QV %in% lop$gltCode[[n]])) {
          if(!is.na(lop$qVars) & any(lop$QV %in% lop$gltCode[[n]])) {
             QVpos <- which(lop$gltCode[[n]] %in% lop$QV)
-            lop$gltList[[n]]   <- gltConstr(lop$gltCode[[n]][-c(QVpos, QVpos+1)], lop$dataStr)
+            if(QVpos > 1) lop$gltList[[n]]  <- gltConstr(lop$gltCode[[n]][-c(QVpos, QVpos+1)], lop$dataStr)
+            if(QVpos == 1) lop$gltList[[n]] <- NA
             lop$slpList[[n]] <- lop$gltCode[[n]][QVpos]   
          } else if(!is.na(lop$vVars) & any(lop$vQV %in% lop$gltCode[[n]])) {
             vQVpos <- which(lop$gltCode[[n]] %in% lop$vQV)
-            lop$gltList[[n]]   <- gltConstr(lop$gltCode[[n]][-c(vQVpos, vQVpos+1)], lop$dataStr)
+            if(vQVpos > 1) lop$gltList[[n]]  <- gltConstr(lop$gltCode[[n]][-c(vQVpos, vQVpos+1)], lop$dataStr)
+            if(vQVpos == 1) lop$gltList[[n]] <- NULL 
             lop$slpList[[n]] <- lop$gltCode[[n]][vQVpos]   
          } else lop$gltList[[n]] <- gltConstr(lop$gltCode[[n]], lop$dataStr)
-         #} else lop$gltList[[n]] <- gltConstr(lop$gltCode[[n]], lop$dataStr)
       }
    }
    
@@ -746,8 +767,10 @@ runAOV <- function(inData, dataframe, ModelForm, pars) {
                   maov(mvfm$SSPE, mvfm$SSP[[ii]], mvfm$df[ii], mvfm$error.df)[2], error=function(e) NULL)
          }  #if(!pars[[7]])                            
          if(pars[[3]]>=1) for(ii in 1:pars[[3]]) {
+            if(is.na(pars[[4]][[ii]])) glt <- tryCatch(testInteractions(fm$lm, pair=NULL, slope=pars[[5]][[ii]], 
+               adjustment="none", idata = fm[["idata"]]), error=function(e) NULL) else
             glt <- tryCatch(testInteractions(fm$lm, custom=pars[[4]][[ii]], slope=pars[[5]][[ii]], 
-               adjustment="none", idata = fm[["idata"]]), error=function(e) NULL)           
+               adjustment="none", idata = fm[["idata"]]), error=function(e) NULL)
             if(!is.null(glt)) {
                out[pars[[2]][1]+2*ii-1] <- glt[1,1]
 	       out[pars[[2]][1]+2*ii]   <- sign(glt[1,1]) * sqrt(glt[1,4])  # convert F to t
@@ -924,7 +947,9 @@ if(is.na(lop$mVar)) if(is.na(lop$wsVars)) showTab <- paste('~', lop$model) else
    showTab <- paste('~', gsub("\\*", "+", lop$model), '+', gsub("\\*", "+", lop$wsVars)) else
 if(is.na(lop$wsVars)) showTab <- as.formula(paste('~', gsub("\\*", "+", lop$model), "+", gsub("\\*", "+", lop$mVar))) else
    showTab <- paste('~', lop$model, "+", gsub("\\*", "+", lop$wsVars), "+", gsub("\\*", "+", lop$mVar))
-if(!is.na(lop$qVars)) for(ii in 1:length(lop$QV)) showTab <- gsub(lop$QV[ii], '', showTab)
+if(!is.na(lop$qVars)) for(ii in 1:length(lop$QV))
+   showTab <- gsub(paste('\\*',lop$QV[ii], sep=''), '', gsub(paste('\\+',lop$QV[ii], sep=''), '', showTab))
+showTab <- as.formula(gsub("\\*", "+", showTab))  # in case there are still some *'s like between-subjects factors
 print(xtabs(showTab, data=lop$dataStr))                                           
                                                
 cat('\nTabulation of subjects against each of the categorical variables:')
@@ -1061,7 +1086,9 @@ while(is.null(fm)) {
    if(!is.null(fm)) if (lop$num_glt > 0) {
       n <- 1
       while(!is.null(fm) & (n <= lop$num_glt)) {
-        gltRes[[n]] <- tryCatch(testInteractions(fm$lm, custom=lop$gltList[[n]], slope=lop$slpList[[n]], 
+         if(is.na(lop$gltList[[n]])) gltRes[[n]] <- tryCatch(testInteractions(fm$lm, pair=NULL,
+            slope=lop$slpList[[n]], adjustment="none", idata = fm[["idata"]]), error=function(e) NA) else
+         gltRes[[n]] <- tryCatch(testInteractions(fm$lm, custom=lop$gltList[[n]], slope=lop$slpList[[n]], 
             adjustment="none", idata = fm[["idata"]]), error=function(e) NA)
          if(is.na(gltRes[[n]])) fm <- NULL
          n <- n+1
@@ -1076,15 +1103,15 @@ while(is.null(fm)) {
       cat('Possible reasons:\n\n')
       cat('0) Make sure that R packages afex and phia have been installed. See the 3dMVM\n')
       cat('help documentation for more details.\n\n')
-      cat('1) Inappropriate model specification with options -model, -wsVars, or -qVars.\n')
+      cat('1) Inappropriate model specification with options -bsVars, -wsVars, or -qVars.\n')
       cat('Note that within-subject or repeated-measures variables have to be declared\n')
       cat('with -wsVars.\n\n')
-      cat('2) Misspecifications in general linear test coding with -gltCode.\n\n')
+      cat('2) Incorrect specifications in general linear test coding with -gltCode.\n\n')
       cat('3) Mistakes in data table. Check the data structure shown above, and verify\n')
       cat('whether there are any inconsistencies.\n\n')
       cat('4) Inconsistent variable names which are case sensitive. For example, factor\n')
-      cat('named Group in model specifiction and then listed as group in the table hader\n')
-      cat('would cause grief for 3dMVM.\n')
+      cat('named Group in model specification and then listed as group in the table hader\n')
+      cat('would cause grief for 3dMVM.\n\n')
       cat('5) Not enough number of subjects. This may happen when there are two or more\n')
       cat('withi-subject factors. For example, a model with two within-subject factors with\n')
       cat('m and n levels respectively requires more than (m-1)*(n-1) subjects to be able to\n')
@@ -1209,7 +1236,8 @@ pars[[5]] <- lop$slpList
 pars[[6]] <- c(is.na(lop$wsVars), lop$SC, lop$wsMVT) # any within-subject factors?
 pars[[7]] <- is.na(lop$mVar)   # any real multivariate modeling: currently for basis functions
 pars[[8]] <- list(0.75, numDF, denDF) # switching threshold between GG and HF: 0.6
-pars[[9]] <- !is.null(mvtInd)
+pars[[9]] <- mvtInd   # which indices for wsMVT
+#pars[[9]] <- !is.null(mvtInd)   # which indices for wsMVT
 pars[[10]] <- list(lop$vQV, all(is.na(lop$vVarCenters)), NoFile, nSubj)                                            
 # only run wsMVT for those terms associated with a within-subject factor:
 # which(names(fm$Anova$SSPE) %in% dimnames(uvfm$sphericity.correction)[[1]])

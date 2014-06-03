@@ -2808,6 +2808,7 @@ STATUS("making func->rowcol") ;
 
    { static char *onofflabel[]    = { "Use Threshold?" } ;
      static char *throlayxlabel[] = { "Thr = OLay ?" , "Thr = Olay+1 ?" } ;
+     char *eee ;
 
 #ifdef BAD_BUTTON3_POPUPS
    func->thr_menu = XmCreatePopupMenu( func->thr_rowcol, "menu", NULL, 0 ) ;
@@ -2870,7 +2871,14 @@ STATUS("making func->rowcol") ;
                                         AFNI_throlayx_change_CB ,
                                         (XtPointer)im3d ) ;
    im3d->vinfo->thr_olayx = 0 ;
-   MCW_set_bbox( func->thr_olayx_bbox , 0 ) ;
+   eee = getenv("AFNI_SLAVE_THROLAY") ;
+   if( eee != NULL && *eee != '\0' ){
+     if( *eee == '0' || strcasecmp(eee,"OLay")   == 0 || strcasecmp(eee,"==") == 0 )
+       im3d->vinfo->thr_olayx = 1 ;
+     if( *eee == '1' || strcasecmp(eee,"OLay+1") == 0 || strcasecmp(eee,"+1") == 0 )
+       im3d->vinfo->thr_olayx = 2 ;
+   }
+   MCW_set_bbox( func->thr_olayx_bbox , im3d->vinfo->thr_olayx ) ;
    MCW_reghint_children( func->thr_olayx_bbox->wrowcol ,
                          "Lock Thr to depend on OLay sub-brick?" ) ;
 
@@ -2961,6 +2969,24 @@ STATUS("making func->rowcol") ;
                   AFNI_func_fdr_CB , im3d ) ;
    MCW_register_hint( func->thr_fdr_pb ,
                       "Compute FDR curves for OLay statistical sub-bricks" ) ;
+
+   /* p-value stuff button [06 Mar 2014] */
+
+   (void) XtVaCreateManagedWidget(
+            "dialog" , xmSeparatorWidgetClass , func->thr_menu ,
+             XmNseparatorType , XmSINGLE_LINE , NULL ) ;
+
+   func->thr_pvalue_pb =
+         XtVaCreateManagedWidget(
+            "dialog" , xmPushButtonWidgetClass , func->thr_menu ,
+               LABEL_ARG("Meaning of p-values") ,
+               XmNmarginHeight , 0 ,
+               XmNtraversalOn , True  ,
+               XmNinitialResourcesPersistent , False ,
+            NULL ) ;
+   XtAddCallback( func->thr_pvalue_pb , XmNactivateCallback ,
+                  AFNI_pvalue_CB , im3d ) ;
+   MCW_register_hint( func->thr_pvalue_pb,"How to think about p-values" );
 
    } /*---- end of thr_menu creation for top of threshold slider ----*/
 
@@ -3063,20 +3089,23 @@ STATUS("making func->rowcol") ;
 
    MCW_register_help( func->thr_pval_label ,
       " \n"
-      " Shows the estimated significance (p-value) of the threshold\n"
-      " slider if possible.  This is the 'uncorrected' or per-voxel\n"
-      " value of 'p'.\n"
+      "* Shows the estimated significance (p-value) of the threshold\n"
+      "   slider if possible.  This is the 'uncorrected' or per-voxel\n"
+      "   value of 'p'.\n"
       "* If not possible, will display as '[N/A]' instead.\n"
       "* p's that display as 1.2-7 mean 1.2 x 10^(-7).\n"
+      "* alpha(p) = approximate likelihood that the p-value shown\n"
+      "   results from the null hypothesis, not the alternative.\n"
+      "   (Shown in the hint for the label below the slider.)\n"
       "* If FDR curves are pre-computed in the dataset header,\n"
-      "  then the False Discovery Rate q-value will also be shown.\n"
+      "   then the False Discovery Rate q-value will also be shown.\n"
       "* You can add FDR curves to a dataset with '3drefit -addFDR'\n"
       "   or by using the 'Add FDR Curves' button on the right-click\n"
       "   popup menu on the label atop the threshold slider.\n"
       "* FDR q = estimate of the fraction of above-threshold voxels\n"
-      "   that are false detections.\n"
-      "* MDF = CRUDE estimate of the fraction of true positive voxels\n"
-      "   that are below the current threshold.\n"
+      "   that are false detections ('false positives').\n"
+      "* MDF = CRUDE estimate of fraction of true positive voxels that\n"
+      "   are below the current threshold ('false negatives').\n"
       "* MDF is shown in the hint for the label below the slider.\n "
    ) ;
    MCW_register_hint( func->thr_pval_label , "Nominal p-value per voxel; FDR q-value" ) ;
@@ -5552,6 +5581,32 @@ STATUS("making prog->rowcol") ;
 
       /*----------*/
 
+      prog->hidden_pvalue_pb =             /* 06 Mar 2014 */
+         XtVaCreateManagedWidget(
+            "dialog" , xmPushButtonWidgetClass , prog->hidden_menu ,
+               LABEL_ARG("Meaning of p-values") ,
+               XmNmarginHeight , 0 ,
+               XmNtraversalOn , True  ,
+               XmNinitialResourcesPersistent , False ,
+            NULL ) ;
+      XtAddCallback( prog->hidden_pvalue_pb , XmNactivateCallback ,
+                     AFNI_pvalue_CB , im3d ) ;
+
+      /*----------*/
+
+      prog->hidden_papers_pb =             /* 02 May 2014 */
+         XtVaCreateManagedWidget(
+            "dialog" , xmPushButtonWidgetClass , prog->hidden_menu ,
+               LABEL_ARG("List of AFNI papers") ,
+               XmNmarginHeight , 0 ,
+               XmNtraversalOn , True  ,
+               XmNinitialResourcesPersistent , False ,
+            NULL ) ;
+      XtAddCallback( prog->hidden_papers_pb , XmNactivateCallback ,
+                     AFNI_papers_CB , im3d ) ;
+
+      /*----------*/
+
       (void) XtVaCreateManagedWidget(
                "dialog" , xmSeparatorWidgetClass , prog->hidden_menu ,
                   XmNseparatorType , XmSINGLE_LINE ,
@@ -6754,6 +6809,18 @@ ENTRY("AFNI_misc_button") ;
    XtAddCallback( dmode->misc_readme_env_pb , XmNactivateCallback ,
                   AFNI_misc_CB , im3d ) ;
    MCW_register_hint( dmode->misc_readme_env_pb,"Display README.environment file" );
+
+   dmode->misc_pvalue_pb =
+         XtVaCreateManagedWidget(
+            "dialog" , xmPushButtonWidgetClass , menu ,
+               LABEL_ARG("Meaning of p-values") ,
+               XmNmarginHeight , 0 ,
+               XmNtraversalOn , True  ,
+               XmNinitialResourcesPersistent , False ,
+            NULL ) ;
+   XtAddCallback( dmode->misc_pvalue_pb , XmNactivateCallback ,
+                  AFNI_pvalue_CB , im3d ) ;
+   MCW_register_hint( dmode->misc_pvalue_pb,"How to think about p-values" );
 
    dmode->misc_license_pb =
          XtVaCreateManagedWidget(

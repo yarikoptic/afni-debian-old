@@ -2513,6 +2513,31 @@ float *SUMA_PercFullRangeVol(float *V, int N_V, int p10, int exzero, int *Nvals)
    SUMA_RETURN(perc);
 }
 
+SUMA_Boolean SUMA_DSET_ClearOverlay_Vecs(SUMA_DSET *dset)
+{
+   static char FuncName[]={"SUMA_DSET_ClearOverlay_Vecs"};
+   SUMA_OVERLAYS **over=NULL;
+   SUMA_ALL_DO *ado=NULL;
+   int N_over, i, k;
+   
+   SUMA_ENTRY;
+   
+   if (!dset) SUMA_RETURN(NOPE);
+   
+   for (i=0; i<SUMAg_N_DOv; ++i) {
+      ado = iDO_ADO(i);
+      if ((over = SUMA_ADO_Overlays(ado, &N_over))) {
+         for (k=0; k<N_over; ++k) {
+            if (over[k]->dset_link == dset) {
+               SUMA_SetOverlay_Vecs(over[k],'A', -1, "clear", -1);  
+            }
+         }
+      }
+   }
+    
+   SUMA_RETURN(YUP);
+}
+
 /*!
    A function that setsup vectors V, T and their ilk in the overlay plane.
    The function is intended to figure out whether the old version of the
@@ -2533,7 +2558,7 @@ SUMA_Boolean SUMA_SetOverlay_Vecs(SUMA_OVERLAYS *Sover, char vec,
                                   int colind, char *task, int perc)
 {
    static char FuncName[]={"SUMA_SetOverlay_Vecs"};
-   char thisid[32+SUMA_IDCODE_LENGTH]={""};
+   char thisid[32+SUMA_IDCODE_LENGTH]={""}, *attr=NULL;
    SUMA_Boolean LocalHead = NOPE;
    
    SUMA_ENTRY;
@@ -2549,7 +2574,16 @@ SUMA_Boolean SUMA_SetOverlay_Vecs(SUMA_OVERLAYS *Sover, char vec,
       comes from standalone program like 3dVol2Surf. Return
       without complaining.*/
       SUMA_RETURN(YUP);
+   } else {
+      if (Sover->dset_link->dnel && 
+          (attr=NI_get_attribute(Sover->dset_link->dnel, "ResetOverlay_Vecs"))) {
+         if (!strcmp(attr,"yes")) {
+            NI_set_attribute(Sover->dset_link->dnel,"ResetOverlay_Vecs", "nope");
+            SUMA_DSET_ClearOverlay_Vecs(Sover->dset_link);
+         }
+      }
    }
+   
    if (!strcmp(task,"clear")) { /* just clear, and return */
       switch (vec) {
          case 'V':
@@ -3502,29 +3536,38 @@ SUMA_Boolean SUMA_ScaleToMap_alaAFNI ( float *V, int N_V,
    
    /* if brightness factor is given, apply it to color map and mask color */
    Mbuf = NULL;
-   if (Opt->BrightFact <= 0 || Opt->BrightFact > 1) {
-      fprintf (SUMA_STDERR,
-               "Error %s: Opt->BrightFact must be between ]0 1]\n", FuncName);
-      SUMA_RETURN (NOPE);
-   }else {
-      if (Opt->BrightFact != 1) { 
+   if (Opt->BrightFact <= 0 || Opt->BrightFact > 2) {
+      SUMA_S_Warn("Opt->BrightFact must be between ]0 2]. Defaulting to 1\n");
+      Opt->BrightFact = 1.0f;
+   }
+   {
+      if (Opt->BrightFact != 1.0f) { 
          Mbuf = ColMap->M; /* save pointer */
          ColMap->M = (float **)SUMA_allocate2D( ColMap->N_M[0], 
                                                 ColMap->N_M[1], sizeof(float));
          for (i=0; i < ColMap->N_M[0]; ++i) {
             ColMap->M[i][0] = Mbuf[i][0] * Opt->BrightFact;
+               if (ColMap->M[i][0] > 1.0) ColMap->M[i][0] = 1.0; /* Bright Fact 
+                                                            could be > 1.0 now */
             ColMap->M[i][1] = Mbuf[i][1] * Opt->BrightFact;
+               if (ColMap->M[i][1] > 1.0) ColMap->M[i][1] = 1.0; 
             ColMap->M[i][2] = Mbuf[i][2] * Opt->BrightFact;
+               if (ColMap->M[i][2] > 1.0) ColMap->M[i][2] = 1.0; 
             if (ColMap->N_M[1] == 4) {
             ColMap->M[i][3] = Mbuf[i][3] * Opt->BrightFact;
+               if (ColMap->M[i][3] > 1.0) ColMap->M[i][3] = 1.0; 
             }
          }
          /* now for the mask color */
          Opt->MaskColor[0] *= Opt->BrightFact;
+            if (Opt->MaskColor[0] > 1.0) Opt->MaskColor[0] = 1.0;
          Opt->MaskColor[1] *= Opt->BrightFact;
+            if (Opt->MaskColor[1] > 1.0) Opt->MaskColor[1] = 1.0;
          Opt->MaskColor[2] *= Opt->BrightFact;
+            if (Opt->MaskColor[2] > 1.0) Opt->MaskColor[2] = 1.0;
          if (ColMap->N_M[1] == 4) { /* MaskColor[3] is never used, oh well...*/
          Opt->MaskColor[3] *= Opt->BrightFact;
+            if (Opt->MaskColor[3] > 1.0) Opt->MaskColor[3] = 1.0;
          }
       }
    }
@@ -4165,7 +4208,7 @@ SUMA_Boolean SUMA_CreateCmapHash(SUMA_COLOR_MAP *SM)
    
    if (!SM || !SM->idvec) {
       SUMA_S_Err("Null colormap or no id vector");
-      SUMA_DUMP_TRACE(FuncName);
+      SUMA_DUMP_TRACE("%s",FuncName);
       SUMA_RETURN(NOPE);
    }
    
@@ -4452,28 +4495,36 @@ SUMA_Boolean SUMA_ScaleToMap (float *V, int N_V,
    
    /* if brightness factor is given, apply it to color map and mask color */
    Mbuf = NULL;
-   if (Opt->BrightFact <= 0 || Opt->BrightFact > 1) {
-      fprintf (SUMA_STDERR,
-               "Error %s: Opt->BrightFact must be between ]0 1]\n", FuncName);
-      SUMA_RETURN (NOPE);
-   }else {
-      if (Opt->BrightFact != 1) {
+   if (Opt->BrightFact <= 0 || Opt->BrightFact > 2) {
+      SUMA_S_Warn("Opt->BrightFact must be between ]0 2], Defaulting to 1\n");
+      Opt->BrightFact = 1.0;
+   }
+   {
+      if (Opt->BrightFact != 1.0) {
          SUMA_LH("Modulating brightness of map");
          Mbuf = ColMap->M; /* save pointer */
          ColMap->M = (float **)
                SUMA_allocate2D(ColMap->N_M[0], ColMap->N_M[1], sizeof(float));
          for (i=0; i < ColMap->N_M[0]; ++i) {
             ColMap->M[i][0] = Mbuf[i][0] * Opt->BrightFact;
+               if (ColMap->M[i][0] > 1.0) ColMap->M[i][0] = 1.0; /* Bright Fact 
+                                                            could be > 1.0 now */
             ColMap->M[i][1] = Mbuf[i][1] * Opt->BrightFact;
+               if (ColMap->M[i][1] > 1.0) ColMap->M[i][1] = 1.0; 
             ColMap->M[i][2] = Mbuf[i][2] * Opt->BrightFact;
+               if (ColMap->M[i][2] > 1.0) ColMap->M[i][2] = 1.0; 
             if (ColMap->N_M[1] == 4) {
             ColMap->M[i][3] = Mbuf[i][3] * Opt->BrightFact;
+               if (ColMap->M[i][3] > 1.0) ColMap->M[i][3] = 1.0; 
             }
          }
          /* now for the mask color */
          Opt->MaskColor[0] *= Opt->BrightFact;
+            if (Opt->MaskColor[0] > 1.0) Opt->MaskColor[0] = 1.0;
          Opt->MaskColor[1] *= Opt->BrightFact;
+            if (Opt->MaskColor[1] > 1.0) Opt->MaskColor[1] = 1.0;
          Opt->MaskColor[2] *= Opt->BrightFact;
+            if (Opt->MaskColor[2] > 1.0) Opt->MaskColor[2] = 1.0;
       }
    }
    
@@ -6009,8 +6060,10 @@ SUMA_OVERLAYS * SUMA_CreateOverlayPointer (
    if (!Recycle) {
       Sover->GlobalOpacity = -1.0; /* no factor applied */
       Sover->ShowMode = -SW_SurfCont_DsetViewCol;
-      Sover->Font = SW_SurfCont_DsetFont9;
+      Sover->Font = SUMA_FontStr2FontMenuItem(SUMA_EnvVal("SUMA_Dset_Font"));
       Sover->NodeRad = SW_SurfCont_DsetNodeRadConst;
+      Sover->Through = 
+       SUMA_ThroughStr2ThroughMenuItem(SUMA_EnvVal("SUMA_Dset_NodeConnections"));
       Sover->NodeRadGain = 1.0;
       Sover->NodeCol = SW_SurfCont_DsetNodeColYellow;
       Sover->BordFrac = SW_SurfCont_DsetGmatBord0;
@@ -6533,7 +6586,7 @@ SUMA_Boolean SUMA_Overlays_2_GLCOLAR4(SUMA_ALL_DO *ado,
       case MASK_type: {
          static int ncnt = 0;
          if (!ncnt) {
-            SUMA_S_Warn("Nothing being done here."); ++ncnt;
+            SUMA_LH("Nothing to be done here."); ++ncnt;
          }
          SUMA_RETURN(YUP);
          break; }
@@ -8497,7 +8550,7 @@ SUMA_Boolean SUMA_AddNewPlane (SUMA_ALL_DO *ado, SUMA_OVERLAYS *Overlay,
 SUMA_Boolean SUMA_MixColors (SUMA_SurfaceViewer *sv) 
 {
    static char FuncName[]={"SUMA_MixColors"};
-   int i, dov_id, isv;
+   int i, dov_id, isv, kk;
    void *pp=NULL;
    SUMA_DO_Types tp;
    SUMA_DSET *dset=NULL;
@@ -8506,7 +8559,12 @@ SUMA_Boolean SUMA_MixColors (SUMA_SurfaceViewer *sv)
    
    SUMA_ENTRY;
    
+   
    isv = SUMA_WhichSVg(sv); 
+   
+   if (LocalHead) SUMA_DUMP_TRACE("Mixing of the colors, sv %d, N_ColList = %d", 
+                                  isv, sv->N_ColList);
+   
    for (i=0; i<sv->N_ColList; ++i) {
       
       if (!(pp = SUMA_find_any_object(sv->ColList[i]->idcode_str, &tp))) {
@@ -8542,15 +8600,19 @@ SUMA_Boolean SUMA_MixColors (SUMA_SurfaceViewer *sv)
                break;
             case VO_type: {
                SUMA_VolumeObject *VO = (SUMA_VolumeObject *)pp;
-               SUMA_LHv("Mixing Volume Object Colors (%s), Dset %s...\n", 
-                     sv->ColList[i]->idcode_str, ADO_LABEL((SUMA_ALL_DO *)VO));
+               SUMA_LHv("Mixing Volume Object Colors (%s), Dset %s, sv %d ...\n",
+                  sv->ColList[i]->idcode_str, ADO_LABEL((SUMA_ALL_DO *)VO), isv);
                if (!SUMA_Overlays_2_GLCOLAR4((SUMA_ALL_DO *)VO, sv, 
                                        SUMA_GetColorListPtr(sv->ColList[i]))) {
                   SUMA_S_Err("Failed in SUMA_Overlays_2_GLCOLAR4.");
                   SUMA_RETURN(NOPE);
                }
                sv->ColList[i]->Remix = NOPE;
-               sv->ColList[i]->per_sv_extra[isv] = 1;
+               for(kk=0; kk<SUMA_MAX_SURF_VIEWERS; ++kk) {
+                  if (kk != isv) {
+                     sv->ColList[i]->per_sv_extra[kk] |= PSV_BIND_VOL;
+                  }
+               }
                break; }
             case TRACT_type: {
                SUMA_TractDO *tdo=(SUMA_TractDO *)pp;
@@ -8581,16 +8643,20 @@ SUMA_Boolean SUMA_MixColors (SUMA_SurfaceViewer *sv)
                            tp, SUMA_ObjectTypeCode2ObjectTypeName(tp));
                SUMA_RETURN(NOPE); 
          }   
-      } else {/* No remix, but a couple of extra steps might be in order */
+      } 
+      SUMA_LH("ColList[%d](%p)->per_sv_extra[%d]=%d",
+               i, sv->ColList[i], isv, sv->ColList[i]->per_sv_extra[isv]);
+      {/* Check on extras */
          switch (tp) {
-            case VO_type: {
+            case VO_type: { 
                SUMA_VolumeObject *vo = (SUMA_VolumeObject *)pp;
-               if (!sv->ColList[i]->per_sv_extra[isv]) {
+               if (sv->ColList[i]->per_sv_extra[isv] & PSV_BIND_VOL) {
+                  SUMA_LH("Loading texture for viewer %d", isv);
                   if (!SUMA_VE_LoadTexture(vo->VE, 0)){
-                     SUMA_S_Err("Failed to GL load texture");
+                     SUMA_S_Err("Failed to GL load texture for sv %d", isv);
                      SUMA_RETURN(NOPE);
                   }
-                  sv->ColList[i]->per_sv_extra[isv]=1;
+                  sv->ColList[i]->per_sv_extra[isv] &= ~PSV_BIND_VOL;
                }
                break; }
             default: 
@@ -8602,6 +8668,9 @@ SUMA_Boolean SUMA_MixColors (SUMA_SurfaceViewer *sv)
    SUMA_RETURN (YUP);
 
 }
+
+
+
 
 SUMA_Boolean SUMA_iRGB_to_OverlayPointer (SUMA_ALL_DO *ado, 
                                  char *Name, SUMA_OVERLAY_PLANE_DATA *sopd, 
@@ -10011,7 +10080,8 @@ SUMA_Boolean SUMA_LoadDsetOntoSO_eng (char *filename, SUMA_SurfaceObject *SO,
                   (NI_group *)SUMA_FindNgrNamedAny(dset->ngr, "network_link");
                if (nilink) {
                   ss = find_afni_file(
-                           NI_get_attribute(nilink,"network_file"), 1);
+                           NI_get_attribute(nilink,"network_file"), 1, 
+                           SUMA_FnameGet(SDSET_FILENAME(dset),"pa",NULL));
                   if (ss[0] != '\0') {
                      SUMA_LHv("Reading network from %s\n", ss);
                      NEL_READ(GSaux->net, ss);
@@ -11105,6 +11175,41 @@ int SUMA_GetNodeOverInd (SUMA_OVERLAYS *Sover, int node)
    SUMA_RETURN(Found);
 }
 
+int SUMA_GetSortedNodeOverInd (SUMA_OVERLAYS *Sover, int node)
+{
+   static char FuncName[]={"SUMA_GetSortedNodeOverInd"};
+   int Found, i;
+   SUMA_Boolean LocalHead = NOPE;
+
+   SUMA_ENTRY;
+
+   /* Now look for the node's location in the color overlay plane.
+   Nodes that are not colored will be absent ... */
+   if (node < 0) SUMA_RETURN(-1);
+   
+   Found = -1;
+   if (SDSET_VECFILLED(Sover->dset_link) > node) { /* try the straight shot */
+      if (Sover->NodeDef[node] == node) {
+         SUMA_LH("Good, found it easily");
+         /* make sure node is not outside number of defined nodes */
+         if (node >= Sover->N_NodeDef) {
+            /* this one's masked but it was left over from the previous pass 
+            Must go search below to make sure whether it is truly masked or not*/
+            SUMA_LH("Can't tell for sure");
+         } else {
+            SUMA_RETURN(node);
+         }
+      }
+   }
+  
+   if (Found < 0) {
+      SUMA_LH("The hard way, but sorted");
+      SUMA_RETURN(SUMA_ibinFind(Sover->NodeDef, Sover->N_NodeDef, node));    
+   }   
+
+   SUMA_RETURN(Found);
+}
+
 /*-----------------------------------------------------------*/
 /* 
    Activate callbacks pertinent to SO->SelectedNode and Sover
@@ -11254,4 +11359,32 @@ SUMA_Boolean SUMA_Selected_Node_Activate_Callbacks (
    }
    SUMA_RETURN(YUP);
 }  
+
+char *SUMA_RGB_to_hex(float *fv, char *here)
+{
+   static char FuncName[]={"SUMA_RGB_to_hex"};
+   static char ans[10][32];
+   static int icall=0;
+   char *s;
+   
+   if (here) s = here;
+   else { 
+      ++icall; 
+      if (icall > 9) icall = 0; 
+      s = (char *)ans[icall];
+   }
+   s[0] = '\0';
+   
+   if (!fv) return(s);
+   
+   sprintf(s,"#");
+   r_sprintf_long_to_hex (s+strlen(s), 
+                     (unsigned long)rint((fv[0]*255)), 1, 0);
+   r_sprintf_long_to_hex (s+strlen(s), 
+                     (unsigned long)rint((fv[1]*255)), 1, 0);
+   r_sprintf_long_to_hex (s+strlen(s), 
+                     (unsigned long)rint((fv[2]*255)), 1, 0);
+   
+   return(s);
+}
 

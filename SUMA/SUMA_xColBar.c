@@ -1076,7 +1076,26 @@ int SUMA_SwitchColPlaneIntensity_one (
    
    if (  !ado || !SurfCont || 
          !curColPlane || 
-         !colp || ind < 0 || !colp->dset_link) { SUMA_RETURN(0); }
+         !colp || !colp->dset_link || !colp->OptScl) { SUMA_RETURN(0); }
+   
+   if (ind < 0) {
+      if (ind == SUMA_BACK_ONE_SUBBRICK) {/* --1 */
+         ind = colp->OptScl->find-1;
+         if (ind < 0 || ind >= SDSET_VECNUM(colp->dset_link)) {
+            SUMA_LH("Reached end"); 
+            SUMA_BEEP;
+            SUMA_RETURN(1);
+         }
+      } else if (ind == SUMA_FORWARD_ONE_SUBBRICK) {/* ++1 */
+         ind = colp->OptScl->find+1;
+         if (ind < 0 || ind >= SDSET_VECNUM(colp->dset_link)) {
+            SUMA_LH("Reached end, return without complaint"); 
+            SUMA_BEEP;
+            SUMA_RETURN(1);
+         }
+      } else { SUMA_RETURN(0); }
+   }
+   
    if (LocalHead) {
       fprintf( SUMA_STDERR, 
                "%s:\n request to switch intensity to col. %d\n", 
@@ -1099,7 +1118,7 @@ int SUMA_SwitchColPlaneIntensity_one (
          colp->OptScl->RecomputeClust = 1;
    }
    colp->OptScl->find = ind;
-   if (setmen && colp == curColPlane ) {
+   if (setmen && colp == curColPlane && SurfCont->SwitchIntMenu) {
       SUMA_LHv("Setting menu values, %d\n", colp->OptScl->find+1);
       SUMA_Set_Menu_Widget(SurfCont->SwitchIntMenu, colp->OptScl->find+1);
    }
@@ -1133,8 +1152,10 @@ int SUMA_SwitchColPlaneIntensity_one (
                      SUMA_LHv("Sub-brick %s%s has %s go with it.\n",
                                  lab, ext, lab2);
                      colp->OptScl->tind = ind2;
-                     if (colp == curColPlane ) {/* must set this
-                                             regardless of setmen */
+                     if (colp == curColPlane && SurfCont->SwitchThrMenu){
+                                          /* must set this
+                                             regardless of setmen, but not if
+                                       SwitchThrMenu has not be been set yet */
                         SUMA_LH("Setting threshold values");
                         SUMA_Set_Menu_Widget(SurfCont->SwitchThrMenu, 
                                       colp->OptScl->tind+1);
@@ -4267,6 +4288,23 @@ int SUMA_SetShowSlice(SUMA_VolumeObject *vdo, char *variant, int val)
          #endif        
       }
       SUMA_LH("ShowVrSlc now %d", VSaux->ShowVrSlc);
+   } else if (!strcmp(variant, "AtXYZ")) {
+      SUMA_SurfaceViewer *sv=NULL;
+      if (VSaux->SlicesAtCrosshair != val) {
+         VSaux->SlicesAtCrosshair = val;
+         if (VSaux->SlicesAtCrosshair && (sv=SUMA_OneViewerWithADOVisible(ado))
+             && sv->Ch){
+            SUMA_VO_set_slices_XYZ(vdo, sv->Ch->c_noVisX);
+         }
+         SUMA_Remixedisplay(ado);
+         #if SUMA_SEPARATE_SURF_CONTROLLERS
+            SUMA_UpdateColPlaneShellAsNeeded(ado);
+         #endif        
+      }
+      SUMA_LH("SlicesAtCrosshair now %d", VSaux->SlicesAtCrosshair);
+   } else {
+      SUMA_S_Err("And what is variant %s for?", variant);
+      SUMA_RETURN(NOPE);
    }
    SUMA_RETURN(1);
 }
@@ -8151,10 +8189,10 @@ SUMA_Boolean SUMA_InitRangeTable(SUMA_ALL_DO *ado, int what)
    SurfCont = SUMA_ADO_Cont(ado);
    curColPlane = SUMA_ADO_CurColPlane(ado);
 
-   if (!SurfCont) SUMA_RETURN(NOPE);
+   if (!SurfCont || !curColPlane) SUMA_RETURN(NOPE);
    TF = SurfCont->RangeTable; 
    TFs = SurfCont->SetRangeTable; 
-   if (!TF || !TFs) SUMA_RETURN(NOPE);
+   if (!TF || !TFs || !TF->cells || !TFs->cells) SUMA_RETURN(NOPE);
    OptScl = curColPlane->OptScl;
    fi = OptScl->find;
    ti = OptScl->tind;
@@ -8191,6 +8229,7 @@ SUMA_Boolean SUMA_InitRangeTable(SUMA_ALL_DO *ado, int what)
    SUMA_INSERT_CELL_STRING(TF, 1, 2, srange_minloc);/* minloc */
    SUMA_INSERT_CELL_STRING(TF, 1, 3, srange_max);/* max */
    SUMA_INSERT_CELL_STRING(TF, 1, 4, srange_maxloc);/* maxloc */
+   
    /* TFs Range table Int*/
    if (DoIs) {
       if (curColPlane->OptScl->AutoIntRange) {
@@ -9209,7 +9248,7 @@ SUMA_Boolean SUMA_SwitchColPlaneCmap(SUMA_ALL_DO *ado, SUMA_COLOR_MAP *CM)
    SUMA_cmap_wid_handleRedisplay((XtPointer)ado);
    #endif
    
-   SUMA_LH("Calling SUMA_Remixedisplay ");          
+   SUMA_LH("Calling SUMA_Remixedisplay on %s", ADO_LABEL(ado));          
    SUMA_Remixedisplay(ado);
 
    SUMA_LH("Returning");
@@ -10900,8 +10939,9 @@ SUMA_Boolean SUMA_UpdateNodeField(SUMA_ALL_DO *ado)
       SUMA_RETURN(YUP);
    }
    Sover = SUMA_ADO_CurColPlane(ado); 
-   SUMA_LHv("Sover %p, ado type %d %s\n", 
-         Sover, ado->do_type, SUMA_ObjectTypeCode2ObjectTypeName(ado->do_type)); 
+   SUMA_LHv("Sover %p, ado type %d %s, callbacks %p, HoldClickCallbacks %d\n", 
+         Sover, ado->do_type, SUMA_ObjectTypeCode2ObjectTypeName(ado->do_type),
+         SUMAg_CF->callbacks, SUMAg_CF->HoldClickCallbacks); 
    switch (ado->do_type) {
       case SO_type: {
          SUMA_SurfaceObject *curSO=NULL, *targetSO=NULL, *SO=NULL;
@@ -11403,6 +11443,9 @@ SUMA_Boolean SUMA_UpdateNodeValField(SUMA_ALL_DO *ado)
       SUMA_RETURN(NOPE);
    }
    SurfCont = SUMA_ADO_Cont(ado);
+   if (!SurfCont || !SurfCont->DataTable || 
+       !SurfCont->DataTable->cells) SUMA_RETURN(NOPE);
+   
    SelectedNode = SUMA_ADO_ColPlane_SelectedDatum(ado, Sover);
    if (!(sar = SUMA_FormNodeValFieldStrings(ado, Sover->dset_link, 
                            SelectedNode, 
@@ -11943,7 +11986,7 @@ SUMA_Boolean SUMA_UpdateNodeLblField_ADO(SUMA_ALL_DO *ado)
    }
          
    
-   if (SurfCont) {
+   if (SurfCont && SurfCont->LabelTable && SurfCont->LabelTable->cells) {
       Sover = SUMA_ADO_CurColPlane(ado);
       if (!Sover) {
          SUMA_RETURN(NOPE);
@@ -12163,7 +12206,7 @@ SUMA_Boolean SUMA_Init_SurfCont_CrossHair(SUMA_ALL_DO *ado)
          static int ncnt;
          if (!ncnt) {
             ++ncnt;
-            SUMA_S_Warn("Anything for masks?");
+            SUMA_LH("Nothing to be done for masks here");
          }
          break; }
       case VO_type: {
@@ -13983,7 +14026,7 @@ float *SUMA_GDSET_EdgeXYZ(SUMA_DSET *dset, int isel, char *variant, float *here)
    
    if (!here) {
       ++icall; if (icall > 9) icall = 0;
-      here = (float *)(&fv[icall]);;
+      here = (float *)(&fv[icall]);
    }
       
    SUMA_GDSET_EdgeXYZ_eng(dset, isel, variant, here);
@@ -14085,7 +14128,7 @@ SUMA_SurfaceObject *SUMA_GDSET_FrameSO(SUMA_DSET *dset)
    }
    if (!GSaux->nido && !(GSaux->nido = SUMA_GDSET_matrix_nido(dset))) {
       SUMA_S_Err("No milk!");
-      SUMA_DUMP_TRACE(FuncName);
+      SUMA_DUMP_TRACE("%s", FuncName);
       SUMA_RETURN(NULL);
    }
    

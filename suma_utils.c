@@ -969,6 +969,7 @@ SUMA_Boolean SUMA_ShowParsedFname(SUMA_PARSED_NAME *pn, FILE *out)
       SS = SUMA_StringAppend_va(SS, "HeadName      :%s\n", pn->HeadName);
       SS = SUMA_StringAppend_va(SS, "BrikName      :%s\n", pn->BrikName);
       SS = SUMA_StringAppend_va(SS, "OnDisk        :%d\n", pn->OnDisk);
+      SS = SUMA_StringAppend_va(SS, "Size          :%d\n", pn->Size);
       SS = SUMA_StringAppend_va(SS, "NameAsParsed  :%s\n", pn->NameAsParsed);
       SS = SUMA_StringAppend_va(SS, "cwdAsParsed   :%s\n", pn->cwdAsParsed);
       
@@ -995,10 +996,17 @@ char *SUMA_getcwd(void)
    SUMA_RETURN(cwd);
 }
 
+SUMA_PARSED_NAME * SUMA_ParseFname (char *FileName, char *ucwd)
+{
+   return(SUMA_ParseFname_eng(FileName, ucwd, 1));  
+}
+
 /*!
-   \brief ans = SUMA_ParseFname (FileName, cwd);
+   \brief ans = SUMA_ParseFname (FileName, cwd, diskcheck);
    parses a file name into its elements
    \param FileName (char *) obvious ...
+   \param ucwd (char *) if not null, this is the user supplied current work. dir.
+   \param diskcheck (int) if not 0 check for file's size and existence on disk
    \return ans (SUMA_PARSED_NAME *) pointer to structure with following fields:
       .FileName (char *) containing filename without path and without selectors (see below). 
                         if empty .FileName[0] = '\0'
@@ -1019,9 +1027,10 @@ char *SUMA_getcwd(void)
       
       \sa SUMA_Free_Parsed_Name, SUMA_ShowParsedFname
 */
-SUMA_PARSED_NAME * SUMA_ParseFname (char *FileName, char *ucwd)
+SUMA_PARSED_NAME * SUMA_ParseFname_eng (char *FileName, char *ucwd, 
+                                        int diskcheck)
 {/*SUMA_ParseFname*/
-   static char FuncName[]={"SUMA_ParseFname"};
+   static char FuncName[]={"SUMA_ParseFname_eng"};
    char PathDelimiter='/';
    char *cwd=NULL; 
    int   i, j, iExt , iFile, iPath, iColSel, iRowSel, iNodeSel, 
@@ -1369,15 +1378,23 @@ SUMA_PARSED_NAME * SUMA_ParseFname (char *FileName, char *ucwd)
       NewName->HeadName = SUMA_append_string(NewName->Path,NewName->FileName);
       NewName->BrikName = SUMA_append_string(NewName->Path,NewName->FileName);
    }
-   NewName->OnDisk = THD_is_file(NewName->HeadName);
-   
+   NewName->OnDisk = -1;
+   NewName->Size = -1;
+   if (diskcheck) {
+      SUMA_LH("Setting OnDisk for %s...", NewName->HeadName);
+      NewName->OnDisk = THD_is_file(NewName->HeadName);
+      if (NewName->OnDisk) {
+         SUMA_LH("Setting filesize for %s...",  NewName->HeadName);
+         NewName->Size = THD_filesize(NewName->HeadName);
+      }
+   }
    if (LocalHead) {
       SUMA_ShowParsedFname(NewName, NULL);
    }
    if (cwd) SUMA_free(cwd);
    
 	SUMA_RETURN (NewName);
-}/*SUMA_ParseFname*/
+}/*SUMA_ParseFname_eng*/
 
 /*!
    \brief Lazy function calls to get at various parts of a file name without the
@@ -1923,7 +1940,7 @@ int SUMA_search_file(char **fnamep, char *epath)
          if( epath == NULL ) SUMA_RETURN(NOPE) ; /* nothing left to do */
       #else
          /* Search in AFNI's standard locations */
-         af = find_afni_file(*fnamep, 0);
+         af = find_afni_file(*fnamep, 0, NULL);
          if (af[0] != '\0') {
             SUMA_free(*fnamep); 
             *fnamep = SUMA_copy_string(af);
@@ -3605,7 +3622,9 @@ SUMA_Boolean SUMA_Set_Sub_String(char **cs, char *sep, int ii, char *str)
    SUMA_ENTRY;
    
    if (ii < 0) { SUMA_SL_Err("Bad index"); SUMA_RETURN(NOPE); }
-   if (!cs || !str) { SUMA_SL_Err("NULL input"); SUMA_RETURN(NOPE); }
+   if (!cs || !str) { SUMA_SL_Err("NULL input %p %p", cs, str); 
+                      if (LocalHead) SUMA_DUMP_TRACE("Why"); 
+                      SUMA_RETURN(NOPE); }
    if (!*cs && ii != 0) { 
       SUMA_S_Errv("Bad spot %d with NULL string", ii); SUMA_RETURN(NOPE); }
    if (!*cs && ii == 0) {
@@ -4155,7 +4174,49 @@ static ENV_SPEC envlist[] = {
       "in seconds. See also env SUMA_DriveSumaMaxWait\n",
       "SUMA_DriveSumaMaxCloseWait",
       "5" },
-   
+   {  "Set order in which object types are rendered. This order will affect\n"
+      "the resultant image in the few instances where alpha transparency is\n"
+      "used. The order can be specified for only three types of objects for \n"
+      "now: graphs, surfaces, and volumes. If you want to render graphs first,\n"
+      "followed by volumes then surfaces then set SUMA_ObjectDisplayOrder to\n"
+      "something like: 'graph,vol,surf'. Do not include spaces between the\n"
+      "type names.",
+      "SUMA_ObjectDisplayOrder",
+      "vol,surf,graph" },
+   {  "Font for datasets in SUMA viewer\n"
+      "Choose one of: f8 f9 tr10 tr24 he10 he12 he18\n",
+      "SUMA_Dset_Font",
+      "f9" }, 
+   {  "Method for representing connections to a certain node in a graph"
+      " dataset.\n"
+      "Choose one of: Edge, Color, Radius, C&R, XXX\n",
+      "SUMA_Dset_NodeConnections",
+      "Edge" },
+   {  "Set which slices should be shown when a volume is first loaded"
+      "You can set parameters for each of the Ax, Sa, and Co planes, and\n"
+      "the volume rendering.\n"
+      "Each plane gets its own string formatted as such: PL:SL:MON:INC\n"
+      "where PL is the plane (Ax, Co, Sa, or Vr)\n"
+      "      SL is the slice number, you can also set the number as \n"
+      "         a fraction of the number of slices in the volume.\n"
+      "      MON is the number of montage slices\n"
+      "      INC is the increment between montage slices. You can use \n"
+      "          fractions for this parameter also.\n"
+      "If you want to set parameters for a certain plane, but do not\n"
+      "want to see it, prepend the plane name with 'h' (for hide) as in 'hAx'\n"
+      "Note that for Vr, there are no SL, MON, and INC qualifiers\n"
+      "Also, SUMA will force the display of at least one plane because\n"
+      "otherwise you have no way of opening a volume controller\n"
+      "Example: 'Ax:0.5:3:10 Co:123:2:50'",
+      "SUMA_VO_InitSlices",
+      "Ax:0.5 Sa:0.5:2:0.5 hCo:0.5" }, 
+   {  "Perform 'Home' call in SUMA after each prying.\n"
+      "If YES, objects are repositioned to stay in the middle of the viewer\n"
+      "as you pry the surfaces apart. This behavior is desired in general, \n"
+      "unless you don't like the initial positioning in the first place.\n"
+      "Choose from YES or NO",
+      "SUMA_HomeAfterPrying",
+      "YES" },
    {  NULL, NULL, NULL  }
 };
       

@@ -2939,12 +2939,12 @@ int SUMA_AddDsetNelIndexCol ( SUMA_DSET *dset, char *col_label,
    } 
    
    
-   SUMA_LH("Cheking generic attributes");
+   SUMA_LH("Setting index attributes");
    /* set some generic attributes */
    SUMA_AddGenDsetColAttr (dset, ctp, col, stride, -1, 0);
    /* add the attributes of that column */
-   SUMA_AddDsetColAttr (dset, col_label, ctp, col_attr, -1, 0);
-   
+   SUMA_AddDsetColAttr (dset, col_label?col_label:"node index", 
+                        ctp, col_attr, -1, 0);
    if (LocalHead) SUMA_ShowNel((void*)dset->inel);
    
    
@@ -6274,6 +6274,9 @@ int SUMA_InsertDsetPointer (SUMA_DSET **dsetp, DList *DsetList, int replace)
          dset->inel = NULL;
          #endif
          SUMA_free(dset);
+         /* Put a flag up to state that all overlays of this dataset need 
+            to have column copied refreshed */
+         NI_set_attribute(dprev->dnel,"ResetOverlay_Vecs", "yes");
          /*make the switch so that on return, dset becomes the previous dset*/
          *dsetp = dprev;
       } else {
@@ -13166,6 +13169,29 @@ char* SUMA_sdset_id(SUMA_DSET *dset)
    SUMA_RETURN(id);
 }
 
+char *SUMA_sdset_label(SUMA_DSET *dset)
+{
+   static char FuncName[]={"SUMA_sdset_label"};
+   char *s;
+      
+   if (!dset || !dset->ngr || !(s=NI_get_attribute(dset->ngr,"label"))) {
+      return("");
+   }
+   return(s);
+}
+
+char *SUMA_sdset_filename(SUMA_DSET *dset)
+{
+   static char FuncName[]={"SUMA_sdset_filename"};
+   char *s;
+      
+   if (!dset || !dset->ngr || !(s=NI_get_attribute(dset->ngr,"filename"))) {
+      return("");
+   }
+   return(s);
+}
+
+
 SUMA_DATUM_LEVEL SUMA_sdset_datum_level(SUMA_DSET *dset)
 {
    static char FuncName[]={"SUMA_sdset_datum_level"};
@@ -14337,6 +14363,11 @@ int SUMA_PopulateDsetsFromGICORnel(NI_element *nel, GICOR_setup *giset,
             if (!SUMA_UpdateDsetColRange(sdsetv[id],-1)) {
                SUMA_S_Err("Failed to update range");
                SUMA_RETURN(NOPE);
+            }
+            /* Put a flag up to state that all overlays of this dataset need 
+            to have column copied refreshed */
+            if (sdsetv[id]->dnel) { 
+               NI_set_attribute(sdsetv[id]->dnel,"ResetOverlay_Vecs", "yes");
             }
          } /* if (giset->nnode_domain[id]) */
       } /* for (ipair ...) */

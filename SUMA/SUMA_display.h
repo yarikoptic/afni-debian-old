@@ -23,6 +23,12 @@
 #define SUMA_WITHDRAW   2
 #define SUMA_UNREALIZE  3
 
+/* Flags to move sub-bricks up or down using 
+   same functions to set a particular index 
+   Values must be < 0 and != -1 */
+#define SUMA_FORWARD_ONE_SUBBRICK    -444
+#define SUMA_BACK_ONE_SUBBRICK       -555 
+
 #define SUMA_XmArrowFieldMenu -123
 
 #define SUMA_CLOSE_MODE       SUMA_WITHDRAW
@@ -234,6 +240,12 @@ sets the select color of the widget to its foreground color */
 #define SUMA_SV_CHAR(csv) \
    (char)( csv ? (65+SUMA_WhichSV((csv), SUMAg_SVv, SUMA_MAX_SURF_VIEWERS)):'-' )
 
+#define SV_IN_PRYING(sv) (((sv) && \
+                           (((sv)->GVS[(sv)->StdView].vLHpry[0] != 0.0f ) || \
+                            ((sv)->GVS[(sv)->StdView].vLHpry[1] != 0.0f ) || \
+                            ((sv)->GVS[(sv)->StdView].vLHpry[2] != 0.0f )) ) \
+                           ? 1:0)
+
 /* Make sure recording path is legit */
 #define SUMA_VALIDATE_RECORD_PATH(autorecord) {\
    if (!THD_mkdir((autorecord)->Path)) {  \
@@ -281,11 +293,16 @@ int SUMA_SnapToDisk(SUMA_SurfaceViewer *csv, int verb, int getback);
 SUMA_DO_LOCATOR *SUMA_SV_SortedRegistDO(SUMA_SurfaceViewer *csv, int *N_regs,
                                         SUMA_DO *dov);
 void SUMA_display(SUMA_SurfaceViewer *csv, SUMA_DO *dov);
+void SUMA_display_one(SUMA_SurfaceViewer *csv, SUMA_DO *dov);
 Colormap SUMA_getShareableColormap_Eng(XVisualInfo * vi, Display *dpy);
 Colormap SUMA_getShareableColormap(SUMA_SurfaceViewer * csv);
 void SUMA_graphicsInit(Widget w, XtPointer clientData, XtPointer call);
 void SUMA_expose(Widget w, XtPointer clientData, XtPointer call);
 void SUMA_resize(Widget w, XtPointer clientData, XtPointer call);
+SUMA_Boolean SUMA_SV_DrawAreaDims_From_WindDims(SUMA_SurfaceViewer *sv);
+SUMA_Boolean SUMA_SV_WindDims_From_DrawAreaDims(SUMA_SurfaceViewer *sv);
+SUMA_Boolean SUMA_SV_InitDrawAreaOffset(SUMA_SurfaceViewer *sv);
+int SUMA_XErrHandler( Display *d , XErrorEvent *x );
 SUMA_Boolean SUMA_X_SurfaceViewer_Create (void);
 void SUMA_ButtOpen_pushed (Widget w, XtPointer cd1, XtPointer cd2);
 void SUMA_ButtClose_pushed (Widget w, XtPointer cd1, XtPointer cd2);
@@ -399,6 +416,7 @@ void SUMA_cb_SetATransMode(Widget widget, XtPointer client_data,
 int SUMA_SetDsetViewMode(SUMA_ALL_DO *ado, int imenu, int update_menu) ;
 int SUMA_SetDsetFont(SUMA_ALL_DO *ado, int imenu, int updatemenu);
 int SUMA_SetDsetNodeRad(SUMA_ALL_DO *ado, int imenu, int updatemenu);
+int SUMA_SetDsetThrough(SUMA_ALL_DO *ado, int imenu, int updatemenu);
 int SUMA_SetDsetNodeCol(SUMA_ALL_DO *ado, int imenu, int updatemenu);
 void SUMA_cb_SetDsetViewMode(Widget widget, XtPointer client_data, 
                               XtPointer call_data);
@@ -407,6 +425,8 @@ void SUMA_cb_SetDsetFont(Widget widget, XtPointer client_data,
 void SUMA_cb_SetDsetNodeCol(Widget widget, XtPointer client_data, 
                            XtPointer call_data);
 void SUMA_cb_SetDsetNodeRad(Widget widget, XtPointer client_data, 
+                           XtPointer call_data);
+void SUMA_cb_SetDsetThrough(Widget widget, XtPointer client_data, 
                            XtPointer call_data);
 void SUMA_cb_SetDsetGmatBord(Widget widget, XtPointer client_data, 
                            XtPointer call_data);
@@ -617,6 +637,7 @@ void SUMA_SaveVisualState(char *fname, void *csvp);
 void SUMA_LoadSegDO (char *s, void *csvp);
 SUMA_Boolean SUMA_LoadVolDO (char *fname, 
                         SUMA_DO_CoordUnits coord_type, SUMA_VolumeObject **VOp);
+int SUMA_Set_VO_Slice_Params(char *params, SUMA_VolumeObject *VO);
 void SUMA_SiSi_I_Insist(void);
 void SUMA_BuildMenuReset(int nchar);
 void SUMA_MenuArrowFieldCallback (void *CB);
@@ -676,6 +697,8 @@ int SUMA_ShowModeStr2ShowModeMenuItem(char *str);
 int SUMA_Font2FontMenuItem(int Mode);
 int SUMA_FontStr2FontMenuItem(char *str); 
 void * SUMA_Font2GLFont(int Mode);
+int SUMA_Through2ThroughMenuItem(int Mode);
+int SUMA_ThroughStr2ThroughMenuItem(char *str); 
 int SUMA_NodeRad2NodeRadMenuItem(int Mode);
 int SUMA_NodeRadStr2NodeRadMenuItem(char *str);
 int SUMA_NodeCol2NodeColMenuItem(int Mode);
@@ -819,7 +842,7 @@ DList *SUMA_AssembleMasksList_inDOv(SUMA_DO *dov, int N_dov, int withShadow);
 SUMA_Boolean  SUMA_InitMasksTable(SUMA_X_SurfCont *SurfCont);
 SUMA_Boolean  SUMA_InitMasksTable_row(SUMA_X_SurfCont *SurfCont, 
                                       SUMA_MaskDO *mdo, int row);
-int SUMA_NewSymMaskDO(void); 
+int SUMA_NewSymMaskDO(SUMA_ALL_DO *ado); 
 int SUMA_ShadowMaskDO(SUMA_MaskDO **mdop);
 int SUMA_SetTractStyle(SUMA_ALL_DO *ado, int imenu, int updatemenu);
 void SUMA_cb_SetTractStyle(Widget widget, XtPointer client_data, 
@@ -830,6 +853,7 @@ void SUMA_CreateVrFields(  Widget parent,
                         void (*NewValueCallback)(void * data), void *cb_data,
                         SUMA_VR_FIELD *VrF);
 void SUMA_cb_ShowVrF_toggled(Widget w, XtPointer data, XtPointer client_data);
+void SUMA_cb_VSliceAtXYZ_toggled(Widget w, XtPointer data,XtPointer client_data);
 void SUMA_leave_NslcField( Widget w , XtPointer client_data ,
                             XEvent * ev , Boolean * continue_to_dispatch );
 void SUMA_VrF_cb_N_slc_change (  Widget w, XtPointer client_data, 
@@ -849,6 +873,23 @@ SUMA_Boolean SUMA_LoadMultiMasks_eng (char *filename,
 void SUMA_LoadMultiMasks (char *filename, void *data);
 void SUMA_SaveMultiMasks (char *filename, void *data);
 SUMA_Boolean SUMA_SaveMultiMasks_eng (char *filename);
+
+/* 
+   *************** Convolution utilities *************** 
+   based on example in glut's convolve.c by  
+   Tom McReynolds, SGI 
+   *****************************************************
+*/
+void SUMA_C_identity(SUMA_C_FILTER *mat);
+SUMA_C_FILTER * SUMA_C_newfilter(int rows, int cols);
+void SUMA_C_free(SUMA_C_FILTER *mat);
+void SUMA_C_resize(SUMA_C_FILTER *mat, int rows, int cols);
+void SUMA_C_box(SUMA_C_FILTER *mat);
+void SUMA_C_sobel(SUMA_C_FILTER *mat);
+void SUMA_C_laplace(SUMA_C_FILTER *mat);
+void SUMA_C_convolve(SUMA_SurfaceViewer *csv, SUMA_DO *dov, SUMA_C_FILTER *mat);
+
+/* *************** End Convolution utilities *************** */
                   
 #define SUMA_XformOrtFile_Load_help   \
    "Load an ort file"

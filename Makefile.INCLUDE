@@ -35,6 +35,8 @@ AFOBJS  = afni.o afni_func.o afni_widg.o afni_warp.o afni_fimmer.o \
             afni_version.o afni_lock.o afni_vol2surf.o             \
             afni_pplug_instacorr.o afni_pplug_instacalc.o
 
+AFHEADS  = quotize readmes
+
 SOMEAFOBJS = parser_int.o afni_warp.o afni_slice_byte.o afni_slice_short.o \
              afni_slice_float.o afni_slice_complex.o afni_slice_rgbyte.o   \
              parser.o pbar_color_defs.o afni_ports.o
@@ -42,13 +44,13 @@ SOMEAFOBJS = parser_int.o afni_warp.o afni_slice_byte.o afni_slice_short.o \
 T3OBJS  = to3d.o
 
 MISC    = AFNI_atlas_spaces.niml AFNI.Xdefaults AFNI.afnirc AFNI.sumarc \
-          3d*.lib gmovie*
+          3d*.lib gmovie* afni_papers.txt
 
 ## The following programs are "extras" not really part of the
 ## AFNI package, but included because they are useful.  Some of
 ## them are Open Source programs, not from the AFNI group at all.
 
-EXTRAS   = cjpeg djpeg whirlgif mpeg_encode myget Xphace rmz aiv mycat $(EXPROGS)
+EXTRAS   = cjpeg djpeg whirlgif mpeg_encode myget Xphace rmz aiv mycat quotize $(EXPROGS)
 
 # mpegtoppm in above list
 
@@ -93,7 +95,7 @@ PROGRAMS = afni to3d from3d abut 3dclust nsize 3dinfo 3dproject 3dmerge count   
            1dCorrelate 3dCountSpikes 3dNwarpCalc dicom_hinfo apsearch 1dBport   \
            3dNormalityTest 3dmask_tool FIRdesign help_format 2perm 3dClustCount \
            column_cat 3dUnifize 3dNwarpCat 3dQwarp 3dLocalHistog 3dNwarpAdjust  \
-           3dNwarpFuncs 3dTproject                                              \
+           3dNwarpFuncs 3dTproject afni_open 3dConformist                       \
            $(EXTRAS)
 
 PROGRAMS_NOPLUG = afni to3d from3d abut 3dclust nsize 3dinfo 3dproject 3dmerge      \
@@ -128,7 +130,7 @@ PROGRAMS_NOPLUG = afni to3d from3d abut 3dclust nsize 3dinfo 3dproject 3dmerge  
                   3dNwarpApply 1dCorrelate 3dCountSpikes 3dNwarpCalc dicom_hinfo    \
                   apsearch 3dNormalityTest 3dmask_tool 2perm 3dClustCount           \
                   3dUnifize 3dNwarpCat 3dQwarp 3dLocalHistog 3dNwarpAdjust          \
-                  3dNwarpFuncs 3dTproject                                           \
+                  3dNwarpFuncs 3dTproject    afni_open  3dConformist                \
                   $(EXTRAS)
 
 # For CYGWIN (look for "exe" to find various places below)
@@ -188,7 +190,8 @@ SCRIPTS = @4Daverage @CommandGlobb @GetAfniOrient @DTI_studio_reposition        
           @Install_TSrestMovieDemo @Install_AfniRetinoDemo                        \
           @Install_FATCAT_DEMO @Install_RSFMRI_Motion_Group_Demo                  \
           @Install_MEICA_Demo @T1scale 3dMVM @compute_gcor 3dLME                  \
-          @move.to.series.dirs @toMNI_Awarp @toMNI_Qwarpar @simulate_motion
+          @move.to.series.dirs @toMNI_Awarp @toMNI_Qwarpar @simulate_motion	  \
+	  @afni.run.me 3dRprogDemo
 
 
 PY_DIR = python_scripts
@@ -260,13 +263,16 @@ quotize:quotize.o
 license.h:../doc/README/README.copyright
 	quotize license < ../doc/README/README.copyright > license.h
 
-readmes:readme_env.h readme_afnigui.h
+readmes:readme_env.h readme_afnigui.h afni_papers.h
 
 readme_env.h:../doc/README/README.environment
 	quotize readme_env < ../doc/README/README.environment > readme_env.h
 
 readme_afnigui.h:../doc/README/README.afnigui
 	quotize readme_afnigui < ../doc/README/README.afnigui > readme_afnigui.h
+
+afni_papers.h:afni_papers.txt
+	quotize afni_papers < afni_papers.txt > afni_papers.h
 
 Ifile:Ifile.o
 	$(CC) -o Ifile Ifile.o $(LFLAGS) $(LLIBS)
@@ -439,6 +445,10 @@ dsetdup:dsetdup.o
 3dZeropad:3dZeropad.o
 	$(RM) $@
 	$(CC) -o 3dZeropad 3dZeropad.o $(LFLAGS) $(LLIBS)
+
+3dConformist:3dConformist.o
+	$(RM) $@
+	$(CC) -o 3dConformist 3dConformist.o $(LFLAGS) $(LLIBS)
 
 3dnvals:3dnvals.o
 	$(RM) $@
@@ -788,6 +798,10 @@ whereami:whereami.c
 apsearch:apsearch.c
 	$(RM) $@
 	$(CC) -o apsearch apsearch.c $(INFLAGS) $(LFLAGS) $(LLIBS)
+
+afni_open:afni_open.c
+	$(RM) $@
+	$(CC) -o afni_open afni_open.c $(INFLAGS) $(LFLAGS) $(LLIBS)
 
 3dSegment:3dSegment.c
 	$(RM) $@
@@ -1242,6 +1256,14 @@ AlphaSim:AlphaSim.o
 3dQwarp.o:3dQwarp.c mri_genalign.c mri_genalign_util.c thd_incorrelate.c mri_nwarp.c
 	$(RM) $@
 	$(CCOMP) -c 3dQwarp.c $(INFLAGS)
+
+3dQwarp_new:3dQwarp_new.o mri_genalign.c mri_genalign_util.c mri_nwarp.c thd_incorrelate.c
+	$(RM) $@
+	$(CCOMP) -o 3dQwarp_new 3dQwarp_new.o $(LFLAGS) $(LLIBS)
+
+3dQwarp_new.o:3dQwarp_new.c mri_genalign.c mri_genalign_util.c thd_incorrelate.c mri_nwarp.c
+	$(RM) $@
+	$(CCOMP) -c 3dQwarp_new.c $(INFLAGS)
 
 3dNwarpApply:3dNwarpApply.o
 	$(RM) $@
@@ -2049,7 +2071,7 @@ THD_OBJS = thd_atr.o thd_dsetto1D.o thd_initalldir.o thd_reconpar.o \
            thd_bandpass.o thd_instacorr.o thd_svdblur.o thd_satcheck.o    \
            thd_dumdset.o ktaub.o bilinear_warp3D.o thd_table.o            \
            thd_atlas.o thd_warp_tables.o thd_lasso.o thd_mean_dset.o      \
-           thd_despike_L1.o
+           thd_despike_L1.o thd_Tcorr1D.o
 
 # these are now included in NIML
 

@@ -40,7 +40,7 @@ ENTRY("AFNI_see_func_CB") ;
        im3d->vinfo->func_visible = False ;
        MCW_set_bbox( im3d->vwid->view->see_func_bbox , 0 ) ; /* 29 Jan 1999 */
      }
-     AFNI_disable_suma_overlay( 0 ) ; /* 16 Jun 2003 */
+     OVERLAY_SUMA ;                   /* 16 Jun 2003 */
      AFNI_redisplay_func( im3d ) ;    /* 05 Mar 2002 */
      im3d->vinfo->func_visible_count++ ; /* 03 Aug 2007 */
    }
@@ -213,16 +213,16 @@ ENTRY("AFNI_func_setqval_final_CB") ;
    }
 
    qval = (float)strtod((char *)val[0],&cpt) ;
-   if( qval >  0.0f && *cpt == '%'  ) qval *= 0.01f ;
-   if( qval <= 0.0f || qval >= 1.0f ){ TFLASH(im3d); EXRETURN; }
+   if( qval > 0.0f && *cpt == '%'  ) qval *= 0.01f ;
+   if( qval < 0.0f || qval >= 1.0f ){ TFLASH(im3d); EXRETURN; }
 
-   im3d->vinfo->fix_qval   = ( strcmp((char *)val[1],yesno[1]) == 0 ) ;
+   im3d->vinfo->fix_qval   = ( qval > 0.0f && strcmp((char *)val[1],yesno[1]) == 0 ) ;
    im3d->vinfo->fixed_qval = (im3d->vinfo->fix_qval) ? qval : 0.0f ;
 
    im3d->vinfo->fix_pval   = 0 ;
    im3d->vinfo->fixed_pval = 0.0f ;
 
-   AFNI_set_qval(im3d,qval) ;
+   if( qval > 0.0f ) AFNI_set_qval(im3d,qval) ;
    EXRETURN ;
 }
 
@@ -546,7 +546,7 @@ if(PRINT_TRACING)
      }
      if( im3d->vedset.code > 0 && im3d->fim_now->dblk->vedim != NULL )
        strcat(buf,"*") ;  /* mark that are in clustering mode [05 Sep 2006] */
-     else if( im3d->vinfo->fix_pval )
+     else if( im3d->vinfo->fix_pval && fabsf(im3d->vinfo->fixed_pval-pval)<1.e-4f )
        strcat(buf,"f") ;
    }
 
@@ -567,7 +567,8 @@ if(PRINT_TRACING)
            else           sprintf( qbuf, " %1d.-%2d" , (int)rint(zval), dec );
          }
          strcat(buf,"\nq=") ; strcat(buf,qbuf+1) ;
-         if( im3d->vinfo->fix_qval ) strcat(buf,"f") ;
+         if( im3d->vinfo->fix_qval && fabsf(im3d->vinfo->fixed_qval-qval)<1.e-4f )
+           strcat(buf,"f") ;
        }
      } else {
        strcat(buf,"\nq=N/A") ;
@@ -577,8 +578,13 @@ if(PRINT_TRACING)
    MCW_set_widget_label( im3d->vwid->func->thr_pval_label , buf ) ;
 
    if( im3d->vinfo->func_pval >= 0.0f && im3d->vinfo->func_pval <= 1.0f ){
+#define EEEE 2.718282f /* e */
+#define EINV 0.367879f /* 1/e */
      char pstr[128] ; float mval ;
      sprintf( pstr , "Uncorrected p=%.4e" , im3d->vinfo->func_pval ) ;
+     if( im3d->vinfo->func_pval > 0.0f && im3d->vinfo->func_pval < EINV )
+       sprintf(pstr+strlen(pstr)," alpha(p)=%.4e",
+               1/(1-1/(EEEE*im3d->vinfo->func_pval*log(im3d->vinfo->func_pval))) ) ;
      if( im3d->vinfo->func_qval >= 0.0f && im3d->vinfo->func_qval <= 1.0f )
        sprintf(pstr+strlen(pstr),"; FDR q=%.4e",im3d->vinfo->func_qval) ;
      else
@@ -5963,10 +5969,61 @@ ENTRY("AFNI_tips_CB") ;
 #endif
 
    for( ii=0 ; readme_afnigui[ii] != NULL ; ii++ ){
-     inf = THD_zzprintf( inf , "%s" , readme_afnigui[ii] ) ;
+     inf = THD_zzprintf( inf , " %s" , readme_afnigui[ii] ) ;
    }
    (void)new_MCW_textwin( im3d->vwid->imag->topper , inf , TEXT_READONLY ) ;
    free(inf) ; EXRETURN ;
+}
+
+/*---------------------------------------------------------------*/
+
+#include "PvalueStuff.h"
+
+void AFNI_pvalue_CB( Widget w , XtPointer cd , XtPointer cbd )
+{
+   Three_D_View *im3d = (Three_D_View *)cd ;
+   char *inf=NULL ; int ii ;
+
+ENTRY("AFNI_pvalue_CB") ;
+   if( !IM3D_OPEN(im3d) || w == NULL ) EXRETURN ;
+
+   for( ii=0 ; PvalueStuff[ii] != NULL ; ii++ )
+     inf = THD_zzprintf( inf , " %s" , PvalueStuff[ii] ) ;
+   (void) new_MCW_textwin( im3d->vwid->imag->topper , inf , TEXT_READONLY ) ;
+   free(inf) ;
+   EXRETURN ;
+}
+
+/*--------------------------------------------------------------------*/
+/* Print list of AFNI papers [02 May 2014] */
+
+void AFNI_list_papers( Widget w )
+{
+#include "afni_papers.h"
+   int ii ;
+   if( w != (Widget)NULL && XtIsWidget(w) ){
+     char *inf=NULL ;
+     for( ii=0 ; afni_papers[ii] != NULL ; ii++ )
+       inf = THD_zzprintf( inf , " %s" , afni_papers[ii] ) ;
+     (void) new_MCW_textwin( w , inf , TEXT_READONLY ) ;
+     free(inf) ;
+   } else {
+     for( ii=0 ; afni_papers[ii] != NULL ; ii++ )
+       fputs(afni_papers[ii],stdout) ;
+   }
+   return ;
+}
+
+/*--------------------------------------------------------------------*/
+
+void AFNI_papers_CB( Widget w , XtPointer cd , XtPointer cbd )
+{
+   Three_D_View *im3d = (Three_D_View *)cd ;
+
+   if( IM3D_OPEN(im3d) )
+     AFNI_list_papers( im3d->vwid->imag->topper ) ;
+
+   return ;
 }
 
 /*---------------------------------------------------------------
@@ -6069,9 +6126,8 @@ STATUS("got func info") ;
    else if( w == im3d->vwid->dmode->misc_license_pb ){  /* 03 Dec 2000 */
 #include "license.h"
       char *inf=NULL ; int ii ;
-
       for( ii=0 ; license[ii] != NULL ; ii++ )
-         inf = THD_zzprintf( inf , "%s" , license[ii] ) ;
+         inf = THD_zzprintf( inf , " %s" , license[ii] ) ;
       (void) new_MCW_textwin( im3d->vwid->imag->topper , inf , TEXT_READONLY ) ;
       free(inf) ;
    }
@@ -6082,7 +6138,7 @@ STATUS("got func info") ;
 #include "readme_env.h"
       char *inf=NULL ; int ii ;
       for( ii=0 ; readme_env[ii] != NULL ; ii++ )
-        inf = THD_zzprintf( inf , "%s" , readme_env[ii] ) ;
+        inf = THD_zzprintf( inf , " %s" , readme_env[ii] ) ;
       (void) new_MCW_textwin( im3d->vwid->imag->topper , inf , TEXT_READONLY ) ;
       free(inf) ;
    }
@@ -6657,7 +6713,7 @@ ENTRY("AFNI_hidden_CB") ;
    else if( w == im3d->vwid->prog->hidden_uscon_pb ){  /* 30 Dec 2010 */
      char *inf=NULL ; int ii ;
      for( ii=0 ; uscon[ii] != NULL ; ii++ )
-       inf = THD_zzprintf( inf , "%s" , uscon[ii] ) ;
+       inf = THD_zzprintf( inf , " %s" , uscon[ii] ) ;
      (void) new_MCW_textwin( im3d->vwid->imag->topper , inf , TEXT_READONLY ) ;
      free(inf) ;
    }
@@ -6665,7 +6721,7 @@ ENTRY("AFNI_hidden_CB") ;
    else if( w == im3d->vwid->prog->hidden_usdecl_pb ){  /* 06 Jan 2011 */
      char *inf=NULL ; int ii ;
      for( ii=0 ; usdecl[ii] != NULL ; ii++ )
-       inf = THD_zzprintf( inf , "%s" , usdecl[ii] ) ;
+       inf = THD_zzprintf( inf , " %s" , usdecl[ii] ) ;
      (void) new_MCW_textwin( im3d->vwid->imag->topper , inf , TEXT_READONLY ) ;
      free(inf) ;
    }

@@ -394,26 +394,51 @@ g_history = """
     4.07 Feb 06, 2014: minor -help and -ask_me text changes
     4.08 Feb 18, 2014: minor -help update
     4.09 Feb 19, 2014: if AM2 or IM, terminate extraction of ideals
+    4.10 Mar 11, 2014:
+        - set errts_pre in anaticor block, e.g. for use in RSFC or blur est
+        - if no scale block and gaussian blur, re-apply extents mask
+        - quiet change to writing command to script
+    4.11 Mar 21, 2014:
+        - applied errts_REML where appropriate (over just errts)
+        - if anaticor and censoring, do not remove censored TRs again
+          for blur est
+    4.12 Mar 24, 2014: added the -regress_anaticor_radius option
+    4.13 Mar 24, 2014:
+        - added options -anat_uniform_method and -anat_opts_unif
+        - move toutcount to new (hidden) postdata block
+    4.14 Mar 31, 2014:
+        - added -anat_unif_GM (default is yes)
+        - added detail to ricor slices warning/error
+        - if anat_uniform_method of unifize, turn of in auto_warp.py
+    4.15 April 16, 2014: internal re-org, should have no effect
+    4.16 April 17, 2014:
+        - allow a special case of MIN_OUTLIER as the -volreg_base_dset, as
+          recommended by T. Ross
+    4.17 May 12, 2014: added -regress_use_tproject
+        - default to 'yes' if there are no stim files
+    4.18 May 16, 2014: changed default of -anat_unif_GM from yes to no
 """
 
-g_version = "version 4.09, February 19, 2014"
+g_version = "version 4.18, May 16, 2014"
 
 # version of AFNI required for script execution
-g_requires_afni = "29 Nov 2013" # for 3dRSFC update
+g_requires_afni = "13 May 2014" # no stats for gen_ss_review_scripts.py
 
 # ----------------------------------------------------------------------
 # dictionary of block types and modification functions
 
-BlockLabels  = ['tcat', 'despike', 'ricor', 'tshift', 'align', 'volreg',
-                'surf', 'blur', 'mask', 'scale', 'regress', 'tlrc', 'empty']
-BlockModFunc  = {'tcat'   : db_mod_tcat,     'despike': db_mod_despike,
+BlockLabels  = ['tcat', 'postdata', 'despike', 'ricor', 'tshift', 'align',
+                'volreg', 'surf', 'blur', 'mask', 'scale', 'regress', 'tlrc', 'empty']
+BlockModFunc  = {'tcat'   : db_mod_tcat,     'postdata' : db_mod_postdata,
+                 'despike': db_mod_despike,
                  'ricor'  : db_mod_ricor,    'tshift' : db_mod_tshift,
                  'align'  : db_mod_align,    'volreg' : db_mod_volreg,
                  'surf'   : db_mod_surf,     'blur'   : db_mod_blur,
                  'mask'   : db_mod_mask,     'scale'  : db_mod_scale,
                  'regress': db_mod_regress,  'tlrc'   : db_mod_tlrc,
                  'empty'  : db_mod_empty}
-BlockCmdFunc  = {'tcat'   : db_cmd_tcat,     'despike': db_cmd_despike,
+BlockCmdFunc  = {'tcat'   : db_cmd_tcat,     'postdata' : db_cmd_postdata,
+                 'despike': db_cmd_despike,
                  'ricor'  : db_cmd_ricor,    'tshift' : db_cmd_tshift,
                  'align'  : db_cmd_align,    'volreg' : db_cmd_volreg,
                  'surf'   : db_cmd_surf,     'blur'   : db_cmd_blur,
@@ -423,12 +448,16 @@ BlockCmdFunc  = {'tcat'   : db_cmd_tcat,     'despike': db_cmd_despike,
 AllOptionStyles = ['cmd', 'file', 'gui', 'sdir']
 
 # default block labels, and other labels (along with the label they follow)
-DefLabels   = ['tcat', 'tshift', 'volreg', 'blur', 'mask', 'scale', 'regress']
-OtherDefLabels = {'despike':'tcat', 'align':'tcat', 'ricor':'despike',
+DefLabels = ['tcat', 'tshift', 'volreg', 'blur', 'mask', 'scale', 'regress']
+OtherDefLabels = {'despike':'postdata', 'align':'postdata', 'ricor':'despike',
                   'surf':'volreg'}
 OtherLabels    = ['empty']
 DefSurfLabs    = ['tcat','tshift','align','volreg','surf','blur',
                   'scale','regress']
+
+# names for blocks that do NOT process (make new) EPI data
+#   --> these do not need index increments
+EPInomodLabs = ['postdata', 'align', 'tlrc', 'mask']
 
 # --------------------------------------------------------------------------
 # data processing stream class
@@ -452,6 +481,7 @@ class SubjProcSream:
 
         self.vr_ext_base= None          # name of external volreg base 
         self.vr_ext_pre = 'external_volreg_base' # copied volreg base prefix
+        self.vr_int_name= ''            # other internal volreg dset name
         self.volreg_prefix = ''         # prefix for volreg dataset ($run)
                                         #   (using $subj and $run)
         self.mot_labs   = []            # labels for motion params
@@ -489,6 +519,7 @@ class SubjProcSream:
         self.anat       = None          # anatomoy to copy (afni_name class)
         self.anat_has_skull = 1         # does the input anat have a skull
                                         # also updated in db_cmd_align
+        self.anat_unifized = 0          # has the anat been unifized
         self.anat_final = None          # anat assumed aligned with stats
         self.nlw_aff_mat= ''
         self.nlw_NL_mat = ''
@@ -500,6 +531,9 @@ class SubjProcSream:
         self.a2e_mat    = None          # anat2epi transform matrix file
         self.e2final_mv = []            # matvec list takes epi base to final
         self.e2final    = ''            # aff12.1D file for e2final_mv
+        self.errts_pre  = ''            # possibly changing errts prefix
+        self.errts_reml = ''            # prefix for any REML errts
+        self.errts_cen  = 0             # flag: current errts has censored TRs removed
         self.align_ebase= None          # external EPI for align_epi_anat.py
         self.align_epre = 'ext_align_epi' # copied align epi base prefix
         self.rm_rm      = 1             # remove rm.* files (user option)
@@ -580,7 +614,7 @@ class SubjProcSream:
 
         # updated throughout processing...
         self.bindex     = 0             # current block index
-        self.pblabel    = ''            # previous block label
+        self.pblabel    = 'xxx'            # previous block label
         self.surf_names = 0             # make surface I/O dset names
 
         return
@@ -644,6 +678,14 @@ class SubjProcSream:
         self.valid_opts.add_opt('-anat_has_skull', 1, [],
                         acplist=['yes','no'],
                         helpstr='does the anat have a skull (to be stripped)')
+        self.valid_opts.add_opt('-anat_uniform_method', 1, [],
+                        acplist=['none','unifize'],
+                        helpstr='specify uniformity method (default=none)')
+        self.valid_opts.add_opt('-anat_opts_unif', -1, [],
+                        helpstr='additional options passed to 3dUnifize')
+        self.valid_opts.add_opt('-anat_unif_GM', 1, [],
+                        acplist=['yes','no'],
+                        helpstr='also unifize gray matter (def=yes)')
         self.valid_opts.add_opt('-ask_me', 0, [],       # QnA session
                         helpstr='have afni_proc.py as the user for options')
         self.valid_opts.add_opt('-bash', 0, [],
@@ -847,6 +889,8 @@ class SubjProcSream:
                         helpstr="stop 3dDeconvolve after matrix generation")
         self.valid_opts.add_opt('-regress_anaticor', 0, [],
                         helpstr="apply ANATICOR: regress WMeLocal time series")
+        self.valid_opts.add_opt('-regress_anaticor_radius', 1, [],
+                        helpstr="specify radius for WMeLocal extraction")
         self.valid_opts.add_opt('-regress_apply_mask', 0, [],
                         helpstr="apply the mask in regression")
         self.valid_opts.add_opt('-regress_apply_ricor', 1, [],
@@ -904,6 +948,9 @@ class SubjProcSream:
                         helpstr="specify times/AM1/AM2/IM for each stim class")
         self.valid_opts.add_opt('-regress_use_stim_files', 0, [],
                         helpstr="do not convert stim_files to timing")
+        self.valid_opts.add_opt('-regress_use_tproject', 1, [],
+                        acplist=['yes','no'],
+                        helpstr="use 3dTproject instead of 3dDeconvolve")
 
         self.valid_opts.add_opt('-regress_apply_mot_types', -1, [],
                         acplist=['basic','demean','deriv'],
@@ -1183,6 +1230,15 @@ class SubjProcSream:
         elif self.surf_anat: blocks = DefSurfLabs  # surface defaults
         else:                blocks = DefLabels    # volume defaults
 
+        # and insert automatic postdata block at postion 1 (after tcat)
+        blocks.insert(1, 'postdata')
+
+        # just do a quick check after all of the confusion
+        if blocks[0] != 'tcat' or blocks[1] != 'postdata':
+           print '** block list should start with tcat,postdata, have:\n   %s'\
+                 % blocks
+           return 1
+
         # check for -do_block options
         opt = self.user_opts.find_opt('-do_block')
         if opt and opt.parlist and len(opt.parlist) > 0:
@@ -1221,9 +1277,15 @@ class SubjProcSream:
             return 1
 
         # call db_mod_functions
+
+        self.bindex = 0
+        self.pblabels = []
         for label in blocks:
             rv = self.add_block(label)
             if rv != None: return rv
+            if label not in EPInomodLabs:
+                self.pblabels.append(label)
+                self.bindex += 1
 
         # maybe the user wants to be quizzed for options
         uopt = self.user_opts.find_opt('-ask_me')
@@ -1289,7 +1351,7 @@ class SubjProcSream:
             except: ind = -1
             if ind >= 0: return 1, 'despike'    # after despike
 
-            return 1, 'tcat'                    # else, just after tcat
+            return 1, 'postdata'                # else, just after postdata
 
         if bname == 'align':
             try: ind = blocks.index('tlrc')
@@ -1302,7 +1364,7 @@ class SubjProcSream:
             except: ind = -1
             if ind >= 0: return 1, 'tshift'     # after tshift
 
-            return  1, 'tcat'                   # else, stick at beginning
+            return  1, 'postdata'               # else, stick at beginning
 
         if bname == 'tlrc':
             try: ind = blocks.index('volreg')
@@ -1312,6 +1374,7 @@ class SubjProcSream:
             except: ind = -1
             if ind >= 0: return 1, 'align'      # after align
             return 1, blocks[-1]                # stick it at the end
+
 
         # if those didn't apply, go with the OtherDefLabels array
 
@@ -1393,12 +1456,16 @@ class SubjProcSream:
 
         errs = 0
         for block in self.blocks:
-            if not block.apply: continue        # skip such blocks
             cmd_str = BlockCmdFunc[block.label](self, block)
             if cmd_str == None:
                 print "** script creation failure for block '%s'" % block.label
                 errs += 1
             else:
+                if block.post_cstr != '':
+                   if self.verb > 2:
+                      print '++ adding post_cstr to block %s:\n%s=======' \
+                            (block.label, block.post_cstr)
+                   cmd_str += block.post_cstr
                 self.write_text(add_line_wrappers(cmd_str))
                 if self.verb>3: block.show('+d post command creation: ')
                 if self.verb>4: print '+d %s cmd: \n%s'%(block.label, cmd_str)
@@ -1536,8 +1603,9 @@ class SubjProcSream:
         if self.verb > 3: block.show('+d post init block: ')
         self.blocks.append(block)
 
-    def find_block(self, label):
-        for block in self.blocks:
+    def find_block(self, label, sind=0):
+        for bind in range(0, len(self.blocks)):
+            block = self.blocks[bind]
             if block.label == label: return block
         return None
 
@@ -1874,16 +1942,11 @@ class SubjProcSream:
 
         self.write_text('echo "execution finished: `date`"\n\n')
 
+        # and append execution command, for a record
         opt = self.user_opts.find_opt('-no_proc_command')
         if not opt:
-            tstr = '\n\n\n'                             \
-              '# %s\n'                                  \
-              '# script generated by the command:\n'    \
-              '#\n'                                     \
-              '# %s %s\n' %                             \
-                (block_header(''), os.path.basename(self.argv[0]),
-                                 ' '.join(quotize_list(self.argv[1:],'')))
-            self.write_text(add_line_wrappers(tstr))
+            tstr = UTIL.get_command_str(args=self.argv)
+            self.write_text('\n\n' + tstr)
 
         if self.user_opts.find_opt('-ask_me'):
             tstr = '#\n# all applied options: '
@@ -1973,6 +2036,18 @@ class SubjProcSream:
         if self.script and os.path.isfile(self.script):
             os.chmod(self.script, 0755)
 
+    def prev_lab(self, block):
+       if block.index <= 0:
+          print '** asking for prev lab on block %s (ind %d)' \
+                % (block.label, block.index)
+       return self.block_index_label(block.index-1)
+
+    def block_index_label(self, index):
+       if index < 0 or index >= len(self.pblabels):
+          print '** invalid index for block label: %d' % index
+          return 'NO_LABEL'
+       return self.pblabels[index]
+
     # given a block, run, return a prefix of the form: pNN.SUBJ.rMM.BLABEL
     #    NN = block index, SUBJ = subj label, MM = run, BLABEL = block label
     # if surf_names: pbNN.SUBJ.rMM.BLABEL.HEMI.niml.dset
@@ -1988,14 +2063,10 @@ class SubjProcSream:
            vstr = '.niml.dset'
            hstr = '%s%s' % (self.sep_char, self.surf_svi_ref)
         else: hstr = ''
-        if self.sep_char == '.': # default
-           return 'pb%02d.%s%s.%s.%s%s' %    \
-                  (self.bindex, self.subj_label, hstr, rstr, block.label, vstr)
-        else:
-           s = self.sep_char
-           return 'pb%02d%s%s%s%s%s%s%s%s' %    \
-                  (self.bindex, s, self.subj_label, hstr, s, rstr, s,
-                   block.label, vstr)
+        s = self.sep_char
+        return 'pb%02d%s%s%s%s%s%s%s%s' %    \
+               (block.index, s, self.subj_label, hstr, s, rstr, s,
+                block.label, vstr)
 
     # same, but leave run as a variable
     def prefix_form_run(self, block, view=0, surf_names=-1):
@@ -2007,18 +2078,17 @@ class SubjProcSream:
            vstr = '.niml.dset'
            hstr = '%s%s' % (self.sep_char, self.surf_svi_ref)
         else: hstr = ''
-        if self.sep_char == '.': # default
-           return 'pb%02d.%s%s.r$run.%s%s' %    \
-               (self.bindex, self.subj_label, hstr, block.label, vstr)
-        else:
-           s = self.sep_char
-           return 'pb%02d%s%s%s%sr${run}%s%s%s' %    \
-               (self.bindex, s, self.subj_label, hstr, s, s, block.label, vstr)
+        if self.sep_char == '.': rvstr = '$run'
+        else:                    rvstr = '${run}'
+        s = self.sep_char
+        return 'pb%02d%s%s%s%sr%s%s%s%s' %    \
+            (block.index, s, self.subj_label, hstr, s, rvstr, s,
+             block.label, vstr)
 
     # same as prefix_form, but use previous block values (index and label)
     # (so we don't need the block)
     # if self.surf_names: pbNN.SUBJ.rMM.BLABEL.HEMI.niml.dset
-    def prev_prefix_form(self, run, view=0, surf_names=-1):
+    def prev_prefix_form(self, run, block, view=0, surf_names=-1):
         if self.runs > 99: rstr = 'r%03d' % run
         else:              rstr = 'r%02d' % run
         if view: vstr = self.view
@@ -2029,17 +2099,13 @@ class SubjProcSream:
            vstr = '.niml.dset'
            hstr = '%s%s' % (self.sep_char, self.surf_svi_ref)
         else: hstr = ''
-        if self.sep_char == '.': # default
-           return 'pb%02d.%s%s.%s.%s%s' %    \
-                  (self.bindex-1, self.subj_label,hstr,rstr, self.pblabel,vstr)
-        else:
-           s = self.sep_char
-           return 'pb%02d%s%s%s%s%s%s%s%s' %    \
-                  (self.bindex-1, s, self.subj_label, hstr, s, rstr, s,
-                  self.pblabel, vstr)
+        s = self.sep_char
+        return 'pb%02d%s%s%s%s%s%s%s%s' %    \
+               (block.index-1, s, self.subj_label, hstr, s, rstr, s,
+               self.prev_lab(block), vstr)
 
     # same, but leave run as a variable
-    def prev_prefix_form_run(self, view=0, surf_names=-1):
+    def prev_prefix_form_run(self, block, view=0, surf_names=-1):
         if view: vstr = self.view
         else:    vstr = ''
         # if surface, change view to hemisphere and dataset suffix
@@ -2048,17 +2114,15 @@ class SubjProcSream:
            vstr = '.niml.dset'
            hstr = '%s%s' % (self.sep_char, self.surf_svi_ref)
         else: hstr = ''
-        if self.sep_char == '.': # default
-           return 'pb%02d.%s%s.r$run.%s%s' %    \
-                  (self.bindex-1, self.subj_label, hstr, self.pblabel, vstr)
-        else:
-           s = self.sep_char
-           return 'pb%02d%s%s%s%sr${run}%s%s%s' %    \
-                  (self.bindex-1, s, self.subj_label, hstr, s, s,
-                  self.pblabel, vstr)
+        if self.sep_char == '.': rvstr = '$run'
+        else:                    rvstr = '${run}'
+        s = self.sep_char
+        return 'pb%02d%s%s%s%sr%s%s%s%s' %    \
+               (block.index-1, s, self.subj_label, hstr, s, rvstr, s,
+               self.prev_lab(block), vstr)
 
     # same, but leave run wild
-    def prev_dset_form_wild(self, view=0, surf_names=-1):
+    def prev_dset_form_wild(self, block, view=0, surf_names=-1):
         # if surface, change view to hemisphere and dataset suffix
         if surf_names == -1: surf_names = self.surf_names
         if surf_names:
@@ -2067,14 +2131,10 @@ class SubjProcSream:
         else:      # view option is not really handled...
            vstr = '%s.HEAD' % self.view
            hstr = ''
-        if self.sep_char == '.': # default
-           return 'pb%02d.%s%s.r*.%s%s' %    \
-                (self.bindex-1, self.subj_label, hstr, self.pblabel, vstr)
-        else:
-           s = self.sep_char
-           return 'pb%02d%s%s%s%sr*%s%s%s' %    \
-                (self.bindex-1, s, self.subj_label,hstr, s, s,
-                self.pblabel, vstr)
+        s = self.sep_char
+        return 'pb%02d%s%s%s%sr*%s%s%s' %    \
+             (block.index-1, s, self.subj_label,hstr, s, s,
+             self.prev_lab(block), vstr)
 
     # like prefix, but list the whole dset form, in wildcard format
     def dset_form_wild(self, blabel, view=None, surf_names=-1):
@@ -2094,20 +2154,17 @@ class SubjProcSream:
         else:
            vstr = '%s.HEAD' % self.view
            hstr = ''
-        if self.sep_char == '.': # default
-           return 'pb%02d.%s%s.r*.%s%s' %      \
-               (bind, self.subj_label, hstr, blabel, vstr)
-        else:
-           s = self.sep_char
-           return 'pb%02d%s%s%s%sr*%s%s%s' %      \
-               (bind, s, self.subj_label, hstr, s, s, blabel, vstr)
+        s = self.sep_char
+        return 'pb%02d%s%s%s%sr*%s%s%s' %      \
+            (bind, s, self.subj_label, hstr, s, s, blabel, vstr)
 
 class ProcessBlock:
     def __init__(self, label, proc):
         self.label = label      # label is block type
         self.valid = 0          # block is not yet valid
-        self.apply = 1          # apply block to output script
+        self.index = proc.bindex
         self.verb  = proc.verb  # verbose level
+        self.post_cstr = ''     # extra commands to run at the end of the block
         if not label in BlockModFunc: return
 
         self.opts = OptionList(label)                   # init option list

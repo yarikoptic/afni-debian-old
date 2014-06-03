@@ -1498,6 +1498,58 @@ SUMA_Boolean SUMA_process_NIML_data( void *nini , SUMA_SurfaceViewer *sv)
                svi = &(SUMAg_SVv[iview]);
                SUMA_LHv("Processing viewer %c\n", 65+iview); 
                if (svi->LinkAfniCrossHair) {/* link cross hair */
+                  
+                  /* Are we in Mask manip mode? */
+                  if (MASK_MANIP_MODE(svi)) {
+                     SUMA_MaskDO *mdo=NULL;
+                     SUMA_ALL_DO *ado=NULL;
+                     SUMA_LH("Moving mask, from AFNI");
+                     if ((ado=SUMA_whichADOg(svi->MouseMode_ado_idcode_str)) && 
+                           ado->do_type == MASK_type && 
+                           nel->vec[0] && nel->vec_len == 3 && 
+                           nel->vec_typ[0] == NI_FLOAT ) {
+                        SUMA_NEW_MASKSTATE();
+                        SUMA_MDO_New_Cen((SUMA_MaskDO *)ado, 
+                                          (float *)nel->vec[0]);
+                        if (!list) list = SUMA_CreateList();
+                        svi->ResetGLStateVariables = YUP; 
+                        
+                        /* Tell AFNI of new position */
+                        ED = SUMA_InitializeEngineListData (SE_SetAfniMask);
+                        mdo = (SUMA_MaskDO *)ado;
+
+                        /* turn off dopplegangeriness */
+                        SUMA_MDO_New_Doppel(mdo, NULL);
+                        if (!(Location=
+                                    SUMA_RegisterEngineListCommand (  list, ED, 
+                                                      SEF_fv3, (void*)mdo->cen,
+                                                      SES_Suma, (void *)sv, NOPE,
+                                                      SEI_Tail, NULL))) {
+                           SUMA_S_Err("Failed to register element\n");
+                           SUMA_RETURN (NOPE);
+                        }
+                        SUMA_RegisterEngineListCommand (  list, ED, 
+                                              SEF_s, (void *)(ADO_ID(ado)),
+                                              SES_Suma, (void *)sv, NOPE,
+                                              SEI_In, Location);
+
+                        SUMA_REGISTER_TAIL_COMMAND_NO_DATA(list, SE_Redisplay, 
+                                                     SES_SumaFromAfni, svi);
+                        if (!SUMA_Engine (&list)) {
+                           fprintf( SUMA_STDERR, 
+                               "Error %s: SUMA_Engine call failed.\n", FuncName);
+                        }
+                     }
+                     
+                     /* Don't proceed, for now, if we're in mask nudging mode,
+                     no need to parse for surfaces/node indices with all what
+                     comes along. If you choose to go down that route, you
+                     will need better handling of cases where there are no 
+                     surfaces specified with the cross hair location.
+                     Talking no longer requires surfaces.... Apr. 2014 */
+                     continue;
+                  }
+                  
                   /* look for the surface idcode */
                   nel_surfidcode = NI_get_attribute(nel, "surface_idcode");
                   if (SUMA_IS_EMPTY_STR_ATTR(nel_surfidcode)) 
@@ -1509,15 +1561,17 @@ SUMA_Boolean SUMA_process_NIML_data( void *nini , SUMA_SurfaceViewer *sv)
                                "%s: surface_idcode missing in nel (%s), "
                                "using svi->Focus_DO_ID.\n", FuncName, nel->name);
                      if (!(SOaf = SUMA_SV_Focus_any_SO(svi, &dest_SO_ID))) { 
-                        SUMA_S_Err("No surface I can work with");
+                        SUMA_LH("No surface I can work with.\n"
+                          "This happens in error or when talking without surfs");
                         SUMA_RETURN(NOPE);
                      }
                   } else {
                      SOaf = SUMA_findSOp_inDOv (nel_surfidcode, 
                                                 SUMAg_DOv, SUMAg_N_DOv);
                      if (!SOaf) {
-                        SUMA_S_Warn("AFNI sending unkown id, "
-                                    "taking default for viewer");
+                        SUMA_S_Warn("AFNI sending unkown id %s, "
+                                    "taking default for viewer",
+                                    nel_surfidcode?nel_surfidcode:"NULL");
                         if (!(SOaf = SUMA_SV_Focus_any_SO(svi, NULL))) { 
                            SUMA_S_Err("No surface I can work with");
                            SUMA_RETURN(NOPE);
@@ -1624,7 +1678,6 @@ SUMA_Boolean SUMA_process_NIML_data( void *nini , SUMA_SurfaceViewer *sv)
                      SUMA_RETURN(NOPE);
                   }
 
-
                   /* nodeid is supplied, even if the distance from the cross hair 
                      to the node is large,  set a limit */
                   if (nodeid >= 0) {
@@ -1702,7 +1755,6 @@ SUMA_Boolean SUMA_process_NIML_data( void *nini , SUMA_SurfaceViewer *sv)
                   iv3[2] = -1;
                   if (!list) list = SUMA_CreateList();
 
-
                   /* set the SO in Focus, if surface was visible */                                                                    /*ZSS Added this Aug. 06 */
                   if (found_type == 1 || found_type == 2) { 
                      /* To set a surface in focus, it must be in the viewer.
@@ -1779,7 +1831,7 @@ SUMA_Boolean SUMA_process_NIML_data( void *nini , SUMA_SurfaceViewer *sv)
 
                   svi->ResetGLStateVariables = YUP; 
 
-
+                  
                   SUMA_REGISTER_TAIL_COMMAND_NO_DATA(list, SE_Redisplay, 
                                                      SES_SumaFromAfni, svi);
                   if (!SUMA_Engine (&list)) {
@@ -2018,7 +2070,7 @@ NI_element * SUMA_makeNI_SurfIXYZ (SUMA_SurfaceObject *SO)
    zc = (float *) SUMA_malloc( sizeof(float) * SO->N_Node ) ;
 
    if (!nel || !ic || !xc || !yc || !zc) {
-      fprintf(SUMA_STDERR,"Error %s: Failed to allocate for nel, ic, xc, yc or zc.\n", FuncName);
+      SUMA_S_Err("Failed to allocate for nel, ic, xc, yc or zc.\n");
       SUMA_RETURN (NULL);
    }
    
@@ -2060,6 +2112,31 @@ NI_element * SUMA_makeNI_SurfIXYZ (SUMA_SurfaceObject *SO)
    SUMA_RETURN (nel);
 }
 
+int SUMA_offset_NI_SurfIXYZ (NI_element *nel, float *del) 
+{
+   static char FuncName[]={"SUMA_offset_NI_SurfIXYZ"};
+   float *x, *y, *z;
+   int i;
+   
+   SUMA_ENTRY;
+   
+   if (!nel || !del || nel->vec_num != 4 || nel->vec_len < 1) SUMA_RETURN(0);
+   
+   x = (float *)nel->vec[1];
+   y = (float *)nel->vec[2];
+   z = (float *)nel->vec[3];
+   
+   if (!x || !y || !z) SUMA_RETURN(0);
+   
+   for (i=0; i<nel->vec_len; ++i) {
+      x[i] += del[0];
+      y[i] += del[1];
+      z[i] += del[2];
+   }
+   
+   SUMA_RETURN(1);
+}
+
 /*------------------------------------------------------------------*/
 /*! Make a NIML data element for a NI surface element i nx ny nz 
     onde index followed by node normal
@@ -2089,7 +2166,6 @@ NI_element * SUMA_makeNI_SurfINORM (SUMA_SurfaceObject *SO)
       fprintf(SUMA_STDERR,"Error %s: No normals in SO.\n", FuncName);
       SUMA_RETURN (NULL);
    }
-   
    /* make a new data element, to be filled by columns */
    nel = NI_new_data_element( "SUMA_node_normals" , SO->N_Node) ;
    
@@ -2127,11 +2203,12 @@ NI_element * SUMA_makeNI_SurfINORM (SUMA_SurfaceObject *SO)
    NI_add_column( nel , NI_FLOAT , xc ) ; SUMA_free(xc) ;
    NI_add_column( nel , NI_FLOAT , yc ) ; SUMA_free(yc) ;
    NI_add_column( nel , NI_FLOAT , zc ) ; SUMA_free(zc) ;
-
-   NI_set_attribute (nel, "volume_idcode", SO->VolPar->vol_idcode_str);
-   NI_set_attribute (nel, "volume_headname", SO->VolPar->headname);
-   NI_set_attribute (nel, "volume_filecode", SO->VolPar->filecode);
-   NI_set_attribute (nel, "volume_dirname", SO->VolPar->dirname);
+   if (SO->VolPar) {
+      NI_set_attribute (nel, "volume_idcode", SO->VolPar->vol_idcode_str);
+      NI_set_attribute (nel, "volume_headname", SO->VolPar->headname);
+      NI_set_attribute (nel, "volume_filecode", SO->VolPar->filecode);
+      NI_set_attribute (nel, "volume_dirname", SO->VolPar->dirname);
+   }
    NI_set_attribute (nel, "surface_idcode", SO->idcode_str);
    NI_set_attribute (nel, "surface_label", SO->Label);
    NI_set_attribute (nel, "local_domain_parent_ID", SO->LocalDomainParentID);
@@ -2194,7 +2271,10 @@ NI_element * SUMA_makeNI_SurfIJK (SUMA_SurfaceObject *SO)
    NI_add_column( nel , NI_INT   , J ) ; SUMA_free(J) ;
    NI_add_column( nel , NI_INT   , K ) ; SUMA_free(K) ;
 
-   NI_set_attribute (nel, "volume_idcode", SO->VolPar->vol_idcode_str);
+   if (SO->VolPar) {
+      NI_set_attribute (nel, "volume_idcode", SO->VolPar->vol_idcode_str);
+   } 
+   
    NI_set_attribute (nel, "surface_idcode", SO->idcode_str);
    NI_set_attribute (nel, "surface_label", SO->Label);
    NI_set_attribute (nel, "local_domain_parent_ID", SO->LocalDomainParentID);
@@ -2238,7 +2318,9 @@ NI_element * SUMA_makeNI_CrossHair (SUMA_SurfaceViewer *sv)
    float *XYZmap;
    int I_C = -1, ip, ivsel[SUMA_N_IALTSEL_TYPES];
    SUMA_ALL_DO *ado = NULL;
-   SUMA_SurfaceObject *SO;
+   SUMA_OVERLAYS *curColPlane=NULL;
+   SUMA_DSET *curDset=NULL;
+   SUMA_Boolean LocalHead = NOPE;
    
    SUMA_ENTRY;
 
@@ -2251,10 +2333,13 @@ NI_element * SUMA_makeNI_CrossHair (SUMA_SurfaceViewer *sv)
       SUMA_RETURN (NULL);
    }
 
-   if (!(ado=SUMA_SV_Focus_ADO(sv))) SUMA_RETURN(NULL);
-   
+   if (!(ado=SUMA_SV_Focus_ADO(sv))) {
+      SUMA_S_Warn("No ADO in focus.");
+      SUMA_RETURN(NULL);
+   }
    switch(ado->do_type) {
-      case SO_type:
+      case SO_type: {
+         SUMA_SurfaceObject *SO=NULL;
          SO = (SUMA_SurfaceObject *)ado;
          I_C = SO->SelectedNode;
          XYZmap = SUMA_XYZ_XYZmap (sv->Ch->c_noVisX, SO, 
@@ -2282,11 +2367,12 @@ NI_element * SUMA_makeNI_CrossHair (SUMA_SurfaceViewer *sv)
          NI_SETA_INT(nel, "surface_nodeid", SO->SelectedNode);
          NI_set_attribute( nel, "surface_idcode", SO->idcode_str);
          NI_set_attribute( nel, "surface_label", SO->Label);
-
+         /* Add info about overlay */
+         
          NI_add_column( nel , NI_FLOAT , XYZmap );
 
          if (XYZmap) SUMA_free(XYZmap);
-         break;
+         break; }
       case TRACT_type:
          if (!(nel= NI_new_data_element( "SUMA_crosshair_xyz" , 3))) {
             SUMA_S_Err("Failed to allocate for nel");
@@ -2347,8 +2433,25 @@ NI_element * SUMA_makeNI_CrossHair (SUMA_SurfaceViewer *sv)
          NI_add_column( nel , NI_FLOAT , sv->Ch->c_noVisX );
          break;
       default:
+         SUMA_LH("No nel for type %s", ADO_TNAME(ado));
          break;
    }
+   
+   /* add dset of current colplane (ZSS April 2014, for NNO) */
+   if (  nel && (curColPlane = SUMA_ADO_CurColPlane(ado)) && 
+         (curDset = curColPlane->dset_link) && !SDSET_IS_VOL(curDset) ) {
+      char *s=NULL;
+      if ((s = SDSET_FILENAME(curDset))) {
+         NI_set_attribute(nel, "current_overlay_dset_id",
+                               SDSET_ID(curDset));      
+         NI_set_attribute(nel, "current_overlay_dset_filename", s);
+         if (LocalHead) {
+            SUMA_LH("Nel with overlay info");
+            SUMA_ShowNel(nel);
+         }
+      }      
+   }
+   
    SUMA_RETURN (nel);
 }
 
