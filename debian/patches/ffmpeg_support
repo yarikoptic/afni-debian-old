@@ -126,7 +126,7 @@ Last-Update: 2009-10-29
                                 ) ;
             MCW_reghint_children( seq->save_agif_bbox->wrowcol ,
                                   "Save image sequence to animation" ) ;
-@@ -13323,63 +13293,33 @@ ENTRY("ISQ_save_anim") ;
+@@ -13338,63 +13308,33 @@ ENTRY("ISQ_save_anim") ;
        /* MPEG-1 */
  
        case MPEG_MODE:{

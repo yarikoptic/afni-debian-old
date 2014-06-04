@@ -5,7 +5,7 @@ Author: Michael Hanke <michael.hanke@gmail.com>
 Last-Update: 2010-09-29
 --- a/afni_func.c
 +++ b/afni_func.c
-@@ -5950,7 +5950,7 @@ ENTRY("AFNI_tips_CB") ;
+@@ -5956,7 +5956,7 @@ ENTRY("AFNI_tips_CB") ;
       XMapRaised( XtDisplay(tips_hw->wshell) , XtWindow(tips_hw->wshell) ) ;
       EXRETURN ;
     } else if( !AFNI_noenv("AFNI_DONT_USE_HTMLWIN") ){
@@ -14,7 +14,7 @@ Last-Update: 2010-09-29
       if( fpt != NULL && *fpt != '\0' ){
         inf = (char *)malloc(sizeof(char)*(strlen(fpt)+16)) ;
         strcpy(inf,"file:") ; strcat(inf,fpt) ; free(fpt) ;
-@@ -6838,6 +6838,8 @@ ENTRY("AFNI_find_poem_files") ;
+@@ -6894,6 +6894,8 @@ ENTRY("AFNI_find_poem_files") ;
     /*----- get path to search -----*/
  
                         epath = getenv("AFNI_PLUGINPATH") ;
@@ -36,7 +36,7 @@ Last-Update: 2010-09-29
     if( epath == NULL ) epath = getenv("HOME") ;
 --- a/thd_ttatlas_query.c
 +++ b/thd_ttatlas_query.c
-@@ -598,6 +598,8 @@ char * get_atlas_dirname(void)  /* 31 Ja
+@@ -599,6 +599,8 @@ char * get_atlas_dirname(void)  /* 31 Ja
     if( !first ) return adnam ;
     first = 0 ;
                         epath = getenv("AFNI_PLUGINPATH") ;
@@ -45,7 +45,7 @@ Last-Update: 2010-09-29
     if( epath == NULL ) epath = getenv("AFNI_PLUGIN_PATH") ;
     if( epath == NULL ) epath = getenv("PATH") ;
     if( epath == NULL ) return NULL ;  /* this is bad */
-@@ -682,6 +684,8 @@ THD_3dim_dataset * get_atlas(char *epath
+@@ -683,6 +685,8 @@ THD_3dim_dataset * get_atlas(char *epath
        /*----- get path to search -----*/
  
                            epath = getenv("AFNI_PLUGINPATH") ;
@@ -54,7 +54,7 @@ Last-Update: 2010-09-29
        if( epath == NULL ) epath = getenv("AFNI_PLUGIN_PATH") ;
        if( epath == NULL ) epath = getenv("PATH") ;
        if( epath == NULL ) RETURN(dset) ;
-@@ -2163,8 +2167,11 @@ char *find_atlas_niml_file(char * nimlna
+@@ -2323,8 +2327,11 @@ char *find_atlas_niml_file(char * nimlna
     }
       
     /* okay that didn't work, try the AFNI plugin directory */
@@ -70,7 +70,7 @@ Last-Update: 2010-09-29
        if(wami_verb() > 1) 
 --- a/afni.c
 +++ b/afni.c
-@@ -5094,12 +5094,31 @@ ENTRY("AFNI_read_inputs") ;
+@@ -5152,12 +5152,31 @@ ENTRY("AFNI_read_inputs") ;
        /*-- 20 Dec 2001: Try to read a "global" session --*/
        /*-- 11 May 2002: Move read global session up here --*/
  
@@ -104,7 +104,7 @@ Last-Update: 2010-09-29
              gss->parent = NULL ;                          /* parentize them */
 --- a/SUMA/SUMA_CreateDO.c
 +++ b/SUMA/SUMA_CreateDO.c
-@@ -11112,6 +11112,9 @@ byte *SUMA_WordOverlapMask(int Nwidth, i
+@@ -11630,6 +11630,9 @@ byte *SUMA_WordOverlapMask(int Nwidth, i
  SUMA_Boolean SUMA_LoadImageNIDOnel(NI_element *nel)
  {
     static char FuncName[]={"SUMA_LoadImageNIDOnel"};
@@ -114,7 +114,7 @@ Last-Update: 2010-09-29
     MRI_IMAGE *im=NULL;
     int ir, ic, i1d, i1df, imx, i1d3, i1d4;
     byte *rgb = NULL, *imar=NULL;
-@@ -11132,7 +11135,10 @@ SUMA_Boolean SUMA_LoadImageNIDOnel(NI_el
+@@ -11650,7 +11653,10 @@ SUMA_Boolean SUMA_LoadImageNIDOnel(NI_el
     
     if (! (fname = SUMA_copy_string(NI_get_attribute(nel,"filename"))) )
        SUMA_RETURN(NOPE);
@@ -175,7 +175,7 @@ Last-Update: 2010-09-29
  />
 --- a/thd_getpathprogs.c
 +++ b/thd_getpathprogs.c
-@@ -479,7 +479,9 @@ THD_string_array * THD_get_all_afni_exec
+@@ -488,7 +488,9 @@ THD_string_array * THD_get_all_afni_exec
  THD_string_array * THD_get_all_afni_readmes(void )
  {
     THD_string_array *outar=NULL, *elist=NULL;
@@ -185,7 +185,7 @@ Last-Update: 2010-09-29
     int N_af, N_afni=strlen("afni"), iaf=0, ii=0, *isrt=NULL, N_key=0;
     char scomm[256]={""};
     
-@@ -492,9 +494,9 @@ THD_string_array * THD_get_all_afni_read
+@@ -501,9 +503,9 @@ THD_string_array * THD_get_all_afni_read
     }
     
     /* remove afni from the end to get the path */
@@ -197,7 +197,7 @@ Last-Update: 2010-09-29
     
     /* Now get all readmes under af */
     N_key = strlen(key);
-@@ -502,7 +504,7 @@ THD_string_array * THD_get_all_afni_read
+@@ -511,7 +513,7 @@ THD_string_array * THD_get_all_afni_read
     for (ii=0, iaf=0; ii<elist->num ; ii++ ){
        etr = THD_trailname( elist->ar[ii] , 0 ) ; 
        if (!THD_is_directory(elist->ar[ii]) &&
