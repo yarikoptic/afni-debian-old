@@ -11,34 +11,36 @@ Last-Update: 2012-11-29
 
 --- a/pkundu/meica.py
 +++ b/pkundu/meica.py
-@@ -323,7 +323,7 @@ if options.anat!='':
- 		weightvol = "eBmask_pve_0.nii.gz"		
- 		weightline = ' -lpc -weight eBmask_pve_0.nii.gz -base eBbase%s ' % (osf)
- 	else: weightline = ' -lpc+ZZ -automask -autoweight -base _eBmask%s ' % (osf)
+@@ -388,7 +388,7 @@ sl.append("3dcalc -overwrite -a s0v.nii
+ if options.anat!='':
+ 	#Copy in anatomical and make sure its in +orig space
+ 	logcomment("Copy anatomical into ME-ICA directory and process warps",level=1)
 -	sl.append("cp %s/%s* ." % (startdir,nsmprage))	
 +	sl.append("cp %s* ." % os.path.merge(startdir,nsmprage))
  	abmprage = nsmprage
- 	if options.tlrc:
- 		sl.append("afnibinloc=`which 3dSkullStrip`")
-@@ -334,7 +334,7 @@ if options.anat!='':
- 		sl.append("3dcopy %s %s" % (atnsmprage,dsprefix(atnsmprage)))
- 		sl.append("3drefit -view orig %s+tlrc " % dsprefix(atnsmprage) )
- 		sl.append("cp %s %s" % (atnsmprage,startdir))
--		sl.append("gzip -f %s/%s" % (startdir,atnsmprage))
-+		sl.append("gzip -f %s" % os.path.merge(startdir,atnsmprage))
- 		abmprage = atnsmprage
- 	align_args=""
- 
-@@ -342,7 +342,7 @@ if options.anat!='':
- 	elif oblique_mode: align_args = " -maxrot 10 -maxshf 10 "
- 	else: align_args=" -maxrot 20 -maxshf 20 -parfix 7 1  -parang 9 0.83 1.0 "
+ 	refanat = nsmprage
+ 	if options.space:
+@@ -403,8 +403,8 @@ if options.anat!='':
+ 		logcomment("If can't find affine-warped anatomical, copy native anatomical here, compute warps (takes a while) and save in start dir. ; otherwise link in existing files")
+ 		sl.append("if [ ! -e %s/%s ]; then \@auto_tlrc -no_ss -base ${templateloc}/%s -input %s.nii.gz -suffix _at" % (startdir,atnsmprage,options.space,dsprefix(nsmprage)))
+ 		sl.append("cp %s.nii %s" % (dsprefix(atnsmprage),startdir))
+-		sl.append("gzip -f %s/%s.nii" % (startdir,dsprefix(atnsmprage)))
+-		sl.append("else ln -s %s/%s ." % (startdir,atnsmprage))
++		sl.append("gzip -f %s.nii" % os.path.merge(startdir,dsprefix(atnsmprage)))
++		sl.append("else ln -s %s ." % os.path.merge(startdir,atnsmprage))
+ 		refanat = '%s/%s' % (startdir,atnsmprage)
+ 		sl.append("fi")
+ 		sl.append("3dcopy %s/%s.nii.gz %s" % (startdir,dsprefix(atnsmprage),dsprefix(atnsmprage)))
+@@ -424,7 +424,7 @@ if options.anat!='':
+ 	
+ 	#Set anatomical reference for anatomical-functional co-registration
  	if oblique_mode: alnsmprage = "./%s_ob.nii.gz" % (anatprefix)
 -	else: alnsmprage = "%s/%s" % (startdir,nsmprage)
-+	else: alnsmprage = os.path.merge(startdir,nsmprage)
- 	sl.append("3dAllineate -weight_frac 1.0 -VERB -warp aff %s -source_automask -cmass -master SOURCE -source %s -prefix ./%s_al -1Dmatrix_save %s_al_mat %s" % (weightline,alnsmprage, anatprefix,anatprefix,align_args))
- 	if options.tlrc: tlrc_opt = "%s::WARP_DATA -I" % (atnsmprage)
- 	else: tlrc_opt = ""
-@@ -407,7 +407,7 @@ sl.append("echo 2 > stage")
++        else: alnsmprage = os.path.merge(startdir,nsmprage)
+ 	if options.coreg_mode=='lp-t2s': 
+ 		logcomment("Using alignp_mepi_anat.py to drive T2*-map weighted anatomical-functional coregistration")
+ 		t2salignpath = 'meica.libs/alignp_mepi_anat.py'
+@@ -552,7 +552,7 @@ for echo_ii in range(len(datasets)):
  if len(ica_datasets)==1:
  	dsin = ''.join(ica_datasets)+trailing
  	ica_prefix = dsin
