@@ -341,7 +341,7 @@ Last-Update: 2010-09-21
 +
 +# 3rd-party stuff
 +# TODO there seems to be stuff missing
-+SET(EXTRAS whirlgif myget Xphace rmz aiv mycat)
++SET(EXTRAS whirlgif myget Xphace rmz aiv mycat quotize)
 +
 +# Programs using only AFNI_LIBS
 +SET(PROGRAMS
@@ -377,7 +377,8 @@ Last-Update: 2010-09-21
 +  3dRankizer 3dXYZcat 3dDeghost 3dPolyfit 3dNwarpApply 1dCorrelate 3dCountSpikes
 +  3dNwarpCalc dicom_hinfo apsearch 3dNormalityTest 3dmask_tool FIRdesign
 +  2perm 3dClustCount 3dTransformGroupInCorr 3dExtractGroupInCorr 3dUnifize
-+  3dNwarpCat 3dQwarp 3dLocalHistog 3dNwarpAdjust 3dNwarpFuncs 3dTproject ${EXTRAS})
++  3dNwarpCat 3dQwarp 3dLocalHistog 3dNwarpAdjust 3dNwarpFuncs 3dTproject
++  afni_open 3dConformist ${EXTRAS})
 +
 +SET(SCRIPTS
 +  @4Daverage @CommandGlobb @GetAfniOrient @DTI_studio_reposition
@@ -403,8 +404,7 @@ Last-Update: 2010-09-21
 +  @Install_AfniRetinoDemo @Install_FATCAT_DEMO
 +  @Install_RSFMRI_Motion_Group_Demo @Install_MEICA_Demo @T1scale 3dMVM
 +  @compute_gcor 3dLME @move.to.series.dirs @toMNI_Awarp @toMNI_Qwarpar
-+  @simulate_motion
-+)
++  @simulate_motion @afni.run.me 3dRprogDemo)
 +
 +
 +##
@@ -631,7 +631,7 @@ Last-Update: 2010-09-21
 +  afni_vedit.c thd_fdrcurve.c thd_dset_to_vectim.c thd_bandpass.c
 +  thd_instacorr.c thd_svdblur.c thd_ttest.c thd_satcheck.c thd_dumdset.c
 +  ktaub.c bilinear_warp3D.c thd_table.c thd_atlas.c thd_warp_tables.c
-+  thd_lasso.c thd_mean_dset.c thd_despike_L1.c)
++  thd_lasso.c thd_mean_dset.c thd_despike_L1.c thd_Tcorr1D.c)
 +
 +SET(EDT_SRC
 +  edt_addbrick.c edt_blur.c edt_buildmask.c edt_checkargv.c edt_clust.c
@@ -865,7 +865,7 @@ Last-Update: 2010-09-21
 +# script being programs on their own
 +SET(SCRIPTS
 +  3dAOV.R 3dGC.R 1dRplot.R 3dICA.R 3dICC.R 3dICC_REML.R 3dLME.R 3dMEMA.R
-+  3dMVM.R 3dSignatures.R ExamineXmat.R smooth.R)
++  3dMVM.R 3dSignatures.R ExamineXmat.R smooth.R 3dRprogDemo.R)
 +
 +# everything else that is not meant to be a standalone script
 +SET(MODULES
@@ -929,7 +929,7 @@ Last-Update: 2010-09-21
 +  SUMA_IsoSurfaceFunc.c SUMA_BrainWrap.c SUMA_global.c SUMA_ExpEval.c
 +  SUMA_SurfaceToSurface.c SUMA_LocalStat.c SUMA_spharm.c
 +  SUMA_dot.c SUMA_plot.c SUMA_volume_render.c SUMA_SegFunc.c SUMA_SegOpts.c
-+  PLY/plyfile.c MarchingCubes/MarchingCubes.c)
++  PLY/plyfile.c PLY/obj_io.c MarchingCubes/MarchingCubes.c)
 +
 +# add libGLw symbols if requested
 +IF(AFNI_BUILD_LOCAL_GLW)
@@ -1250,7 +1250,7 @@ Last-Update: 2010-09-21
 +  lpc_align.py make_pq_script.py make_random_timing.py make_stim_times.py
 +  neuro_deconvolve.py python_module_test.py quick.alpha.vals.py realtime_receiver.py
 +  slow_surf_clustsim.py timing_tool.py uber_align_test.py uber_proc.py
-+  uber_skel.py uber_subject.py uber_ttest.py xmat_tool.py)
++  uber_skel.py uber_subject.py uber_ttest.py xmat_tool.py gen_ss_review_table.py)
 +
 +# everything else that is not meant to be a standalone script
 +SET(MODULES
@@ -1374,17 +1374,18 @@ Last-Update: 2010-09-21
 +  DESTINATION ${AFNI_INSTALL_HTML_DIR} COMPONENT Runtime)
 --- /dev/null
 +++ b/ptaylor/CMakeLists.txt
-@@ -0,0 +1,23 @@
+@@ -0,0 +1,24 @@
 +PROJECT(tracktools)
 +
 +IF (GSL_LIBRARY AND GTS_FOUND)
 +  MESSAGE(STATUS "Found GSL and GTS libraries, compiling tracktools")
-+  SET(SOURCES DoTrackit.c TrackIO.c rsfc.c)
++  SET(SOURCES DoTrackit.c TrackIO.c rsfc.c diffusiony.c)
 +  ADD_LIBRARY(tracktools ${SOURCES})
 +  TARGET_LINK_LIBRARIES(tracktools gts mri ${GSL_LIBRARIES})
 +  SET(PROGRAMS
 +    3dTrackID 3dProbTrackID 3dDWUncert 3dReHo 3dRSFC map_TrackID 3dROIMaker
-+    3dMatch 3dNetCorr 1dDW_Grad_o_Mat)
++    3dMatch 3dNetCorr 1dDW_Grad_o_Mat 3dEigsToDT 3dDTtoNoisyDWI
++    3dTORTOISEtoHere)
 +
 +  FOREACH(program ${PROGRAMS})
 +    ADD_EXECUTABLE(${program} ${program}.c)
@@ -1416,8 +1417,8 @@ Last-Update: 2010-09-21
 +
 +# script being programs on their own
 +SET(SCRIPTS
-+  optcom.py optcom_surf.py siemens_me2nii.py t2smap.py tedana.py
-+  tedanaX.py)
++  alignp_mepi_anat.py optcom.py optcom_surf.py select_model.py
++  siemens_me2nii.py t2smap.py tedana.py tedanaX.py)
 +
 +
 +INSTALL(PROGRAMS ${SCRIPTS}
