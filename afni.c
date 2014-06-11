@@ -1374,7 +1374,8 @@ void AFNI_sigfunc_alrm(int sig)
      "Please re-inflate the multiverse and try again later"          ,
      "Out of Cheese Error; Please Install Wensleydale and Try Again" ,
      "Out of Cheese Error; Please Install Stilton and Try Again"     ,
-     "Out of Wine Error: Please Install Port and Try Again"          ,
+     "Out of Wine Error: Please Install Merlot and Try Again"        ,
+     "Out of Wine Error: Please Install Chardonnay and Try Again"    ,
      "Out of Beer Error: No Further Progress Can Be Expected"        ,
      "Have you read Crime and Punishment, by Fido Dogstoyevski?"     ,
      "More cheese, Gromit!"                                          ,
@@ -1492,7 +1493,11 @@ void AFNI_sigfunc_alrm(int sig)
      "Life is hard; after all, it kills you"                         ,
      "I'm sorry; if you were right, I'd agree with you"              ,
      "Like dreams, statistics are a form of wish fulfillment"        ,
+     "I wish I were in Lobuche right now"                            ,
+     "Next stop: Bora Bora"                                          ,
 
+     "The important things about a statistical model are what it does NOT include"    ,
+     "You're going to like the way your brain activation maps look -- I guarantee it" ,
      "A p-value of 0.05 means the null hypothesis is 29% likely to be correct"        ,
      "There are lots of people who mistake their imagination for their memory"        ,
      "I'm off to get some hot chocolate in Warsaw -- want to join me?"                ,
@@ -2593,7 +2598,7 @@ ENTRY("AFNI_startup_timeout_CB") ;
              "++ the right of the 'done' button, and from the resulting    ++\n"
              "++ popup menu, choose the 'Web Browser: Help' item.          ++\n"
            ) ;
-    (void) MCW_popup_message( MAIN_im3d->vwid->prog->quit_pb, hstr, MCW_USER_KILL ) ;
+     (void)MCW_popup_message( MAIN_im3d->vwid->prog->quit_pb,hstr,MCW_USER_KILL ) ;
      MCW_flash_widget_list( 9 , MAIN_im3d->vwid->view->sess_lab ,
                                 MAIN_im3d->vwid->view->choose_sess_pb ,
                                 MAIN_im3d->vwid->view->read_sess_pb ,
@@ -2906,7 +2911,7 @@ if(PRINT_TRACING){ char str[256] ; sprintf(str,"n=%d type=%d",n,type) ; STATUS(s
       grstat->transforms0D = & (GLOBAL_library.registered_0D) ;
       grstat->transforms1D = & (GLOBAL_library.registered_1D) ;
 
-      strcpy( grstat->namecode , br->namecode ) ;
+      MCW_strncpy( grstat->namecode , br->namecode , 32 ) ;
 
       RETURN( (XtPointer) grstat ) ;
    }
@@ -2925,12 +2930,14 @@ INFO_message("thresh_fade: nsl=%d",nsl) ;
         if( br->ntmask != nsl ){
           FD_brick *br_fim = UNDERLAY_TO_OVERLAY(im3d,br) ;
           MRI_IMAGE *fov = AFNI_func_overlay(nsl,br_fim) ;
+          STATUS("clear overlay tmask") ;
           CLEAR_TMASK(br) ;
 #if 0
 ININFO_message("  get new tmask") ;
 #endif
           if( fov != NULL ){
             br->tmask  = ISQ_binarize_overlay(fov) ;
+            STATUSp("new tmask",br->tmask) ;
             br->ntmask = nsl ; mri_free(fov) ;
           }
         }
@@ -6333,6 +6340,12 @@ ENTRY("AFNI_view_xyz_CB") ;
     m2m = AFNI_yesenv("AFNI_IMAGE_MINTOMAX") ;
     c2c = AFNI_yesenv("AFNI_IMAGE_CLIPPED") ;  /* 17 Sep 2007 */
 
+    if( !IM3D_ULAY_COHERENT(im3d) ){           /* 10 Jun 2014 */
+      STATUS("incoherent ulay -- patching") ;
+      ERROR_message("AFNI_view_xyz_CB: incoherent ulay -- patching") ;
+      AFNI_assign_ulay_bricks(im3d) ;
+    }
+
     if( w == pb_xyz && sxyz == NULL ){         /* axial image */
        snew  = &(im3d->s123) ;
        brnew = im3d->b123_ulay ;
@@ -6706,6 +6719,12 @@ ENTRY("AFNI_range_setter") ;
 
    if( !IM3D_OPEN(im3d) || !ISQ_VALID(seq) ) EXRETURN ;
 
+   if( !IM3D_ULAY_COHERENT(im3d) ){           /* 10 Jun 2014 */
+     STATUS("AFNI_range_setter: incoherent ulay -- patching") ;
+     ERROR_message("incoherent ulay -- patching") ;
+     AFNI_assign_ulay_bricks(im3d) ;
+   }
+
    br = (FD_brick *)im3d->b123_ulay ; if( br == NULL ) EXRETURN ;
    ds = br->dset ;                    if( ds == NULL ) EXRETURN ;
 
@@ -7016,6 +7035,12 @@ DUMP_IVEC3("  new_id",new_id) ;
    /*--- redraw images now ---*/
 
    im3d->ignore_seq_callbacks = AFNI_IGNORE_EVERYTHING ;
+
+   if( !IM3D_ULAY_COHERENT(im3d) ){           /* 10 Jun 2014 */
+     STATUS("AFNI_set_viewpoint: incoherent ulay -- patching") ;
+     ERROR_message("incoherent ulay -- patching") ;
+     AFNI_assign_ulay_bricks(im3d) ;
+   }
 
    if( im3d->s123 != NULL || im3d->g123 != NULL ){
       int xyzm[4] ;
@@ -8507,7 +8532,7 @@ STATUS("setting anatmode_bbox back to 'View ULay Data Brick'") ;
 
    fbr = THD_setup_bricks( im3d->anat_now ) ;
    if( fbr == NULL ){
-     fprintf(stderr,"THD_setup_bricks of anat_now fails!\n") ; EXRETURN ;
+     ERROR_message("THD_setup_bricks of anat_now fails!") ; EXRETURN ;
    }
    DESTROY_FD_BRICK(im3d->b123_anat) ; im3d->b123_anat = fbr[0] ;
    DESTROY_FD_BRICK(im3d->b231_anat) ; im3d->b231_anat = fbr[1] ;
@@ -8827,6 +8852,8 @@ STATUS(" -- function underlay widgets") ;
 
    MCW_set_bbox( im3d->vwid->func->underlay_bbox ,
                  1 << im3d->vinfo->underlay_type ) ;
+
+   AFNI_assign_ulay_bricks(im3d) ;   /* 10 Jun 2014 */
 
    /*--------------------------------------------------------*/
    /*--- 3/24/95: deal with the new range widgets in func ---*/
