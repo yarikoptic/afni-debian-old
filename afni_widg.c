@@ -3170,7 +3170,7 @@ STATUS("making func->rowcol") ;
    func->inten_label =
       XtVaCreateManagedWidget(
          "dialog" , xmLabelWidgetClass , func->inten_rowcol ,
-            LABEL_ARG("Inten") ,
+            LABEL_ARG("OLay ") ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
    LABELIZE(func->inten_label) ;
@@ -5912,6 +5912,9 @@ ENTRY("new_AFNI_controller") ;
    im3d->cont_range_fval = 1.0;
    im3d->first_integral = -1;
    im3d->cont_perc_thr = 0; /* No percentile thresholding. ZSS: April 27 2012 */
+
+   IM3D_CLEAR_THRSTAT(im3d) ;  /* 12 Jun 2014 */
+
    RETURN(im3d) ;
 }
 

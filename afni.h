@@ -1134,7 +1134,18 @@ typedef struct Three_D_View {
       int cont_pbar_index, int_pbar_index;
       int first_integral;
       int cont_perc_thr;       /* ZSS percentile thresholding. April 26 2012 */
+
+      /* record current threshold and fim statistics as thresholded [12 Jun 2014] */
+
+      float fim_thrbot ;
+      float fim_thrtop ;
+      float fim_thresh_min ;
+      float fim_thresh_max ;
 } Three_D_View ;
+
+#define IM3D_CLEAR_THRSTAT(iq)                                                    \
+  do{ (iq)->fim_thrbot     = 666.0f; (iq)->fim_thrtop     = -666.0f;              \
+      (iq)->fim_thresh_min = 666.0f; (iq)->fim_thresh_max = -666.0f; } while(0)
 
 #define IM3D_ULAY_COHERENT(iq)                                                    \
  (( (iq)->b123_ulay == (iq)->b123_anat || (iq)->b123_ulay == (iq)->b123_fim ) &&  \
@@ -1190,6 +1201,10 @@ typedef struct Three_D_View {
        (iq)->vwid->func->clu_tabNN3 = NULL ;                               \
      (iq)->vednomask = 0 ;                                                 \
      if( (iq)->vedset.code ) redis++ ;                                     \
+     if( redis ){                                                          \
+       (iq)->fim_thrbot     = 666.0f; (iq)->fim_thrtop     = -666.0f;      \
+       (iq)->fim_thresh_min = 666.0f; (iq)->fim_thresh_max = -666.0f;      \
+     }                                                                     \
      (iq)->vedset.flags = (iq)->vedset.code = 0; AFNI_set_thr_pval((iq));  \
      if( (iq)->vinfo->func_visible && redis ) AFNI_redisplay_func((iq)) ;  \
  } while(0) ;

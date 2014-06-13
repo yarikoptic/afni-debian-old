@@ -39,11 +39,13 @@ ENTRY("AFNI_see_func_CB") ;
      STATUS("clear tmask") ;
 #endif
      IM3D_CLEAR_TMASK(im3d) ;                                /* Mar 2013 */
+     IM3D_CLEAR_THRSTAT(im3d) ;                           /* 12 Jun 2014 */
      im3d->vinfo->func_visible = (new_val == 1) ? True : False ;
      if( ! ISVALID_3DIM_DATASET(im3d->fim_now) ){            /* 29 Apr 1997 */
        im3d->vinfo->func_visible = False ;
        MCW_set_bbox( im3d->vwid->view->see_func_bbox , 0 ) ; /* 29 Jan 1999 */
      }
+     IM3D_CLEAR_THRSTAT(im3d) ;       /* 12 Jun 2014 */
      OVERLAY_SUMA ;                   /* 16 Jun 2003 */
      AFNI_redisplay_func( im3d ) ;    /* 05 Mar 2002 */
      im3d->vinfo->func_visible_count++ ; /* 03 Aug 2007 */
@@ -103,6 +105,7 @@ ENTRY("AFNI_func_autothresh_CB") ;
    STATUS("clear tmask") ;
 #endif
    IM3D_CLEAR_TMASK(im3d) ;                                /* Mar 2013 */
+   IM3D_CLEAR_THRSTAT(im3d) ;                           /* 12 Jun 2014 */
    new_thresh = AFNI_get_autothresh(im3d) ;
    if( new_thresh > 0.0f ) AFNI_set_threshold(im3d,new_thresh) ;
    EXRETURN ;
@@ -294,6 +297,7 @@ ENTRY("AFNI_func_thrsign_CB") ;
    STATUS("clear tmask") ;
 #endif
    IM3D_CLEAR_TMASK(im3d) ;                                /* Mar 2013 */
+   IM3D_CLEAR_THRSTAT(im3d) ;                           /* 12 Jun 2014 */
    AFNI_redisplay_func( im3d ) ;
    AFNI_set_window_titles( im3d ) ;
    EXRETURN ;
@@ -338,6 +342,7 @@ ENTRY("AFNI_set_threshold") ;
    STATUS("clear tmask") ;
 #endif
    IM3D_CLEAR_TMASK(im3d) ;                                /* Mar 2013 */
+   IM3D_CLEAR_THRSTAT(im3d) ;                           /* 12 Jun 2014 */
    XmScaleSetValue( im3d->vwid->func->thr_scale , ival ) ;
    AFNI_thr_scale_CB( im3d->vwid->func->thr_scale, (XtPointer)im3d, NULL ) ;
    FIX_SCALE_SIZE(im3d) ;
@@ -357,7 +362,7 @@ void AFNI_thr_scale_CB( Widget w, XtPointer client_data, XtPointer call_data )
    Three_D_View *im3d = (Three_D_View *) client_data ;
    XmScaleCallbackStruct *cbs = (XmScaleCallbackStruct *) call_data ;
    float fff ;
-   int redisplay , ival ;
+   int ival ;
 
 ENTRY("AFNI_thr_scale_CB") ;
 
@@ -372,8 +377,6 @@ ENTRY("AFNI_thr_scale_CB") ;
    FIX_SCALE_VALUE(im3d) ;
    FIX_SCALE_SIZE(im3d) ;   /* 09 May 2001 */
 
-   redisplay = (im3d->vinfo->func_visible) ? REDISPLAY_OVERLAY
-                                           : REDISPLAY_OPTIONAL ;
    AFNI_set_thr_pval( im3d ) ;
 
    MCW_discard_events_all( w , ButtonPressMask ) ;  /* 20 Mar 2007 */
@@ -383,6 +386,7 @@ ENTRY("AFNI_thr_scale_CB") ;
    STATUS("clear tmask") ;
 #endif
    IM3D_CLEAR_TMASK(im3d) ;                                /* Mar 2013 */
+   IM3D_CLEAR_THRSTAT(im3d) ;                           /* 12 Jun 2014 */
    if( ! DOING_REALTIME_WORK ) AFNI_redisplay_func( im3d ) ;
 
    AFNI_thresh_lock_carryout(im3d) ;  /* 06 Feb 2004 */
@@ -445,6 +449,7 @@ ENTRY("AFNI_set_thresh_top") ;
    STATUS("clear tmask") ;
 #endif
    IM3D_CLEAR_TMASK(im3d) ;                                /* Mar 2013 */
+   IM3D_CLEAR_THRSTAT(im3d) ;                           /* 12 Jun 2014 */
    FIX_SCALE_VALUE(im3d) ;
    FIX_SCALE_SIZE(im3d) ;   /* 09 May 2001 */
    AFNI_set_thr_pval( im3d ) ;
@@ -496,6 +501,7 @@ ENTRY("AFNI_thresh_top_CB") ;
   Used to set the pval (significance) label at the bottom of the
   threshold scale.
 -------------------------------------------------------------------------*/
+
 float  AFNI_thresh_from_percentile( Three_D_View *im3d, float perc)
 {
    float *fv, thresh=0.0;
@@ -697,6 +703,7 @@ ENTRY("AFNI_inten_pbar_CB") ;
    STATUS("clear tmask") ;
 #endif
    IM3D_CLEAR_TMASK(im3d) ;                                /* Mar 2013 */
+   IM3D_CLEAR_THRSTAT(im3d) ;                           /* 12 Jun 2014 */
    if( im3d->vinfo->func_visible ) AFNI_redisplay_func( im3d ) ;
 
    AFNI_hintize_pbar( pbar , FIM_RANGE(im3d) ) ;
@@ -879,6 +886,7 @@ void AFNI_inten_av_CB( MCW_arrowval *av , XtPointer cd )
    STATUS("clear tmask") ;
 #endif
    IM3D_CLEAR_TMASK(im3d) ;                                /* Mar 2013 */
+   IM3D_CLEAR_THRSTAT(im3d) ;                           /* 12 Jun 2014 */
    HIDE_SCALE(im3d) ;
    if( av->ival > NPANE_MAX ){
      int npane=pbar->num_panes , jm=pbar->mode ;
@@ -1456,7 +1464,7 @@ static int reject_zero = 0 ;
 #undef  THBOT
 #undef  THTOP
 #undef  THBIG
-#define THBIG    1.e+9f
+#define THBIG    1.e+37f
 #define THBOT(t) ((thrsign==0 || thrsign==2) ? (-(t)) : (-THBIG))
 #define THTOP(t) ((thrsign==0 || thrsign==1) ? (t)    :  (THBIG))
 
@@ -2206,6 +2214,7 @@ ENTRY("AFNI_resam_av_CB") ;
    STATUS("clear tmask") ;
 #endif
    IM3D_CLEAR_TMASK(im3d) ;                                /* Mar 2013 */
+   IM3D_CLEAR_THRSTAT(im3d) ;                           /* 12 Jun 2014 */
    im3d->vinfo->tempflag = 1 ;
    AFNI_modify_viewing( im3d , False ) ;  /* redisplay */
    SHOW_AFNI_READY ;
@@ -2365,6 +2374,7 @@ ENTRY("AFNI_underlay_CB") ;
       STATUS("clear tmask") ;
 #endif
       IM3D_CLEAR_TMASK(im3d) ;                                /* Mar 2013 */
+      IM3D_CLEAR_THRSTAT(im3d) ;                           /* 12 Jun 2014 */
 
       if( im3d->s123 != NULL )
          drive_MCW_imseq( im3d->s123 , isqDR_newseq ,
@@ -2867,6 +2877,7 @@ ENTRY("AFNI_finalize_dataset_CB") ;
    STATUS("clear tmask") ;
 #endif
    IM3D_CLEAR_TMASK(im3d) ;                                /* Mar 2013 */
+   IM3D_CLEAR_THRSTAT(im3d) ;                           /* 12 Jun 2014 */
 
    /*--- switch sessions ---*/
 
@@ -5889,6 +5900,7 @@ ENTRY("AFNI_bucket_CB") ;
    STATUS("clear tmask") ;
 #endif
    IM3D_CLEAR_TMASK(im3d) ;                                /* Mar 2013 */
+   IM3D_CLEAR_THRSTAT(im3d) ;                           /* 12 Jun 2014 */
 
    /** Anat sub-brick [29 Jul 2003: lock to time_index controller as well] **/
 
