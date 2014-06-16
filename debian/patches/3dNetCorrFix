@@ -1,0 +1,13 @@
+--- a/ptaylor/3dNetCorr.c
++++ b/ptaylor/3dNetCorr.c
+@@ -37,10 +37,6 @@
+ #include <omp.h>
+ #endif
+ 
+-#ifdef USE_OMP
+-#include "3dNetCorr.c"
+-#endif
+-
+ void usage_NetCorr(int detail) 
+ {
+    printf(
