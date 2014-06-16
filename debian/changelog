@@ -13,7 +13,7 @@ afni (0.20140612~dfsg.1-1) neurodebian; urgency=low
     - up_char_cast was successfully upstreamed
     - up_meica_fixes was a problematic patch to update. Might not be 100%.
 
- -- Alex Waite <Alexqw85@gmail.com> Thu, 05 Jun 2014 13:48:03 +0200
+ -- Alex Waite <Alexqw85@gmail.com>  Thu, 05 Jun 2014 13:48:03 +0200
 
 afni (0.20140227~dfsg.1-1) neurodebian; urgency=low
 
@@ -26,8 +26,7 @@ afni (0.20131204~dfsg.1-2) neurodebian; urgency=low
   * Prune any @update.afni.* script (e.g. @update.afni.binaries) from
     installation so it doesn't interfer with packaged installation
 
- -- Yaroslav Halchenko <debian@onerussian.com>  Thu, 05 Dec 2013 16:48:02
--0500
+ -- Yaroslav Halchenko <debian@onerussian.com>  Thu, 05 Dec 2013 16:48:02 -0500
 
 afni (0.20131204~dfsg.1-1) neurodebian; urgency=low
 
