@@ -51,7 +51,7 @@ License: Other
  These notices must be retained in any copies of any part of this
  documentation and/or software.
 
-Files: mcw_glob.*, Ifile.c
+Files: mcw_glob.* Ifile.c
 Copyright: 1989, The Regents of the University of California
 License: BSD-4
  Redistribution and use in source and binary forms, with or without
@@ -81,7 +81,7 @@ License: BSD-4
  LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 
-Files: ballon.c, plug_permtest.c, plug_threshold.c
+Files: ballon.c plug_permtest.c plug_threshold.c
 Copyright: 2000-2005, Matthew Belmonte
 License: GPL-2
 
@@ -112,7 +112,7 @@ License: Boost
  ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
  DEALINGS IN THE SOFTWARE.
 
-Files: SUMA/SUMA_gts.*, SUMA/SUMA_coarsen.c
+Files: SUMA/SUMA_gts.* SUMA/SUMA_coarsen.c
 Copyright: 2004, Jakub Otwinowski
 License: GPL-2
 
@@ -141,7 +141,7 @@ Files: zgaussian.c
 Copyright: 2005, Jochen Voss
 License: GPL-2
 
-Files: SUMA/PLY/*, SUMA/SUMA_Surface_IO.c
+Files: SUMA/PLY/* SUMA/SUMA_Surface_IO.c
 Copyright: 1994, The Board of Trustees of The Leland Stanford
  Junior University
 License: Other
@@ -164,7 +164,7 @@ License: Other
  is provided without guarantee or warrantee expressed or implied.
  This program is -not- in the public domain.
 
-Files: SUMA/SUMA_{glxdino,paperplane,pixmap2eps,trackball}.c
+Files: SUMA/SUMA_glxdino.c SUMA/SUMA_paperplane.c SUMA/SUMA_pixmap2eps.c SUMA/SUMA_trackball.c
 Copyright: 1996, Mark J. Kilgard
 License: Other
  This program is freely distributable without licensing fees
@@ -213,7 +213,7 @@ License: Other
  OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE
  OR PERFORMANCE OF THIS SOFTWARE.
 
-Files: mri_dicom_hdr.c, dcm_dump_file.c
+Files: mri_dicom_hdr.c dcm_dump_file.c
 Copyright: 1993, 1994, RSNA and Washington University
 License: Other
  THIS SOFTWARE IS MADE AVAILABLE, AS IS, AND NEITHER RSNA NOR
@@ -236,7 +236,7 @@ Files: efence.c
 Copyright: 1987-1999, Bruce Perens
 License: GPL-2
 
-Files: svdlib.c, svdlib.h
+Files: svdlib.c svdlib.h
 Copyright: 2002, University of Tennessee Research Foundation
 License: BSD-3
  Redistribution and use in source and binary forms, with or without
