@@ -1,4 +1,4 @@
-afni (0.20140530~dfsg.1-1) neurodebian; urgency=low
+afni (0.20140612~dfsg.1-1) neurodebian; urgency=low
 
   * New upstream code.
     - New programs: afni_open, 3dConformist, 3dTORTOISEtoHere, 3dEigsToDT,
@@ -6,7 +6,7 @@ afni (0.20140530~dfsg.1-1) neurodebian; urgency=low
     - 3dProbTrackID is officially deprecated (but still shipped)
     - New scripts: @afni.run.me, 3dRprogDemo
     - New Python scripts gen_ss_review_table.py
-    - 8 new faces and 47 new quotes
+    - 9 new faces and 52 new quotes
     - run afni_history for a more detailed account of upstream changes
   * Updated CMake build system.
   * debian/patches
