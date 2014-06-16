@@ -20,7 +20,15 @@ Last-Update: 2012-11-29
  	abmprage = nsmprage
  	refanat = nsmprage
  	if options.space:
-@@ -403,8 +403,8 @@ if options.anat!='':
+@@ -396,15 +396,15 @@ if options.anat!='':
+ 		if '/' in options.space: 
+ 			sl.append("ll=\"%s\"; templateloc=${ll%%/*}/" % options.space)
+ 			options.space=options.space.split('/')[-1]
+-  		else:
++		else:
+ 			sl.append("templateloc=${afnibinloc%/*}")
+ 		atnsmprage = "%s_at.nii.gz" % (dsprefix(nsmprage))
+ 		if not dssuffix(nsmprage).__contains__('nii'): sl.append("3dcalc -float -a %s -expr 'a' -prefix %s.nii.gz" % (nsmprage,dsprefix(nsmprage)))
  		logcomment("If can't find affine-warped anatomical, copy native anatomical here, compute warps (takes a while) and save in start dir. ; otherwise link in existing files")
  		sl.append("if [ ! -e %s/%s ]; then \@auto_tlrc -no_ss -base ${templateloc}/%s -input %s.nii.gz -suffix _at" % (startdir,atnsmprage,options.space,dsprefix(nsmprage)))
  		sl.append("cp %s.nii %s" % (dsprefix(atnsmprage),startdir))
@@ -36,7 +44,7 @@ Last-Update: 2012-11-29
  	#Set anatomical reference for anatomical-functional co-registration
  	if oblique_mode: alnsmprage = "./%s_ob.nii.gz" % (anatprefix)
 -	else: alnsmprage = "%s/%s" % (startdir,nsmprage)
-+        else: alnsmprage = os.path.merge(startdir,nsmprage)
++	else: alnsmprage = os.path.merge(startdir,nsmprage)
  	if options.coreg_mode=='lp-t2s': 
  		logcomment("Using alignp_mepi_anat.py to drive T2*-map weighted anatomical-functional coregistration")
  		t2salignpath = 'meica.libs/alignp_mepi_anat.py'
