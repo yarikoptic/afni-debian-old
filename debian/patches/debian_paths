@@ -5,7 +5,7 @@ Author: Michael Hanke <michael.hanke@gmail.com>
 Last-Update: 2010-09-29
 --- a/afni_func.c
 +++ b/afni_func.c
-@@ -5956,7 +5956,7 @@ ENTRY("AFNI_tips_CB") ;
+@@ -6083,7 +6083,7 @@ ENTRY("AFNI_tips_CB") ;
       XMapRaised( XtDisplay(tips_hw->wshell) , XtWindow(tips_hw->wshell) ) ;
       EXRETURN ;
     } else if( !AFNI_noenv("AFNI_DONT_USE_HTMLWIN") ){
@@ -14,7 +14,7 @@ Last-Update: 2010-09-29
       if( fpt != NULL && *fpt != '\0' ){
         inf = (char *)malloc(sizeof(char)*(strlen(fpt)+16)) ;
         strcpy(inf,"file:") ; strcat(inf,fpt) ; free(fpt) ;
-@@ -6894,6 +6894,8 @@ ENTRY("AFNI_find_poem_files") ;
+@@ -7021,6 +7021,8 @@ ENTRY("AFNI_find_poem_files") ;
     /*----- get path to search -----*/
  
                         epath = getenv("AFNI_PLUGINPATH") ;
@@ -70,7 +70,7 @@ Last-Update: 2010-09-29
        if(wami_verb() > 1) 
 --- a/afni.c
 +++ b/afni.c
-@@ -5152,12 +5152,31 @@ ENTRY("AFNI_read_inputs") ;
+@@ -5168,12 +5168,31 @@ ENTRY("AFNI_read_inputs") ;
        /*-- 20 Dec 2001: Try to read a "global" session --*/
        /*-- 11 May 2002: Move read global session up here --*/
  
