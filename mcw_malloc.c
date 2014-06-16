@@ -647,6 +647,20 @@ void * mcw_calloc( size_t n , size_t m , char *fnam , int lnum )
    else               return calloc( n , m ) ;
 }
 
+#ifndef DONT_USE_MCW_MALLOC
+/*-----------------------------------------------------------------
+    Is this pointer OK?
+-------------------------------------------------------------------*/
+
+int mcw_malloc_OK( void *fred )
+{
+   mallitem *ip ;
+   if( fred == NULL || !use_tracking ) return 1 ;
+   ip = shift_tracker(fred) ;
+   return (ip != NULL) ;
+}
+#endif
+
 /*-----------------------------------------------------------------
     The actual replacment for free()
 -------------------------------------------------------------------*/

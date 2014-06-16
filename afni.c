@@ -1374,7 +1374,8 @@ void AFNI_sigfunc_alrm(int sig)
      "Please re-inflate the multiverse and try again later"          ,
      "Out of Cheese Error; Please Install Wensleydale and Try Again" ,
      "Out of Cheese Error; Please Install Stilton and Try Again"     ,
-     "Out of Wine Error: Please Install Port and Try Again"          ,
+     "Out of Wine Error: Please Install Merlot and Try Again"        ,
+     "Out of Wine Error: Please Install Chardonnay and Try Again"    ,
      "Out of Beer Error: No Further Progress Can Be Expected"        ,
      "Have you read Crime and Punishment, by Fido Dogstoyevski?"     ,
      "More cheese, Gromit!"                                          ,
@@ -1492,7 +1493,11 @@ void AFNI_sigfunc_alrm(int sig)
      "Life is hard; after all, it kills you"                         ,
      "I'm sorry; if you were right, I'd agree with you"              ,
      "Like dreams, statistics are a form of wish fulfillment"        ,
+     "I wish I were in Lobuche right now"                            ,
+     "Next stop: Bora Bora"                                          ,
 
+     "The important things about a statistical model are what it does NOT include"    ,
+     "You're going to like the way your brain activation maps look -- I guarantee it" ,
      "A p-value of 0.05 means the null hypothesis is 29% likely to be correct"        ,
      "There are lots of people who mistake their imagination for their memory"        ,
      "I'm off to get some hot chocolate in Warsaw -- want to join me?"                ,
@@ -1619,10 +1624,14 @@ static int check_string( char *targ , int ns , char *ss[] )
    return 0 ;
 }
 
-/*=========================================================================
+/*----------------------------------------------------------------------------*/
+/*----------------------------------------------------------------------------*/
+/*=============================================================================
   The new AFNI main program.
     02 Aug 1999: Have moved much of the startup into a work process.
-===========================================================================*/
+==============================================================================*/
+/*----------------------------------------------------------------------------*/
+/*----------------------------------------------------------------------------*/
 
 int main( int argc , char *argv[] )
 {
@@ -1863,6 +1872,9 @@ int main( int argc , char *argv[] )
    PUTENV("AFNI_RESCAN_AT_SWITCH","YES") ; /* 16 Nov 2007 */
    PUTENV("AFNI_VIDEO_DELAY","66") ;       /* 20 Aug 2009 */
    PUTENV("AFNI_GRAPH_FADE","YES") ;          /* Apr 2013 */
+#if 0
+   PUTENV("AFNI_PBAR_FULLRANGE","YES") ;   /* 03 Jun 2014 */
+#endif
 
 #if 0
    PUTENV("AFNI_IMAGE_LABEL_MODE","1") ;
@@ -1893,6 +1905,8 @@ int main( int argc , char *argv[] )
      THR_factor    = 1.0f / tval[ii] ;
      THR_top_value = tval[ii] - 1.0f ;
    }
+
+   PBAR_FULLRANGE = AFNI_yesenv("AFNI_PBAR_FULLRANGE") ; /* 03 Jun 2014 */
 
    AFNI_load_defaults( MAIN_shell ) ;
 
@@ -2584,7 +2598,7 @@ ENTRY("AFNI_startup_timeout_CB") ;
              "++ the right of the 'done' button, and from the resulting    ++\n"
              "++ popup menu, choose the 'Web Browser: Help' item.          ++\n"
            ) ;
-    (void) MCW_popup_message( MAIN_im3d->vwid->prog->quit_pb, hstr, MCW_USER_KILL ) ;
+     (void)MCW_popup_message( MAIN_im3d->vwid->prog->quit_pb,hstr,MCW_USER_KILL ) ;
      MCW_flash_widget_list( 9 , MAIN_im3d->vwid->view->sess_lab ,
                                 MAIN_im3d->vwid->view->choose_sess_pb ,
                                 MAIN_im3d->vwid->view->read_sess_pb ,
@@ -2897,7 +2911,7 @@ if(PRINT_TRACING){ char str[256] ; sprintf(str,"n=%d type=%d",n,type) ; STATUS(s
       grstat->transforms0D = & (GLOBAL_library.registered_0D) ;
       grstat->transforms1D = & (GLOBAL_library.registered_1D) ;
 
-      strcpy( grstat->namecode , br->namecode ) ;
+      MCW_strncpy( grstat->namecode , br->namecode , 32 ) ;
 
       RETURN( (XtPointer) grstat ) ;
    }
@@ -2916,12 +2930,14 @@ INFO_message("thresh_fade: nsl=%d",nsl) ;
         if( br->ntmask != nsl ){
           FD_brick *br_fim = UNDERLAY_TO_OVERLAY(im3d,br) ;
           MRI_IMAGE *fov = AFNI_func_overlay(nsl,br_fim) ;
+          STATUS("clear overlay tmask") ;
           CLEAR_TMASK(br) ;
 #if 0
 ININFO_message("  get new tmask") ;
 #endif
           if( fov != NULL ){
             br->tmask  = ISQ_binarize_overlay(fov) ;
+            STATUSp("new tmask",br->tmask) ;
             br->ntmask = nsl ; mri_free(fov) ;
           }
         }
@@ -6324,6 +6340,12 @@ ENTRY("AFNI_view_xyz_CB") ;
     m2m = AFNI_yesenv("AFNI_IMAGE_MINTOMAX") ;
     c2c = AFNI_yesenv("AFNI_IMAGE_CLIPPED") ;  /* 17 Sep 2007 */
 
+    if( !IM3D_ULAY_COHERENT(im3d) ){           /* 10 Jun 2014 */
+      STATUS("incoherent ulay -- patching") ;
+      ERROR_message("AFNI_view_xyz_CB: incoherent ulay -- patching") ;
+      AFNI_assign_ulay_bricks(im3d) ;
+    }
+
     if( w == pb_xyz && sxyz == NULL ){         /* axial image */
        snew  = &(im3d->s123) ;
        brnew = im3d->b123_ulay ;
@@ -6620,10 +6642,13 @@ ENTRY("AFNI_viewbut_EV") ;
 
 /*------------------------------------------------------------------------*/
 
+static int ignore_redisplay_func = 0 ;  /* 03 Jun 2014 */
+void AFNI_redisplay_func_ignore( int ig ){ ignore_redisplay_func = ig ; }
+
 void AFNI_redisplay_func( Three_D_View *im3d )  /* 05 Mar 2002 */
 {
 ENTRY("AFNI_redisplay_func") ;
-   if( IM3D_OPEN(im3d) && IM3D_IMAGIZED(im3d) ){
+   if( !ignore_redisplay_func && IM3D_OPEN(im3d) && IM3D_IMAGIZED(im3d) ){
      AFNI_set_viewpoint( im3d , -1,-1,-1 , REDISPLAY_ALL ) ;
      AFNI_process_funcdisplay( im3d ) ;
    }
@@ -6693,6 +6718,12 @@ void AFNI_range_setter( Three_D_View *im3d , MCW_imseq *seq )
 ENTRY("AFNI_range_setter") ;
 
    if( !IM3D_OPEN(im3d) || !ISQ_VALID(seq) ) EXRETURN ;
+
+   if( !IM3D_ULAY_COHERENT(im3d) ){           /* 10 Jun 2014 */
+     STATUS("AFNI_range_setter: incoherent ulay -- patching") ;
+     ERROR_message("incoherent ulay -- patching") ;
+     AFNI_assign_ulay_bricks(im3d) ;
+   }
 
    br = (FD_brick *)im3d->b123_ulay ; if( br == NULL ) EXRETURN ;
    ds = br->dset ;                    if( ds == NULL ) EXRETURN ;
@@ -6996,14 +7027,73 @@ DUMP_IVEC3("  new_id",new_id) ;
          im3d->vwid->func->clu_list = mri_clusterize_array(1) ;
          AFNI_cluster_dispize(im3d,0);  /* display the results */
        }
+       IM3D_CLEAR_THRSTAT(im3d) ;  /* 12 Jun 2014 */
      } else {
        UNCLUSTERIZE(im3d) ;  /* macro-ized 13 Feb 2008 */
      }
    }
 
+   /*--- 12 Jun 2014: thresholded statistics on fim ---*/
+
+#undef  THBOT
+#undef  THTOP
+#undef  THBIG
+#define THBIG    1.e+37f
+#define THBOT(t) ((im3d->vinfo->thr_sign==0 || im3d->vinfo->thr_sign==2) ? (-(t)) : (-THBIG))
+#define THTOP(t) ((im3d->vinfo->thr_sign==0 || im3d->vinfo->thr_sign==1) ? (t)    :  (THBIG))
+
+   if( im3d->vinfo->func_visible ){
+     float thr,thbot,thtop,fac ; MRI_IMAGE *thim , *ovim ; float_pair ovmm ;
+     thr = get_3Dview_func_thresh(im3d,1) ; thbot = THBOT(thr) ; thtop = THTOP(thr) ;
+     if( FLDIF(thbot,im3d->fim_thrbot) || FLDIF(thtop,im3d->fim_thrtop) ){
+       ovim = AFNI_dataset_displayim(im3d->fim_now,im3d->vinfo->fim_index) ;
+       thim = AFNI_dataset_displayim(im3d->fim_now,im3d->vinfo->thr_index) ;
+       if( ovim == NULL || thim == NULL ){
+#if 0
+INFO_message("ovim and/or thim == NULL : %p %p",ovim,thim) ;
+#endif
+         IM3D_CLEAR_THRSTAT(im3d) ;  /* 12 Jun 2014 */
+       } else {
+         im3d->fim_thrbot = thbot ; im3d->fim_thrtop = thtop ;
+         fac = DSET_BRICK_FACTOR(im3d->fim_now,im3d->vinfo->thr_index) ;
+         if( fac > 0.0f ){ thbot /= fac ; thtop /= fac ; }
+         ovmm = mri_threshold_minmax(thbot,thtop,thim,ovim) ;
+         im3d->fim_thresh_min = ovmm.a ; im3d->fim_thresh_max = ovmm.b ;
+         fac = DSET_BRICK_FACTOR(im3d->fim_now,im3d->vinfo->fim_index) ;
+         if( fac > 0.0f ){ im3d->fim_thresh_min *= fac ; im3d->fim_thresh_max *= fac ; }
+#if 0
+INFO_message("fim_thresh min=%f max=%f",im3d->fim_thresh_min,im3d->fim_thresh_max) ;
+#endif
+       }
+       if( im3d->fim_thresh_min < im3d->fim_thresh_max ){
+         char str[256] ;
+         sprintf(str,"OLay thresholded range: %f : %f",im3d->fim_thresh_min,im3d->fim_thresh_max ) ;
+         MCW_register_hint( im3d->vwid->func->range_label , str ) ;
+       } else {
+         MCW_register_hint( im3d->vwid->func->range_label , "OLay thresholded range: unknown" ) ;
+       }
+     }
+#if 0
+else INFO_message("threshold unchanged") ;
+#endif
+   } else {
+     IM3D_CLEAR_THRSTAT(im3d) ;  /* 12 Jun 2014 */
+     MCW_register_hint( im3d->vwid->func->range_label , "OLay thresholded range: unknowable" ) ;
+   }
+
+#undef  THBOT
+#undef  THTOP
+#undef  THBIG
+
    /*--- redraw images now ---*/
 
    im3d->ignore_seq_callbacks = AFNI_IGNORE_EVERYTHING ;
+
+   if( !IM3D_ULAY_COHERENT(im3d) ){           /* 10 Jun 2014 */
+     STATUS("AFNI_set_viewpoint: incoherent ulay -- patching") ;
+     ERROR_message("incoherent ulay -- patching") ;
+     AFNI_assign_ulay_bricks(im3d) ;
+   }
 
    if( im3d->s123 != NULL || im3d->g123 != NULL ){
       int xyzm[4] ;
@@ -8495,7 +8585,7 @@ STATUS("setting anatmode_bbox back to 'View ULay Data Brick'") ;
 
    fbr = THD_setup_bricks( im3d->anat_now ) ;
    if( fbr == NULL ){
-     fprintf(stderr,"THD_setup_bricks of anat_now fails!\n") ; EXRETURN ;
+     ERROR_message("THD_setup_bricks of anat_now fails!") ; EXRETURN ;
    }
    DESTROY_FD_BRICK(im3d->b123_anat) ; im3d->b123_anat = fbr[0] ;
    DESTROY_FD_BRICK(im3d->b231_anat) ; im3d->b231_anat = fbr[1] ;
@@ -8816,6 +8906,8 @@ STATUS(" -- function underlay widgets") ;
    MCW_set_bbox( im3d->vwid->func->underlay_bbox ,
                  1 << im3d->vinfo->underlay_type ) ;
 
+   AFNI_assign_ulay_bricks(im3d) ;   /* 10 Jun 2014 */
+
    /*--------------------------------------------------------*/
    /*--- 3/24/95: deal with the new range widgets in func ---*/
 
@@ -9016,6 +9108,8 @@ STATUS(" -- turning time index control off") ;
      old_func_nvals = DSET_NVALS(im3d->fim_now) ;
    else
      old_func_nvals = -1 ;
+
+   IM3D_CLEAR_THRSTAT(im3d) ;  /* 12 Jun 2014 */
 
    AFNI_sleep(13) ;             /* 18 Oct 2005: for luck */
 

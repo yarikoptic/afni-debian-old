@@ -43,7 +43,37 @@
 
 afni_history_struct rwcox_history[] = {
 /*=====BELOW THIS LINE=====*/
-  { 02 , MAY , 2014 , RWC , "afni" , MICRO , TYPE_NEW_OPT ,
+  { 12 , JUN , 2014 , RWC , "afni GUI" , MICRO , TYPE_GENERAL ,
+   "Add OLay thresholded range hint" ,
+   NULL } ,
+
+ { 10 , JUN , 2014 , RWC , "afni GUI" , MICRO , TYPE_BUG_FIX ,
+   "Fix crashing bug with PBAR_FULLRANGE" ,
+   "b..._ulay pointers could become deranged via AFNI_setup_viewing() call\n"
+   "to AFNI_reset_func_range() -- patched this, and also check for this type\n"
+   "of derangement in various other places -- ERROR_message should appear if\n"
+   "it raises its ugly head again." } ,
+
+ { 4 , JUN , 2014 , RWC , "afni GUI" , MICRO , TYPE_MODIFY ,
+   "AFNI_PBAR_FULLRANGE fixes" ,
+   "Made it work better with Range and Pbar locks.  Also added buttons for\n"
+   "these types of locks to the Datamode->Lock menu for ease of use (instead\n"
+   "of having to set environment variables in EditEnv)." } ,
+
+ { 3 , JUN , 2014 , RWC , "afni GUI" , MINOR , TYPE_NEW_ENV ,
+   "AFNI_PBAR_FULLRANGE" ,
+   "If this variable is set to YES, then the color pbar in Define Overlay\n"
+   "will reflect the range set by the user for the colorization process.  At\n"
+   "some point, this feature will become the default, and then you'll have\n"
+   "to set this variable to NO to get the old behavior -- where the range\n"
+   "set by the user is shown only at the bottom right of the Define Overlay\n"
+   "panel, and it then multiplies the independently set top value of the\n"
+   "pbar to get the colorization scale.  In the new method, the top value of\n"
+   "the pbar cannot be set by the user independently of the range (or\n"
+   "autorange) parameter.  The intention of this change is to make the\n"
+   "number -> colors process somewhat more blatant." } ,
+
+ { 02 , MAY , 2014 , RWC , "afni" , MICRO , TYPE_NEW_OPT ,
    "add -papers option, to list AFNI papers" ,
    "The list of papers is maintained in file afni_papers.txt\n"
    "which is turned into afni_papers.h via program quotize." } ,

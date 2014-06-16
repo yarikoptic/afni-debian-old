@@ -2263,6 +2263,7 @@ void AFNI_make_wid2( Three_D_View *im3d )
 {
    int ii ;
    Widget hrc ;  /* 30 Mar 2001 */
+   Widget qsep=NULL ;
 
 ENTRY("AFNI_make_wid2") ;
 
@@ -3169,7 +3170,7 @@ STATUS("making func->rowcol") ;
    func->inten_label =
       XtVaCreateManagedWidget(
          "dialog" , xmLabelWidgetClass , func->inten_rowcol ,
-            LABEL_ARG("Inten") ,
+            LABEL_ARG("OLay ") ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
    LABELIZE(func->inten_label) ;
@@ -3256,6 +3257,7 @@ STATUS("making func->rowcol") ;
    XtAddCallback( func->pbar_settop_pb , XmNactivateCallback ,
                   AFNI_pbar_CB , im3d ) ;
    MCW_register_hint( func->pbar_settop_pb , "Is scaled by 'range' controls" ) ;
+   XtSetSensitive( func->pbar_settop_pb , !PBAR_FULLRANGE ) ;
 
    func->pbar_flip_pb =
       XtVaCreateManagedWidget(
@@ -3499,10 +3501,9 @@ STATUS("making func->rowcol") ;
 
    MCW_register_hint( func->inten_label ,
                       "Control overlay colors" ) ;
-
-   (void) XtVaCreateManagedWidget(
+   qsep = XtVaCreateManagedWidget(
             "dialog" , xmSeparatorWidgetClass , func->inten_rowcol ,
-                XmNseparatorType , XmSINGLE_LINE ,
+              XmNseparatorType , XmSINGLE_LINE ,
             NULL ) ;
 
    BBOX_set_wtype("font8") ;
@@ -4346,6 +4347,16 @@ STATUS("making func->rowcol") ;
    XtManageChild( func->fim_rowcol ) ;
 #endif
    XtManageChild( func->rowcol ) ;
+
+#if 0
+   { Widget qwid[2] ; Window qwin[2] ;
+     qwid[0] = func->inten_pbar->top ;
+     qwid[1] = qsep ;
+     qwin[0] = XtWindow(qwid[0]) ;
+     qwin[1] = XtWindow(qwid[1]) ;
+     XRestackWindows( XtDisplay(qwid[0]) , qwin , 2 ) ;
+   }
+#endif
 
    EXRETURN ;
 }
@@ -5901,6 +5912,9 @@ ENTRY("new_AFNI_controller") ;
    im3d->cont_range_fval = 1.0;
    im3d->first_integral = -1;
    im3d->cont_perc_thr = 0; /* No percentile thresholding. ZSS: April 27 2012 */
+
+   IM3D_CLEAR_THRSTAT(im3d) ;  /* 12 Jun 2014 */
+
    RETURN(im3d) ;
 }
 
@@ -6401,9 +6415,12 @@ ENTRY("AFNI_lock_button") ;
 
    /*** button box to control the threshold lock ***/
 
-   { static char *thr_lock_label[3] = { "Free Thr.",
-                                        "Lock V." ,
-                                        "Lock P."  } ;
+   { static char *thr_lock_label[3] = { "Free Thresh",
+                                        "Lock Val" ,
+                                        "Lock pVal"  } ;
+     static char *rng_lock_label[1] = { "Lock Range" } ; int rr=0 ;
+     static char *pbar_lock_label[1]= { "Lock Pbar"  } ; int pp=0 ;
+
      GLOBAL_library.thr_lock = AFNI_thresh_lock_env_val();
      dmode->thr_lock_bbox =
             new_MCW_bbox( menu ,
@@ -6415,7 +6432,33 @@ ENTRY("AFNI_lock_button") ;
                           (XtPointer)im3d );
      MCW_set_bbox( dmode->thr_lock_bbox, 1<<GLOBAL_library.thr_lock);
      MCW_reghint_children( dmode->thr_lock_bbox->wrowcol ,
-                            "Lock thresholds?" ) ;
+                            "Lock overlay thresholds?" ) ;
+
+     rr = AFNI_yesenv("AFNI_RANGE_LOCK") ;
+     dmode->rng_lock_bbox =
+            new_MCW_bbox( menu ,
+                          1 ,
+                          rng_lock_label ,
+                          MCW_BB_radio_zero ,
+                          MCW_BB_frame ,
+                          AFNI_func_rnglock_change_CB,
+                          (XtPointer)im3d );
+     MCW_set_bbox( dmode->rng_lock_bbox, rr ) ;
+     MCW_reghint_children( dmode->rng_lock_bbox->wrowcol ,
+                            "Lock overlay ranges?" ) ;
+
+     pp = AFNI_check_pbar_lock() ;
+     dmode->pbar_lock_bbox =
+            new_MCW_bbox( menu ,
+                          1 ,
+                          pbar_lock_label ,
+                          MCW_BB_radio_zero ,
+                          MCW_BB_frame ,
+                          AFNI_func_pbarlock_change_CB,
+                          (XtPointer)im3d );
+     MCW_set_bbox( dmode->pbar_lock_bbox, pp ) ;
+     MCW_reghint_children( dmode->pbar_lock_bbox->wrowcol ,
+                            "Lock overlay color pbars?" ) ;
     }
 
    /*** pushbuttons ***/

@@ -62,7 +62,7 @@ typedef struct {
 
       Boolean read_dsets ;    /* 17 Mar 2000 */
 
-      char * layout_fname ;   /* 23 Sep 2000 */
+      char *layout_fname ;    /* 23 Sep 2000 */
 
       int enable_suma ;       /* 29 Aug 2001 */
 
@@ -74,7 +74,7 @@ typedef struct {
                /* port_niml no longer in use. ZSS June 2011 */
                /* int port_niml ;         10 Dec 2002 */
 
-      char * script_fname ;   /* 21 Jan 2003 */
+      char *script_fname ;    /* 21 Jan 2003 */
 } AF_options ;
 
 #ifdef MAIN
@@ -832,7 +832,9 @@ typedef struct {
       Widget         misc_1dchain_pb ;  /* 07 Aug 2001 */
 #endif
 
-      MCW_bbox     * thr_lock_bbox;     /* 16 Nov 2011 */
+      MCW_bbox     * thr_lock_bbox ;    /* 16 Nov 2011 */
+      MCW_bbox     * rng_lock_bbox ;    /* 04 Jun 2014 */
+      MCW_bbox     * pbar_lock_bbox;    /* 04 Jun 2014 */
       MCW_bbox     * ijk_lock_bbox ;    /* 11 Sep 2000 */
 
       Widget         misc_savelayout_pb ; /* 23 Sep 2000 */
@@ -1132,13 +1134,49 @@ typedef struct Three_D_View {
       int cont_pbar_index, int_pbar_index;
       int first_integral;
       int cont_perc_thr;       /* ZSS percentile thresholding. April 26 2012 */
+
+      /* record current threshold and fim statistics as thresholded [12 Jun 2014] */
+
+      float fim_thrbot ;
+      float fim_thrtop ;
+      float fim_thresh_min ;
+      float fim_thresh_max ;
 } Three_D_View ;
+
+#define IM3D_CLEAR_THRSTAT(iq)                                                    \
+  do{ (iq)->fim_thrbot     = 666.0f; (iq)->fim_thrtop     = -666.0f;              \
+      (iq)->fim_thresh_min = 666.0f; (iq)->fim_thresh_max = -666.0f; } while(0)
+
+#define IM3D_ULAY_COHERENT(iq)                                                    \
+ (( (iq)->b123_ulay == (iq)->b123_anat || (iq)->b123_ulay == (iq)->b123_fim ) &&  \
+  ( (iq)->b231_ulay == (iq)->b231_anat || (iq)->b231_ulay == (iq)->b231_fim ) &&  \
+  ( (iq)->b312_ulay == (iq)->b312_anat || (iq)->b312_ulay == (iq)->b312_fim ))
 
 #define IM3D_CLEAR_TMASK(iq)                                                                   \
  do{ CLEAR_TMASK((iq)->b123_anat); CLEAR_TMASK((iq)->b231_anat); CLEAR_TMASK((iq)->b312_anat); \
      CLEAR_TMASK((iq)->b123_fim) ; CLEAR_TMASK((iq)->b231_fim) ; CLEAR_TMASK((iq)->b312_fim) ; \
      CLEAR_TMASK((iq)->b123_ulay); CLEAR_TMASK((iq)->b231_ulay); CLEAR_TMASK((iq)->b312_ulay); \
  } while(0)
+
+#define STATUS_IM3D_TMASK(iq)                           \
+ do{ STATUSp     ("b123_anat"      ,(iq)->b123_anat) ;  \
+     STATUS_TMASK("b123_anat tmask",(iq)->b123_anat) ;  \
+     STATUSp     ("b231_anat"      ,(iq)->b231_anat) ;  \
+     STATUS_TMASK("b231_anat tmask",(iq)->b231_anat) ;  \
+     STATUSp     ("b312_anat"      ,(iq)->b312_anat) ;  \
+     STATUS_TMASK("b312_anat tmask",(iq)->b312_anat) ;  \
+     STATUSp     ("b123_fim "      ,(iq)->b123_fim ) ;  \
+     STATUS_TMASK("b123_fim  tmask",(iq)->b123_fim ) ;  \
+     STATUSp     ("b231_fim "      ,(iq)->b231_fim ) ;  \
+     STATUS_TMASK("b231_fim  tmask",(iq)->b231_fim ) ;  \
+     STATUSp     ("b312_fim "      ,(iq)->b312_fim ) ;  \
+     STATUS_TMASK("b312_fim  tmask",(iq)->b312_fim ) ;  \
+     STATUSp     ("b123_ulay"      ,(iq)->b123_ulay) ;  \
+     STATUS_TMASK("b123_ulay tmask",(iq)->b123_ulay) ;  \
+     STATUSp     ("b231_ulay"      ,(iq)->b231_ulay) ;  \
+     STATUS_TMASK("b231_ulay tmask",(iq)->b231_ulay) ;  \
+     STATUSp     ("b312_ulay"      ,(iq)->b312_ulay) ;  \
+     STATUS_TMASK("b312_ulay tmask",(iq)->b312_ulay) ; } while(0)
 
 /*! Force re-volume-editing when this viewer is redisplayed */
 
@@ -1163,6 +1201,10 @@ typedef struct Three_D_View {
        (iq)->vwid->func->clu_tabNN3 = NULL ;                               \
      (iq)->vednomask = 0 ;                                                 \
      if( (iq)->vedset.code ) redis++ ;                                     \
+     if( redis ){                                                          \
+       (iq)->fim_thrbot     = 666.0f; (iq)->fim_thrtop     = -666.0f;      \
+       (iq)->fim_thresh_min = 666.0f; (iq)->fim_thresh_max = -666.0f;      \
+     }                                                                     \
      (iq)->vedset.flags = (iq)->vedset.code = 0; AFNI_set_thr_pval((iq));  \
      if( (iq)->vinfo->func_visible && redis ) AFNI_redisplay_func((iq)) ;  \
  } while(0) ;
@@ -1525,6 +1567,8 @@ typedef struct {
    int dont_overlay_suma ;  /* 1 = won't send SUMA func overlay */
    int dont_hear_suma ;     /* 1 = I can't hear you SUMA        */
 
+   int pbar_fullrange ;                          /* 03 Jun 2014 */
+
 } AFNI_library_type ;
 
 #define BROWN_COLOR "#553319"
@@ -1577,6 +1621,8 @@ extern void AFNI_display_hist( Widget w ) ;       /* 05 Mar 2008 */
 # define SUMA_ENABLED   GLOBAL_argopt.enable_suma
 
 #define DOING_REALTIME_WORK (GLOBAL_library.interruptables.windows != NULL)
+
+#define PBAR_FULLRANGE  GLOBAL_library.pbar_fullrange
 
 #define UNDUMMYIZE                                                              \
  do { GLOBAL_library.have_dummy_dataset = 0 ;                                   \
@@ -1644,6 +1690,14 @@ extern void AFNI_ijk_lock_change_CB( Widget , XtPointer , XtPointer ) ;
 extern int AFNI_thresh_lock_env_val( void );
 extern void AFNI_func_thrlock_change_CB( Widget , XtPointer , XtPointer );
 extern void AFNI_set_all_thrlock_bboxes(Three_D_View *im3d, int bval) ;
+
+extern void AFNI_func_rnglock_change_CB( Widget , XtPointer , XtPointer );
+extern void AFNI_set_all_rnglock_bboxes(Three_D_View *im3d, int bval) ;
+extern int  AFNI_check_range_lock() ;
+
+extern void AFNI_func_pbarlock_change_CB( Widget , XtPointer , XtPointer );
+extern void AFNI_set_all_pbarlock_bboxes(Three_D_View *im3d, int bval) ;
+extern int  AFNI_check_pbar_lock() ;
 
 extern XtPointer AFNI_brick_to_mri( int n , int type , FD_brick * br );
 
@@ -1727,6 +1781,7 @@ extern void AFNI_write_many_dataset_CB( Widget , XtPointer , XtPointer ) ; /* 23
 extern void AFNI_anatmode_CB          ( Widget , XtPointer , XtPointer ) ;
 extern void AFNI_funcmode_CB          ( Widget , XtPointer , XtPointer ) ;
 extern void AFNI_raiseup_CB           ( Widget , XtPointer , XtPointer ) ;
+extern void AFNI_assign_ulay_bricks   ( Three_D_View *im3d ) ;             /* 10 Jun 2014 */
 
 extern void AFNI_saveas_dataset_CB   ( Widget , XtPointer , XtPointer ) ;  /* 18 Oct 2010 */
 extern void AFNI_saveas_finalize_CB  ( Widget , XtPointer , MCW_choose_cbs * ) ;
@@ -1851,6 +1906,7 @@ extern void AFNI_set_index_viewpoint( Three_D_View *, int, int );
 extern void AFNI_redisplay_func( Three_D_View * ) ;          /* 05 Mar 2002 */
 extern void AFNI_view_setter( Three_D_View *, MCW_imseq *) ; /* 26 Feb 2003 */
 extern void AFNI_range_setter( Three_D_View *, MCW_imseq *); /* 04 Nov 2003 */
+extern void AFNI_redisplay_func_ignore( int ) ;              /* 03 Jun 2014 */
 
 extern void AFNI_coord_filer_setup( Three_D_View *im3d ) ;   /* 07 May 2010 */
 
@@ -1870,11 +1926,19 @@ extern void AFNI_see_ttatlas_CB( Widget, XtPointer, XtPointer ) ; /* 25 Jul 2001
 extern void AFNI_range_rotate_av_CB( MCW_arrowval *, XtPointer ); /* 30 Mar 2001 */
 extern void AFNI_hintize_pbar( MCW_pbar * ,  float ) ;            /* 30 Mar 2001 */
 
-#define HINTIZE_pbar(iq)                            \
-  AFNI_hintize_pbar( (iq)->vwid->func->inten_pbar , \
-                    ((iq)->vinfo->fim_range != 0.0) \
-                     ? (iq)->vinfo->fim_range       \
-                     : (iq)->vinfo->fim_autorange )    /* 15 Aug 2001 */
+#define AFNI_pbar_topset(iq,val)           \
+ do{ MCW_choose_cbs cb ;                   \
+     cb.fval = val ;                       \
+     AFNI_set_pbar_top_CB(NULL,(iq),&cb) ; \
+ } while(0)
+
+#define FIM_RANGE(iq)              \
+ ( ((iq)->vinfo->fim_range != 0.0) \
+   ? (iq)->vinfo->fim_range        \
+   : (iq)->vinfo->fim_autorange )
+
+#define HINTIZE_pbar(iq)  \
+  AFNI_hintize_pbar( (iq)->vwid->func->inten_pbar , FIM_RANGE(iq) )
 
 extern void AFNI_reset_func_range( Three_D_View * ) ;
 

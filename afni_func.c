@@ -34,12 +34,18 @@ ENTRY("AFNI_see_func_CB") ;
    new_val = MCW_val_bbox( im3d->vwid->view->see_func_bbox ) ;
 
    if( old_val != new_val ){
+#if 0
+     STATUS_IM3D_TMASK(im3d) ;
+     STATUS("clear tmask") ;
+#endif
      IM3D_CLEAR_TMASK(im3d) ;                                /* Mar 2013 */
+     IM3D_CLEAR_THRSTAT(im3d) ;                           /* 12 Jun 2014 */
      im3d->vinfo->func_visible = (new_val == 1) ? True : False ;
      if( ! ISVALID_3DIM_DATASET(im3d->fim_now) ){            /* 29 Apr 1997 */
        im3d->vinfo->func_visible = False ;
        MCW_set_bbox( im3d->vwid->view->see_func_bbox , 0 ) ; /* 29 Jan 1999 */
      }
+     IM3D_CLEAR_THRSTAT(im3d) ;       /* 12 Jun 2014 */
      OVERLAY_SUMA ;                   /* 16 Jun 2003 */
      AFNI_redisplay_func( im3d ) ;    /* 05 Mar 2002 */
      im3d->vinfo->func_visible_count++ ; /* 03 Aug 2007 */
@@ -94,7 +100,12 @@ ENTRY("AFNI_func_autothresh_CB") ;
 
    if( !IM3D_OPEN(im3d) ) EXRETURN ;
 
+#if 0
+   STATUS_IM3D_TMASK(im3d) ;
+   STATUS("clear tmask") ;
+#endif
    IM3D_CLEAR_TMASK(im3d) ;                                /* Mar 2013 */
+   IM3D_CLEAR_THRSTAT(im3d) ;                           /* 12 Jun 2014 */
    new_thresh = AFNI_get_autothresh(im3d) ;
    if( new_thresh > 0.0f ) AFNI_set_threshold(im3d,new_thresh) ;
    EXRETURN ;
@@ -281,7 +292,12 @@ ENTRY("AFNI_func_thrsign_CB") ;
    if( !IM3D_OPEN(im3d) ) EXRETURN ;
 
    im3d->vinfo->thr_sign = av->ival ;
+#if 0
+   STATUS_IM3D_TMASK(im3d) ;
+   STATUS("clear tmask") ;
+#endif
    IM3D_CLEAR_TMASK(im3d) ;                                /* Mar 2013 */
+   IM3D_CLEAR_THRSTAT(im3d) ;                           /* 12 Jun 2014 */
    AFNI_redisplay_func( im3d ) ;
    AFNI_set_window_titles( im3d ) ;
    EXRETURN ;
@@ -321,7 +337,12 @@ ENTRY("AFNI_set_threshold") ;
         if( ival < 0    ) ival = 0    ;
    else if( ival > stop ) ival = stop ;
 
+#if 0
+   STATUS_IM3D_TMASK(im3d) ;
+   STATUS("clear tmask") ;
+#endif
    IM3D_CLEAR_TMASK(im3d) ;                                /* Mar 2013 */
+   IM3D_CLEAR_THRSTAT(im3d) ;                           /* 12 Jun 2014 */
    XmScaleSetValue( im3d->vwid->func->thr_scale , ival ) ;
    AFNI_thr_scale_CB( im3d->vwid->func->thr_scale, (XtPointer)im3d, NULL ) ;
    FIX_SCALE_SIZE(im3d) ;
@@ -341,7 +362,7 @@ void AFNI_thr_scale_CB( Widget w, XtPointer client_data, XtPointer call_data )
    Three_D_View *im3d = (Three_D_View *) client_data ;
    XmScaleCallbackStruct *cbs = (XmScaleCallbackStruct *) call_data ;
    float fff ;
-   int redisplay , ival ;
+   int ival ;
 
 ENTRY("AFNI_thr_scale_CB") ;
 
@@ -356,13 +377,16 @@ ENTRY("AFNI_thr_scale_CB") ;
    FIX_SCALE_VALUE(im3d) ;
    FIX_SCALE_SIZE(im3d) ;   /* 09 May 2001 */
 
-   redisplay = (im3d->vinfo->func_visible) ? REDISPLAY_OVERLAY
-                                           : REDISPLAY_OPTIONAL ;
    AFNI_set_thr_pval( im3d ) ;
 
    MCW_discard_events_all( w , ButtonPressMask ) ;  /* 20 Mar 2007 */
 
+#if 0
+   STATUS_IM3D_TMASK(im3d) ;
+   STATUS("clear tmask") ;
+#endif
    IM3D_CLEAR_TMASK(im3d) ;                                /* Mar 2013 */
+   IM3D_CLEAR_THRSTAT(im3d) ;                           /* 12 Jun 2014 */
    if( ! DOING_REALTIME_WORK ) AFNI_redisplay_func( im3d ) ;
 
    AFNI_thresh_lock_carryout(im3d) ;  /* 06 Feb 2004 */
@@ -420,7 +444,12 @@ ENTRY("AFNI_set_thresh_top") ;
 
    im3d->vinfo->func_thresh_top = tval ;
 
+#if 0
+   STATUS_IM3D_TMASK(im3d) ;
+   STATUS("clear tmask") ;
+#endif
    IM3D_CLEAR_TMASK(im3d) ;                                /* Mar 2013 */
+   IM3D_CLEAR_THRSTAT(im3d) ;                           /* 12 Jun 2014 */
    FIX_SCALE_VALUE(im3d) ;
    FIX_SCALE_SIZE(im3d) ;   /* 09 May 2001 */
    AFNI_set_thr_pval( im3d ) ;
@@ -472,6 +501,7 @@ ENTRY("AFNI_thresh_top_CB") ;
   Used to set the pval (significance) label at the bottom of the
   threshold scale.
 -------------------------------------------------------------------------*/
+
 float  AFNI_thresh_from_percentile( Three_D_View *im3d, float perc)
 {
    float *fv, thresh=0.0;
@@ -622,7 +652,9 @@ void AFNI_hintize_pbar( MCW_pbar *pbar ,  float fac )
 
 ENTRY("AFNI_hintize_pbar") ;
 
-   if( pbar == NULL || fac == 0.0 ) EXRETURN ;  /* bad */
+   if( pbar == NULL || fac == 0.0f ) EXRETURN ;  /* bad */
+
+   if( PBAR_FULLRANGE ) fac = 1.0f ;     /* 03 Jun 2014 */
 
    if( pbar->bigmode ){
      MCW_register_hint( pbar->panes[0] ,
@@ -660,12 +692,21 @@ ENTRY("AFNI_inten_pbar_CB") ;
 
    if( ! IM3D_VALID(im3d) ) EXRETURN ;
 
+   if( PBAR_FULLRANGE && !IM3D_ULAY_COHERENT(im3d) ){ /* 10 Jun 2014 */
+     STATUS("incoherent ulay -- patching") ;
+     ERROR_message("AFNI_inten_pbar_CB: incoherent ulay -- patching") ;
+     AFNI_assign_ulay_bricks(im3d) ;
+   }
+
+#if 0
+   STATUS_IM3D_TMASK(im3d) ;
+   STATUS("clear tmask") ;
+#endif
    IM3D_CLEAR_TMASK(im3d) ;                                /* Mar 2013 */
+   IM3D_CLEAR_THRSTAT(im3d) ;                           /* 12 Jun 2014 */
    if( im3d->vinfo->func_visible ) AFNI_redisplay_func( im3d ) ;
 
-   AFNI_hintize_pbar( pbar ,
-                      (im3d->vinfo->fim_range != 0.0) ? im3d->vinfo->fim_range
-                                                      : im3d->vinfo->fim_autorange ) ;
+   AFNI_hintize_pbar( pbar , FIM_RANGE(im3d) ) ;
 
    FIX_SCALE_SIZE(im3d) ;
 
@@ -832,7 +873,20 @@ void AFNI_inten_av_CB( MCW_arrowval *av , XtPointer cd )
 
    if( !IM3D_OPEN(im3d) ) return ;
 
+   if( PBAR_FULLRANGE && !IM3D_ULAY_COHERENT(im3d) ){ /* 10 Jun 2014 */
+     STATUS("incoherent ulay -- patching") ;
+     ERROR_message("AFNI_inten_av_CB: incoherent ulay -- patching") ;
+     AFNI_assign_ulay_bricks(im3d) ;
+   }
+
+   if( PBAR_FULLRANGE ) AFNI_redisplay_func_ignore(1) ;
+
+#if 0
+   STATUS_IM3D_TMASK(im3d) ;
+   STATUS("clear tmask") ;
+#endif
    IM3D_CLEAR_TMASK(im3d) ;                                /* Mar 2013 */
+   IM3D_CLEAR_THRSTAT(im3d) ;                           /* 12 Jun 2014 */
    HIDE_SCALE(im3d) ;
    if( av->ival > NPANE_MAX ){
      int npane=pbar->num_panes , jm=pbar->mode ;
@@ -848,14 +902,23 @@ void AFNI_inten_av_CB( MCW_arrowval *av , XtPointer cd )
      NORMAL_cursorize( pbar->panew ) ;  /* 08 Apr 2005 */
    }
    FIX_SCALE_SIZE(im3d) ;
+
+   if( PBAR_FULLRANGE ) AFNI_redisplay_func_ignore(0) ;
+
+   if( PBAR_FULLRANGE ) AFNI_pbar_topset(im3d,im3d->vinfo->fim_range) ;
+   else                 HINTIZE_pbar(im3d) ;
+
+   return ;
 }
+
+/*----------------------------------------------------------------------------*/
 
 char * AFNI_inten_av_texter( MCW_arrowval *av , XtPointer cd )
 {
    static char buf[4] ;
-   if( av->ival > NPANE_MAX ) strcpy (buf,"**") ;
-   else                       sprintf(buf,"%d",av->ival) ;
-   return buf ;
+   if( av->ival > NPANE_MAX ) strcpy (buf,"**") ;           /* label for  */
+   else                       sprintf(buf,"%d",av->ival) ;  /* number of  */
+   return buf ;                                             /* pbar panes */
 }
 
 /*---------------------------------------------------------------------
@@ -1401,7 +1464,7 @@ static int reject_zero = 0 ;
 #undef  THBOT
 #undef  THTOP
 #undef  THBIG
-#define THBIG    1.e+9f
+#define THBIG    1.e+37f
 #define THBOT(t) ((thrsign==0 || thrsign==2) ? (-(t)) : (-THBIG))
 #define THTOP(t) ((thrsign==0 || thrsign==1) ? (t)    :  (THBIG))
 
@@ -1491,9 +1554,8 @@ ENTRY("AFNI_func_overlay") ;
        STATUS("fetch im_fim") ;
        im_fim = FD_warp_to_mri( n, ind, br_fim ) ;  /* get func image */
      }
-     scale_factor = im3d->vinfo->fim_range ;
-     if( scale_factor == 0.0 ) scale_factor = im3d->vinfo->fim_autorange ;
-     if( scale_factor == 0.0 ) scale_factor = 1.0f ;
+     scale_factor = FIM_RANGE(im3d) ;
+     if( scale_factor == 0.0 || PBAR_FULLRANGE ) scale_factor = 1.0f ;
 
      AFNI_set_valabel( br_fim , n , im_fim , im3d->vinfo->func_val ) ;
    }
@@ -2147,11 +2209,54 @@ ENTRY("AFNI_resam_av_CB") ;
    }
 
    SHOW_AFNI_PAUSE ;
+#if 0
+   STATUS_IM3D_TMASK(im3d) ;
+   STATUS("clear tmask") ;
+#endif
    IM3D_CLEAR_TMASK(im3d) ;                                /* Mar 2013 */
+   IM3D_CLEAR_THRSTAT(im3d) ;                           /* 12 Jun 2014 */
    im3d->vinfo->tempflag = 1 ;
    AFNI_modify_viewing( im3d , False ) ;  /* redisplay */
    SHOW_AFNI_READY ;
    RESET_AFNI_QUIT(im3d) ;
+   EXRETURN ;
+}
+
+/*----------------------------------------------------------------------*/
+/*----- set the bricks to use for the underlay images -----*/
+
+void AFNI_assign_ulay_bricks( Three_D_View *im3d )
+{
+ENTRY("AFNI_assign_ulay_bricks") ;
+
+   if( ! IM3D_OPEN(im3d) ) EXRETURN ;
+
+   switch( im3d->vinfo->underlay_type ){
+     default:
+     case UNDERLAY_ANAT:                    /* set underlay to anat */
+       STATUS("anatomy underlay") ;
+       im3d->b123_ulay = im3d->b123_anat ;
+       im3d->b231_ulay = im3d->b231_anat ;
+       im3d->b312_ulay = im3d->b312_anat ;
+     break ;
+
+     case UNDERLAY_ALLFUNC:
+       if( ISVALID_DSET(im3d->fim_now) ){
+         STATUS("functional underlay") ;
+         im3d->b123_ulay = im3d->b123_fim ;
+         im3d->b231_ulay = im3d->b231_fim ;
+         im3d->b312_ulay = im3d->b312_fim ;
+       } else {
+         STATUS("defaulted anatomy underlay") ;
+         WARNING_message("invalid Overlay dataset") ;
+         im3d->b123_ulay = im3d->b123_anat ;
+         im3d->b231_ulay = im3d->b231_anat ;
+         im3d->b312_ulay = im3d->b312_anat ;
+         MCW_set_bbox( im3d->vwid->func->underlay_bbox , 1<<UNDERLAY_ANAT ) ;
+       }
+     break ;
+   }
+
    EXRETURN ;
 }
 
@@ -2178,47 +2283,11 @@ ENTRY("AFNI_underlay_CB") ;
                                           im3d->vwid->func->underlay_bbox->wbut ) ;
    else            bval = im3d->vinfo->underlay_type ;
 
-   if( bval == im3d->vinfo->underlay_type && w != NULL ) EXRETURN ;  /* nothing */
+   if( bval == im3d->vinfo->underlay_type && w != NULL && IM3D_ULAY_COHERENT(im3d) ) EXRETURN ;
 
    im3d->vinfo->underlay_type = bval ;
 
-   /*----- set the bricks to use for the underlay images -----*/
-
-   switch( im3d->vinfo->underlay_type ){
-
-      default:
-
-      case UNDERLAY_ANAT:                    /* set underlay to anat */
-
-STATUS("anatomy underlay") ;
-
-         im3d->b123_ulay = im3d->b123_anat ;
-         im3d->b231_ulay = im3d->b231_anat ;
-         im3d->b312_ulay = im3d->b312_anat ;
-      break ;
-
-      case UNDERLAY_ALLFUNC:
-         if( ISVALID_DSET(im3d->fim_now) ){
-
-STATUS("functional underlay") ;
-
-            im3d->b123_ulay = im3d->b123_fim ;
-            im3d->b231_ulay = im3d->b231_fim ;
-            im3d->b312_ulay = im3d->b312_fim ;
-         } else {
-
-STATUS("defaulted anatomy underlay") ;
-
-            BEEPIT ; WARNING_message("invalid Overlay dataset") ;
-
-            im3d->b123_ulay = im3d->b123_anat ;
-            im3d->b231_ulay = im3d->b231_anat ;
-            im3d->b312_ulay = im3d->b312_anat ;
-
-            MCW_set_bbox( im3d->vwid->func->underlay_bbox , 1<<UNDERLAY_ANAT ) ;
-         }
-      break ;
-   }
+   AFNI_assign_ulay_bricks(im3d) ;  /* 10 Jun 2014 */
 
    /*--- May 1996: destroy useless graph windows ---*/
 
@@ -2300,7 +2369,12 @@ STATUS("defaulted anatomy underlay") ;
    if( seq_exist ){
 
       im3d->ignore_seq_callbacks = AFNI_IGNORE_EVERYTHING ;
+#if 0
+      STATUS_IM3D_TMASK(im3d) ;
+      STATUS("clear tmask") ;
+#endif
       IM3D_CLEAR_TMASK(im3d) ;                                /* Mar 2013 */
+      IM3D_CLEAR_THRSTAT(im3d) ;                           /* 12 Jun 2014 */
 
       if( im3d->s123 != NULL )
          drive_MCW_imseq( im3d->s123 , isqDR_newseq ,
@@ -2798,7 +2872,12 @@ ENTRY("AFNI_finalize_dataset_CB") ;
    old_func = im3d->vinfo->func_num ;
    old_view = im3d->vinfo->view_type ;
 
+#if 0
+   STATUS_IM3D_TMASK(im3d) ;
+   STATUS("clear tmask") ;
+#endif
    IM3D_CLEAR_TMASK(im3d) ;                                /* Mar 2013 */
+   IM3D_CLEAR_THRSTAT(im3d) ;                           /* 12 Jun 2014 */
 
    /*--- switch sessions ---*/
 
@@ -5588,9 +5667,18 @@ ENTRY("AFNI_range_bbox_CB") ;
       im3d->vinfo->fim_range = (new_auto) ? (im3d->vinfo->fim_autorange)
                                           : (im3d->vwid->func->range_av->fval) ;
 
-      AFNI_hintize_pbar( im3d->vwid->func->inten_pbar ,
-                         (im3d->vinfo->fim_range != 0.0) ? im3d->vinfo->fim_range
-                                                         : im3d->vinfo->fim_autorange );
+      if( PBAR_FULLRANGE && !IM3D_ULAY_COHERENT(im3d) ){ /* 10 Jun 2014 */
+        STATUS("incoherent ulay -- patching") ;
+        ERROR_message("AFNI_range_bbox_CB: incoherent ulay -- patching") ;
+        AFNI_assign_ulay_bricks(im3d) ;
+      }
+
+      if( PBAR_FULLRANGE ){
+        AFNI_redisplay_func_ignore(1) ;
+        AFNI_pbar_topset(im3d,im3d->vinfo->fim_range) ;
+        AFNI_redisplay_func_ignore(0) ;
+      }
+      else HINTIZE_pbar(im3d) ;
 
       AV_SENSITIZE( im3d->vwid->func->range_av , ! new_auto ) ;
 
@@ -5638,13 +5726,24 @@ ENTRY("AFNI_range_av_CB") ;
    if( ! IM3D_VALID(im3d) ) EXRETURN ;
 
    im3d->vinfo->fim_range = av->fval ;
+
+   if( PBAR_FULLRANGE && !IM3D_ULAY_COHERENT(im3d) ){ /* 10 Jun 2014 */
+     STATUS("incoherent ulay -- patching") ;
+     ERROR_message("AFNI_range_av_CB: incoherent ulay -- patching") ;
+     AFNI_assign_ulay_bricks(im3d) ;
+   }
+
+   if( PBAR_FULLRANGE ){
+     AFNI_redisplay_func_ignore(1) ;
+     AFNI_pbar_topset(im3d,im3d->vinfo->fim_range) ;
+     AFNI_redisplay_func_ignore(0) ;
+   }
+   else HINTIZE_pbar(im3d) ;
+
    AFNI_redisplay_func( im3d ) ;
 
    AFNI_range_lock_carryout(im3d) ;  /* 23 Feb 2004 */
 
-   AFNI_hintize_pbar( im3d->vwid->func->inten_pbar ,
-                      (im3d->vinfo->fim_range != 0.0) ? im3d->vinfo->fim_range
-                                                      : im3d->vinfo->fim_autorange );
    EXRETURN ;
 }
 
@@ -5675,6 +5774,14 @@ ENTRY("AFNI_inten_bbox_CB") ;
 
       /* re-panel the pbar befitting its new mode */
 
+      if( PBAR_FULLRANGE && !IM3D_ULAY_COHERENT(im3d) ){ /* 10 Jun 2014 */
+        STATUS("incoherent ulay -- patching") ;
+        ERROR_message("AFNI_inten_bbox_CB: incoherent ulay -- patching") ;
+        AFNI_assign_ulay_bricks(im3d) ;
+      }
+
+      AFNI_redisplay_func_ignore(1) ;
+
       HIDE_SCALE(im3d) ;
       if( pbar->bigmode ){               /* 30 Jan 2003 */
         int npane=pbar->num_panes ;
@@ -5698,6 +5805,10 @@ ENTRY("AFNI_inten_bbox_CB") ;
       else
         AV_assign_ival( im3d->vwid->func->inten_av, pbar->npan_save[jm] ) ;
 
+      if( PBAR_FULLRANGE ) AFNI_pbar_topset(im3d,im3d->vinfo->fim_range) ;
+      else                 HINTIZE_pbar(im3d) ;
+
+      AFNI_redisplay_func_ignore(0) ;
       AFNI_redisplay_func( im3d ) ;
    }
 
@@ -5716,6 +5827,12 @@ void AFNI_reset_func_range( Three_D_View *im3d )
 ENTRY("AFNI_reset_func_range") ;
 
    if( ! IM3D_VALID(im3d) ) EXRETURN ;
+
+   if( PBAR_FULLRANGE && !IM3D_ULAY_COHERENT(im3d) ){ /* 10 Jun 2014 */
+     STATUS("incoherent ulay -- patching") ;
+     ERROR_message("AFNI_reset_func_range: incoherent ulay -- patching") ;
+     AFNI_assign_ulay_bricks(im3d) ;
+   }
 
    /*-- the range label widget --*/
 
@@ -5754,7 +5871,12 @@ ENTRY("AFNI_reset_func_range") ;
       (im3d->vinfo->use_autorange) ? (im3d->vinfo->fim_autorange)
                                    : (im3d->vwid->func->range_av->fval) ;
 
-   HINTIZE_pbar(im3d) ; /* 22 Aug 2001 */
+   if( PBAR_FULLRANGE ){
+     AFNI_redisplay_func_ignore(1) ;
+     AFNI_pbar_topset(im3d,im3d->vinfo->fim_range) ;
+     AFNI_redisplay_func_ignore(0) ;
+   }
+   else HINTIZE_pbar(im3d) ;
 
    EXRETURN ;
 }
@@ -5773,7 +5895,12 @@ ENTRY("AFNI_bucket_CB") ;
 
    if( ! IM3D_OPEN(im3d) ) EXRETURN ;
 
+#if 0
+   STATUS_IM3D_TMASK(im3d) ;
+   STATUS("clear tmask") ;
+#endif
    IM3D_CLEAR_TMASK(im3d) ;                                /* Mar 2013 */
+   IM3D_CLEAR_THRSTAT(im3d) ;                           /* 12 Jun 2014 */
 
    /** Anat sub-brick [29 Jul 2003: lock to time_index controller as well] **/
 
