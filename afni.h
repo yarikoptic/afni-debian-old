@@ -438,6 +438,7 @@ typedef struct {
   Widget wtop, rowcol;      /* containers */
   Widget top_lab;           /* overall report text */
   Widget top_menu , histrange_pb ;
+  MCW_bbox *save_as_mask_bbox ; /* 16 Jun 2014 */
   MCW_bbox *histsqrt_bbox ;
   MCW_bbox *spearman_bbox ; /* 02 Jan 2013 */
 
@@ -467,6 +468,7 @@ typedef struct {
   THD_3dim_dataset *dset ;  /* selected from dataset_pb */
   int coord_mode ;
   int receive_on ;
+  int save_as_mask ;
   float hbot,htop ;
 
   Widget     splot_pb , splot_clear_pb ;
@@ -581,6 +583,8 @@ extern float *get_3Dview_sort(struct Three_D_View *im3d, char *sel);
 extern float  get_3Dview_func_thresh(struct Three_D_View *im3d,
                                      int apply_power);
 extern float AFNI_thresh_from_percentile(struct Three_D_View *im3d, float perc);
+
+extern void reset_mnito(struct Three_D_View *im3d);
 
 #define OPEN_PANEL(iq,panel)                                            \
    {  XtManageChild( (iq)->vwid->  panel  ->frame ) ;                    \
@@ -1785,6 +1789,7 @@ extern void AFNI_assign_ulay_bricks   ( Three_D_View *im3d ) ;             /* 10
 
 extern void AFNI_saveas_dataset_CB   ( Widget , XtPointer , XtPointer ) ;  /* 18 Oct 2010 */
 extern void AFNI_saveas_finalize_CB  ( Widget , XtPointer , MCW_choose_cbs * ) ;
+extern void AFNI_writeout_dataset    ( THD_3dim_dataset * , char * ) ;     /* 16 Jun 2014 */
 
 extern void AFNI_do_many_writes      ( Widget , XtPointer , MCW_choose_cbs * ) ; /* 23 Nov 1996 */
 extern void AFNI_finalize_dataset_CB ( Widget , XtPointer , MCW_choose_cbs * ) ;
