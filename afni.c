@@ -1378,7 +1378,7 @@ void AFNI_sigfunc_alrm(int sig)
      "Out of Wine Error: Please Install Merlot and Try Again"        ,
      "Out of Wine Error: Please Install Chardonnay and Try Again"    ,
      "Out of Beer Error: No Further Progress Can Be Expected"        ,
-     "Have you read Crime and Punishment, by Fido Dogstoyevski?"     ,
+     "Out of Benedictine Error: How do you expect me get work done?" ,
      "More cheese, Gromit!"                                          ,
      "Life can be tough sometimes -- so have a chocolate (or two)"   ,
      "If at first you don't succeed -- call it version 1.0"          ,
@@ -1386,8 +1386,8 @@ void AFNI_sigfunc_alrm(int sig)
      "May your teeth never be replaced by damp woolen socks"         ,
      "Hasta la vista, Au revoir, and so long for now"                ,
      "Farewell, and may an elephant never sit on your computer"      ,
-     "So long, and may the bluebird of happiness fly up your nose"   ,
      "Ta ta, and may an elephant caress you gently with his toes"    ,
+     "So long, and may the bluebird of happiness fly up your nose"   ,
      "The Square Root of -1 said to Pi, 'Be Rational'"               ,
      "Pi told the Square Root of -1 to 'Get Real'"                   ,
      "And the world begins to tremble"                               ,
@@ -1404,8 +1404,11 @@ void AFNI_sigfunc_alrm(int sig)
      "Ever returning spring, trinity sure to me you bring"           ,
      "What a long strange trip it's been"                            ,
      "Sometime the light shines on me, other times I can barely see" ,
-     "When life looks like easy street, there is danger at the door" ,
+     "When life looks like Easy Street, there is danger at your door",
+     "Like the morning sun I come, like the wind I go"               ,
      "What I want to know is, where does the time go?"               ,
+     "The flower that once has blown, for ever dies"                 ,
+     "Drink! for you know not why you go, or where"                  ,
      "Tomorrow we feast with us at home"                             ,
      "Forgive your enemies; but never forget their names"            ,
      "Always forgive your enemies - nothing annoys them so much"     ,
@@ -1435,13 +1438,14 @@ void AFNI_sigfunc_alrm(int sig)
      "Are you ready for a coffee break? I am"                        ,
      "Make mine a tall skinny vanilla latte, if you please"          ,
      "I'd like a strong cup of lapsang souchong about now"           ,
-     "What's your favorite kind of bagel?"                           ,
-     "What's your favorite kind of cookie?"                          ,
+     "What's your favorite kind of bagel? I like pumpernickel"       ,
+     "What's your favorite kind of cookie? I like white chocolate"   ,
      "Step slowly away from the keyboard, and remain calm"           ,
      "Time for a nice walk, don't you think?"                        ,
      "Meet me at the Leshan Dafo in Sichuan at 3pm next Wednesday"   ,
      "Meet me in Namche Bazaar next Thursday"                        ,
      "Meet me at Dashashwamedh Ghat in Varanasi for Agni Puja"       ,
+     "Meet me at the top of Renjo La in a snowstorm"                 ,
      "See you in Dingboche next Christmas"                           ,
      "I'll see you at Angkor Wat at midnight next Saturday"          ,
      "Buy property on Neptune now, and avoid the rush"               ,
@@ -1495,7 +1499,7 @@ void AFNI_sigfunc_alrm(int sig)
      "I'm sorry; if you were right, I'd agree with you"              ,
      "Like dreams, statistics are a form of wish fulfillment"        ,
      "I wish I were in Lobuche right now"                            ,
-     "Next stop: Bora Bora"                                          ,
+     "Next stop: Bora Bora and Rangiroa"                             ,
 
      "The important things about a statistical model are what it does NOT include"    ,
      "You're going to like the way your brain activation maps look -- I guarantee it" ,
@@ -1767,7 +1771,11 @@ int main( int argc , char *argv[] )
    GLOBAL_argopt.allow_rt = check_string("-rt",argc,argv) ;
 
    if( !GLOBAL_argopt.quiet && !ALLOW_realtime )
+#if 0
      AFNI_start_version_check() ;               /* 21 Nov 2002 */
+#else
+     AFNI_start_compile_date_check() ;          /* 17 Jun 2014 */
+#endif
 
 #ifdef DARWIN
    if( 0 && !THD_is_directory("/sw/bin") && !AFNI_noenv("AFNI_IMSAVE_WARNINGS") )
@@ -2612,6 +2620,7 @@ ENTRY("AFNI_startup_timeout_CB") ;
 
    /* 21 Nov 2002: check the AFNI version */
 
+#if 0
    vv = AFNI_version_check() ; /* nada if AFNI_start_version_check() inactive */
 
    if( vv && vers_pixmap != XmUNSPECIFIED_PIXMAP )     /* 08 Aug 2005 */
@@ -2658,6 +2667,26 @@ ENTRY("AFNI_startup_timeout_CB") ;
                "*   You want file " SHSTRING ".tgz\n"
                "*==================================================\n" ) ;
      }
+   }
+#endif /* SHSTRING */
+
+#else
+
+   vv = AFNI_compile_date_check() ;  /* 17 Jun 2014 */
+   if( vv >= 93 ){
+     WARNING_message(
+       "Your copy of AFNI is over %d months old -- please update it (if practicable)." ,
+       vv % 31 ) ;
+     if( im3d->vwid->tips_pb != NULL ){
+       char msg[1024] ;
+       sprintf( msg, " \n"
+                     " Your copy of AFNI is over %d months old.\n"
+                     "   Please update it (if practicable).\n "  , vv % 31 ) ;
+       (void) MCW_popup_message( im3d->vwid->tips_pb , msg ,
+                                 MCW_USER_KILL | MCW_TIMER_KILL ) ;
+     }
+   } else if( vv < 0 ){
+     INFO_message("You are %d days AHEAD of the official AFNI compile date -- impressive!",-vv) ;
    }
 #endif
 
@@ -10244,12 +10273,12 @@ ENTRY("AFNI_mnito_CB") ;
    }
    LOAD_FVEC3(tv,xout,yout,zout) ;    /* load vector with new coordinates
                                          in dset's std space of tlrc view */
- 
+
    /* transform from +tlrc view space to current view (maybe orig) if needed */
    if( im3d->anat_now->view_type != VIEW_TALAIRACH_TYPE )
       tv = AFNI_transform_vector( im3d->anat_dset[VIEW_TALAIRACH_TYPE] ,
                                   tv , im3d->anat_now ) ;
-     
+
    nn = AFNI_jumpto_dicom( im3d , tv.xyz[0], tv.xyz[1], tv.xyz[2] ) ;
    if( nn < 0 ){ BEEPIT ; WARNING_message("'MNI To' failed!?") ; }
 
