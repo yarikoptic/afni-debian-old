@@ -341,7 +341,7 @@ void AFNI_set_all_thrlock_bboxes(Three_D_View *im3d, int bval)
 
 /*------------------------------------------------------------------------*/
 
-void AFNI_func_thrlock_change_CB ( Widget w , XtPointer cd , XtPointer calld  )
+void AFNI_func_thrlock_change_CB( Widget w , XtPointer cd , XtPointer calld )
 {
    Three_D_View *im3d = (Three_D_View *) cd ;
    int           bval , bold ;
@@ -469,6 +469,8 @@ ENTRY("AFNI_equate_pbars") ;
 
    lbar = lh3d->vwid->func->inten_pbar ;
    rbar = rh3d->vwid->func->inten_pbar ;
+
+   if( MCW_pbars_equivalent(lbar,rbar) ) EXRETURN ;  /* 07 Jul 2014 */
 
    cc = AFNI_controller_index(lh3d) ; if( cc < 0 ) EXRETURN ;
 
