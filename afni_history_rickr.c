@@ -49,6 +49,17 @@
 
 afni_history_struct rickr_history[] = {
 
+ { 15,  Jul, 2014, RCR, "gen_ss_review_scripts.py", MINOR, TYPE_ENHANCE,
+   "output average motion per stim over response",
+   "This will probably be replaced by averages over stimulus only time.\n"
+   "Requested by D Pine."
+ } ,
+
+ { 15,  Jul, 2014, RCR, "3dClustSim", MICRO, TYPE_GENERAL,
+   "check for bad floats read for -fwhm[xyz]",
+   "Requested by shanusmagnus."
+ } ,
+
  { 11,  Jul, 2014, RCR, "afni_proc.py", MINOR, TYPE_BUG_FIX,
    "fixed 1d_tool.py -pad_into_many_runs for bpass w/varying run lengths",
    "Thanks to d6anders for noting the problem."
