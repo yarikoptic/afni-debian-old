@@ -3190,7 +3190,6 @@ STATUS("making func->rowcol") ;
    if( !AFNI_yesenv("AFNI_DISABLE_TEAROFF") ) TEAROFFIZE(func->pbar_menu) ;
 
    XtInsertEventHandler( func->inten_label ,      /* handle events in label */
-
                                0
                              | ButtonPressMask   /* button presses */
                             ,
@@ -3272,6 +3271,36 @@ STATUS("making func->rowcol") ;
    XtAddCallback( func->pbar_flip_pb , XmNactivateCallback ,
                   AFNI_pbar_CB , im3d ) ;
    MCW_register_hint( func->pbar_flip_pb , "Top-to-Bottom color inversion" ) ;
+
+   (void) XtVaCreateManagedWidget(
+            "dialog" , xmSeparatorWidgetClass , func->pbar_menu ,
+             XmNseparatorType , XmSINGLE_LINE , NULL ) ;
+
+   func->pbar_jumpto_thmax_pb =
+      XtVaCreateManagedWidget(
+         "dialog" , xmPushButtonWidgetClass , func->pbar_menu ,
+            LABEL_ARG("Jumpto OLay Max (Thr)") ,
+            XmNmarginHeight , 0 ,
+            XmNtraversalOn , True  ,
+            XmNinitialResourcesPersistent , False ,
+         NULL ) ;
+   XtAddCallback( func->pbar_jumpto_thmax_pb , XmNactivateCallback ,
+                  AFNI_jumpto_thminmax_CB , im3d ) ;
+   MCW_register_hint( func->pbar_jumpto_thmax_pb , "Jumpto OLay thresholded maximum" ) ;
+   XtSetSensitive( func->pbar_jumpto_thmax_pb , False ) ;
+
+   func->pbar_jumpto_thmin_pb =
+      XtVaCreateManagedWidget(
+         "dialog" , xmPushButtonWidgetClass , func->pbar_menu ,
+            LABEL_ARG("Jumpto OLay Min (Thr)") ,
+            XmNmarginHeight , 0 ,
+            XmNtraversalOn , True  ,
+            XmNinitialResourcesPersistent , False ,
+         NULL ) ;
+   XtAddCallback( func->pbar_jumpto_thmin_pb , XmNactivateCallback ,
+                  AFNI_jumpto_thminmax_CB , im3d ) ;
+   MCW_register_hint( func->pbar_jumpto_thmin_pb , "Jumpto OLay thresholded minimum" ) ;
+   XtSetSensitive( func->pbar_jumpto_thmin_pb , False ) ;
 
    (void) XtVaCreateManagedWidget(
             "dialog" , xmSeparatorWidgetClass , func->pbar_menu ,
@@ -3594,6 +3623,16 @@ STATUS("making func->rowcol") ;
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
    LABELIZE(func->options_label) ;
+
+   XtInsertEventHandler( func->options_label ,      /* handle events in label */
+                               0
+                             | ButtonPressMask   /* button presses */
+                            ,
+                            FALSE ,              /* nonmaskable events? */
+                            AFNI_pbar_EV ,       /* handler */
+                            (XtPointer)im3d ,    /* client data */
+                            XtListTail           /* last in queue */
+                          ) ;
 
 #define VEDIT_COLOR_A "#000066"
 #define VEDIT_COLOR_B "#004466"
@@ -4082,6 +4121,16 @@ STATUS("making func->rowcol") ;
                         " taken from the parent dataset.]"   ) ;
 
    MCW_register_hint( func->range_label , "Ranges of dataset values" ) ;
+
+   XtInsertEventHandler( func->range_label ,      /* handle events in label */
+                               0
+                             | ButtonPressMask   /* button presses */
+                            ,
+                            FALSE ,              /* nonmaskable events? */
+                            AFNI_pbar_EV ,       /* handler */
+                            (XtPointer)im3d ,    /* client data */
+                            XtListTail           /* last in queue */
+                          ) ;
 
    /*--- toggle button to control automatic range scaling for pbar ---*/
    /*--- ZSS: Add percentile button, put both in horiz rowcol 27 Apr 2012 ---*/
@@ -6132,6 +6181,8 @@ ENTRY("AFNI_initialize_controller") ;
    POPUP_cursorize( im3d->vwid->func->thr_pval_label ) ;  /* 05 Sep 2006 */
 #endif
    POPUP_cursorize( im3d->vwid->func->inten_label ) ;
+   POPUP_cursorize( im3d->vwid->func->options_label ) ;
+   POPUP_cursorize( im3d->vwid->func->range_label ) ;
    POPUP_cursorize( im3d->vwid->picture ) ;
    POPUP_cursorize( imag->crosshair_label ) ;
    POPUP_cursorize( im3d->vwid->func->thr_label ) ;
