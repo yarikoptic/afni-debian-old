@@ -5,13 +5,13 @@ Source-Location: http://afni.nimh.nih.gov
 
 Files: *
 Copyright: 1994-2000, Medical College of Wisconsin
-  Later developments come from the National Instituts of Health (NIH) and are
+  Later developments come from the National Institutes of Health (NIH) and are
   not copyrighted.
-License: GPL-2
+License: GPL-2+
 
 Files: debian/*
 Copyright: 2009-2011, Michael Hanke <michael.hanke@gmail.com>
-License: GPL-2
+License: GPL-2+
 
 Files: LiteClue*
 Copyright: 1996, COMPUTER GENERATION, INC.
@@ -81,9 +81,9 @@ License: BSD-4
  LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 
-Files: ballon.c plug_permtest.c plug_threshold.c
+Files: balloon.c plug_permtest.c plug_threshold.c
 Copyright: 2000-2005, Matthew Belmonte
-License: GPL-2
+License: GPL-2+
 
 Files: ktaub.c
 Copyright: 2010, David Simcha
@@ -114,7 +114,7 @@ License: Boost
 
 Files: SUMA/SUMA_gts.* SUMA/SUMA_coarsen.c
 Copyright: 2004, Jakub Otwinowski
-License: GPL-2
+License: GPL-2+
 
 Files: uthas.h
 Copyright: 2003-2009, Troy D. Hanson
@@ -139,11 +139,23 @@ License: Other
 
 Files: zgaussian.c
 Copyright: 2005, Jochen Voss
-License: GPL-2
+License: GPL-2+
 
 Files: SUMA/PLY/* SUMA/SUMA_Surface_IO.c
 Copyright: 1994, The Board of Trustees of The Leland Stanford
  Junior University
+License: Other
+ Permission to use, copy, modify and distribute this software and its
+ documentation for any purpose is hereby granted without fee, provided
+ that the above copyright notice and this permission notice appear in
+ all copies of this software and that you do not sell the software.
+ .
+ THE SOFTWARE IS PROVIDED "AS IS" AND WITHOUT WARRANTY OF ANY KIND,
+ EXPRESS, IMPLIED OR OTHERWISE, INCLUDING WITHOUT LIMITATION, ANY
+ WARRANTY OF MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE.
+
+Files: SUMA/PLY/obj_io.c
+Copyright: 1998, Georgia Institute of Technology
 License: Other
  Permission to use, copy, modify and distribute this software and its
  documentation for any purpose is hereby granted without fee, provided
@@ -213,7 +225,11 @@ License: Other
  OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE
  OR PERFORMANCE OF THIS SOFTWARE.
 
-Files: mri_dicom_hdr.c dcm_dump_file.c
+Files: 3DEdge/*
+Copyright: 1998-2000, Gregoire Malandain
+License: GPL-3
+
+Files: mri_dicom_hdr.c mri_dicom_hdr.h dicom_hdr.c
 Copyright: 1993, 1994, RSNA and Washington University
 License: Other
  THIS SOFTWARE IS MADE AVAILABLE, AS IS, AND NEITHER RSNA NOR
@@ -265,21 +281,108 @@ License: BSD-3
  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  POSSIBILITY OF SUCH DAMAGE.
 
-Files:
- matlab/idummy.m:%   Copyright 1993-2002 The MathWorks, Inc.
- matlab/termcross.m:%   Copyright 1993-2002 The MathWorks, Inc.
- matlab/xticklabel_rotate.m:%Copyright (c) 2009, The MathWorks, Inc.
- matlab/zinputdlg.m:%  Copyright 1994-2007 The MathWorks, Inc.
- mri_drawing.c:** Copyright (C) 1989, 1991 by Jef Poskanzer.
- mri_drawing.c:** Copyright (C) 1994 by John Walker, kelvin@fourmilab.ch
- niml/niml_md5.c: * Copyright (C) 1991-2, RSA Data Security, Inc. Created 199
- niml/niml_md5.c: *  Copyright (C) 2001-2003  Christophe Devine
- plug_lsqfit.c:/*               Copyright (c) 1995                    */
- plug_retroicor.c:  Copyright (C) 2002 Sunnybrook & Women's College Health Sc
- rickr/l_mcw_glob.c: * Copyright (c) 1989 The Regents of the University of Ca
- suma_algorithms.c:code is under copyright and cannot be included in any othe
- whirlgif.c: * Copyright (C) 1995,1996 by Kevin Kadow (kadokev@msg.net)
- vp_renderB.c: * Copyright (c) 1994 The Board of Trustees of The Leland Stanf
+Files: 3dretroicor.c retroicor.c retroicor.h plug_retroicor.c
+Copyright: 2002, Sunnybrook & Women's College Health Sciences Centre
+License: GPL-2
+
+Files: FIRdesign.c remez.c remez.h
+Copyright: 1995-1998, Jake Janovetz
+License: GPL-2+
+
+Files: matlab/xticklabel_rotate.m
+Copyright: 2009, The MathWorks, Inc.
+           2003, Brian Katz
+           2003, Denis Gilbert
+License: BSD-2 and BSD-3
+
+Files: mri_drawing.c
+Copyright: 1994, John Walker <kelvin@fourmilab.ch>
+           1989-1991, Jef Poskanzer
+License: Other
+ Permission to use, copy, modify, and distribute this software and its
+ documentation for any purpose and without fee is hereby granted, provided
+ that the above copyright notice appear in all copies and that both that
+ copyright notice and this permission notice appear in supporting
+ documentation.  This software is provided "as is" without express or
+ implied warranty
+
+Files: to3d.c
+Copyright: 1994-2000, Medical College of Wisconsin
+           1989, Regents of the University of California
+License: GPL-2+ and BSD-4
+ Redistribution and use in source and binary forms, with or without
+ modification, are permitted provided that the following conditions
+ are met:
+ 1. Redistributions of source code must retain the above copyright
+    notice, this list of conditions and the following disclaimer.
+ 2. Redistributions in binary form must reproduce the above copyright
+    notice, this list of conditions and the following disclaimer in the
+    documentation and/or other materials provided with the distribution.
+ 3. All advertising materials mentioning features or use of this software
+    must display the following acknowledgement:
+      This product includes software developed by the University of
+      California, Berkeley and its contributors.
+ 4. Neither the name of the University nor the names of its contributors
+    may be used to endorse or promote products derived from this software
+    without specific prior written permission.
+
+Files: uthash.h
+Copyright: 2003-2009, Troy D. Hanson
+License: Other
+ Redistribution and use in source and binary forms, with or without
+ modification, are permitted provided that the following conditions are met:
+ .
+ * Redistributions of source code must retain the above copyright
+   notice, this list of conditions and the following disclaimer.
+ .
+ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS
+ IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED
+ TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+ PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER
+ OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+ EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+ PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+ PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+ NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+Files: whirlgif.c whirlgif.h
+Copyright: 1995-1996, Kevin Kadow <kadokev@msg.net>
+           1990-1993, Mark Podlipec
+License: Other
+ This software may be freely copied, modified and redistributed
+ without fee provided that this copyright notice is preserved
+ intact on all copies and modified copies.
+ .
+ There is no warranty or other guarantee of fitness of this software.
+ It is provided solely "as is". The author(s) disclaim(s) all
+ responsibility and liability with respect to this software's usage
+ or its effect upon hardware or computer systems.
+
+ matlab/idummy.m:% Copyright 1993-2002 The MathWorks, Inc. (undeclared license)
+ matlab/termcross.m:% Copyright 1993-2002 The MathWorks, Inc. (undeclared license)
+ matlab/zinputdlg.m:%  Copyright 1994-2007 The MathWorks, Inc. (undeclared license)
+ mri_drawing.c: Is "Other" correct? It's an old-style MIT license. https://fedoraproject.org/wiki/Licensing:MIT
+ uthash.h: Is "Other" correct? It's basically a BSD-1-clause.
+ niml/niml_md5.c: custom license (RSA) mixed with GPL-2 (Christophe Devine)
+ thd_md5.c: Is this license "free"? The derived-from requirements
+ plug_lsqfit.c: "All Rights Reserved" mixed with GPL-2
+ rickr/l_mcw_glob.c: * Copyright (c) 1989 The Regents of the University of Ca (GPL into BSD)
+ mcw_glob.c: mixes GPL into BSD
+ suma_algorithms.c: code is under copyright and cannot be included in any other... (non-free license)
+ balloon.c: If you find this program useful, please send mail to Matthew Belmonte
+ plug_permtest.c: If you find this program useful, please send mail to Matthew Belmonte
+ plug_threshold.c: If you find this program useful, please send mail to Matthew Belmonte
+ SUMA/SUMA_MiscFunc.c: based on code by Paul Bourke, see copyright notice in suma -sources, but there no info there...
+ SUMA/SUMA_display.c: Mixes Kilgard and O'Reilly. Similar, but Kilgard's may not be ok
+ avovk/thd_segtools_fNM.c, avovk/thd_segtools.c: ANDREJ: If we end up using this, we must include copyright notice
+ avovk/A*: looks to be based on cluster.c too
+ efence.c: No license included. Google says GPL2...
+ eispack.h eispack/*: C translations by NetLib of ancient "free" fortran code. No license.
+ mri_stats.c: Uses StatLib no license and CDF from University of Texas (no license).
+ cdflib.c: file header says MCW but README.copyright says University of Texas.
+ thd_mincread.c: This references netCDF, but likely it's the decendant files which use netCDF code. No license.
 Copyright: sort it out
 Comment: sort it out
 License: TODO
