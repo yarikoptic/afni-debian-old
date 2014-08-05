@@ -17,7 +17,7 @@
 
     - vector-valued images                                       [medium]
 
-    - GPU acceleration                                           [ugh]
+    - GPU acceleration                                           [ugh squared]
 *//*-------------------------------------------------------------------------*/
 
 #ifdef USE_OMP       /* OpenMP = a must! */
@@ -424,7 +424,7 @@ void Qhelp(void)
     "  can be calculated from the warp dataset via program 3dNwarpFuncs.\n"
     "\n"
     "--------------------\n"
-    "COMMAND LINE OPTIONS\n"
+    "COMMAND LINE OPTIONS (too many of them)\n"
     "--------------------\n"
     " -base   base_dataset   = Alternative way to specify the base dataset.\n"
     " -source source_dataset = Alternative way to specify the source dataset.\n"
@@ -827,9 +827,26 @@ void Qhelp(void)
     " -verb        = Print out very very verbose progress messages (to stderr) :-)\n"
     " -quiet       = Cut out most of the fun fun fun progress messages :-(\n"
     "\n"
-    "-----------------\n"
-    "OUTLINE OF METHOD\n"
-    "-----------------\n"
+    "----------------------------------------------------------------\n"
+    "CLARIFICATION about the confusing forward and inverse warp issue\n"
+    "----------------------------------------------------------------\n"
+    "An AFNI nonlinear warp dataset stores the displacements (in DICOM mm) from\n"
+    "the base dataset grid to the source dataset grid.  For computing the source\n"
+    "dataset warped to the base dataset grid, these displacements are needed,\n"
+    "so that for each grid point in the output (warped) dataset, the corresponding\n"
+    "location in the source dataset can be found, and then the value of the source\n"
+    "at that point can be computed (interpolated).\n"
+    "\n"
+    "That is, this forward warp is good for finding where a given point in the\n"
+    "base dataset maps to in the source dataset.  However, for finding where a\n"
+    "given point in the source dataset maps to in the base dataset, the inverse\n"
+    "warp is needed.  Or, if you wish to warp the base dataset to 'look like' the\n"
+    "source dataset, then you use 3dNwarpApply with the input warp being the\n"
+    "inverse warp from 3dQwarp.\n"
+    "\n"
+    "-----------------------------------\n"
+    "OUTLINE OF WARP OPTIMIZATION METHOD\n"
+    "-----------------------------------\n"
     "Repeated composition of incremental warps defined by Hermite cubic basis functions,\n"
     "first over the entire volume, then over steadily shrinking and overlapping patches\n"
     "(increasing 'levels': the patches shrink by a factor of 0.75 at each level).\n"
@@ -871,10 +888,12 @@ void Qhelp(void)
     "By perusing the many options above, you can see that the user can control the\n"
     "warp optimization in various ways.  All these options make using 3dQwarp seem\n"
     "pretty complicated.  The reason there are so many options is that many different\n"
-    "cases arise, and we are trying to makethe program flexible enough to deal with\n"
+    "cases arise, and we are trying to make the program flexible enough to deal with\n"
     "them all.  The SAMPLE USAGE section above is a good place to start for guidance.\n"
     "\n"
+    "-------------------------------------------------------------------------------\n"
     "***** This program is experimental and subject to sudden horrific change! *****\n"
+    "-------------------------------------------------------------------------------\n"
     "\n"
     "----- AUTHOR = Zhark the Grotesquely Warped -- Fall/Winter/Spring 2012-13 -----\n"
   ) ;

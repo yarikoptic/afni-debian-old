@@ -1575,7 +1575,10 @@ void AFNI_sigfunc_alrm(int sig)
      "  They mean:         Will everyone please, for the love of all that is holy, shut up?"  ,
 
      "\n  When someone says: I agree 100% with your concept,\n"
-     "  They mean:         I am implacably opposed to your proposal"
+     "  They mean:         I am implacably opposed to your proposal"                          ,
+
+     "\n  If reasonable priors lead to different conclusions, then it's time to\n"
+     "  look for more data, think harder, mumble inaudibly, or take a wild guess"
    } ;
 #undef NTOP
 #ifdef USE_SONNETS
@@ -10562,7 +10565,7 @@ ENTRY("AFNI_jumpto_ijk") ;
 void AFNI_jumpto_thminmax_CB( Widget w , XtPointer cd , XtPointer cb )
 {
    Three_D_View *im3d = (Three_D_View *)cd ;
-   int ijk , ii,jj,kk ;
+   int ijk=0, ii,jj,kk ;
    float xx,yy,zz ;
 
 ENTRY("AFNI_jumpto_thminmax_CB") ;
