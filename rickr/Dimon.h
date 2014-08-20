@@ -1,9 +1,7 @@
 
-#ifndef _IMON_H_
-#define _IMON_H_
+#ifndef _DIMON_H_
+#define _DIMON_H_
 
-/*----------------------------------------------------------------------*/
-/* note: Imon itself was last compiled 22 Apr, 2011                     */
 /*----------------------------------------------------------------------*/
 
 #define IFM_MAX_FLEN       200       /* maximum characters in filename   */
@@ -37,6 +35,18 @@
 #define IFM_GERT_DICOM  "GERT_Reco_dicom" /* DICOM GERT_Reco script      */
 #define IFM_SLICE_PAT   "alt+z"
 
+/* finfo_t entry states */
+#define IFM_FSTATE_FAILED   -2       /* complete failure             */
+#define IFM_FSTATE_SKIP     -1       /* ready to read image          */
+#define IFM_FSTATE_UNKNOWN   0       /* ready to read image          */
+#define IFM_FSTATE_DONE      1       /* processing complete          */
+
+#define IFM_FSTATE_TO_PROC   2       /* have image, ready to process */
+#define IFM_FSTATE_TO_READ   3       /* ready to read image          */
+
+#define IFM_MAX_READ_ERRORS  2       /* after this, go to failed state */
+#define IFM_NUM_RETRIES      1       /* volume retries before failing  */
+
 /* -- define copies -- */
 
 #define LSB_FIRST            1
@@ -44,60 +54,6 @@
 
 
 /*-----------------------------------------------------------------------*/
-                                    /* from Ifile.c ... */
-typedef struct                      /* stuff extracted from GE I.* image */
-{
-    int   good;                     /* is this a good image?           */
-    int   nx, ny;                   /* image matrix                    */
-    int   uv17;                     /* apparently codes for scan index */
-    int   index;                    /* image counter                   */
-    int   im_index;                 /* image index, if one exists      */
-    float atime;                    /* acquisition time, if found      */
-    float slice_loc;                /* slice location, if found        */
-    float dx,dy,dz, zoff, tr,te;    /* various dimensions              */
-                                    /* dxyz in mm, tr in seconds       */
-    char  orients[8];               /* orientation string              */
-} ge_header_info;
-
-typedef struct                      /* extra stuff from mri_read.c     */
-{
-    int   bpp;                      /* bits per pixel                  */
-    int   cflag;                    /* compression flag (0=compressed) */
-    int   hdroff;                   /* offset of image header          */
-    int   skip;                     /* offset of image data into file  */
-    int   swap;                     /* did we do byte swapping?        */
-    int   kk;                       /* z-orient info (1=LR, 2=PA, 3=IS)*/
-    float xorg;                     /* x and y axes origins            */
-    float yorg;
-    float xyz[9];
-} ge_extras;
-
-typedef struct
-{
-    int   im_is_volume;             /* mostly from g_image_info */
-    int   nslices;
-    int   mos_nx, mos_ny;
-} mosaic_info;
-
-typedef struct
-{
-    ge_header_info   geh;           /* ge_header_info struct for this file */
-    ge_extras        gex;           /* ge_extras struct for this file     */
-    mosaic_info      minfo;         /* info describing mosaic structure */
-    int              index;         /* index into fnames array           */
-    int              bytes;         /* size of image in bytes           */
-    void           * image;         /* actual image data               */
-} finfo_t;
-
-typedef struct
-{
-    int              nalloc;        /* number of images allocated for   */
-    int              nused;         /* number of images in use now      */
-    int              ary_len;       /* length of allocated im_ary array */
-    int              im_size;       /* size of each individual image    */
-    void          ** im_ary;        /* array of images                  */
-    void           * x_im;          /* extra image for afni comm        */
-} im_store_t;
 
 typedef struct  /* user options */
 {
@@ -145,6 +101,7 @@ typedef struct  /* user options */
     int              rev_org_dir;   /* flag to reverse dicom_org dir    */
     int              rev_sort_dir;  /* flag to reverse glob sort dir    */
     char           * flist_file;    /* filename to save file list to    */
+    char           * flist_details; /* filename to save list details to */
 
     /* realtime options */
     int              rt;            /* run in real-time afni mode       */
@@ -157,17 +114,79 @@ typedef struct  /* user options */
     string_list      rt_list;       /* list of real-time commands       */
 } opts_t;
 
+typedef struct                      /* stuff extracted from GE I.* image */
+{
+    int   good;                     /* is this a good image?           */
+    int   nx, ny;                   /* image matrix                    */
+    int   uv17;                     /* apparently codes for scan index */
+    int   index;                    /* image counter                   */
+    int   im_index;                 /* image index, if one exists      */
+    float atime;                    /* acquisition time, if found      */
+    float slice_loc;                /* slice location, if found        */
+    float dx,dy,dz, zoff, tr,te;    /* various dimensions              */
+                                    /* dxyz in mm, tr in seconds       */
+    char  orients[8];               /* orientation string              */
+} ge_header_info;
+
+typedef struct                      /* extra stuff from mri_read.c     */
+{
+    int   bpp;                      /* bits per pixel                  */
+    int   cflag;                    /* compression flag (0=compressed) */
+    int   hdroff;                   /* offset of image header          */
+    int   skip;                     /* offset of image data into file  */
+    int   swap;                     /* did we do byte swapping?        */
+    int   kk;                       /* z-orient info (1=LR, 2=PA, 3=IS)*/
+    float xorg;                     /* x and y axes origins            */
+    float yorg;
+    float xyz[9];
+} ge_extras;
+
+typedef struct
+{
+    int   im_is_volume;             /* mostly from g_image_info */
+    int   nslices;
+    int   mos_nx, mos_ny;
+} mosaic_info;
+
+typedef struct
+{
+    ge_header_info   geh;           /* ge_header_info struct for this file */
+    ge_extras        gex;           /* ge_extras struct for this file      */
+    mosaic_info      minfo;         /* info describing mosaic structure    */
+    int              findex;        /* index into fim_o list               */
+    int              state;         /* to read, read, processed, failed    */
+    int              bad_reads;     /* number of read failures             */
+    int              nbytes;        /* size of image in bytes              */
+    char           * fname;         /* copy of file name                   */
+    void           * imdata;        /* actual image data                   */
+} finfo_t;
+
+
 typedef struct
 {
     int              ftype;         /* one of IFM_IM_FTYPE_*            */
-    int              nused;         /* number of elements assigned      */
-    int              nalloc;        /* number of elements allocated for */
-    finfo_t        * flist;         /* array of finfo structures        */
-    im_store_t       im_store;      /* structure to hold actual images  */
-
     char           * glob_dir;      /* wildcard format to search for    */
-    int              nfiles;        /* number of files in list          */
-    char          ** fnames;        /* corresponding file names         */
+
+    /* sorted by name, alphabetically or by numeric extension, say */
+    string_list      fnames_prev;   /* previous and current (sorted?)   */
+    string_list      fnames_cur;    /*    file name lists (MCW_f_e)     */
+
+    int              fnames_done;   /* finished getting new fnames      */
+
+    /* fim_o gets incremental differences between fnames_prev and cur,
+       i.e. at each scan, differences are appended to fim_o according to
+            the file name ordering of those lists (usually alphabetical)
+       The sorting in fim_sind is based on the contents of the files.  */
+    finfo_t       * fim_o;         /* orig structure array, as found   */
+
+    int              nfim;          /* length of both finfo_t lists  */
+    int              nfalloc;       /* number of elements allocated for */
+    /* fim_update: -1 = wait, 0 = go, >0 = # first names to ignore      */
+    int              fim_update;    /* flag: any changes to propogate?  */
+    int              fim_skip;      /* # 2 ignore, from -start_dir/file */
+    /* fim_start: all prior images are done with processing             */
+    int              fim_start;     /* starting index into fim_sind     */
+    int              max2read;      /* max images to read at a time     */
 
     opts_t           opts;          /* user specified options           */
 } param_t;
@@ -178,7 +197,7 @@ typedef struct                           /* used for the stats_t struct      */
     ge_extras      gex;                  /* first GE extras structure        */
     int            volumes;              /* number of volumes in this run    */
     int            f1index;              /* index into fnames list           */
-    char           f1name[IFM_MAX_FLEN]; /* file name for first image        */
+    char         * f1name;               /* file name for first image        */
 } run_t;
 
 typedef struct                  /* used to output statistics at the end */
@@ -201,10 +220,9 @@ typedef struct
     ge_extras      gex;                  /* first GE extras structure        */
     mosaic_info    minfo;                /* info describing mosaic structure */
     int            nim;                  /* number of images in this volume  */
-    int            fl_1;                 /* first index into flist           */
-    int            fn_1, fn_n;           /* indicies into the fnames list    */
-    char           first_file[IFM_MAX_FLEN]; /*file name of first slice image*/
-    char           last_file [IFM_MAX_FLEN]; /*file name of last slice image */
+    int            fs_1;                 /* first index into fim_s list      */
+    char         * first_file;           /* file name of first slice image   */
+    char         * last_file;            /* file name of last slice image    */
     float          z_first;              /* z location of first slice image  */
     float          z_last;               /* z location of last slice image   */
     float          z_delta;              /* signed slice thickness           */
@@ -237,4 +255,4 @@ typedef struct
                 I_str, I_file, I_ez, I_az, I_run, I_s1, I_sn );         \
         } while (0)
 
-#endif /* _IMON_H_ */
+#endif /* _DIMON_H_ */

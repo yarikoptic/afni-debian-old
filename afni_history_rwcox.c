@@ -43,7 +43,31 @@
 
 afni_history_struct rwcox_history[] = {
 /*=====BELOW THIS LINE=====*/
-  { 5 , AUG , 2014 , RWC , "3dQwarp" , MICRO , TYPE_GENERAL ,
+  { 11 , AUG , 2014 , RWC , "3dQwarp" , MICRO , TYPE_GENERAL ,
+   "Modify -duplo to only go to lev=3" ,
+   NULL } ,
+
+ { 11 , AUG , 2014 , RWC , "3dQwarp" , MICRO , TYPE_BUG_FIX ,
+   "Fix bug with -pblur" ,
+   "Problem: warped source image Haasrcim was created from source image\n"
+   "blurred at lev=0, which means (with -pblur) it was blurred a lot.  Then\n"
+   "at later levels, it is being slowly replaced with warped patches from a\n"
+   "less-blurred source image.  This produces strange effects, as part of\n"
+   "Haasrcim is now heavily blurred and part is less blurred.  Solution:\n"
+   "re-create Haasrcim from the current warp and from the current amount of\n"
+   "blurring at the start of each level." } ,
+
+ { 7 , AUG , 2014 , RWC , "3dQwarp" , MICRO , TYPE_GENERAL ,
+   "Add customized median filter to mri_nwarp.c" ,
+   "To parallelize with OpenMP, since it might be used a lot with the new\n"
+   "-pblur option." } ,
+
+ { 7 , AUG , 2014 , RWC , "3dQwarp" , MICRO , TYPE_NEW_OPT ,
+   "Add -pblur option, for progressive blurring" ,
+   "That is, more blurring at coarse levels and less blurring at fine\n"
+   "levels.  May become the default after some more experience." } ,
+
+ { 5 , AUG , 2014 , RWC , "3dQwarp" , MICRO , TYPE_GENERAL ,
    "Move basim blur from 3dQwarp.c to mri_nwarp.c" ,
    "Preparatory to adding the -pblur option" } ,
 

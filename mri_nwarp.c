@@ -28,7 +28,7 @@
 #endif
 
 /*..........................................................................*/
-/** Note that the functions for 3dQwarp (about 4000 lines of code)
+/** Note that the functions for 3dQwarp (4000+ lines of code)
     are only compiled if macro ALLOW_QWARP is #define-d -- see 3dQwarp.c.
     Also note that the 'plusminus' warping will only be compiled if the
     macro ALLOW_PLUSMINUS is also #define-d.
@@ -38,7 +38,7 @@
 #include "thd_incorrelate.c"   /* for the 3dQwarp cost (INCOR) functions */
 #endif
 
-/* macro to free a pointer if not NULL */
+/* macro to free a pointer if it's not NULL */
 
 #undef  FREEIFNN
 #define FREEIFNN(x) do{ if((x)!=NULL){ free((void *)(x)); (x)=NULL;} } while(0)
@@ -47,7 +47,7 @@
 /* also is minimum patch size for 3dQwarp funcs */
 
 #undef  NGMIN
-#define NGMIN 9
+#define NGMIN 9   /* do not reduce this without deep deep thought! */
 
 /* control verbosity of mri_nwarp functions */
 
@@ -58,12 +58,12 @@ void NwarpCalcRPN_verb(int i){ verb_nww = i; }
 
 static int Hverb = 1 ;
 
-/*-------------------------------------------------------------------------*/
-/*######  Blocks of code indicated in the Table of Contents below     #####*/
-/*######  are each surrounded by #if 1 ... #endif pairs, to make it   #####*/
-/*######  easy to skip between the beginning and end of code blocks.  #####*/
-/*######  (At least, easy using vi and the % key for match-jumping.)  #####*/
-/*-------------------------------------------------------------------------*/
+/*---------------------------------------------------------------------------*/
+/*######   Blocks of code indicated in the Table of Contents below      #####*/
+/*######   are each surrounded by #if 1 ... #endif pairs, to make it    #####*/
+/*######   easy to skip between the beginning and end of code blocks.   #####*/
+/*######   (At least, easy using vi and the % key for match-jumping.)   #####*/
+/*---------------------------------------------------------------------------*/
 
 #if 1 /*(TOC)*/
 /*===========================================================================*/
@@ -93,16 +93,19 @@ static int Hverb = 1 ;
     (C17) Functions for reading warps and inverting/catenating them right away
           (for the '-nwarp' input of various 3dNwarp programs)
 
+    The following functions are only compiled if ALLOW_QWARP is #define-d:
+
      (Q1) Introduction to 3dQwarp, and Global variables for 3dQwarp-ing
           (includes an outline of the sequence of function calls for 3dQwarp)
      (Q2) Basis functions (cubic and quintic) for warping
      (Q3) Functions to create a patch warp from basis functions and parameters
      (Q4) Evaluate the incrementally warped source image at the combination
-          of the current global warp and the patch warp
+          of the current global warp and the local patch warp
      (Q5) Functions to evaluate the warp penalty and cost function
      (Q6) Functions to setup global variables for warp optimization process
      (Q7) Function that actually optimizes one incremental patch warp
-     (Q8) Functions that drive the warp searching process
+     (Q8) Functions that drive the warp searching process by looping over
+          patches of shrinking sizes
      (Q9) Functions for duplo-ing a warp or image (up and down in size)
     (Q10) Function for warp optimization with duplo-ization
     (Q11) All the above functions copied and edited for plusminus warping
@@ -179,7 +182,7 @@ static int Hverb = 1 ;
          struct to a 'real' space 3D dataset:
 
       cmat       = matrix to get DICOM x,y,z coordinates from i,j,k
-      imat       = inverse of cmat (convert index to coordinate)
+      imat       = inverse of cmat (convert coordinate to index)
       geomstring = string to represent geometry of 3D dataset that
                      corresponds to this index warp; if the index warp
                      was created directly from a dataset via function
@@ -316,6 +319,20 @@ static int Hverb = 1 ;
      es_zd_xp = eqq[qw++]; es_zd_xm = eqq[qw++]; es_zd_yp = eqq[qw++]; \
      es_zd_ym = eqq[qw++]; es_zd_zp = eqq[qw++]; es_zd_zm = eqq[qw++]; \
  } while(0)
+
+/* unpack the 18 local external slope variables from a warp struct */
+
+#define ES_WARP_TO_LOCAL(AA)                       \
+ do{ es_xd_xp=AA->es_xd_xp; es_xd_xm=AA->es_xd_xm; \
+     es_yd_xp=AA->es_yd_xp; es_yd_xm=AA->es_yd_xm; \
+     es_zd_xp=AA->es_zd_xp; es_zd_xm=AA->es_zd_xm; \
+     es_xd_yp=AA->es_xd_yp; es_xd_ym=AA->es_xd_ym; \
+     es_yd_yp=AA->es_yd_yp; es_yd_ym=AA->es_yd_ym; \
+     es_zd_yp=AA->es_zd_yp; es_zd_ym=AA->es_zd_ym; \
+     es_xd_zp=AA->es_xd_zp; es_xd_zm=AA->es_xd_zm; \
+     es_yd_zp=AA->es_yd_zp; es_yd_zm=AA->es_yd_zm; \
+     es_zd_zp=AA->es_zd_zp; es_zd_zm=AA->es_zd_zm; } while(0)
+
 
 /*---------------------------------------------------------------------------*/
 /* The following functions are for providing a linear extension to a warp,
@@ -821,6 +838,22 @@ ENTRY("IW3D_zero_fill") ;
    if( AA->se != NULL ) AAmemset( AA->se , 0 , nbyt ) ;
    IW3D_zero_external_slopes(AA) ;
    EXRETURN ;
+}
+
+/*----------------------------------------------------------------------------*/
+/* return 1 if warp is filled with all zero displacements, 0 otherwise */
+
+int IW3D_is_zero( IndexWarp3D *AA )
+{
+   int ii , nvox ; float *xd, *yd, *zd ;
+   if( AA == NULL ) return 0 ;
+   xd = AA->xd ; if( xd == NULL ) return 0 ;
+   yd = AA->yd ; if( yd == NULL ) return 0 ;
+   zd = AA->zd ; if( zd == NULL ) return 0 ;
+   nvox = AA->nx * AA->ny * AA->nz ;
+   for( ii=0 ; ii < nvox ; ii++ )
+     if( xd[ii] != 0.0f || yd[ii] != 0.0f || zd[ii] != 0.0f ) return 0 ;
+   return 1 ;
 }
 
 /*----------------------------------------------------------------------------*/
@@ -5114,7 +5147,7 @@ THD_3dim_dataset * THD_nwarp_dataset( THD_3dim_dataset *dset_nwarp ,
    mat44 src_cmat, nwarp_cmat, mast_cmat ;
    THD_3dim_dataset *dset_out , *dset_qwarp ;
    MRI_IMAGE *fim , *wim ; float *ip=NULL,*jp=NULL,*kp=NULL ;
-   int nx,ny,nz,nxyz , nvals , kk,iv ;
+   int nx,ny,nz,nxyz , nvals , kk,iv , next ;
    float *amatar=NULL ; int nxa=0,nya=0 ; mat44 amat ;
 
 ENTRY("THD_nwarp_dataset") ;
@@ -5150,7 +5183,10 @@ ENTRY("THD_nwarp_dataset") ;
    /*----- extend the warp dataset to allow for outliers [15 Apr 2014] -----*/
    /*........ ((( this is kind of arbitrary, but helps sometimes ))) .......*/
 
-   dset_qwarp = THD_nwarp_extend( dset_nwarp , 32,32,32,32,32,32 ) ;
+   next = (int)AFNI_numenv("AFNI_NWARP_EXTEND") ;  /* 18 Aug 2014 */
+   if( next < 32 ) next = 32 ;
+
+   dset_qwarp = THD_nwarp_extend( dset_nwarp , next,next,next,next,next,next ) ;
    if( dset_qwarp == NULL ){  /* should never happen */
      ERROR_message("Can't extend nwarp dataset ?!?") ; RETURN(NULL) ;
    }
@@ -6085,7 +6121,9 @@ ENTRY("IW3D_read_catenated_warp") ;
                            and then writes the outputs
       (1) IW3D_warp_s2bim() == driver function for IW3D_warpomatic()
                                and applies the warp to the source image
-       (2a) IW3D_warpomatic() == produces the optimized warp
+       (2a) IW3D_warpomatic() == produces the optimized warp, by driving
+                                 IW3D_improve_warp() over global and then
+                                 local (overlapping) patches
         (3a) IW3D_setup_for_improvement() == sets up data for warp optimizing
          (4) IW3D_load_energy() == compute 'energy' fields for global warp
                                    as it is now, for warp penalty later
@@ -6135,10 +6173,23 @@ ENTRY("IW3D_read_catenated_warp") ;
     provide a simple way to warp one dataset to another, but that was never
     completed.  At present, you have to use IW3D_warp_s2bim(), which requires
     MRI_IMAGEs as the inputs, not datasets.
+
+    3dQwarp is *supposed* to work with 2D images (nz=1), and there is code
+    to allow for that case -- but it has never been tested!
+
+    The INCOR_* functions are in thd_incorrelate.c (which is #include-d far
+    far above), and handle "incomplete correlation" calculations, where part
+    of the data is fixed (the part outside the patch being optimized), and
+    part is changing (the part inside the current patch).  For speed, the
+    computations for the fixed part are only done once -- via INCOR_addto()
+    in function IW3D_improve_warp() before the patch optimization is done.
+    The "correlation" (cost function) is completed via INCOR_evaluate() in
+    function IW3D_scalar_costfun() -- which is what powell_newuoa_con()
+    tries to minimize.
 *//**------------------------------------------------------------------------**/
 
 /**--------------------------------------------------------------------------**/
-/** Many global variables below start with 'H',
+/** Many (but not all) global variables below start with 'H',
     which is my notation for the warp patch being optimized;
     however, not all 'H' variables are about the patch itself;
     some of these get set in 3dQwarp.c to control the warp optimization **/
@@ -6224,9 +6275,9 @@ static int Hdone      = 0 ;          /* number of patches optimized */
 
 /*--- Other stuff for incremental warping ---*/
 
-#undef USE_HLOADER  /* define this for 'all-at-once' Hwarp load vs. incremental */
-                    /* tests show incremental is about 10% faster, with OpenMP. */
-                    /* (incremental means to compute as needed, vs. pre-compute */
+#undef USE_HLOADER  /* define this for 'all-at-once' Hwarp load vs. incremental  */
+                    /* tests show incremental is about 10% faster, with OpenMP.  */
+                    /* (incremental means to compute as needed, vs. pre-compute) */
 
 #ifdef USE_HLOADER
 static void (*Hloader)(float *) = NULL ; /* function to make warp from params */
@@ -6272,8 +6323,17 @@ static float        Hwbar       = 0.0f ; /* average weight value */
 static byte        *Hbmask      = NULL ; /* mask for base image (global) */
 static byte        *Hemask      = NULL ; /* mask of voxels to EXCLUDE */
 
-static float        Hstopcost   = -666666.6f ;  /* stop if 'correlation' cost goes below this */
-static int          Hstopped    = 0 ;
+/*** these variables are inputs from the -xyzmatch option of 3dQwarp ***/
+
+static int    Hxyzmatch_num    = 0   ; /* num xyz triples for pointwise match */
+static double Hxyzmatch_fac    = 0.0 ; /* factor for sum */
+static int    Hxyzmatch_pow    = 2   ; /* 1 for L1, 2 for L2 */
+static double Hxyzmatch_cost   = 0.0 ;
+static float *Hxyzmatch_bas[3] = {NULL,NULL,NULL} ; /* xyz triples in base */
+static float *Hxyzmatch_src[3] = {NULL,NULL,NULL} ; /* xyz triples in source */
+static float *Hxyzmatch_b2s[3] = {NULL,NULL,NULL} ; /* warped base triples */
+
+/*** these variables affect how the iteration starts, stops, and proceeds ***/
 
 static int Hlev_start =   0 ;    /* initial level of patches */
 static int Hlev_end   = 666 ;    /* final level of patches to head towards */
@@ -6289,6 +6349,9 @@ static float Hfirstcost = 666.0f;
 
 static int Hsuperhard1 =  0 ;    /* Oh come on, who want to work super hard? */
 static int Hsuperhard2 = -1 ;    /* Certainly not us government employees!!! */
+
+static float Hstopcost   = -666666.6f ; /* stop if 'correlation' cost goes below this */
+static int   Hstopped    = 0 ;          /* indicate that iterations were stopped */
 
 /** macro ALLOW_QMODE (set or not in 3dQwarp.c) determines if quintic
     patches are allowed to be specified at various levels past Hlev_now=0 **/
@@ -6366,7 +6429,10 @@ int IW3D_munge_flags( int nx , int ny , int nz , int flags )
 /*============================================================================*/
 
 /*----------------------------------------------------------------------------*/
-/* C1 Hermite cubic basis functions over [-1..1].
+/* C1 Hermite cubic basis functions over [-1..1] -- that is, the 2 functions
+   and their first derivatives go to 0 at x=1 and x=-1.
+     The first function (ee.a) is such that f(0)=1, and f'(0)=0.
+     The second function (ee.b) is such that f(0)=0, and f'(0)=6.75.
    Scale factors are adjusted so that the functions' peak values are all 1.
    Return value is a float_pair comprising the 2 function values.
 *//*--------------------------------------------------------------------------*/
@@ -6387,7 +6453,11 @@ static INLINE float_pair HCwarp_eval_basis( float x )
 }
 
 /*----------------------------------------------------------------------------*/
-/* C2 Hermite quintic basis functions over [-1..1].
+/* C2 Hermite quintic basis functions over [-1..1] -- that is, the 3 functions
+   and their first 2 derivatives go to 0 at x=1 and x=-1.
+     The first function (ee.a) is such that f(0) != 0, and f'(0)=f''(0)=0.
+     The second function (ee.b) is such that f(0)=f''(0)=0, and f'(0) != 0.
+     The third function (ee.c) is such fhat f(0)=f'(0)=0, and f''(0) != 0.
    Scale factors are adjusted so that the functions' peak values are all 1.
    Return value is a float_triple comprising the 3 function values.
 *//*--------------------------------------------------------------------------*/
@@ -7480,6 +7550,224 @@ static INLINE int is_float_array_constant( int n , float *v )
 }
 
 /*----------------------------------------------------------------------------*/
+/* Clear the internal data for the -xyzmatch option */
+
+void IW3D_xyzmatch_clear(void)
+{
+   FREEIFNN(Hxyzmatch_bas[0]) ; FREEIFNN(Hxyzmatch_bas[1]) ; FREEIFNN(Hxyzmatch_bas[2]) ;
+   FREEIFNN(Hxyzmatch_src[0]) ; FREEIFNN(Hxyzmatch_src[1]) ; FREEIFNN(Hxyzmatch_src[2]) ;
+   FREEIFNN(Hxyzmatch_b2s[0]) ; FREEIFNN(Hxyzmatch_b2s[1]) ; FREEIFNN(Hxyzmatch_b2s[2]) ;
+   Hxyzmatch_num  = 0 ; Hxyzmatch_cost = 0.0 ;
+   return ;
+}
+
+/*----------------------------------------------------------------------------*/
+/* Convert two sets of vectors to the -xyzmatch internal data.
+*//*--------------------------------------------------------------------------*/
+
+int IW3D_xyzmatch_internalize( THD_3dim_dataset *dset , int npt ,
+                               float *xb , float *yb , float *zb ,
+                               float *xs , float *ys , float *zs  )
+{
+   int ii , nn ;
+   float ib,jb,kb , is,js,ks , nx1,ny1,nz1 ;
+   mat44 imat ;
+
+   ENTRY("IW3D_xyzmatch_internalize") ;
+
+   IW3D_xyzmatch_clear() ;
+
+   if( dset == NULL || npt <  1    ||
+       xb   == NULL || yb  == NULL || zb == NULL ||
+       xs   == NULL || ys  == NULL || zs == NULL   ) RETURN(0) ;
+
+   imat = MAT44_INV(dset->daxes->ijk_to_dicom) ; /* takes xyz to ijk */
+
+   nx1 = DSET_NX(dset)-1.0f ; ny1 = DSET_NY(dset)-1.0f ; nz1 = DSET_NZ(dset)-1.0f ;
+
+   Hxyzmatch_bas[0] = (float *)malloc(sizeof(float)*npt) ;
+   Hxyzmatch_bas[1] = (float *)malloc(sizeof(float)*npt) ;
+   Hxyzmatch_bas[2] = (float *)malloc(sizeof(float)*npt) ;
+   Hxyzmatch_src[0] = (float *)malloc(sizeof(float)*npt) ;
+   Hxyzmatch_src[1] = (float *)malloc(sizeof(float)*npt) ;
+   Hxyzmatch_src[2] = (float *)malloc(sizeof(float)*npt) ;
+   Hxyzmatch_b2s[0] = (float *)malloc(sizeof(float)*npt) ;
+   Hxyzmatch_b2s[1] = (float *)malloc(sizeof(float)*npt) ;
+   Hxyzmatch_b2s[2] = (float *)malloc(sizeof(float)*npt) ;
+
+   for( nn=ii=0 ; ii < npt ; ii++ ){
+     MAT44_VEC(imat,xb[ii],yb[ii],zb[ii],ib,jb,kb) ;  /* convert to indexes */
+     MAT44_VEC(imat,xs[ii],ys[ii],zs[ii],is,js,ks) ;
+     if( ib < 0.0f || ib >= nx1 ||
+         jb < 0.0f || jb >= ny1 || kb < 0.0f || kb >= nz1 ) continue ;
+     if( is < 0.0f || is >= nx1 ||
+         js < 0.0f || js >= ny1 || ks < 0.0f || ks >= nz1 ) continue ;
+
+     Hxyzmatch_bas[0][nn] = ib; Hxyzmatch_bas[1][nn] = jb; Hxyzmatch_bas[2][nn] = kb;
+     Hxyzmatch_src[0][nn] = is; Hxyzmatch_src[1][nn] = js; Hxyzmatch_src[2][nn] = ks;
+     nn++ ;
+   }
+
+   Hxyzmatch_num = nn ; RETURN(nn) ;
+}
+
+/*----------------------------------------------------------------------------*/
+/* Warp the input xyz indexes given Haawarp and AHwarp.
+   The input indexes will have been edited to be inside the Haawarp box,
+     so external slopes are not needed.
+   Note that the input points are the base image locations, which will
+     be warped to the source image locations for comparison.
+   The only tricky part is to use AHwarp inside its box, otherwise use Haawarp.
+*//*--------------------------------------------------------------------------*/
+
+void IW3D_nwarp_xyzmatch( int npt ,
+                          float *xin , float *yin , float *zin ,
+                          float *xut , float *yut , float *zut  )
+{
+   int nx,ny,nz,nxy , nbx,nby ;
+   float *xdar , *ydar , *zdar ;
+   float *xqar , *yqar , *zqar ;
+   float *xxar[2], *yyar[2] , *zzar[2] ;
+
+   nx   = Hnx         ; ny   = Hny         ; nz   = Hnz         ; nxy = Hnxy ;
+   xdar = Haawarp->xd ; ydar = Haawarp->yd ; zdar = Haawarp->zd ;
+
+   nbx  = AHwarp->nx ; nby  = AHwarp->ny ;
+   xqar = AHwarp->xd ; yqar = AHwarp->yd ; zqar = AHwarp->zd ;
+
+   /* pointers to displacement arrays for case 0 = outside AHwarp box */
+
+   xxar[0] = xdar ; yyar[0] = ydar ; zzar[0] = zdar ;
+
+   /* for case 1 = inside AHwarp box (cf. AHIND macro below);
+      use pointer arithmetic fu to make them seem based at (i,j,k)=(0,0,0)
+      [Note: could easily fail badly if on a segmented memory architecture] */
+
+   xxar[1] = xqar - (Hibot + Hjbot*nbx + Hkbot*nbx*nby) ;
+   yyar[1] = yqar - (Hibot + Hjbot*nbx + Hkbot*nbx*nby) ;
+   zzar[1] = zqar - (Hibot + Hjbot*nbx + Hkbot*nbx*nby) ;
+
+   /* parallel-ized linear interpolation [parallelizing probably useless] */
+
+   AFNI_OMP_START ;
+#pragma omp parallel if( npt > 111 )
+   { int pp ;
+     float xx,yy,zz , fx,fy,fz ; int ix,jy,kz ;
+     int ix_00,ix_p1 , jy_00,jy_p1 , kz_00,kz_p1 ;
+     int dc_00_00_00 , dc_p1_00_00 , dc_00_p1_00 , dc_p1_p1_00 ,
+         dc_00_00_p1 , dc_p1_00_p1 , dc_00_p1_p1 , dc_p1_p1_p1  ;
+     float wt_00,wt_p1 ;
+     float f_j00_k00, f_jp1_k00, f_j00_kp1, f_jp1_kp1, f_k00, f_kp1 ;
+     float g_j00_k00, g_jp1_k00, g_j00_kp1, g_jp1_kp1, g_k00, g_kp1 ;
+     float h_j00_k00, h_jp1_k00, h_j00_kp1, h_jp1_kp1, h_k00, h_kp1 ;
+
+#pragma omp for
+     for( pp=0 ; pp < npt ; pp++ ){                 /* loop over input points */
+       xx = xin[pp] ; yy = yin[pp] ; zz = zin[pp] ;
+       ix = (int)xx; fx = xx-ix; jy = (int)yy; fy = yy-jy; kz = (int)zz; fz = zz-kz;
+       /* now linearly interpolate displacements inside the dataset grid */
+       ix_00 = ix ; ix_p1 = ix_00+1 ;  /* at this point, we are 'fx' between indexes ix_00 and ix_p1 */
+       jy_00 = jy ; jy_p1 = jy_00+1 ;  /* et cetera */
+       kz_00 = kz ; kz_p1 = kz_00+1 ;
+       wt_00 = (1.0f-fx) ; wt_p1 = fx ;  /* weights for ix_00 and ix_p1 points for linear interp */
+
+#undef  AHIND  /* == 0 for outside of AHwarp, == 1 for inside AHwarp */
+#define AHIND(i,j,k) ( (i >= Hibot) && (i <= Hitop) &&  \
+                       (j >= Hjbot) && (j <= Hjtop) &&  \
+                       (k >= Hkbot) && (k <= Hktop)   )
+
+       dc_00_00_00 = AHIND(ix_00,jy_00,kz_00) ; /* select case 0 or 1 */
+       dc_p1_00_00 = AHIND(ix_p1,jy_00,kz_00) ; /* for each of the 8 */
+       dc_00_p1_00 = AHIND(ix_00,jy_p1,kz_00) ; /* points used for  */
+       dc_p1_p1_00 = AHIND(ix_p1,jy_p1,kz_00) ; /* interpolation   */
+       dc_00_00_p1 = AHIND(ix_00,jy_00,kz_p1) ; /* ['dc' == displacement case] */
+       dc_p1_00_p1 = AHIND(ix_p1,jy_00,kz_p1) ;
+       dc_00_p1_p1 = AHIND(ix_00,jy_p1,kz_p1) ;
+       dc_p1_p1_00 = AHIND(ix_p1,jy_p1,kz_p1) ;
+
+#undef  IJK  /* convert 3D index to 1D index */
+#define IJK(i,j,k) ((i)+(j)*nx+(k)*nxy)
+
+#undef  XINT  /* linear interpolation at plane jk, for cases dca,dcb */
+#define XINT(aaa,j,k,dca,dcb) wt_00*aaa[dca][IJK(ix_00,j,k)]+wt_p1*aaa[dcb][IJK(ix_p1,j,k)]
+
+       /* interpolate to location ix+fx at each jy,kz level */
+
+       f_j00_k00 = XINT(xxar,jy_00,kz_00,dc_00_00_00,dc_p1_00_00) ;
+       f_jp1_k00 = XINT(xxar,jy_p1,kz_00,dc_00_p1_00,dc_p1_p1_00) ;
+       f_j00_kp1 = XINT(xxar,jy_00,kz_p1,dc_00_00_p1,dc_p1_00_p1) ;
+       f_jp1_kp1 = XINT(xxar,jy_p1,kz_p1,dc_00_p1_p1,dc_p1_p1_p1) ;
+       g_j00_k00 = XINT(yyar,jy_00,kz_00,dc_00_00_00,dc_p1_00_00) ;
+       g_jp1_k00 = XINT(yyar,jy_p1,kz_00,dc_00_p1_00,dc_p1_p1_00) ;
+       g_j00_kp1 = XINT(yyar,jy_00,kz_p1,dc_00_00_p1,dc_p1_00_p1) ;
+       g_jp1_kp1 = XINT(yyar,jy_p1,kz_p1,dc_00_p1_p1,dc_p1_p1_p1) ;
+       h_j00_k00 = XINT(zzar,jy_00,kz_00,dc_00_00_00,dc_p1_00_00) ;
+       h_jp1_k00 = XINT(zzar,jy_p1,kz_00,dc_00_p1_00,dc_p1_p1_00) ;
+       h_j00_kp1 = XINT(zzar,jy_00,kz_p1,dc_00_00_p1,dc_p1_00_p1) ;
+       h_jp1_kp1 = XINT(zzar,jy_p1,kz_p1,dc_00_p1_p1,dc_p1_p1_p1) ;
+
+       /* interpolate to jy+fy at each kz level */
+
+       wt_00 = 1.0f-fy ; wt_p1 = fy ;
+       f_k00 =  wt_00 * f_j00_k00 + wt_p1 * f_jp1_k00 ;
+       f_kp1 =  wt_00 * f_j00_kp1 + wt_p1 * f_jp1_kp1 ;
+       g_k00 =  wt_00 * g_j00_k00 + wt_p1 * g_jp1_k00 ;
+       g_kp1 =  wt_00 * g_j00_kp1 + wt_p1 * g_jp1_kp1 ;
+       h_k00 =  wt_00 * h_j00_k00 + wt_p1 * h_jp1_k00 ;
+       h_kp1 =  wt_00 * h_j00_kp1 + wt_p1 * h_jp1_kp1 ;
+
+       /* interpolate to kz+fz to get output, plus add in original coords */
+
+       xut[pp] = (1.0f-fz) * f_k00 + fz * f_kp1 + xin[pp] ;
+       yut[pp] = (1.0f-fz) * g_k00 + fz * g_kp1 + yin[pp] ;
+       zut[pp] = (1.0f-fz) * h_k00 + fz * h_kp1 + zin[pp] ;
+
+     } /* end of loop over input/output points */
+   } /* end of parallel code */
+   AFNI_OMP_END ;
+
+   return ;
+}
+
+/*----------------------------------------------------------------------------*/
+/* Part of the penalty computed from the -xyzmatch option in 3dQwarp:
+   a sum over distances between discrete points.
+*//*--------------------------------------------------------------------------*/
+
+double IW3D_xyzmatch_sum(void)
+{
+   int ii ; double sum = 0.0 ;
+
+   IW3D_nwarp_xyzmatch( Hxyzmatch_num ,
+                        Hxyzmatch_bas[0], Hxyzmatch_bas[1], Hxyzmatch_bas[2],
+                        Hxyzmatch_b2s[0], Hxyzmatch_b2s[1], Hxyzmatch_b2s[2] ) ;
+
+   switch ( Hxyzmatch_pow ){
+
+     case 2:  /* L2 sum = RMS distance */
+     default:
+       for( ii=0 ; ii < Hxyzmatch_num ; ii++ ){
+         sum +=   SQR( Hxyzmatch_b2s[0][ii]-Hxyzmatch_src[0][ii] )
+                + SQR( Hxyzmatch_b2s[1][ii]-Hxyzmatch_src[1][ii] )
+                + SQR( Hxyzmatch_b2s[2][ii]-Hxyzmatch_src[2][ii] ) ;
+       }
+       sum = sqrt(sum/Hxyzmatch_num) ;
+     break ;
+
+     case 1:  /* L1 sum = average taxicab distance */
+       for( ii=0 ; ii < Hxyzmatch_num ; ii++ ){
+         sum +=   fabs( Hxyzmatch_b2s[0][ii]-Hxyzmatch_src[0][ii] )
+                + fabs( Hxyzmatch_b2s[1][ii]-Hxyzmatch_src[1][ii] )
+                + fabs( Hxyzmatch_b2s[2][ii]-Hxyzmatch_src[2][ii] ) ;
+       }
+       sum /= Hxyzmatch_num ;
+     break ;
+   }
+
+   return (sum * Hxyzmatch_fac) ;
+}
+
+/*----------------------------------------------------------------------------*/
 /* This is the function which will actually be minimized
    (via Powell's NEWUOA); and as such is the very core of 3dQwarp!
 *//*--------------------------------------------------------------------------*/
@@ -7552,8 +7840,12 @@ double IW3D_scalar_costfun( int npar , double *dpar )
      Hpenn = 0.0f ;
    }
 
+   if( Hxyzmatch_num > 0 ){
+     Hxyzmatch_cost = IW3D_xyzmatch_sum() ; cost += Hxyzmatch_cost ;
+   }
+
    if( Hfirsttime ){  /* just for fun fun fun in the sun sun sun */
-     if( Hverb ) fprintf(stderr,"[first cost=%.3f]%c",cost , ((Hverb>1) ? '\n' : ' ') ) ;
+     if( Hverb ) fprintf(stderr,"[first cost=%.5f]%c",cost , ((Hverb>1) ? '\n' : ' ') ) ;
      Hfirsttime = 0 ; Hfirstcost = (float)cost ;
    }
 
@@ -7585,6 +7877,8 @@ ENTRY("IW3D_cleanup_improvement") ;
    IW3D_destroy(Hwarp)   ; Hwarp   = NULL ;
    IW3D_destroy(AHwarp)  ; AHwarp  = NULL ;
    IW3D_destroy(Haawarp) ; Haawarp = NULL ;
+
+   IW3D_xyzmatch_clear() ;     /* 15 Aug 2014 */
 
    INCOR_set_lpc_mask(NULL) ;  /* 25 Jun 2014 */
    INCOR_destroy(Hincor) ; Hincor = NULL ; KILL_floatvec(Hmpar) ;
@@ -7619,6 +7913,62 @@ ENTRY("IW3D_cleanup_improvement") ;
 }
 
 /*----------------------------------------------------------------------------*/
+/* Median filter specialized for 3dQwarp and for OpenMP. */
+
+MRI_IMAGE *IW3D_medianfilter( MRI_IMAGE *imin, float irad )
+{
+   MRI_IMAGE *imout ;
+   float *fin, *fout , dz ;
+   short *di , *dj  , *dk ;
+   int nd, nx,ny,nz,nxy,nxyz ;
+   MCW_cluster *cl ;
+
+ENTRY("IW3D_medianfilter") ;
+
+   if( imin == NULL || imin->kind != MRI_float ) RETURN(NULL) ;
+
+   if( irad < 1.01f ) irad = 1.01f ;
+   dz = (imin->nz == 1) ? 6666.0f : 1.0f ;
+   cl = MCW_build_mask( 1.0f,1.0f,dz , irad ) ;
+
+   if( cl == NULL || cl->num_pt < 6 ){ KILL_CLUSTER(cl); RETURN(NULL); }
+
+   ADDTO_CLUSTER(cl,0,0,0,0) ;
+
+   di = cl->i   ; dj = cl->j   ; dk = cl->k   ; nd  = cl->num_pt;
+   nx = imin->nx; ny = imin->ny; nz = imin->nz; nxy = nx*ny     ; nxyz = nxy*nz;
+
+   imout = mri_new_conforming( imin , MRI_float ) ;
+   fout  = MRI_FLOAT_PTR( imout ) ;
+   fin   = MRI_FLOAT_PTR( imin ) ;
+
+ AFNI_OMP_START ;
+#pragma omp parallel if( nxyz*nd > 9999 )
+ { int ii,jj,kk,ijk , ip,jp,kp , nt,dd ; float *tmp ;
+#pragma omp critical
+   { tmp = (float *)malloc(sizeof(float)*nd) ; }
+#pragma omp for
+   for( ijk=0 ; ijk < nxyz ; ijk++ ){
+     ii = ijk % nx ; kk = ijk / nxy ; jj = (ijk-kk*nxy) / nx ;
+     /* extract neighborhood values */
+     for( nt=dd=0 ; dd < nd ; dd++ ){
+       ip = ii+di[dd] ; if( ip < 0 || ip >= nx ) continue ;
+       jp = jj+dj[dd] ; if( jp < 0 || jp >= ny ) continue ;
+       kp = kk+dk[dd] ; if( kp < 0 || kp >= nz ) continue ;
+       tmp[nt++] = fin[ip+jp*nx+kp*nxy] ;
+     }
+     if( nt > 0 ) fout[ijk] = qmed_float( nt , tmp ) ;  /* cf. cs_qmed.c */
+   }
+#pragma omp critical
+   { free(tmp) ; }
+ }
+AFNI_OMP_END ;
+
+   KILL_CLUSTER(cl);
+   RETURN(imout) ;
+}
+
+/*----------------------------------------------------------------------------*/
 /* Function for blurring a volume in 1 of 2 ways */
 
 MRI_IMAGE * IW3D_blurim( float rad , MRI_IMAGE *inim , char *label )
@@ -7627,15 +7977,62 @@ MRI_IMAGE * IW3D_blurim( float rad , MRI_IMAGE *inim , char *label )
 ENTRY("IW3D_blurim") ;
    if( rad >= 0.5f ){
      if( Hverb > 1 && label != NULL )
-       ININFO_message("  blurring %s image %.2g voxels FWHM",label,rad) ;
+       ININFO_message("  blurring %s image %.2f voxels FWHM",label,rad) ;
      outim = mri_float_blur3D( FWHM_TO_SIGMA(rad) , inim ) ;
    } else if( rad <= -1.0f ){
      if( Hverb > 1 && label != NULL )
-       ININFO_message("  median-ing %s image %.2g voxels",label,-rad) ;
-     outim = mri_medianfilter( inim , -rad , NULL , 0 ) ;
+       ININFO_message("  median-ating %s image %.2f voxels",label,-rad) ;
+     outim = IW3D_medianfilter( inim , -rad ) ;
    }
    RETURN(outim) ;
 }
+
+/*----------------------------------------------------------------------------*/
+/* Macro for actual pblur radius, given image dimensions */
+
+#define PBLUR(pb,qx,qy,qz) \
+ ( ((pb) <= 0.0f)          \
+  ? 0.0f                   \
+  : ( ( ((qz) >= NGMIN) ? cbrtf((qx)*(qy)*(qz)) : sqrtf((qx)*(qy)) ) * (pb) ) )
+
+/* Macro to compute actual blur radius from the
+   progressive blur (pb) and the fixed blur (fb) radii */
+
+#define ACTUAL_BLUR(pb,fb) \
+  ( sqrtf( (pb)*(pb) + (fb)*(fb) ) * ( ((fb) >= 0.0f) ? 1.0f : -1.0f ) )
+
+/*----------------------------------------------------------------------------*/
+/* function to do the blurring */
+
+MRI_IMAGE * IW3D_do_blurring( float fixed_blur, float prog_blur,
+                              float scalex, float scaley, float scalez,
+                              MRI_IMAGE *inim , char *lab )
+{
+   float pblur,ablur ; MRI_IMAGE *outim ;
+
+ENTRY("IW3D_do_blurring") ;
+   if( fixed_blur == 0.0f && prog_blur == 0.0f ) RETURN(NULL) ;
+   pblur = PBLUR(prog_blur,scalex,scaley,scalez) ;
+   ablur = ACTUAL_BLUR(pblur,fixed_blur) ;
+   outim = IW3D_blurim( ablur , inim , lab ) ;
+   RETURN(outim) ;
+}
+
+/*------------------- Macros for blurring images as needed -------------------*/
+
+#define PBLUR_BASE(i1,i2,j1,j2,k1,k2)                                                \
+ do{ if( Hpblur_b > 0.0f ){                                                          \
+       mri_free(Hbasim_blur) ;                                                       \
+       Hbasim_blur = IW3D_do_blurring( Hblur_b, Hpblur_b,                            \
+                                       i2-i1+1, j2-j1+1, k2-k1+1, Hbasim, "base" ) ; \
+     } } while(0)
+
+#define PBLUR_SOURCE(i1,i2,j1,j2,k1,k2)                                                \
+ do{ if( Hpblur_s > 0.0f ){                                                            \
+       mri_free(Hsrcim_blur) ;                                                         \
+       Hsrcim_blur = IW3D_do_blurring( Hblur_s, Hpblur_s,                              \
+                                       i2-i1+1, j2-j1+1, k2-k1+1, Hsrcim, "source" ) ; \
+     } } while(0)
 
 /*----------------------------------------------------------------------------*/
 /* Sets a bunch of global workspace variables, prior to
@@ -7670,23 +8067,13 @@ ENTRY("IW3D_setup_for_improvement") ;
    Hbasim = mri_to_float(bim) ;
    Hsrcim = mri_to_float(sim);
 
-   if( Hpblur_b > 0.0f ) Hblur_b = 0.0f ;
-   if( Hpblur_s > 0.0f ) Hblur_s = 0.0f ;
+   if( Hpblur_b > 0.0f && Hblur_b == 0.0f ) Hblur_b = 0.1f ;
+   if( Hpblur_s > 0.0f && Hblur_s == 0.0f ) Hblur_s = 0.1f ;
 
-#if 1
-   Hbasim_blur = IW3D_blurim( Hblur_b , Hbasim , "base"   ) ;  /* NULL if blur */
-   Hsrcim_blur = IW3D_blurim( Hblur_s , Hsrcim , "source" ) ;  /* radius == 0 */
-#else
-   if( Hblur_s >= 0.5f ){
-     if( Hverb > 1 ) ININFO_message("   blurring source image %.3g voxels FWHM",Hblur_s) ;
-     Hsrcim_blur = mri_float_blur3D( FWHM_TO_SIGMA(Hblur_s) , Hsrcim ) ;
-   } else if( Hblur_s <= -1.0f ){
-     if( Hverb > 1 ) ININFO_message("   median-izing source image %.3g voxels",-Hblur_s) ;
-     Hsrcim_blur = mri_medianfilter( Hsrcim , -Hblur_s , NULL , 0 ) ;
-   } else {
-     Hsrcim_blur = NULL ;
-   }
-#endif
+   Hbasim_blur = IW3D_do_blurring( Hblur_b , Hpblur_b ,
+                                   0.5f*Hnx,0.5f*Hny,0.5f*Hnz, Hbasim, "base"   ) ;
+   Hsrcim_blur = IW3D_do_blurring( Hblur_s , Hpblur_s ,
+                                   0.5f*Hnx,0.5f*Hny,0.5f*Hnz, Hsrcim, "source" ) ;
 
    /*-- copy or create base weight image (included Hemask for exclusion) --*/
 
@@ -7747,20 +8134,25 @@ ENTRY("IW3D_setup_for_improvement") ;
 
      case GA_MATCH_PEARSON_LOCALA:      /* lpa (but NOT lpc) */
      case GA_MATCH_HELLINGER_SCALAR:    /* hel */
-     case GA_MATCH_CRAT_USYM_SCALAR:
+     case GA_MATCH_CRAT_USYM_SCALAR:    /* correlation ratio */
      case GA_MATCH_CRAT_SADD_SCALAR:
      case GA_MATCH_CORRATIO_SCALAR:
-     case GA_MATCH_KULLBACK_SCALAR:
-     case GA_MATCH_PEARCLP_SCALAR:
-     case GA_MATCH_PEARSON_SCALAR:      Hnegate = 1 ; break ;
+     case GA_MATCH_KULLBACK_SCALAR:     /* mutual info */
+     case GA_MATCH_PEARCLP_SCALAR:      /* clipped Pearson */
+     case GA_MATCH_PEARSON_SCALAR:      /* pure Pearson */
+                                        Hnegate = 1 ; break ;
    }
 
-   /* special case: don't try to over-minimize the Pearson costs */
+   /* special case: don't try to over-minimize the Pearson costs
+      (e.g., the base and source images are essentially identical) */
 
    if( meth_code == GA_MATCH_PEARCLP_SCALAR || meth_code == GA_MATCH_PEARSON_SCALAR )
-     Hstopcost = -3.995f ;
+     Hstopcost = -3.991f ;
 
-   /*-- INCOR method uses 2Dhist functions, so setup some parameters */
+   /*-- INCOR method uses 2Dhist functions (iii==2),
+        or is the clipped Pearson method (iii==3),
+        or is a local Pearson method (iii==4),
+        so setup some parameters (into Hmpar) for later use --*/
 
    if( iii == 2 || iii == 3 ){
      float *xar,*yar , *bar,*sar ; int jj,kk ;
@@ -7813,7 +8205,7 @@ ENTRY("IW3D_setup_for_improvement") ;
        }
 #endif
      }
-   } else if( iii == 4 ){         /* Local Pearson setup [25 Jun 2014] */
+   } else if( iii == 4 ){         /*--- Local Pearson setup [25 Jun 2014] ---*/
      INCOR_set_lpc_mask(Hbmask) ;
      MAKE_floatvec(Hmpar,9) ;     /* to be filled in later, for each patch */
    }
@@ -7825,16 +8217,15 @@ ENTRY("IW3D_setup_for_improvement") ;
      ERROR_exit("IW3D_setup_for_improvement: bad warp_flags input") ;
 
    /*-- copy/create initial warp, and warp the source image that way --*/
+   /*** [10 Aug 2014 -- Haasrcim will be created later] ***/
 
    if( Iwarp != NULL ){
      if( Iwarp->nx != Hnx || Iwarp->ny != Hny || Iwarp->nz != Hnz )
        ERROR_exit("IW3D_setup_for_improvement: bad Iwarp input") ;
 
      Haawarp  = IW3D_copy(Iwarp,1.0f) ;     /* copy it */
-     Haasrcim = IW3D_warp_floatim( Haawarp, SRCIM, Himeth , 1.0f ) ;
    } else {
      Haawarp  = IW3D_create(Hnx,Hny,Hnz) ;  /* initialized to 0 displacements */
-     Haasrcim = mri_to_float(SRCIM) ;       /* 'warped' source image */
    }
 
    (void)IW3D_load_energy(Haawarp) ;  /* initialize energy field for penalty use */
@@ -7905,6 +8296,12 @@ ENTRY("IW3D_improve_warp") ;
    }
 
    /*-- setup the basis functions for Hwarp-ing --*/
+
+   /*-- The max displacment scales (0.033 for cubic, 0.007 for quintic)
+        are set from the combination of parameters that gave non-singular
+        patch warps with "OK" levels of distortion (delta-volume about 50%).
+        Hfactor allows the iteration to scale these down at finer levels,
+        but that wasn't needed after the introduction of the warp penalty. --*/
 
    switch( warp_code ){
      default:
@@ -8046,12 +8443,12 @@ ENTRY("IW3D_improve_warp") ;
 
    if( Hverb > 3 ) powell_set_verbose(1) ;
 
-   /**----- do it babee!! -----**/
+   /******* do it babee!! ***********************************/
 
    iter = powell_newuoa_con( Hnparmap , parvec,xbot,xtop , 0 ,
                              prad,0.009*prad , itmax , IW3D_scalar_costfun ) ;
 
-   /**----- iter = number of iterations actually used -----**/
+   /******* iter = number of iterations actually used *******/
 
    if( iter > 0 ) Hnpar_sum += Hnparmap ; /* number of parameters used so far */
 
@@ -8089,10 +8486,13 @@ ENTRY("IW3D_improve_warp") ;
    }}}
 
    if( Hverb > 1 ){  /* detailed overview of what went down in this patch */
+     char cbuf[32] ;
+     if( Hxyzmatch_num > 0 ) sprintf(cbuf,"xyzmatch pen=%g",Hxyzmatch_cost) ;
+     else                    strcpy(cbuf,"\0") ;
      ININFO_message(
-       "     %s patch %03d..%03d %03d..%03d %03d..%03d : cost:%g iter=%d : energy=%.3f:%.3f pen=%g pure=%g",
+       "     %s patch %03d..%03d %03d..%03d %03d..%03d : cost=%.5f iter=%d : energy=%.3f:%.3f pen=%g pure=%g %s",
                      (Hbasis_code == MRI_QUINTIC) ? "quintic" : "  cubic" ,
-                           ibot,itop, jbot,jtop, kbot,ktop , Hcost  , iter , jt,st , Hpenn , Hcostt ) ;
+                           ibot,itop, jbot,jtop, kbot,ktop , Hcost  , iter , jt,st , Hpenn , Hcostt , cbuf ) ;
 
    } else if( Hverb == 1 && (Hlev_now<=2 || lrand48()%(Hlev_now*Hlev_now*Hlev_now/9)==0) ){
      fprintf(stderr,".") ;  /* just a pacifier */
@@ -8196,6 +8596,13 @@ ENTRY("IW3D_warpomatic") ;
      nlevr = ( WORKHARD(0) || Hduplo ) ? 4 : 2 ; if( SUPERHARD(0) ) nlevr++ ;
      /* force the warp to happen, but don't use any penalty */
      Hforce = 1 ; Hfactor = 1.0f ; Hpen_use = 0 ; Hlev_now = 0 ;
+     PBLUR_BASE  (ibbb,ittt,jbbb,jttt,kbbb,kttt) ;  /* progressive blur, if ordered */
+     PBLUR_SOURCE(ibbb,ittt,jbbb,jttt,kbbb,kttt) ;
+     mri_free(Haasrcim) ;                /* At this point, create the warped  */
+     if( IW3D_is_zero(Haawarp) )         /* source image Haasrcim, which will */
+       Haasrcim = mri_to_float(SRCIM) ;  /* be updated in IW3D_improve_warp() */
+     else
+       Haasrcim = IW3D_warp_floatim( Haawarp, SRCIM, Himeth , 1.0f ) ;
      if( Hverb == 1 ) fprintf(stderr,"lev=0 %d..%d %d..%d %d..%d: ",ibbb,ittt,jbbb,jttt,kbbb,kttt) ;
      /* always start with 2 cubic steps */
      (void)IW3D_improve_warp( MRI_CUBIC  , ibbb,ittt,jbbb,jttt,kbbb,kttt );
@@ -8211,7 +8618,7 @@ ENTRY("IW3D_warpomatic") ;
          break ;
        }
      }
-     if( Hverb == 1 ) fprintf(stderr," done [cost:%.3f==>%.3f]\n",Hfirstcost,Hcost) ;
+     if( Hverb == 1 ) fprintf(stderr," done [cost:%.5f==>%.5f]\n",Hfirstcost,Hcost) ;
    } else {
      Hcost = 666.666f ;  /* a beastly thing to do [no lev=0 optimization] */
    }
@@ -8330,6 +8737,12 @@ ENTRY("IW3D_warpomatic") ;
 
      /* announce the start of a new level! */
 
+     PBLUR_BASE  (1,xwid,1,ywid,1,zwid) ;  /* progressive blur, if ordered */
+     PBLUR_SOURCE(1,xwid,1,ywid,1,zwid) ;
+     if( Hpblur_b > 0.0f || Hpblur_b > 0.0f ) Hfirsttime = 1 ;
+     mri_free(Haasrcim) ;  /* re-create the warped source image Haasrcim */
+     Haasrcim = IW3D_warp_floatim( Haawarp, SRCIM, Himeth , 1.0f ) ;
+
      if( Hverb > 1 )
        ININFO_message("  .........  lev=%d xwid=%d ywid=%d zwid=%d Hfac=%g penfac=%g %s %s [clock=%s]" ,
                       lev,xwid,ywid,zwid,Hfactor,Hpen_fff , (levdone   ? "FINAL"  : "\0") ,
@@ -8385,7 +8798,7 @@ ENTRY("IW3D_warpomatic") ;
      /* reverse direction */
 
      if( lev%2 == 0 || nlevr > 1 ){ /* sweep from top to bot, kji order */
-       if( nlevr > 1 && Hverb == 1 ) fprintf(stderr,":[cost=%.3f]:",Hcost) ;
+       if( nlevr > 1 && Hverb == 1 ) fprintf(stderr,":[cost=%.5f]:",Hcost) ;
       for( isup=0 ; isup < nsup ; isup++ ){  /* superhard? */
        for( idon=0,itop=ittt ; !idon ; itop -= diii ){
          ibot = itop+1-xwid;
@@ -8443,9 +8856,9 @@ ENTRY("IW3D_warpomatic") ;
      if( Hcostbeg > 666.0f ) Hcostbeg = Hfirstcost ;
      if( Hverb == 1 ){
        if( Hdone > 0 )
-         fprintf(stderr," done [cost:%.3f==>%.3f ; %d patches optimized, %d skipped]\n",Hcostbeg,Hcost,Hdone,Hskipped) ;
+         fprintf(stderr," done [cost:%.5f==>%.5f ; %d patches optimized, %d skipped]\n",Hcostbeg,Hcost,Hdone,Hskipped) ;
        else
-         fprintf(stderr," done [cost:%.3f ; all patches skipped]\n",Hcost) ;
+         fprintf(stderr," done [cost:%.5f ; all patches skipped]\n",Hcost) ;
      }
      Hcostbeg = Hcost ;
 
@@ -8887,7 +9300,7 @@ ENTRY("IW3D_warp_s2bim_duplo") ;
    simd  = mri_duplo_down_3D(sim) ;   blur_inplace( simd , 1.234f ) ;
 
    Hshrink    = 0.749999f ;
-   Hlev_start = 0 ;
+   Hlev_start = 0 ; Hlev_end = 3 ;
    Hpen_fac  *= 4.0f ;
    Hduplo     = 1 ; Hnpar_sum = 0 ;
 
@@ -8921,6 +9334,7 @@ ENTRY("IW3D_warp_s2bim_duplo") ;
    Hshrink = 0.749999f ; Hlev_start = Hlev_final /*-1*/ ; if( Hlev_start < 0 ) Hlev_start = 0 ;
    Htemp1 = Hworkhard1 ; Hworkhard1 = 0 ;
    Htemp2 = Hworkhard2 ; Hworkhard2 = MAX(Htemp2,Hlev_start) ;
+   Hlev_end = S2BIM_mlev ;
 
    /* the full sized warping, using the initial warp from above (in WO_iwarp) */
 
@@ -9211,7 +9625,7 @@ double IW3D_scalar_costfun_plusminus( int npar , double *dpar )
    }
 
    if( Hfirsttime ){
-     if( Hverb ) fprintf(stderr,"[first cost=%.3f]%c",cost , ((Hverb>1) ? '\n' : ' ') ) ;
+     if( Hverb ) fprintf(stderr,"[first cost=%.5f]%c",cost , ((Hverb>1) ? '\n' : ' ') ) ;
      Hfirsttime = 0 ; Hfirstcost = (float)cost ;
    }
 
@@ -9427,7 +9841,7 @@ ENTRY("IW3D_improve_warp_plusminus") ;
 
    if( Hverb > 1 ){
      ININFO_message(
-       "     %s patch %03d..%03d %03d..%03d %03d..%03d : cost=%g iter=%d : energy=%.3f:%.3f pen=%g",
+       "     %s patch %03d..%03d %03d..%03d %03d..%03d : cost=%.5f iter=%d : energy=%.3f:%.3f pen=%g",
                      (Hbasis_code == MRI_QUINTIC) ? "quintic" : "  cubic" ,
                            ibot,itop, jbot,jtop, kbot,ktop , Hcost  , iter , jt,st , Hpenn ) ;
    } else if( Hverb == 1 && (Hlev_now<=2 || lrand48()%(Hlev_now*Hlev_now*Hlev_now/9)==0) ){
@@ -9511,33 +9925,15 @@ ENTRY("IW3D_setup_for_improvement_plusminus") ;
 
    Hnx = bim->nx; Hny = bim->ny; Hnz = bim->nz; Hnxy=Hnx*Hny; Hnxyz = Hnxy*Hnz;
    Hbasim = mri_to_float(bim) ;
-   Hsrcim = mri_to_float(sim);
+   Hsrcim = mri_to_float(sim) ;
 
-   Hsrcim_blur = IW3D_blurim( Hblur_s , Hsrcim , "source" ) ;
-#if 0
-   if( Hblur_s >= 0.5f ){
-     if( Hverb > 1 ) ININFO_message("   blurring source image %.3g voxels FWHM",Hblur_s) ;
-     Hsrcim_blur = mri_float_blur3D( FWHM_TO_SIGMA(Hblur_s) , Hsrcim ) ;
-   } else if( Hblur_s <= -1.0f ){
-     if( Hverb > 1 ) ININFO_message("   median-izing source image %.3g voxels",-Hblur_s) ;
-     Hsrcim_blur = mri_medianfilter( Hsrcim , -Hblur_s , NULL , 0 ) ;
-   } else {
-     Hsrcim_blur = NULL ;
-   }
-#endif
+   if( Hpblur_b > 0.0f && Hblur_b == 0.0f ) Hblur_b = 0.1f ;
+   if( Hpblur_s > 0.0f && Hblur_s == 0.0f ) Hblur_s = 0.1f ;
 
-   Hbasim_blur = IW3D_blurim( Hblur_b , Hbasim , "base" ) ;
-#if 0
-   if( Hblur_b >= 0.5f ){
-     if( Hverb > 1 ) ININFO_message("   blurring base image %.3g voxels FWHM",Hblur_b) ;
-     Hbasim_blur = mri_float_blur3D( FWHM_TO_SIGMA(Hblur_b) , Hbasim ) ;
-   } else if( Hblur_b <= -1.0f ){
-     if( Hverb > 1 ) ININFO_message("   median-izing base image %.3g voxels",-Hblur_b) ;
-     Hbasim_blur = mri_medianfilter( Hbasim , -Hblur_b , NULL , 0 ) ;
-   } else {
-     Hbasim_blur = NULL ;
-   }
-#endif
+   Hbasim_blur = IW3D_do_blurring( Hblur_b , Hpblur_b ,
+                                   0.5f*Hnx,0.5f*Hny,0.5f*Hnz, Hbasim, "base"   ) ;
+   Hsrcim_blur = IW3D_do_blurring( Hblur_s , Hpblur_s ,
+                                   0.5f*Hnx,0.5f*Hny,0.5f*Hnz, Hsrcim, "source" ) ;
 
    /*-- and copy or create base weight image --*/
 
@@ -9669,18 +10065,15 @@ ENTRY("IW3D_setup_for_improvement_plusminus") ;
      ERROR_exit("IW3D_setup_for_improvement: bad warp_flags input") ;
 
    /*-- copy/create initial warp, and warp the source images --*/
+   /*** [10 Aug 2014] Haasrcim_plus and Haabasim_minus are created later ***/
 
    if( Iwarp != NULL ){
      if( Iwarp->nx != Hnx || Iwarp->ny != Hny || Iwarp->nz != Hnz )
        ERROR_exit("IW3D_setup_for_improvement: bad Iwarp input") ;
 
      Haawarp = IW3D_copy(Iwarp,1.0f) ;     /* copy it */
-     Haasrcim_plus  = IW3D_warp_floatim( Haawarp, SRCIM, Himeth ,  1.0f ) ;
-     Haabasim_minus = IW3D_warp_floatim( Haawarp, BASIM, Himeth , -1.0f ) ;
    } else {
      Haawarp = IW3D_create(Hnx,Hny,Hnz) ;  /* initialize to 0 displacements */
-     Haasrcim_plus  = mri_to_float(SRCIM) ;     /* 'warped' source image */
-     Haabasim_minus = mri_to_float(BASIM) ;     /* 'warped' base image */
    }
    (void)IW3D_load_energy(Haawarp) ;  /* initialize energy field for penalty use */
 
@@ -9784,8 +10177,18 @@ ENTRY("IW3D_warpomatic_plusminus") ;
      nlevr = 4 ;
 #endif
      Hforce = 1 ; Hfactor = 1.0f ; Hpen_use = 0 ; Hlev_now = 0 ;
+     PBLUR_BASE  (ibbb,ittt,jbbb,jttt,kbbb,kttt) ;  /* progressive blur, if ordered */
+     PBLUR_SOURCE(ibbb,ittt,jbbb,jttt,kbbb,kttt) ;
+     mri_free(Haasrcim_plus) ;   /* at this point, create the initial */
+     mri_free(Haabasim_minus);   /* warped source and base images */
+     if( IW3D_is_zero(Haawarp) ){
+       Haasrcim_plus  = mri_to_float(SRCIM) ;     /* 'warped' source image */
+       Haabasim_minus = mri_to_float(BASIM) ;     /* 'warped' base image */
+     } else {
+       Haasrcim_plus  = IW3D_warp_floatim( Haawarp, SRCIM, Himeth ,  1.0f ) ;
+       Haabasim_minus = IW3D_warp_floatim( Haawarp, BASIM, Himeth , -1.0f ) ;
+     }
      if( Hverb == 1 ) fprintf(stderr,"lev=0 %d..%d %d..%d %d..%d: ",ibbb,ittt,jbbb,jttt,kbbb,kttt) ;
-     (void)IW3D_improve_warp_plusminus( MRI_CUBIC  , ibbb,ittt,jbbb,jttt,kbbb,kttt );
      (void)IW3D_improve_warp_plusminus( MRI_CUBIC  , ibbb,ittt,jbbb,jttt,kbbb,kttt );
      (void)IW3D_improve_warp_plusminus( MRI_CUBIC  , ibbb,ittt,jbbb,jttt,kbbb,kttt );
      (void)IW3D_improve_warp_plusminus( MRI_CUBIC  , ibbb,ittt,jbbb,jttt,kbbb,kttt );
@@ -9800,7 +10203,7 @@ ENTRY("IW3D_warpomatic_plusminus") ;
          break ;
        }
      }
-     if( Hverb == 1 ) fprintf(stderr," done [cost=%.3f]\n",Hcost) ;
+     if( Hverb == 1 ) fprintf(stderr," done [cost=%.5f]\n",Hcost) ;
    } else {
      Hcost = 666.666f ;  /* a beastly thing to do */
    }
@@ -9907,6 +10310,16 @@ ENTRY("IW3D_warpomatic_plusminus") ;
      nlevr = WORKHARD(lev)  ? 2 : 1 ;
      nsup  = SUPERHARD(lev) ? 2 : 1 ;
 
+     /* announce the start of a new level! */
+
+     PBLUR_BASE  (1,xwid,1,ywid,1,zwid) ;  /* progressive blur, if ordered */
+     PBLUR_SOURCE(1,xwid,1,ywid,1,zwid) ;
+     if( Hpblur_b > 0.0f || Hpblur_b > 0.0f ) Hfirsttime = 1 ;
+     mri_free(Haasrcim_plus) ;  /* re-create the warped */
+     mri_free(Haabasim_minus);  /* source and base images */
+     Haasrcim_plus  = IW3D_warp_floatim( Haawarp, SRCIM, Himeth ,  1.0f ) ;
+     Haabasim_minus = IW3D_warp_floatim( Haawarp, BASIM, Himeth , -1.0f ) ;
+
      if( Hverb > 1 )
        ININFO_message("  ........ +-lev=%d xwid=%d ywid=%d zwid=%d Hfac=%g penfac=%g %s %s" ,
                       lev,xwid,ywid,zwid,Hfactor,Hpen_fff , (levdone   ? "FINAL"  : "\0") ,
@@ -9955,7 +10368,7 @@ ENTRY("IW3D_warpomatic_plusminus") ;
      }
 
      if( lev%2 == 0 || nlevr > 1 ){ /* top to bot, kji */
-       if( nlevr > 1 && Hverb == 1 ) fprintf(stderr,":[cost=%.3f]:",Hcost) ;
+       if( nlevr > 1 && Hverb == 1 ) fprintf(stderr,":[cost=%.5f]:",Hcost) ;
       for( isup=0 ; isup < nsup ; isup++ ){  /* superhard? */
        for( idon=0,itop=ittt ; !idon ; itop -= diii ){
          ibot = itop+1-xwid;
@@ -9993,7 +10406,7 @@ ENTRY("IW3D_warpomatic_plusminus") ;
        Hcostend = Hcost ;
      }
 
-     if( Hverb == 1 ) fprintf(stderr," done [cost=%.3f]\n",Hcost) ;
+     if( Hverb == 1 ) fprintf(stderr," done [cost=%.5f]\n",Hcost) ;
 
      if( !Hduplo ) ITEROUT(lev) ;
 

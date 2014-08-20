@@ -3,7 +3,7 @@
 #include <math.h>
 
 #include "mrilib.h"     /* from thd_iochan.h    25 Apr 2011 */
-#include "Dimon.h"
+#include "Imon.h"
 #include "realtime.h"
 
 extern ART_comm  gAC;
@@ -246,12 +246,12 @@ int ART_send_volume( ART_comm * ac, vol_t * v, int debug )
 
     /* send one complete volume */
 
-    bytes = ac->param->fim_o[v->fs_1].nbytes;
+    bytes = ac->param->im_store.im_size;
 
     /* note that v->nim will be 1 for siemens mosaic, no matter... */
     for ( slice = 0; slice < v->nim; slice++ )
     {
-        image = ac->param->fim_o[v->fs_1 + slice].imdata;
+        image = (char *)ac->param->im_store.im_ary[v->fl_1 + slice];
 
         if ( ac->swap )               /* maybe we must swap the bytes first */
             swap_2( image, bytes/2 ); /* assuming DATUM short here ...      */
