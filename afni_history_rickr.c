@@ -49,6 +49,11 @@
 
 afni_history_struct rickr_history[] = {
 
+ { 21, Aug, 2014, RCR, "model_conv_PRF", MICRO, TYPE_GENERAL,
+   "minor details added to help output",
+   NULL
+ } ,
+
  { 13, Aug, 2014, RCR, "Dimon", MICRO, TYPE_GENERAL,
    "very minor update",
    NULL
@@ -76,7 +81,7 @@ afni_history_struct rickr_history[] = {
    "Requested by J Butman."
  } ,
 
- {  2, Aug, 2014, RCR, "make_sitm_times.py", MINOR, TYPE_NEW_OPT,
+ {  2, Aug, 2014, RCR, "make_stim_times.py", MINOR, TYPE_NEW_OPT,
    "added -run_trs, for cases when the TRs per run vary",
    "Requested on message board by Rebecca and later by Lisam."
  } ,
