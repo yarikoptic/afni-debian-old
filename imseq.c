@@ -1825,6 +1825,7 @@ STATUS("creation: widgets created") ;
      newseq->render_mode = RENDER_DEFAULT ;  /* 0 */
      newseq->render_fac  = 0.0f ;            /* 22 Aug 2014 */
      newseq->render_scal = NULL ;
+     newseq->allowmerger = 0 ;
 
      /*-- labels stuff --*/
 
@@ -7435,6 +7436,8 @@ ENTRY("ISQ_but_cnorm_CB") ;
 *    isqDR_get_crop        (int *) 4 ints that specify current crop status
 *    isqDR_set_crop        (int *) 4 ints to change current crop status
 
+*    isqDR_allowmerger     (ignored) allows the 3,4,5,6 'merger' buttons
+
 The Boolean return value is True for success, False for failure.
 -------------------------------------------------------------------------*/
 
@@ -7453,6 +7456,14 @@ ENTRY("drive_MCW_imseq") ;
                  drive_code) ;
          /* XBell( seq->dc->display , 100 ) ; */
          RETURN( False );
+      }
+      break ;
+
+      /*--------- allowmerger [25 Aug 2014] ----------*/
+
+      case isqDR_allowmerger:{
+        seq->allowmerger = 1 ;
+        RETURN( True ) ;
       }
       break ;
 
@@ -11749,6 +11760,17 @@ Widget ISQ_popup_scale( Widget wparent , int position )
    XEvent ev ;
    Position xroot , yroot ;
 
+#undef  NCOL
+#define NCOL 30
+   static char *cname[] = {
+      "#0000ff", "#3300ff", "#6600ff", "#9900ff", "#cc00ff",
+      "#ff00ff", "#ff00cc", "#ff0099", "#ff0066", "#ff0033",
+      "#ff0000", "#ff3300", "#ff6600", "#ff9900", "#ffcc00",
+      "#ffff00", "#ccff00", "#99ff00", "#66ff00", "#33ff00",
+      "#00ff00", "#00ff33", "#00ff66", "#00ff99", "#00ffcc",
+      "#00ffff", "#00ccff", "#0099ff", "#0066ff", "#0033ff"
+    } ;
+
 ENTRY("ISQ_popup_scale") ;
 
    if( wparent == NULL || ! XtIsRealized(wparent) ) RETURN(NULL) ;
@@ -11769,7 +11791,7 @@ ENTRY("ISQ_popup_scale") ;
       case METER_TOP:
       case METER_TOP_WIDE:
          xpr = xr ;
-         ypr = yr - METER_HEIGHT-2 ;
+         ypr = yr - METER_HEIGHT-20;
          wid = (position==METER_TOP_WIDE) ? wx : METER_WIDTH ;
          if( ypr < 0 ) ypr = yr+hy+1 ;
       break ;
@@ -11822,6 +11844,21 @@ ENTRY("ISQ_popup_scale") ;
 
    XtPopup( wmsg , XtGrabNone ) ; RWC_sleep(1);
 
+   { Widget ws = XtNameToWidget(wscal,"Scrollbar") ;
+     int icol = lrand48() % NCOL ;
+     if( ws != NULL ){
+       XtVaSetValues( ws ,
+                       XtVaTypedArg , XmNtroughColor , XmRString ,
+                                      cname[icol] , strlen(cname[icol])+1 ,
+                      NULL ) ;
+       XWarpPointer( XtDisplay(ws) , None , XtWindow(ws) ,
+                     0,0,0,0 , wid/2+1 , METER_HEIGHT/4 ) ;
+       XSetInputFocus( XtDisplay(ws), XtWindow(ws), RevertToParent, CurrentTime ) ;
+       XFlush(XtDisplay(ws)) ;
+       XmUpdateDisplay(wscal) ;
+     }
+   }
+
    RETURN(wscal) ;
 }
 
@@ -11840,38 +11877,10 @@ void ISQ_set_scale( Widget wscal , int percent )
 {
    int val , old ;
 
-#undef  NCOL
-#define NCOL 30
-#ifdef NCOL
-   static int icol=0 ;
-   static char *cname[] = {
-      "#0000ff", "#3300ff", "#6600ff", "#9900ff", "#cc00ff",
-      "#ff00ff", "#ff00cc", "#ff0099", "#ff0066", "#ff0033",
-      "#ff0000", "#ff3300", "#ff6600", "#ff9900", "#ffcc00",
-      "#ffff00", "#ccff00", "#99ff00", "#66ff00", "#33ff00",
-      "#00ff00", "#00ff33", "#00ff66", "#00ff99", "#00ffcc",
-      "#00ffff", "#00ccff", "#0099ff", "#0066ff", "#0033ff"
-    } ;
-#endif
-
    val = percent ;
    if( wscal == NULL || val < 0 || val > 100 ) return ;
-
    XmScaleGetValue( wscal , &old ) ; if( val == old ) return ;
-
    XtVaSetValues( wscal , XmNvalue , val , NULL ) ;
-
-#ifdef NCOL
-   { Widget ws = XtNameToWidget(wscal,"Scrollbar") ;
-     if( ws != NULL )
-       XtVaSetValues( ws ,
-                       XtVaTypedArg , XmNtroughColor , XmRString ,
-                                      cname[icol] , strlen(cname[icol])+1 ,
-                      NULL ) ;
-     icol = (icol+1) % NCOL ;
-   }
-#endif
-
    XmUpdateDisplay(wscal) ;
    return ;
 }
@@ -12939,6 +12948,7 @@ ENTRY("ISQ_handle_keypress") ;
      case '3':
      case '#':{
        int rr = seq->render_mode ;
+       if( !seq->allowmerger ){ busy=0 ; RETURN(1) ; }
 
             if( key == '3'             ) rr = 0 ;
        else if( rr  == RENDER_CHECK_OU ) rr = RENDER_CHECK_UO ;
@@ -12956,6 +12966,7 @@ ENTRY("ISQ_handle_keypress") ;
      case '4':
      case '5':
      case '6':{  /* 22 Aug 2014 */
+       if( !seq->allowmerger ){ busy=0 ; RETURN(1) ; }
        if( seq->render_scal != NULL ){
          ISQ_destroy_render_scal(seq) ; seq->render_mode = 0 ; seq->render_fac = 0.0f ;
        } else {
