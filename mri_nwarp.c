@@ -1224,6 +1224,7 @@ ENTRY("IW3D_extend") ;
    }
 
    IW3D_load_external_slopes(BB) ;
+   BB->view = AA->view ;
    RETURN(BB) ;
 }
 
@@ -3376,6 +3377,8 @@ ENTRY("THD_nwarp_extend") ;
    BB = IW3D_extend( AA , -32,-32,-32,-32,-32,-32 , 0 ) ; IW3D_destroy(AA) ;
 
    qset = IW3D_to_dataset( BB , "InvertedWarp" ) ;        IW3D_destroy(BB) ;
+   qset->view_type = dset_nwarp->view_type ;
+   THD_init_diskptr_names( qset->dblk->diskptr, NULL,NULL,NULL, qset->view_type, False ) ;
    RETURN(qset) ;
 }
 
@@ -7775,7 +7778,7 @@ void IW3D_nwarp_xyzmatch( int npt ,
        dc_00_00_p1 = AHIND(ix_00,jy_00,kz_p1) ; /* ['dc' == displacement case] */
        dc_p1_00_p1 = AHIND(ix_p1,jy_00,kz_p1) ;
        dc_00_p1_p1 = AHIND(ix_00,jy_p1,kz_p1) ;
-       dc_p1_p1_00 = AHIND(ix_p1,jy_p1,kz_p1) ;
+       dc_p1_p1_p1 = AHIND(ix_p1,jy_p1,kz_p1) ;
 
 #undef  IJK  /* convert 3D index to 1D index */
 #define IJK(i,j,k) ((i)+(j)*nx+(k)*nxy)
