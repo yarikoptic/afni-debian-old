@@ -2876,7 +2876,8 @@ SUMA_expose(Widget w,
    
    if (SUMAg_CF->N_dcom) {
       for (isv = 0; isv < SUMAg_CF->N_dcom; ++isv) {
-         SUMA_LH("Executing driver command %d: %s\n", isv, SUMAg_CF->dcom[isv]);
+         SUMA_S_Note("Executing driver command %d: %s\n", 
+                     isv, SUMAg_CF->dcom[isv]);
          SUMA_MakeMeDo(SUMAg_CF->dcom[isv], 0);
          SUMA_ifree(SUMAg_CF->dcom[isv]);
       }
@@ -3115,7 +3116,8 @@ int SUMA_BuildMenu(  Widget parent, int menu_type, char *menu_title,
    else { SMW->mw[i_wid] = cascade; } 
    
    if (hint || help) {
-      SUMA_Register_Widget_Help(SMW->mw[i_wid], wname, 
+      SUMA_LH("Registering %s with \n%s\n and \n%s\n\n", wname, hint, help); 
+      SUMA_Register_Widget_Children_Help(SMW->mw[i_wid], wname, 
                                 hint, help);
    }
    
@@ -7631,15 +7633,23 @@ void SUMA_cb_createSurfaceCont_SO(Widget w, XtPointer data, XtPointer callData)
                                  "The Surface Controller",
 "The surface controller is for controlling the way surfaces and datasets "
 "defined over them are displayed. The same controller is shared by a "
-"family of surfaces and all the datasets displayed on them. Left and Right "
+":SPX::term:`family of surfaces <Family of surfaces>`:DEF:"
+"family of surfaces:SPX:"
+" and all the datasets displayed on them. Left and Right "
 "surfaces have separate controllers though in most cases actions on one "
 "hemisphere's controller are automatically mirrored on the contralateral "
 "side. The surface controller is initialized by the currently selected "
 "surface - the one said to be in focus.\n"
-"You can launch the Surface Controller with:"
 ":SPX:"
+"You can launch the :ref:`Surface Controller <SurfCont>` with:"
 " :ref:`ctrl+s <LC_Ctrl+s>` or :menuselection:`View-->Surface Controller`\n"
+"\n"
+".. figure:: images/SurfaceController.jpg\n"
+"   :align: center\n"
+"\n\n"
+"   ..\n\n"
 ":DEF:"
+"You can launch the Surface Controller with:"
 "\n'ctrl+s' or 'View-->Surface Controller'\n"
 ":SPX:"
 "\n") ;
@@ -7745,7 +7755,7 @@ void SUMA_cb_createSurfaceCont_SO(Widget w, XtPointer data, XtPointer callData)
       SUMA_Register_Widget_Help( NULL , 
                                  "SurfCont->Surface_Properties",
                                  "Surface Properties",
-                     "Some information about the properties of the surface.") ;
+                  "Block providing information about selected surface.") ;
       rc_SurfProp = XtVaCreateWidget ("rowcolumn",
             xmRowColumnWidgetClass, SurfFrame,
             XmNpacking, XmPACK_TIGHT, 
@@ -15793,7 +15803,7 @@ void SUMA_cb_createSumaCont(Widget w, XtPointer data, XtPointer callData)
       
       /* put some help on the radiobox and its children*/
       SUMA_Register_Widget_Children_Help(SUMAg_CF->X->SumaCont->Lock_rbg->rb[i] ,
-                           "SumaCont->Lock", SUMA_LockSumaCont_help );
+                           "SumaCont->Lock", NULL, SUMA_LockSumaCont_help );
       
       /* initialize radio button created */
       SUMA_set_Lock_rb (SUMAg_CF->X->SumaCont->Lock_rbg, i, SUMAg_CF->Locked[i]);
@@ -15809,7 +15819,7 @@ void SUMA_cb_createSumaCont(Widget w, XtPointer data, XtPointer callData)
                               SUMAg_CF->ViewLocked[i], NOPE);
       /* put some help on the view lock*/
       SUMA_Register_Widget_Children_Help(rc_m ,
-                           "SumaCont->LockView", SUMA_LockViewSumaCont_help );
+                           "SumaCont->LockView", NULL, SUMA_LockViewSumaCont_help );
             
    }  
    XtManageChild (rc);
@@ -15863,7 +15873,7 @@ void SUMA_cb_createSumaCont(Widget w, XtPointer data, XtPointer callData)
 
    /* put some help on the radiobox and its children*/
    SUMA_Register_Widget_Children_Help(SUMAg_CF->X->SumaCont->Lock_rbg->arb , 
-                         "SumaCont->Lock->All",
+                         "SumaCont->Lock->All", NULL,
                          SUMA_LockSumaCont_help );
 
    /* initialize radio button created */

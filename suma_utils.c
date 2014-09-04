@@ -3042,46 +3042,69 @@ char *SUMA_Break_String(char *s, int mxln)
 {
    static char FuncName[]={"SUMA_Break_String"};
    char *so = NULL;
-   int i, ns, nso, nso_max, bln, ln, ex;
+   int i, ns, nso, nso_max, bln, ln, ex, slen, is;
    SUMA_Boolean LocalHead = NOPE;
    
    SUMA_ENTRY;
    
+   SUMA_S_Err("Not ready");
+   SUMA_RETURN(SUMA_copy_string(s));
    if (!s) SUMA_RETURN(so);
    
-   nso_max = strlen(s)+100;
+   if (strstr(s, "Index of node in focus")) LocalHead = YUP;
+   
+   SUMA_LH("Have string:>s=>%s<\n", s);
+   slen = strlen(s);
+   nso_max = slen+100;
    so = (char *)SUMA_calloc(nso_max, sizeof(char));
    
    ln = 0; ex = 0; nso = 0; ns = 0;
-   while (s[ns]) {
+   while (s[ns] && ns < slen) {
       if (s[ns] == '\n') {
+         SUMA_LH("Newline at ns");
          ln = 0;
          so[nso++] = s[ns++];
       } else {
-         bln = -1; ln = 0;
-         while (s[ns+ln] && ln < mxln) {
-            if (SUMA_IS_BLANK(s[ns+ln]) ||
-                SUMA_IS_PUNCT(s[ns+ln])) {
-               bln = ln;
+         bln = -1; is = 0;
+         while (s[ns+is] && ln < mxln) {
+            if (SUMA_IS_BLANK(s[ns+is]) ||
+                SUMA_IS_PUNCT(s[ns+is])) {
+               bln = is;
             }
-            ++ln;
+            ++is;
          }
+         #if 1 
+            SUMA_LH("At >s=>%s<\nbln=%d, ln=%d\n", s+ns, bln, ln);
+         #endif
          if (bln < 0) { /* No space found, copy and dashit */
-            for (i=0; i<mxln-1; ++i) {
-               so[nso++] = s[ns++]; 
+            if (is > 0) {
+               for (i=0; i<is; ++i) {
+                  so[nso++] = s[ns++]; 
+               }
+               so[nso++] = '-'; so[nso++] = '\n';
+               ex += 2;
+            } else {
+               ++ns;
             }
-            so[nso++] = '-'; so[nso++] = '\n';
-            ex += 2;
          } else { /* Copy till last blank/punct and add \n 
                      Won't bother replacing blank, have to 
                      realloc anyway...*/
             for (i=0; i<bln+1; ++i) {
                so[nso++] = s[ns++]; 
             }
-            so[nso++] = '\n';
+            if (!SUMA_IS_BLANK(s[ns-1]) &&
+                !SUMA_IS_PUNCT(s[ns-1])) {
+               fprintf(stderr,"**%c%c%c%c%c\n",
+                  s[ns-2], s[ns-1], s[ns], s[ns+1], s[ns+2]);
+               so[nso++] = '\n';
+            }
             ex += 1;
          }
       }
+      so[nso] = '\0';
+      #if 1 
+         SUMA_LH("Now\n>s=>%s<\n>so=>%s<", s, so);
+      #endif
       if (ex >= (nso_max - strlen(s) - 5)) {
          nso_max += 100;
          so = (char *)SUMA_realloc(so, nso_max*sizeof(char));
@@ -3090,6 +3113,8 @@ char *SUMA_Break_String(char *s, int mxln)
               ns, ex, nso, (int)strlen(s), nso_max);
    }
    so[nso] = '\0';
+   SUMA_LH("Returning:>so=>%s>", so);
+   if (LocalHead) exit(1);
    SUMA_RETURN(so);
 }
 
@@ -3123,6 +3148,66 @@ char *SUMA_Cut_String(char *s, char *sc)
    
    SUMA_RETURN(so);
 }
+
+char *SUMA_Sphinx_DeRef(char *s, char *r)
+{
+   static char FuncName[]={"SUMA_Sphinx_DeRef"};
+   char *so, *ss=NULL, *se=NULL, *sef=NULL;
+   int nso=0;
+   
+   SUMA_ENTRY;
+   
+   if (!s || !r || !(ss=strstr(s, r))) {
+      SUMA_RETURN(s);
+   }
+   
+   so = s;
+   nso = 0; 
+   while (ss) {
+      while (s < ss) {
+         so[nso++]=*(s++);      
+      }
+      s += strlen(r); /* s->`blah blah <REF>` */
+      if (*s == '`') {
+         s++; se = s;
+         while (*se != '`' && *se != '\0') ++se;
+         if (*se == '`') { /* found closing quote */
+            sef = se;
+            /* backup till you find > */
+            while (se > s && *se != '>') { --se; }
+            if (*se == '>') {
+               /* backup till you find < */
+               while (se > s && *se != '<') { --se; }
+               if (*se == '<') { /* All good, copy blah blah */
+                  while (s < se) {
+                     so[nso++]=*(s++); 
+                  }  
+               }
+            } else {
+               /*copy all between quotes */
+               while (s < sef) {
+                  so[nso++]=*(s++); 
+               }
+            }
+            /* move s till after closing quote */
+            s = sef+1;
+         } else {
+            SUMA_S_Warn("No closing forward quote after ref!");
+         }
+      } else {
+         SUMA_S_Warn("No forward quote after ref!");
+      }
+      ss=strstr(s, r);
+   }
+   /* copy till end */
+   while (*s != '\0') {
+      so[nso++]=*(s++);
+   }
+   so[nso] = '\0';
+   
+   SUMA_RETURN(so);
+}
+
 
 char *SUMA_Swap_String(char *s, char *sc, char *sw)
 {
@@ -3284,9 +3369,15 @@ void SUMA_Sphinx_String_Edit_Help(FILE *fout)
 " :LR: Replace this marker with a new line character for \n"
 "      Sphinx output. Cut it out for regular output.\n"
 "\n"
+" :ref:`Some Label <reference_key>` Leave such a block untouched for\n"
+"                              sphinx format. Replace whole thing\n"
+"                              with just 'Some Label' for default format.\n"
+"\n"
 " :[blanks]: Cut this marker out of string for Sphinx output,\n"
-"            but keep all blanks and two more in regular\n"
-"            output\n"
+"            but keep all blanks and pads with two more in regular\n"
+"            output to compensate for the ':' characters.\n"
+"            Also, for the Sphinx format, a newline directly preceding\n"
+"            the opening ':' gets cut out.\n"
 "\n"
 " '\\|' Escaped vertical bar are kept as such for Sphinx, but shown\n"
 "       without the escape character in default output. This is\n"
@@ -3307,6 +3398,9 @@ void SUMA_Sphinx_String_Edit_Help(FILE *fout)
 "\n"
 "Example 2:\n"
 "Press buton :SPX::ref:`a <LC_a>`:DEF:'a':SPX: to attenuate...\n" 
+"\n"
+"Example 2.1 (simpler version):\n"
+"Press buton :ref:`a <LC_a>` to attenuate...\n" 
 "\n"
 "Example 3:\n"
 "For 'Trn' choose one of::LR:\n"
@@ -3340,12 +3434,14 @@ void SUMA_Sphinx_String_Edit_Help(FILE *fout)
    
    See SUMA_Sphinx_String_Edit_Help() for documentation.
    
+   This function returns the a modified version of the input pointer.
 */
 
 char *SUMA_Sphinx_String_Edit(char *s, int targ) 
 {
    static char FuncName[]={"SUMA_Sphinx_String_Edit"};
    char stmp[6]={""};
+   SUMA_Boolean LocalHead = NOPE;
    
    SUMA_ENTRY;
    
@@ -3353,12 +3449,16 @@ char *SUMA_Sphinx_String_Edit(char *s, int targ)
    
    switch (targ) {
       case 0: /* Default C output */
+         SUMA_LH(">s=>\n%s\n<", s);
          s = SUMA_Cut_Between_String(s, ":SPX:", ":SPX:", ":DEF:");
          s = SUMA_Cut_String(s,":LR:");
          s = SUMA_Sphinx_LineSpacer(s, targ);
          sprintf(stmp,"\\|"); /* to avoid compile warning for 
                                  direct use of "\|" in SUMA_Swap_String below */
          s = SUMA_Swap_String(s, stmp,"|");
+         s = SUMA_Sphinx_DeRef(s,":ref:");
+         s = SUMA_Sphinx_DeRef(s,":term:");
+         SUMA_LH(">so=>\n%s\n<", s);
          SUMA_RETURN(s);
          break;
       case 1: /* Sphinx */
@@ -3384,6 +3484,7 @@ SUMA_Boolean SUMA_Known_Sphinx_Dir(char *s)
    static char FuncName[]={"SUMA_Known_Sphinx_Dir"};
    if (!s) return(NOPE);
    if (!strncmp(s,":ref:",5)) return(YUP);
+   if (!strncmp(s,":term:",5)) return(YUP);
    return(NOPE);
 }
 

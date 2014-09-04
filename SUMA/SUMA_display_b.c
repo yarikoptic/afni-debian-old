@@ -1910,14 +1910,22 @@ SUMA_Boolean SUMA_ModifyTable(SUMA_TABLE_FIELD *TF, int Nrows)
                         if (col_hint) sii = col_hint[0] ;
                         else if (row_hint) sii =  row_hint[0] ;
                         if (shh || sii) {
-                           snprintf(wname, 63, "%s.e%02d", TF->wname, n);
+                           if (TF->Ni>1) {
+                              snprintf(wname, 63, "%s[%d,%d]", TF->wname, i,j);
+                           } else {
+                              snprintf(wname, 63, "%s[%d]", TF->wname, n);
+                           }
                            SUMA_Register_Widget_Help(TF->cells[n], wname,
                                             sii,
                                             shh ) ;
                         }
                         
                      } else {
-                        snprintf(wname, 63, "%s.e%02d", TF->wname, n);
+                        if (TF->Ni>1) {
+                           snprintf(wname, 63, "%s[%d,%d]", TF->wname, i,j);
+                        } else {
+                           snprintf(wname, 63, "%s[%d]", TF->wname, n);
+                        }
                         SUMA_Register_Widget_Help(TF->cells[n], wname,
                                     "Hints and help messages "
                                     "are attached to table's "
@@ -4076,7 +4084,7 @@ SUMA_Boolean SUMA_Register_Widget_Help(Widget w, char *name,
                                        char *hint, char *help)
 {
    static char FuncName[]={"SUMA_Register_Widget_Help"};
-   char *s=NULL;
+   char *s=NULL, *st=NULL;
    
    SUMA_ENTRY;
    
@@ -4089,20 +4097,29 @@ SUMA_Boolean SUMA_Register_Widget_Help(Widget w, char *name,
       if (help) {
          s = SUMA_copy_string(help);
          SUMA_Sphinx_String_Edit(s, 0);
-         s = SUMA_Sphinx_LineSpacer(s, 0);
+         SUMA_Sphinx_LineSpacer(s, 0);
+         /* st = s;
+         s = SUMA_Break_String(st, 40); SUMA_ifree(st); */
+         /* DO not free s, MCW_register_help uses the pointer as 
+            data to the help callback */
          MCW_register_help(w, s);
-         SUMA_ifree(s);
       }
-      if (hint) MCW_register_hint(w, hint);
+      if (hint) {
+         /* Just make a copy of the hint and don't worry about
+         what got passed! */
+         s = SUMA_copy_string(hint);
+         MCW_register_hint(w, s);
+      }
    }
       
    SUMA_RETURN(YUP);
 }  
 
-SUMA_Boolean SUMA_Register_Widget_Children_Help(Widget w, char *name, char *help)
+SUMA_Boolean SUMA_Register_Widget_Children_Help(Widget w, char *name, 
+                                                char *hint, char *help)
 {
    static char FuncName[]={"SUMA_Register_Widget_Children_Help"};
-   char *s=NULL;
+   char *s=NULL, *st=NULL;
    
    SUMA_ENTRY;
    
@@ -4111,7 +4128,7 @@ SUMA_Boolean SUMA_Register_Widget_Children_Help(Widget w, char *name, char *help
       SUMA_RETURN(NOPE);
    }
    
-   if (!SUMA_Register_GUI_Help(name, NULL, help, 1)) {
+   if (!SUMA_Register_GUI_Help(name, hint, help, 1)) {
       SUMA_S_Err("Failed at string level registration");
       SUMA_RETURN(NOPE);
    }
@@ -4119,9 +4136,19 @@ SUMA_Boolean SUMA_Register_Widget_Children_Help(Widget w, char *name, char *help
    if (help) {
       s = SUMA_copy_string(help);
       SUMA_Sphinx_String_Edit(s, 0);
-      MCW_reghelp_children(w, help);
-      SUMA_ifree(s);
+      SUMA_Sphinx_LineSpacer(s, 0);
+      /* st = s;
+         s = SUMA_Break_String(st, 40); SUMA_ifree(st); */
+         /* DO not free s, MCW_register_help uses the pointer as 
+            data to the help callback */
+      MCW_reghelp_children(w, s);
    }
    
+   if (hint) {
+      /* Just make a copy of the hint and don't worry about
+      what got passed! */
+      s = SUMA_copy_string(hint);
+      MCW_register_hint(w, s);
+   }
    SUMA_RETURN(YUP);
 }
