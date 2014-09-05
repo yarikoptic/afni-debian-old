@@ -5,7 +5,7 @@ Author: Michael Hanke <michael.hanke@gmail.com>
 Last-Update: 2010-09-29
 --- a/afni_func.c
 +++ b/afni_func.c
-@@ -6083,7 +6083,7 @@ ENTRY("AFNI_tips_CB") ;
+@@ -6128,7 +6128,7 @@ ENTRY("AFNI_tips_CB") ;
       XMapRaised( XtDisplay(tips_hw->wshell) , XtWindow(tips_hw->wshell) ) ;
       EXRETURN ;
     } else if( !AFNI_noenv("AFNI_DONT_USE_HTMLWIN") ){
@@ -14,7 +14,7 @@ Last-Update: 2010-09-29
       if( fpt != NULL && *fpt != '\0' ){
         inf = (char *)malloc(sizeof(char)*(strlen(fpt)+16)) ;
         strcpy(inf,"file:") ; strcat(inf,fpt) ; free(fpt) ;
-@@ -7021,6 +7021,8 @@ ENTRY("AFNI_find_poem_files") ;
+@@ -7066,6 +7066,8 @@ ENTRY("AFNI_find_poem_files") ;
     /*----- get path to search -----*/
  
                         epath = getenv("AFNI_PLUGINPATH") ;
@@ -36,41 +36,19 @@ Last-Update: 2010-09-29
     if( epath == NULL ) epath = getenv("HOME") ;
 --- a/thd_ttatlas_query.c
 +++ b/thd_ttatlas_query.c
-@@ -599,6 +599,8 @@ char * get_atlas_dirname(void)  /* 31 Ja
-    if( !first ) return adnam ;
-    first = 0 ;
-                        epath = getenv("AFNI_PLUGINPATH") ;
-+   /* Debian puts them into a separate dir */
-+   epath = "/usr/share/afni/atlases";
+@@ -631,6 +631,9 @@ char * get_env_atlas_path()
+ {
+    char *epath;
+                        epath = getenv("AFNI_ATLAS_PATH") ;
++   /* Debian puts them into a separate dir.  Still allow for
++      override via environment variable above  */
++   if( epath == NULL ) epath = "/usr/share/afni/atlases";
+    if( epath == NULL ) epath = getenv("AFNI_PLUGINPATH") ;
     if( epath == NULL ) epath = getenv("AFNI_PLUGIN_PATH") ;
     if( epath == NULL ) epath = getenv("PATH") ;
-    if( epath == NULL ) return NULL ;  /* this is bad */
-@@ -683,6 +685,8 @@ THD_3dim_dataset * get_atlas(char *epath
-       /*----- get path to search -----*/
- 
-                           epath = getenv("AFNI_PLUGINPATH") ;
-+      /* Debian puts them into a separate dir */
-+      epath = "/usr/share/afni/atlases";
-       if( epath == NULL ) epath = getenv("AFNI_PLUGIN_PATH") ;
-       if( epath == NULL ) epath = getenv("PATH") ;
-       if( epath == NULL ) RETURN(dset) ;
-@@ -2323,8 +2327,11 @@ char *find_atlas_niml_file(char * nimlna
-    }
-      
-    /* okay that didn't work, try the AFNI plugin directory */
--   namebuf[0]='\0';
--                       epath = getenv("AFNI_PLUGINPATH") ;
-+   /* In Debian distribution most logical location is actually
-+      atlas path, so let's use that one instead of PLUGINPATH
-+      if it was defined and only use plugins path if not */
-+   namebuf[0]='\0';    epath = getenv("AFNI_TTATLAS_DATASET");
-+   if( epath == NULL ) epath = getenv("AFNI_PLUGINPATH") ;
-    if( epath == NULL ) epath = getenv("AFNI_PLUGIN_PATH") ;
-    if( epath != NULL ) {
-       if(wami_verb() > 1) 
 --- a/afni.c
 +++ b/afni.c
-@@ -5168,12 +5168,31 @@ ENTRY("AFNI_read_inputs") ;
+@@ -5264,12 +5264,31 @@ ENTRY("AFNI_read_inputs") ;
        /*-- 20 Dec 2001: Try to read a "global" session --*/
        /*-- 11 May 2002: Move read global session up here --*/
  
@@ -104,7 +82,7 @@ Last-Update: 2010-09-29
              gss->parent = NULL ;                          /* parentize them */
 --- a/SUMA/SUMA_CreateDO.c
 +++ b/SUMA/SUMA_CreateDO.c
-@@ -11630,6 +11630,9 @@ byte *SUMA_WordOverlapMask(int Nwidth, i
+@@ -11680,6 +11680,9 @@ byte *SUMA_WordOverlapMask(int Nwidth, i
  SUMA_Boolean SUMA_LoadImageNIDOnel(NI_element *nel)
  {
     static char FuncName[]={"SUMA_LoadImageNIDOnel"};
@@ -114,7 +92,7 @@ Last-Update: 2010-09-29
     MRI_IMAGE *im=NULL;
     int ir, ic, i1d, i1df, imx, i1d3, i1d4;
     byte *rgb = NULL, *imar=NULL;
-@@ -11650,7 +11653,10 @@ SUMA_Boolean SUMA_LoadImageNIDOnel(NI_el
+@@ -11700,7 +11703,10 @@ SUMA_Boolean SUMA_LoadImageNIDOnel(NI_el
     
     if (! (fname = SUMA_copy_string(NI_get_attribute(nel,"filename"))) )
        SUMA_RETURN(NOPE);
