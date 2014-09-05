@@ -15,6 +15,9 @@
    Apr. 2014, part II: revenge of the WB correlation
    + add in some individual file outputs
    + add in ability to do WB correlations
+
+   June 2014
+   + Partial correlation option
    
 */
 
@@ -59,7 +62,7 @@ void usage_NetCorr(int detail)
 "\n"
 "* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *\n"
 "\n"
-"  + COMMAND: 3dNetCorr -prefix PREFIX {-mask MASK} {-fish_z}        \\\n"
+"  + COMMAND: 3dNetCorr -prefix PREFIX {-mask MASK} {-fish_z} {-part_corr} \\\n"
 "                -inset FILE -in_rois INROIS {-ts_out} {-ts_label} \\\n"
 "                {-ts_indiv} {-ts_wb_corr} {-ts_wb_Z} \n"
 "\n"
@@ -100,6 +103,17 @@ void usage_NetCorr(int detail)
 "                          Z = 0.5 ln( [1+r]/[1-r] ) ,\n"
 "                      (with zeros being output along matrix diagonals where\n"
 "                      r=1).\n"
+"    -part_corr       :output the partial correlation matrix. It is \n"
+"                      calculated from the inverse of regular Pearson\n"
+"                      matrix, R, as follows: let M = R^{I} be in the inverse\n"
+"                      of the Pearson cc matrix.  Then each element p_{ij} of\n"
+"                      the partial correlation (PC) matrix is given as:\n"
+"                      p_{ij} = -M_{ij}/sqrt( M_{ii} * M_{jj} ).\n"
+"                      This will also calculate the PC-beta (PBC) matrix,\n"
+"                      which is not symmetric, and whose values are given as:\n"
+"                      b_{ij} = -M_{ij}/M_{ii}.\n"
+"                      Use as you wish.  For both PC and PCB, the diagonals\n"
+"                      should be uniformly (negative) unity.\n"
 "    -ts_out          :switch to output the mean time series of the ROIs that\n"
 "                      have been used to generate the correlation matrices.\n"
 "                      Output filenames mirror those of the correlation\n"
@@ -178,6 +192,7 @@ int main(int argc, char *argv[]) {
    int HAVE_MASK=0;
    int HAVE_ROIS=0;
    int FISH_OUT=0;
+   int PART_CORR=0;
    int TS_OUT=0;
    int TS_LABEL=0;
    int TS_INDIV=0;
@@ -188,6 +203,7 @@ int main(int argc, char *argv[]) {
    int ***ROI_LISTS=NULL;
    double ***ROI_AVE_TS=NULL; // double because of GSL 
    float ***Corr_Matr=NULL; 
+   float ***PCorr_Matr=NULL, ***PBCorr_Matr=NULL; 
 
    int Nvox=-1;   // tot number vox
    int *Dim=NULL;
@@ -281,7 +297,11 @@ int main(int argc, char *argv[]) {
          iarg++ ; continue ;
       }
     
-      if( strcmp(argv[iarg],"-ts_out") == 0) {
+      if( strcmp(argv[iarg],"-part_corr") == 0) {
+         PART_CORR=2; // because we calculate two matrices here
+         iarg++ ; continue ;
+      }
+       if( strcmp(argv[iarg],"-ts_out") == 0) {
          TS_OUT=1;
          iarg++ ; continue ;
       }
@@ -523,6 +543,27 @@ int main(int argc, char *argv[]) {
          exit(123);
       }
 	  
+      if(PART_CORR) {
+         PCorr_Matr = (float ***) calloc( HAVE_ROIS, sizeof(float **) );
+         for ( i=0 ; i<HAVE_ROIS ; i++ ) 
+            PCorr_Matr[i] = (float **) calloc( NROI_REF[i], sizeof(float *) );
+         for ( i=0 ; i <HAVE_ROIS ; i++ ) 
+            for ( j=0 ; j<NROI_REF[i] ; j++ ) 
+               PCorr_Matr[i][j] = (float *) calloc( NROI_REF[i], sizeof(float));
+
+         PBCorr_Matr = (float ***) calloc( HAVE_ROIS, sizeof(float **) );
+         for ( i=0 ; i<HAVE_ROIS ; i++ ) 
+            PBCorr_Matr[i] = (float **) calloc( NROI_REF[i], sizeof(float *) );
+         for ( i=0 ; i <HAVE_ROIS ; i++ ) 
+            for ( j=0 ; j<NROI_REF[i] ; j++ ) 
+               PBCorr_Matr[i][j] = (float *) calloc( NROI_REF[i], sizeof(float));
+         
+         if( (PCorr_Matr == NULL) || (PBCorr_Matr == NULL) ) {
+            fprintf(stderr, "\n\n MemAlloc failure.\n\n");
+            exit(123);
+         }
+      }
+
       // reuse this to help place list indices
       for( i=0 ; i<HAVE_ROIS ; i++ ) 
          for( j=0 ; j<NROI_REF[i] ; j++ )
@@ -569,13 +610,20 @@ int main(int argc, char *argv[]) {
       }
   
    INFO_message("Calculating correlation matrix.");
+   if(PART_CORR)
+      INFO_message("... and calculating partial correlation matrix.");
 
-   for(i=0 ; i<HAVE_ROIS ; i++) 
+   for(i=0 ; i<HAVE_ROIS ; i++) {
       for( j=0 ; j<NROI_REF[i] ; j++ ) 
          for( k=j ; k<NROI_REF[i] ; k++ ) {
             Corr_Matr[i][j][k] = Corr_Matr[i][k][j] = (float) 
                CORR_FUN(ROI_AVE_TS[i][j], ROI_AVE_TS[i][k], Dim[3]);
          }
+
+      if(PART_CORR)
+         mm = CalcPartCorrMatr(PCorr_Matr[i], PBCorr_Matr[i],
+                               Corr_Matr[i], NROI_REF[i]);
+   }
   
    // **************************************************************
    // **************************************************************
@@ -595,10 +643,11 @@ int main(int argc, char *argv[]) {
     
       // same format as .grid files now
       fprintf(fout1,"# %d  # Number of network ROIs\n",NROI_REF[k]); // NROIs
-      fprintf(fout1,"# %d  # Number of matrices\n",FISH_OUT+1); // Num of params
+      fprintf(fout1,"# %d  # Number of matrices\n",
+              FISH_OUT+PART_CORR+1); // Num of params
       //    fprintf(fout1,"%d\n\n",NROI_REF[k]);
       for( i=1 ; i<NROI_REF[k] ; i++ ) // labels of ROIs
-         fprintf(fout1,"%8d    \t",ROI_LABELS_REF[k][i]);// because at =NROI, ->\n
+         fprintf(fout1,"%8d    \t",ROI_LABELS_REF[k][i]);// at =NROI, have '\n'
       fprintf(fout1,"%8d\n# %s\n",ROI_LABELS_REF[k][i],"CC");
       for( i=0 ; i<NROI_REF[k] ; i++ ) {
          for( j=0 ; j<NROI_REF[k]-1 ; j++ ) // b/c we put '\n' after last one.
@@ -609,12 +658,28 @@ int main(int argc, char *argv[]) {
       if(FISH_OUT) {
          fprintf(fout1,"# %s\n", "FZ");
          for( i=0 ; i<NROI_REF[k] ; i++ ) {
-            for( j=0 ; j<NROI_REF[k]-1 ; j++ ) // b/c we put '\n' after last one.
+            for( j=0 ; j<NROI_REF[k]-1 ; j++ ) // b/c we put '\n' after last
                fprintf(fout1,"%12.4f\t",FisherZ(Corr_Matr[k][i][j]));
             fprintf(fout1,"%12.4f\n",FisherZ(Corr_Matr[k][i][j]));
          }
       }
     
+      if(PART_CORR) {
+         fprintf(fout1,"# %s\n", "PC");
+         for( i=0 ; i<NROI_REF[k] ; i++ ) {
+            for( j=0 ; j<NROI_REF[k]-1 ; j++ ) // b/c we put '\n' after last
+               fprintf(fout1,"%12.4f\t",PCorr_Matr[k][i][j]);
+            fprintf(fout1,"%12.4f\n",PCorr_Matr[k][i][j]);
+         }
+
+         fprintf(fout1,"# %s\n", "PCB");
+         for( i=0 ; i<NROI_REF[k] ; i++ ) {
+            for( j=0 ; j<NROI_REF[k]-1 ; j++ ) // b/c we put '\n' after last
+               fprintf(fout1,"%12.4f\t",PBCorr_Matr[k][i][j]);
+            fprintf(fout1,"%12.4f\n",PBCorr_Matr[k][i][j]);
+         }
+      }
+
       fclose(fout1);    
    }
 
@@ -702,10 +767,18 @@ int main(int argc, char *argv[]) {
             free(ROI_LISTS[i][j]);
             free(ROI_AVE_TS[i][j]);
             free(Corr_Matr[i][j]);
+            if(PART_CORR) {
+               free(PCorr_Matr[i][j]);
+               free(PBCorr_Matr[i][j]);
+            }
          }
          free(ROI_LISTS[i]);
          free(ROI_AVE_TS[i]);
          free(Corr_Matr[i]);
+         if(PART_CORR){
+            free(PCorr_Matr[i]);
+            free(PBCorr_Matr[i]);
+         }
          free(ROI_LABELS_REF[i]);
          free(INV_LABELS_REF[i]);
          free(ROI_COUNT[i]);
@@ -713,6 +786,10 @@ int main(int argc, char *argv[]) {
       free(ROI_LISTS);
       free(ROI_AVE_TS);
       free(Corr_Matr);
+      if(PART_CORR) {
+         free(PCorr_Matr);
+         free(PBCorr_Matr);
+      }
       free(ROI_LABELS_REF);
       free(INV_LABELS_REF);
       free(ROI_COUNT);

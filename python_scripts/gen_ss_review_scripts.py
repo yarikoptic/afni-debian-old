@@ -87,6 +87,7 @@ gen_ss_review_scripts.py - generate single subject analysis review scripts
       xmat_uncensored      X.nocensor.xmat.1D
       tsnr_dset            TSNR.ft+tlrc.HEAD
       gcor_dset            out.gcor.1D
+      mask_corr_dset       out.mask_ae_corr.txt
 
 ------------------------------------------
 
@@ -295,8 +296,8 @@ endif
 echo "TRs total                 : $num_trs"
 
 @ dof_rem = $rows_cols[1] - $rows_cols[2]
-echo "degress of freedom used   : $rows_cols[2]"
-echo "degress of freedom left   : $dof_rem"
+echo "degrees of freedom used   : $rows_cols[2]"
+echo "degrees of freedom left   : $dof_rem"
 echo ""
 """
 
@@ -336,7 +337,7 @@ if ( $was_censored && $num_stim > 0 ) then
         # count response TRs, with and without censoring
         # (their difference is the number of TRs lost to censoring)
         set st = `1deval -a $xstim"[$index]" -expr 'bool(a)' | grep 1 | wc -l`
-        set sc = `1deval -a $xstim"[$index]" -b $censor_dset -expr 'bool(a*b)'\
+        set sc = `1deval -a $xstim"[$index]" -b $censor_dset -expr 'bool(a*b)'\\
                          | grep 1 | wc -l`
         set sc = `ccalc -i "$st-$sc"`           # change to num censored
         set ff = `ccalc -form '%.3f' "$sc/$st"` # and the fraction censored
@@ -351,8 +352,50 @@ if ( $was_censored && $num_stim > 0 ) then
     echo "num TRs per stim (orig)   : $stim_trs"
     echo "num TRs censored per stim : $stim_trs_censor"
     echo "fraction TRs censored     : $stim_frac_censor"
-    echo ""
 endif
+
+"""
+
+# rcr - probably replace this with average motion per stim (not response)
+g_ave_mot_sresp_str = """
+# ----------------------------------------------------------------------
+# compute average motion per stim response
+
+if ( $was_censored && $num_stim > 0 ) then
+    set sresp_mot = ()
+    set sresp_mot_cen = ()
+    foreach index ( `count -digits 1 0 $nm1` )
+        set st  = `1deval -a $xstim"[$index]" -expr 'bool(a)' | grep 1 | wc -l`
+        set snc = `1deval -a $xstim"[$index]" -b $censor_dset   \\
+                   -expr 'bool(a*b)' | grep 1 | wc -l`
+        set sm  = `1deval -a $xstim"[$index]" -b $enorm_dset -expr 'bool(a)*b'\\
+                   | 3dTstat -sum -prefix - 1D:stdin\\' |& tail -n 1`
+        set smc = `1deval -a $xstim"[$index]" -b $enorm_dset -c $censor_dset \\
+                   -expr 'bool(a)*b*c' | 3dTstat -sum -prefix - 1D:stdin\\'  \\
+                   |& tail -n 1`
+        set sm  = `ccalc $sm/$st`
+        set smc = `ccalc $smc/$snc`
+
+        set sresp_mot = ( $sresp_mot $sm )
+        set sresp_mot_cen = ( $sresp_mot_cen $smc )
+    end
+
+    echo "ave mot per sresp (orig)  : $sresp_mot"
+    echo "ave mot per sresp (cens)  : $sresp_mot_cen"
+
+else if ( $num_stim > 0 ) then
+    set sresp_mot = ()
+    foreach index ( `count -digits 1 0 $nm1` )
+        set st = `1deval -a $xstim"[$index]" -expr 'bool(a)' | grep 1 | wc -l`
+        set sm = `1deval -a $xstim"[$index]" -b $enorm_dset -expr 'bool(a)*b'\\
+                  | 3dTstat -sum -prefix - 1D:stdin\\' |& tail -n 1`
+        set sm = `ccalc $sm/$st`
+        set sresp_mot = ( $sresp_mot $sm )
+    end
+    echo "ave mot per sresp         : $sresp_mot"
+endif
+
+echo ""
 
 """
 
@@ -381,6 +424,15 @@ g_basic_gcor_str = """
 if ( -f $gcor_dset ) then
     set gcor_val = `cat $gcor_dset`
     echo "global correlation (GCOR) : $gcor_val"
+endif
+"""
+
+g_basic_mask_corr_str = """
+# ------------------------------------------------------------
+# get anat/EPI mask correlation
+if ( -f $mask_corr_dset ) then
+    set val = `cat $mask_corr_dset`
+    echo "anat/EPI mask correlation : $val"
 endif
 """
 
@@ -467,6 +519,7 @@ g_eg_uvar.censor_dset     = 'motion_FT_censor.1D'
 g_eg_uvar.motion_dset     = 'dfile_rall.1D'
 g_eg_uvar.outlier_dset    = 'outcount_rall.1D'
 g_eg_uvar.gcor_dset       = 'out.gcor.1D'
+g_eg_uvar.mask_corr_dset  = 'out.mask_ae_corr.txt'
 g_eg_uvar.mot_limit       = 0.3
 g_eg_uvar.out_limit       = 0.1
 g_eg_uvar.xmat_regress    = 'X.xmat.1D'
@@ -490,6 +543,7 @@ g_uvar_dict = {
  'motion_dset'      :'set motion parameter file',
  'outlier_dset'     :'set outcount_rall file',
  'gcor_dset'        :'set gcor_dset file',
+ 'mask_corr_dset'   :'set anat/EPI correlation file',
  'mot_limit'        :'set motion limit (maybe for censoring)',
  'out_limit'        :'set outlier limit (maybe for censoring)',
  'xmat_regress'     :'set X-matrix file used in regression',
@@ -587,14 +641,18 @@ g_history = """
         - linux systems are not terminating there, while macs do
    0.36 Apr 09, 2014: for GCOR files, give priority to having 'out' in name
    0.37 May 13, 2014: allow no stats, in case of rest and 3dTproject
+   0.38 Jun 26, 2014:
+        - fixed degrees (was degress) in text (track in gen_ss_review_table.py)
+        - if out.mask_ae_corr.txt, note correlation
+   0.39 Jul 15, 2014: added average motion per stim response 
+                      (probably change to per stim, later)
 """
 
-g_version = "gen_ss_review_scripts.py version 0.37, May 13, 2014"
+g_version = "gen_ss_review_scripts.py version 0.39, Jul 1:, 2014"
 
 g_todo_str = """
-   - figure out template_space
-   - add @epi_review execution as a run-time choice (in the 'drive' script)
-   - generate and evaluate overlap mask(s) (atlas regions)
+   - figure out template_space (should we output 3dinfo -space?)
+   - add @epi_review execution as a run-time choice (in the 'drive' script)?
    - execute basic?  save output?
 """
 
@@ -853,6 +911,7 @@ class MyInterface:
       if self.guess_mask_dset():   return 1
       if self.guess_tsnr_dset():   return 1
       if self.guess_gcor_dset():   return 1
+      if self.guess_mask_corr_dset(): return 1
 
       if self.find_censor_file():  return 1
 
@@ -1506,6 +1565,24 @@ class MyInterface:
 
       return 0
 
+   def guess_mask_corr_dset(self):
+      """set uvars.mask_corr_dset"""
+
+      # check if already set
+      if self.uvars.is_not_empty('mask_corr_dset'):
+         if self.cvars.verb > 3:
+            print '-- already set: mask_corr_dset = %s' % self.uvars.mask_corr_dset
+
+      gstr = 'out.mask_ae_corr.txt'
+
+      if os.path.isfile(gstr):
+         self.uvars.mask_corr_dset = gstr
+         return 0
+
+      # otherwise, failure
+
+      return 0
+
    def guess_volreg_dset(self):
       """set uvars.volreg_dset"""
 
@@ -1734,12 +1811,17 @@ class MyInterface:
 
       # most of script is just raw text
       self.text_basic += g_reg_counts_str
+      self.text_basic += g_ave_mot_sresp_str
+
       if self.uvars.is_not_empty('mask_dset') and \
          self.uvars.is_not_empty('tsnr_dset'):
          self.text_basic += g_basic_tsnr_str
 
       if self.uvars.is_not_empty('gcor_dset'):
          self.text_basic += g_basic_gcor_str
+
+      if self.uvars.is_not_empty('mask_corr_dset'):
+         self.text_basic += g_basic_mask_corr_str
 
       # maybe use mask for max F-stat
       if self.uvars.is_not_empty('mask_dset'):
@@ -1819,6 +1901,10 @@ class MyInterface:
          txt += form % (var, self.uvars.val(var))
 
       var = 'gcor_dset'
+      if self.uvars.is_not_empty(var):
+         txt += form % (var, self.uvars.val(var))
+
+      var = 'mask_corr_dset'
       if self.uvars.is_not_empty(var):
          txt += form % (var, self.uvars.val(var))
 

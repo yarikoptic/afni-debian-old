@@ -23,7 +23,7 @@ SUMA_SRCS = SUMA_trackball.c SUMA_SVmanip.c SUMA_input.c \
 		 SUMA_HomerFunc.c SUMA_xColBar.c SUMA_IsoSurfaceFunc.c \
 		 SUMA_BrainWrap.c SUMA_global.c SUMA_ExpEval.c \
 		 SUMA_SurfaceToSurface.c SUMA_LocalStat.c SUMA_spharm.c SUMA_dot.c\
-		 SUMA_plot.c SUMA_volume_render.c 
+		 SUMA_plot.c SUMA_volume_render.c SUMA_driver.c
 
 SUMA_SSRCS = SUMA_SegFunc.c SUMA_SegOpts.c SUMA_CoordMatch.c
 
@@ -38,7 +38,8 @@ SUMA_EXECS = CreateIcosahedron  MapIcosahedron       \
 	SurfToSurf ROIgrow\
    NikoMap SurfDsetInfo SurfInfo AnalyzeTrace DriveSuma SurfLocalstat SurfFWHM \
    SpharmDeco SpharmReco SurfDist SumaProgramTemplate SurfRetinoMap \
-	ParseName 3dGenPriors 3dSeg SurfExtrema 3dinfill HalloSuma InstaTract
+	ParseName 3dGenPriors 3dGenFeatureDist 3dSeg SurfExtrema 3dinfill \
+	HalloSuma InstaTract
    
  
 
@@ -207,8 +208,6 @@ HalloSuma: SUMA_HalloSuma.c
 	${CC} -DSUMA_COMPILED ${CCOPT} ${SUMA_MDEFS} ${WARNOPT} -o $@  \
          SUMA_HalloSuma.c ${SUMA_INPATH} ${SUMA_LINK_PATH} ${SUMALIBLIST} ${AFNILIB} ${ZLIB} ${SUMA_LINK_LIB}
 
-#InstaTract should only depend on niml/ and SUMA's SUMA_niml_defines.h
-#but I can't do much to simplify the compile command without a nice libniml.a 
 InstaTract: SUMA_InstaTract.c 
 	$(RM) $@
 	${CC} -DSUMA_COMPILED ${CCOPT} ${SUMA_MDEFS} ${WARNOPT} -o $@  \

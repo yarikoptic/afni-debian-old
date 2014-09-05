@@ -5942,6 +5942,14 @@ SUMA_Boolean SUMA_DrawTractDO_basic (SUMA_TractDO *TDO, SUMA_SurfaceViewer *sv)
          otherwise I would have to switch back and forth in 
          a rather annoying manner. So memory is being sacrificed
          for code simplicity here */
+         if (TSaux->TractMask ==  SW_SurfCont_TractMaskDim ||
+             TSaux->TractMask ==  SW_SurfCont_TractMaskHair) {
+            TSaux->TractMask = SW_SurfCont_TractMaskGray;
+            SUMA_S_Warn("No support for SW_SurfCont_TractMaskDim or"
+                        " SW_SurfCont_TractMaskHair for basic drawing."
+                        "Gone gray. Interface not updated.");
+         }
+
          if (TSaux->TractMask == SW_SurfCont_TractMaskGray) {
             if (SUMA_TDO_Max_N_tracts(TDO) > mgray_alloc) { 
                mgray_alloc = SUMA_TDO_Max_N_tracts(TDO);
@@ -6136,6 +6144,7 @@ SUMA_Boolean SUMA_DrawTractDO (SUMA_TractDO *TDO, SUMA_SurfaceViewer *sv)
    static GLubyte *mgrayvec=NULL;
    byte *tmask_cp=NULL;
    int use_lmask=0, T1=0;
+   static int LastTractMask=-1;
    float lrange[2];
    SUMA_TRACT_SAUX *TSaux=NULL;
    SUMA_OVERLAYS *Sover=NULL;
@@ -6344,7 +6353,9 @@ SUMA_Boolean SUMA_DrawTractDO (SUMA_TractDO *TDO, SUMA_SurfaceViewer *sv)
          otherwise I would have to switch back and forth in 
          a rather annoying manner. So memory is being sacrificed
          for code simplicity here */
-         if (TSaux->TractMask == SW_SurfCont_TractMaskGray) {
+         if (TSaux->TractMask == SW_SurfCont_TractMaskGray ||
+             TSaux->TractMask == SW_SurfCont_TractMaskDim ||
+             TSaux->TractMask == SW_SurfCont_TractMaskHair) {
             if (SUMA_TDO_Max_N_tracts(TDO) > mgray_alloc) { 
                mgray_alloc = SUMA_TDO_Max_N_tracts(TDO);
                if (!(mgrayvec = (GLubyte *)SUMA_realloc(
@@ -6354,9 +6365,32 @@ SUMA_Boolean SUMA_DrawTractDO (SUMA_TractDO *TDO, SUMA_SurfaceViewer *sv)
                   TSaux->TractMask = SW_SurfCont_TractMaskHide;
                }
             }
-            if ((byte)(TSaux->MaskGray*2.55) != mgrayvec[0]) {
-               memset(mgrayvec, (byte)(TSaux->MaskGray*2.55), 
-                                 4*mgray_alloc*sizeof(byte));
+            if ((byte)(TSaux->MaskGray*2.55) != mgrayvec[3] || 
+                TSaux->TractMask != LastTractMask) {
+               LastTractMask = TSaux->TractMask;
+               switch (TSaux->TractMask) {
+                  default:
+                     break;
+                  case SW_SurfCont_TractMaskGray: /* go gray */
+                     memset(mgrayvec, (byte)(TSaux->MaskGray*2.55), 
+                                    4*mgray_alloc*sizeof(byte));
+                     break;
+                  case SW_SurfCont_TractMaskHair:  { /* bad hair */
+                     /* pretty random coloring, PT seems to like it.
+                        Here each tract to be grayed is getting the 
+                        color of the ith point of the entire TDO.
+                        So the assignment is hair brained but it looks cool */
+                     for (i=0; i<mgray_alloc; ++i) {
+                        mgrayvec[4*i] = 
+                            (byte)((TSaux->MaskGray*TDO->colv[4*i  ]*255)/100.0);
+                        mgrayvec[4*i+1] = 
+                            (byte)((TSaux->MaskGray*TDO->colv[4*i+1]*255)/100.0);
+                        mgrayvec[4*i+2] = 
+                            (byte)((TSaux->MaskGray*TDO->colv[4*i+2]*255)/100.0);
+                        mgrayvec[4*i+3] = (byte)(TSaux->MaskGray*2.55); 
+                     }
+                     break; }
+               }                  
             }
          }
                   
@@ -6414,6 +6448,8 @@ SUMA_Boolean SUMA_DrawTractDO (SUMA_TractDO *TDO, SUMA_SurfaceViewer *sv)
                }
                break;
             case SW_SurfCont_TractMaskGray:
+            case SW_SurfCont_TractMaskHair:
+            case SW_SurfCont_TractMaskDim:
                if (LocalHead) {
                   SUMA_CHECK_GL_ERROR(
                      "Loop 1, note that when selecting, one should not bother\n"
@@ -6485,7 +6521,6 @@ SUMA_Boolean SUMA_DrawTractDO (SUMA_TractDO *TDO, SUMA_SurfaceViewer *sv)
                   SUMA_PixelsToDisk(sv, sv->X->aWIDTH, sv->X->aHEIGHT, 
                                     sbuf, SUMA_F, 1, "dsten1.jpg", 1, 1);
                   SUMA_ifree(sbuf);
-                                    
                }
                glEnableClientState (GL_COLOR_ARRAY); /* put things back */
                /* Loop 2, draw everything not in the mask and not in stencil */
@@ -6513,7 +6548,22 @@ SUMA_Boolean SUMA_DrawTractDO (SUMA_TractDO *TDO, SUMA_SurfaceViewer *sv)
                             (TSaux->tract_lengths[T1] >= lrange[0] &&
                              TSaux->tract_lengths[T1] <= lrange[1]) ) {   
                            if (!colid && TDO->colv) {
-                              glColorPointer (4, GL_UNSIGNED_BYTE, 0, mgrayvec); 
+                              if (TSaux->TractMask == SW_SurfCont_TractMaskDim) {
+                                 int N4, icl; float fac = TSaux->MaskGray*2.55;
+                                 icl = 4*P;
+                                 i = 0; N4 = 4*N_pts;
+                                 while (i<N4) {
+                                    mgrayvec[i++] = 
+                                                   (byte)(fac*TDO->colv[icl++]);
+                                    mgrayvec[i++] = 
+                                                   (byte)(fac*TDO->colv[icl++]);
+                                    mgrayvec[i++] = 
+                                                   (byte)(fac*TDO->colv[icl++]);
+                                    mgrayvec[i++] = 
+                                             (byte)(fac); ++icl;
+                                 }
+                              }
+                              glColorPointer (4, GL_UNSIGNED_BYTE, 0, mgrayvec);
                            }
                            glVertexPointer (3, GL_FLOAT, 0, tt->pts);
                            glDrawElements ( GL_LINE_STRIP, (GLsizei)N_pts, 

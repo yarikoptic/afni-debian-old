@@ -9,6 +9,8 @@
 #include "mri_nwarp.c"
 
 /*----------------------------------------------------------------------------*/
+/* This program is basically a wrapper for function THD_nwarp_dataset() */
+/*----------------------------------------------------------------------------*/
 
 int main( int argc , char *argv[] )
 {
@@ -18,13 +20,14 @@ int main( int argc , char *argv[] )
    float dxyz_mast  = 0.0f ;
    int interp_code  = MRI_WSINC5 ;
    int ainter_code  = -666 ;
-   int iarg , kk , verb=1 , iv , do_wmast=0 ;
+   int iarg , kk , verb=1 , iv , do_wmast=0 , do_iwarp=0 ;
    mat44 src_cmat, nwarp_cmat, mast_cmat ;
    THD_3dim_dataset *dset_out ;
    MRI_IMAGE *fim , *wim ; float *ip,*jp,*kp ;
    int nx,ny,nz,nxyz , toshort=0 ;
    float wfac=1.0f ;
    MRI_IMAGE *awim=NULL ;
+   int expad=0 ;  /* 26 Aug 2014 */
 
    AFNI_SETUP_OMP(0) ;  /* 24 Jun 2013 */
 
@@ -42,6 +45,19 @@ int main( int argc , char *argv[] )
       "--------\n"
       " -nwarp  www  = 'www' is the name of the 3D warp dataset\n"
       "                (this is a mandatory option!)\n"
+      "\n"
+      " -iwarp       = After the warp specified in '-nwarp' is read in,\n"
+      "                invert it.  If the input warp would take a dataset\n"
+      "                from space A to B, then the inverted warp will do\n"
+      "                the reverse.\n"
+      "                ++ Note that '-iwarp' does NOT apply to the\n"
+      "                   '-affter' option!\n"
+      "                ++ Also note that '-wfac' applies to the warp AFTER\n"
+      "                   it is inverted!\n"
+      "                ++ The combination \"-iwarp -nwarp 'A B C'\" is equivalent\n"
+      "                   to \"-nwarp 'INV(C) INV(B) INV(A)'\" -- that is, inverting\n"
+      "                   each warp/matrix in the list and reversing their order.\n"
+      "                   The '-iwarp' option is provided for convenience.\n"
       "\n"
       " -affter aaa  = 'aaa' is the name of an optional file containing\n"
       "                an affine matrix to apply to the nonlinear warp,\n"
@@ -83,8 +99,14 @@ int main( int argc , char *argv[] )
       "                ++ It is often the case that it makes more sense to\n"
       "                   use the '-nwarp' dataset as the master, since\n"
       "                   that is the grid on which the transformation is\n"
-      "                   defined.  You can use '-master WARP' or '-master NWARP'\n"
+      "                   defined, and is (usually) the grid to which the\n"
+      "                   transformation 'pulls' the source data.\n"
+      "                ++ You can use '-master WARP' or '-master NWARP'\n"
       "                   for this purpose.\n"
+      "                ++ In particular, if the transformation includes a\n"
+      "                   long-distance translation, then the source dataset\n"
+      "                   grid may not have a lot of overlap with the source\n"
+      "                   dataset after it is transformed!\n"
       "\n"
       " -newgrid dd  = 'dd' is the new grid spacing (cubical voxels, in mm)\n"
       "   *OR        = ++ This lets you resize the master dataset grid spacing.\n"
@@ -105,6 +127,17 @@ int main( int argc , char *argv[] )
       "                for the data than might be used for the warp.  In particular,\n"
       "                '-ainterp NN' would be most logical for atlas datasets, where\n"
       "                the data values being mapped are labels.\n"
+      "\n"
+      " -expad EE    = Add 'EE' voxels to the warp on input, to help avoid any problems\n"
+      "                that might arise if you are catenating multiple warps / matrices\n"
+      "                where the nonlinear transform might be shifted far off its\n"
+      "                original grid definition.  Normally not needed, since the program\n"
+      "                internally estimates how much padding is needed.\n"
+      "                ++ This option does not affect the use of '-master WARP', which\n"
+      "                    still refers to the original grid on which the nonlinear\n"
+      "                    warp is defined.\n"
+      "                ++ Please note that this option must be given BEFORE the '-nwarp'\n"
+      "                   option to have any effect!\n"
       "\n"
       " -prefix ppp  = 'ppp' is the name of the new output dataset\n"
       "\n"
@@ -213,6 +246,17 @@ int main( int argc , char *argv[] )
 
      /*---------------*/
 
+     if( strcasecmp(argv[iarg],"-expad") == 0 ){  /* 26 Aug 2014 */
+       if( ++iarg >= argc ) ERROR_exit("need arg after %s",argv[iarg-1]) ;
+       if( dset_nwarp != NULL )
+         WARNING_message("-expad given after -nwarp ==> -expad is IGNORED") ;
+       expad = (int)strtod(argv[iarg],NULL) ;
+       if( expad < 0 ) expad = 0 ;
+       iarg++ ; continue ;
+     }
+
+     /*---------------*/
+
      if( strcasecmp(argv[iarg],"-wfac") == 0 ){
        if( ++iarg >= argc ) ERROR_exit("No argument after '%s' :-(",argv[iarg-1]) ;
        wfac = (float)strtod(argv[iarg],NULL) ;
@@ -261,9 +305,15 @@ int main( int argc , char *argv[] )
        if( dset_nwarp != NULL ) ERROR_exit("Can't have multiple %s options :-(",argv[iarg]) ;
        if( ++iarg >= argc ) ERROR_exit("No argument after '%s' :-(",argv[iarg-1]) ;
 #if 0
-       dset_nwarp = THD_open_dataset( argv[iarg] ) ;
+       dset_nwarp = THD_open_dataset( argv[iarg] ) ;          /* the simple way */
 #else
-       dset_nwarp = IW3D_read_catenated_warp( argv[iarg] ) ;
+       if( verb ) fprintf(stderr,"++ Reading -nwarp") ;
+       CW_no_expad = 0 ;      /* allow automatic padding of input warp */
+       CW_extra_pad = expad ; /* and enforce some addition padding */
+       dset_nwarp = IW3D_read_catenated_warp( argv[iarg] ) ;  /* the complicated way */
+       if( verb ) fprintf(stderr,"\n") ;
+       if( verb && CW_get_saved_expad() > 0 )
+         ININFO_message("Extended (padded) input warp by %d voxels",CW_get_saved_expad()) ;
 #endif
        if( dset_nwarp == NULL ) ERROR_exit("can't open warp dataset '%s' :-(",argv[iarg]);
        if( DSET_NVALS(dset_nwarp) < 3 ) ERROR_exit("dataset '%s' isn't a 3D warp",argv[iarg]);
@@ -277,6 +327,7 @@ int main( int argc , char *argv[] )
        if( ++iarg >= argc ) ERROR_exit("No argument after '%s' :-(",argv[iarg-1]) ;
        dset_src = THD_open_dataset( argv[iarg] ) ;
        if( dset_src == NULL ) ERROR_exit("can't open -source dataset '%s' :-(",argv[iarg]);
+       DSET_COPYOVER_REAL(dset_src) ;
        iarg++ ; continue ;
      }
 
@@ -290,6 +341,7 @@ int main( int argc , char *argv[] )
        } else {
          dset_mast = THD_open_dataset( argv[iarg] ) ;
          if( dset_mast == NULL ) ERROR_exit("can't open -master dataset '%s' :-(",argv[iarg]);
+         DSET_COPYOVER_REAL(dset_mast) ;
        }
        iarg++ ; continue ;
      }
@@ -374,7 +426,16 @@ int main( int argc , char *argv[] )
 
      /*---------------*/
 
-     ERROR_exit("Unknown, Illegal, and Fattening option '%s' :-( :-( :-(",argv[iarg]) ;
+     if( strcasecmp(argv[iarg],"-iwarp") == 0 ){
+       do_iwarp = 1 ; iarg++ ; continue ;
+     }
+
+     /*---------------*/
+
+     ERROR_message("Mysteriously Unknown option '%s' :-( :-( :-(",argv[iarg]) ;
+     suggest_best_prog_option(argv[0],argv[iarg]) ;
+     exit(1) ;
+
    }
 
    /*-------- check inputs to see if the user is completely demented ---------*/
@@ -387,6 +448,7 @@ int main( int argc , char *argv[] )
        dset_src = THD_open_dataset( argv[iarg] ) ;
        if( dset_src == NULL )
          ERROR_exit("Can't open source dataset '%s' :-(",argv[iarg]);
+       DSET_COPYOVER_REAL(dset_src) ;
      } else {
        ERROR_exit("No source dataset?  What do you want to warp? :-(") ;
      }
@@ -396,7 +458,23 @@ int main( int argc , char *argv[] )
 
    /*--- the actual work (bow your head in reverence) ---*/
 
-   if( do_wmast && dset_mast == NULL ) dset_mast = dset_nwarp ;
+   if( do_iwarp ){            /* 18 Jul 2014 */
+     THD_3dim_dataset *qwarp ;
+     if( verb ) fprintf(stderr,"Applying -iwarp option = inverting -nwarp input") ;
+     qwarp = THD_nwarp_invert(dset_nwarp) ;
+     DSET_delete(dset_nwarp) ;
+     dset_nwarp = qwarp ;
+     if( verb ) fprintf(stderr,"\n") ;
+   }
+
+   if( do_wmast && dset_mast == NULL ){
+     char *gs = CW_get_saved_geomstring() ;
+     if( CW_get_saved_expad() == 0 || gs == NULL ){
+       dset_mast = dset_nwarp ;
+     } else {
+       dset_mast = EDIT_geometry_constructor(gs,"ElephantsAreCool") ;
+     }
+   }
 
    verb_nww = verb ;
 

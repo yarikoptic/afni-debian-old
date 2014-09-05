@@ -26,6 +26,7 @@ typedef struct {
    int n; /* number of samples */
    float min; /* min sample value */
    float max; /* max sample value */
+   float cdfmin; /* minimum non zero cdf value */
    char *label; /* a string descriptor */
    int N_ignored; /* Number of samples out of n that
                      were outside the range and were ignored
@@ -169,8 +170,8 @@ typedef struct {
    int fast; /* if 1, use faster - I hope - version of p_C_GIV_A */
    float range[2];
    
-   int i1, i2, i3;
-   float f1, f2, f3;
+   int i1, i2, i3, i4, i5;
+   float f1, f2, f3, f4, f5;
 } SEG_OPTS;
 
 void GenPriors_usage(int) ;

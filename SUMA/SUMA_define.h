@@ -484,6 +484,8 @@ typedef enum { SW_SurfCont_DsetAlphaVal,
 typedef enum { SW_SurfCont_TractMask,
                SW_SurfCont_TractMaskHide,
                SW_SurfCont_TractMaskGray,
+               SW_SurfCont_TractMaskDim,
+               SW_SurfCont_TractMaskHair,
                SW_SurfCont_TractMaskIgnore,
                SW_N_SurfCont_TractMask }
                                        SUMA_WIDGET_INDEX_SURFCONT_TRACT_MASK;
@@ -1516,6 +1518,7 @@ typedef struct{
                            cell_modified = j * Ni + i */
    SUMA_NUMERICAL_UNITS num_units;
    char **rowobject_id;
+   char wname[64];
 } SUMA_TABLE_FIELD;
 
 typedef struct {
@@ -1553,6 +1556,7 @@ typedef struct {
    void (*NewValueCallback)(void *data); /*!< callback when a new value is set */
    void *NewValueCallbackData; 
    SUMA_Boolean modified; /*!< set to YUP when user edits the value field */
+   char wname[64];
 } SUMA_SLICE_FIELD;
 
 typedef struct {
@@ -1567,6 +1571,7 @@ typedef struct {
    void (*NewValueCallback)(void *data); /*!< callback when a new value is set */
    void *NewValueCallbackData; 
    SUMA_Boolean modified; /*!< set to YUP when user edits the value field */
+   char wname[64];
 } SUMA_VR_FIELD;
 
 
@@ -3820,6 +3825,9 @@ typedef struct {
    SUMA_Boolean YokeIntToNode;
    
    SUMA_EVENT *lev; /*!< A record of the last input event */
+
+   char **dcom;
+   int N_dcom;
 } SUMA_CommonFields;
 
 

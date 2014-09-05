@@ -850,6 +850,13 @@ extern MRI_IMAGE * mri_subset_x2D( int , int * , MRI_IMAGE * ) ;
 
 extern MRI_IMAGE * mri_check_2D( int , MRI_IMAGE * , MRI_IMAGE * ) ;
 
+#define WIPER_FROM_LEFT   1
+#define WIPER_FROM_BOTTOM 2
+#define WIPER_FROM_CENTER 3
+
+extern MRI_IMAGE * mri_wiper_2D( int wcode,float wfac, MRI_IMAGE *ima, MRI_IMAGE *imb ) ;
+extern MRI_IMAGE * mri_mix_2D( float , MRI_IMAGE * , MRI_IMAGE * ) ;
+
 extern MRI_IMAGE * mri_cut_3D( MRI_IMAGE * , int,int,int,int,int,int ) ;
 
 /** 15 Apr 1999 **/
@@ -998,6 +1005,7 @@ extern void mri_threshold( double , double , MRI_IMAGE * , MRI_IMAGE * ) ;
 extern MRI_IMAGE * mri_mult_to_float( float * , MRI_IMAGE * ) ;
 
 extern float_pair mri_threshold_minmax( double,double, MRI_IMAGE *, MRI_IMAGE * ) ;
+extern int_pair   mri_threshold_minmax_indexes(void) ;
 
 extern void mri_maskify( MRI_IMAGE *im , byte *mask ) ; /* Jul 2010 */
 

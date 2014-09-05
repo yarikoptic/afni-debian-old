@@ -2610,8 +2610,7 @@ SUMA_graphicsInit(Widget w, XtPointer clientData, XtPointer call)
    /* call context_Init to setup colors and lighting */   
    SUMA_context_Init(sv);
 
-   SUMA_RETURNe;
-   
+   SUMA_RETURNe;   
 }
 
 void 
@@ -2857,22 +2856,36 @@ SUMA_expose(Widget w,
   SUMA_ENTRY;
   
    SUMA_LH("Called");
-  /*glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);*/ /* No need for that, done in display */
+  /*glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);*/ 
+                              /* No need for that, done in display */
   
   
    /* get the viewer just entered. */
    SUMA_ANY_WIDGET2SV(w, sv, isv);
    if (isv < 0) {
-      fprintf (SUMA_STDERR, "Error %s: Failed in macro SUMA_ANY_WIDGET2SV.\n", FuncName);
+      SUMA_S_Err("Failed in macro SUMA_ANY_WIDGET2SV.");
       SUMA_RETURNe;
    }
    
    sv->rdc = SUMA_RDC_X_EXPOSE;
    
-   /* When using multiple viewers, you must reset the OpenGL state variables or risk having abrupt changes with the first click */
+   /* When using multiple viewers, you must reset the OpenGL state 
+      variables or risk having abrupt changes with the first click */
    sv->ResetGLStateVariables = YUP;
    SUMA_postRedisplay(w, NULL, NULL);
    
+   if (SUMAg_CF->N_dcom) {
+      for (isv = 0; isv < SUMAg_CF->N_dcom; ++isv) {
+         SUMA_S_Note("Executing driver command %d: %s\n", 
+                     isv, SUMAg_CF->dcom[isv]);
+         SUMA_MakeMeDo(SUMAg_CF->dcom[isv], 0);
+         SUMA_ifree(SUMAg_CF->dcom[isv]);
+      }
+      SUMA_ifree(SUMAg_CF->dcom); SUMAg_CF->N_dcom = 0;
+   }
+
+   
+
    SUMA_RETURNe;
 }
 
@@ -2989,7 +3002,7 @@ int SUMA_BuildMenu(  Widget parent, int menu_type, char *menu_title,
                      char menu_mnemonic, SUMA_Boolean tear_off,
                      SUMA_MenuItem *items, 
                      void *ContID, 
-                     char *hint, char *help,
+                     char *wname, char *hint, char *help,
                      SUMA_MENU_WIDGET *SMW )
 {
    static char FuncName[]={"SUMA_BuildMenu"};
@@ -3102,8 +3115,11 @@ int SUMA_BuildMenu(  Widget parent, int menu_type, char *menu_title,
       SMW->mw[i_wid] = menu; }
    else { SMW->mw[i_wid] = cascade; } 
    
-   if (hint) MCW_register_hint(SMW->mw[i_wid], hint);
-   if (help) MCW_reghelp_children(SMW->mw[i_wid], help);
+   if (hint || help) {
+      SUMA_LH("Registering %s with \n%s\n and \n%s\n\n", wname, hint, help); 
+      SUMA_Register_Widget_Children_Help(SMW->mw[i_wid], wname, 
+                                hint, help);
+   }
    
    ++i_wid;
    
@@ -3129,7 +3145,7 @@ int SUMA_BuildMenu(  Widget parent, int menu_type, char *menu_title,
                 SUMA_BuildMenu ( menu, XmMENU_PULLDOWN, items[i].label, 
                                  items[i].mnemonic, tear_off, 
                                  items[i].subitems, ContID, 
-                                 hint, help, SMW);
+                                 wname, hint, help, SMW);
             }
         else {
             if (LocalHead) 
@@ -3228,6 +3244,7 @@ int SUMA_BuildMenu(  Widget parent, int menu_type, char *menu_title,
                      8, SUMA_int,
                      YUP,
                      SUMA_MenuArrowFieldCallback, (void *)CBp,
+                     wname,
                      "A way to switch sub-bricks in dsets with lots of them.",
                      SUMA_SurfContHelp_ArrowFieldMenu,
                      SMW->af);
@@ -3345,7 +3362,7 @@ SUMA_MenuItem View_menu[] = {
       'U', "Ctrl<Key>u", "Ctrl+u", \
       SUMA_cb_viewSumaCont, (XtPointer) SW_ViewSumaCont, NULL },
    
-   {  "Surface Controller", &xmPushButtonWidgetClass, \
+   {  "Object Controller", &xmPushButtonWidgetClass, \
       'S', "Ctrl<Key>s", "Ctrl+s", \
       SUMA_cb_viewSurfaceCont, (XtPointer) SW_ViewSurfCont, NULL },
    
@@ -3945,6 +3962,12 @@ SUMA_MenuItem TractMask_Menu[] = {
    {  "Gry", &xmPushButtonWidgetClass, 
       'G', NULL, NULL, 
       SUMA_cb_SetTractMask, (XtPointer) SW_SurfCont_TractMaskGray, NULL},
+   {  "Dim", &xmPushButtonWidgetClass, 
+      'D', NULL, NULL, 
+      SUMA_cb_SetTractMask, (XtPointer) SW_SurfCont_TractMaskDim, NULL},
+   {  "One", &xmPushButtonWidgetClass, 
+      'O', NULL, NULL, 
+      SUMA_cb_SetTractMask, (XtPointer) SW_SurfCont_TractMaskHair, NULL},
    {  "Ign", &xmPushButtonWidgetClass, 
       'I', NULL, NULL, 
       SUMA_cb_SetTractMask, (XtPointer) SW_SurfCont_TractMaskIgnore, NULL},
@@ -4205,28 +4228,28 @@ SUMA_Boolean SUMA_X_SurfaceViewer_Create (void)
          SUMA_BuildMenuReset(0);
          SUMA_BuildMenu(menubar, XmMENU_PULLDOWN, 
                                  "File", 'F', YUP, File_menu, 
-                                 (VOID_CAST)ic, NULL, NULL,  
+                                 (VOID_CAST)ic, NULL, NULL, NULL,  
                                  SUMAg_SVv[ic].X->FileMenu );
          
          /* create View Menu */
          SUMA_BuildMenuReset(0);
          SUMA_BuildMenu(menubar, XmMENU_PULLDOWN, 
                                  "View", 'V', YUP, View_menu, 
-                                 (VOID_CAST)ic, NULL, NULL,  
+                                 (VOID_CAST)ic, NULL, NULL, NULL,  
                                  SUMAg_SVv[ic].X->ViewMenu );
          
          /* create Tools Menu */
          SUMA_BuildMenuReset(0);
          SUMA_BuildMenu(menubar, XmMENU_PULLDOWN, 
                                  "Tools", 'T', YUP, Tools_menu, 
-                                 (VOID_CAST)ic, NULL, NULL,  
+                                 (VOID_CAST)ic, NULL, NULL, NULL,  
                                  SUMAg_SVv[ic].X->ToolsMenu );
          
          /* create Help Menu */
          SUMA_BuildMenuReset(0);
          SUMA_BuildMenu(menubar, XmMENU_PULLDOWN, 
                                  "Help", 'H', YUP, Help_menu,
-                                 (VOID_CAST)ic, NULL, NULL,  
+                                 (VOID_CAST)ic, NULL, NULL, NULL,  
                                  SUMAg_SVv[ic].X->HelpMenu );
          
          XtVaSetValues (menubar, XmNmenuHelpWidget, 
@@ -4420,7 +4443,7 @@ SUMA_Boolean SUMA_X_SurfaceViewer_Create (void)
    SUMA_UpdateViewerCursor (&(SUMAg_SVv[ic]));
    SUMA_UpdateViewerTitle (&(SUMAg_SVv[ic]));
 
-   SUMA_LH("Returning");  
+   SUMA_LH("Returning");
    SUMA_RETURN (YUP);
 }
 
@@ -6731,6 +6754,23 @@ int SUMA_viewSurfaceCont(Widget w, SUMA_ALL_DO *ado,
       */
    SUMA_LH("Making sv's GLXAREA current\n");
    SUMA_SiSi_I_Insist();
+   
+   #if 0
+      /* Toying with automated saving of controllers to help automate help
+         The problem with simple command below is that the OpenGL parts will
+         not get captured with XGetImage. So object controllers do not show
+         the colormap, and the viewer windows will not show the rendering.
+         
+         One approach might be to grab the openGL rendered pixels, and replace
+         the GLX areas with a widget displaying the grabbed image. I don't know
+         ahead of time how much of a pain it will be to be sure the newly added
+         widget does not cause resizing problems with the interface. What a pain.
+         
+         Perhaps for now it is best to snap those images by hand.
+      */   
+         
+      ISQ_snapfile ( SurfCont->Mainform );
+   #endif
         
    SUMA_RETURN(1); 
 }
@@ -7061,10 +7101,9 @@ void SUMA_cb_createViewerCont(Widget w, XtPointer data, XtPointer callData)
                      button still expects sv in clientData
                      Feb 23 04: UserData works well, but other 
                      functions don't use it much so also store sv in clientData*/
-      MCW_register_hint( sv->X->ViewCont->ViewerInfo_pb , 
-                           "More info on Viewer" ) ;
-      MCW_register_help( sv->X->ViewCont->ViewerInfo_pb , 
-                           SUMA_moreViewerInfo_help ) ;
+      SUMA_Register_Widget_Help(sv->X->ViewCont->ViewerInfo_pb , 
+                           "ViewerCont->more",
+                           "More info on Viewer", SUMA_moreViewerInfo_help);
       XtManageChild (sv->X->ViewCont->ViewerInfo_pb); 
 
       XtManageChild (rc);
@@ -7115,8 +7154,9 @@ void SUMA_cb_createViewerCont(Widget w, XtPointer data, XtPointer callData)
          NULL);
       XtAddCallback (pb, XmNactivateCallback, 
                      SUMA_cb_ViewerCont_SwitchGroup, (XtPointer) sv);
-      MCW_register_hint( pb , "Switch Group" ) ;
-      MCW_register_help( pb , "Switch Group" ) ;
+      SUMA_Register_Widget_Help(pb , 
+                           "ViewerCont->Switch->Group",
+                           "Switch Group", "Switch Group");
       XtManageChild (pb);
 
       /* put a button for swiching states */
@@ -7125,8 +7165,9 @@ void SUMA_cb_createViewerCont(Widget w, XtPointer data, XtPointer callData)
          NULL);
       XtAddCallback (pb, XmNactivateCallback, 
                      SUMA_cb_ViewerCont_SwitchState, (XtPointer) sv);
-      MCW_register_hint( pb , "Switch State" ) ;
-      MCW_register_help( pb , "Switch State" ) ;
+      SUMA_Register_Widget_Help(pb , 
+                           "ViewerCont->Switch->State",
+                           "Switch State", "Switch State");
       XtManageChild (pb);
       
       
@@ -7176,19 +7217,20 @@ void SUMA_cb_createViewerCont(Widget w, XtPointer data, XtPointer callData)
          NULL);   
       XtAddCallback (pb_close, XmNactivateCallback, 
                      SUMA_cb_closeViewerCont, (XtPointer) sv);
-      MCW_register_hint( pb_close , "Close Viewer controller" ) ;
-      MCW_register_help( pb_close , SUMA_closeViewerCont_help ) ;
+      SUMA_Register_Widget_Help(pb_close , 
+                           "ViewerCont->Close",
+                           "Close Viewer controller", SUMA_closeViewerCont_help);
       XtManageChild (pb_close); 
 
       pb_bhelp = XtVaCreateWidget ("BHelp", 
          xmPushButtonWidgetClass, rc, 
          NULL);
       XtAddCallback (pb_bhelp, XmNactivateCallback, MCW_click_help_CB, NULL);
-      MCW_register_help(pb_bhelp , SUMA_help_help ) ;
-      MCW_register_hint(pb_bhelp  , 
-                        "Press this button then click on a "
-                        "button/label/menu for more help." ) ;
-
+      SUMA_Register_Widget_Help(pb_bhelp , 
+                           "ViewerCont->BHelp",
+                           "Press this button then click on a "
+                           "button/label/menu for more help.",
+                           SUMA_help_help);
       XtManageChild (pb_bhelp); 
 
 
@@ -7266,6 +7308,7 @@ void SUMA_cb_closeViewerCont(Widget w, XtPointer data, XtPointer callData)
 Widget SUMA_CloseBhelp_Frame( Widget parent,
                               XtCallbackProc close_callback, 
                               XtPointer close_data,
+                              char *wname,
                               char *close_hint,
                               char *close_help,
                               XtCallbackProc help_callback,
@@ -7275,6 +7318,7 @@ Widget SUMA_CloseBhelp_Frame( Widget parent,
 {
    static char FuncName[]={"SUMA_CloseBhelp_Frame"};
    Widget rc, pb_close, pb_bhelp, DispFrame, pb_help;
+   char ss[64];
    
    SUMA_ENTRY;
       
@@ -7311,18 +7355,21 @@ Widget SUMA_CloseBhelp_Frame( Widget parent,
       NULL);   
    XtAddCallback (pb_close, XmNactivateCallback, 
                   close_callback, close_data);
-      MCW_register_hint( pb_close , close_hint ) ;
-      MCW_register_help( pb_close , close_help ) ;
-      XtManageChild (pb_close); 
+   snprintf(ss, 63, "%s->Close", wname);
+   SUMA_Register_Widget_Help(pb_close , 
+                        ss,
+                        close_hint, close_help);
+   XtManageChild (pb_close); 
 
    pb_bhelp = XtVaCreateWidget ("BHelp", 
       xmPushButtonWidgetClass, rc, 
       NULL);
    XtAddCallback (pb_bhelp, XmNactivateCallback, MCW_click_help_CB, NULL);
-   MCW_register_help(pb_bhelp , SUMA_help_help ) ;
-   MCW_register_hint(pb_bhelp  , 
-                     "Press this button then click on a "
-                     "button/label/menu for more help." ) ;
+   snprintf(ss, 63, "%s->BHelp", wname);
+   SUMA_Register_Widget_Help(pb_bhelp , 
+                        ss,
+                        "Press this button then click on a "
+                        "button/label/menu for more help.", SUMA_help_help);
 
    XtManageChild (pb_bhelp); 
 
@@ -7336,11 +7383,11 @@ Widget SUMA_CloseBhelp_Frame( Widget parent,
          xmPushButtonWidgetClass, rc, 
          NULL);
       XtAddCallback (pb_help, XmNactivateCallback, help_callback, help_data);
-      MCW_register_help(pb_help , help_hint ? 
-            help_hint : "Press this button to get help about this interface" ) ;
-      MCW_register_hint(pb_help , help_help ? 
-            help_help : "Help about this interface" );
-                     
+      snprintf(ss, 63, "%s->Help", wname);
+      SUMA_Register_Widget_Help(pb_help, ss, help_hint ? 
+            help_hint : "Press this button to get help about this interface",
+                                             help_help ? 
+            help_help : "Help about this interface" );                      
       XtManageChild (pb_help); 
    }
 
@@ -7380,6 +7427,7 @@ void SUMA_cb_createSurfaceCont(Widget w, XtPointer data, XtPointer callData)
       case SDSET_type:
          SUMA_S_Err("Cannot create a controller for a dataset"
                     "with no rendering variant");
+         SUMA_RETURNe;
          break;
       case GRAPH_LINK_type: {
          SUMA_GraphLinkDO *gldo=(SUMA_GraphLinkDO *)ado;
@@ -7397,10 +7445,59 @@ void SUMA_cb_createSurfaceCont(Widget w, XtPointer data, XtPointer callData)
       default:
          SUMA_S_Errv("No controller for type %d (%s)\n",
                ado->do_type, SUMA_ObjectTypeCode2ObjectTypeName(ado->do_type));
+         SUMA_RETURNe;
          break;
    }
 
    SUMA_RETURNe;
+}
+
+SUMA_Boolean SUMA_WriteCont_Help(SUMA_DO_Types do_type, int targ, char *fname)
+{
+   static char FuncName[]={"SUMA_WriteCont_Help"};
+   FILE *fout=NULL;
+   char *s=NULL;
+   
+   SUMA_ENTRY;
+   
+   if (!fname) {
+      if (targ == 0) fname = "SurfCont_help.txt";
+      else fname = "SurfCont_help.rst";
+   }
+   
+   if (!(fout = fopen(fname,"a"))) {
+      SUMA_S_Err("Failed to open help file %s in append mode", fname);
+      SUMA_RETURN(NOPE);
+   }
+   
+   switch(do_type) {
+      case SO_type:
+         s = SUMA_Help_AllSurfCont(targ);
+         break;
+      case GRAPH_LINK_type:
+         s = SUMA_Help_AllGraphCont(targ);
+         break;
+      case TRACT_type:
+         s = SUMA_Help_AllTractCont(targ);
+         break;
+      case MASK_type:
+         s = SUMA_Help_AllMaskCont(targ);
+         break;
+      case VO_type:
+         s = SUMA_Help_AllVolCont(targ);
+         break;
+      default:
+         SUMA_S_Err("Nothing for this controller");
+         SUMA_RETURN(NOPE);
+   }
+       
+   fprintf(fout,"%s\n", s);
+   SUMA_ifree(s);
+   fclose(fout); fout=NULL;
+   
+   SUMA_S_Note("Appended controller help to %s", fname); 
+   
+   SUMA_RETURN(YUP);
 }
 
 /*!
@@ -7530,6 +7627,33 @@ void SUMA_cb_createSurfaceCont_SO(Widget w, XtPointer data, XtPointer callData)
          scroller = XtNameToWidget (SUMAg_CF->X->SC_Notebook, "PageScroller");
          XtUnmanageChild (scroller);
       }
+      
+      SUMA_Register_Widget_Help( NULL , 
+                                 "SurfCont",
+                                 "The Surface Controller",
+"The surface controller is for controlling the way surfaces and datasets "
+"defined over them are displayed. The same controller is shared by a "
+":SPX::term:`family of surfaces <Family of surfaces>`:DEF:"
+"family of surfaces:SPX:"
+" and all the datasets displayed on them. Left and Right "
+"surfaces have separate controllers though in most cases actions on one "
+"hemisphere's controller are automatically mirrored on the contralateral "
+"side. The surface controller is initialized by the currently selected "
+"surface - the one said to be in focus.\n"
+":SPX:"
+"You can launch the :ref:`Surface Controller <SurfCont>` with:"
+" :ref:`ctrl+s <LC_Ctrl+s>` or :menuselection:`View-->Surface Controller`\n"
+"\n"
+".. figure:: images/SurfaceController.jpg\n"
+"   :align: center\n"
+"\n\n"
+"   ..\n\n"
+":DEF:"
+"You can launch the Surface Controller with:"
+"\n'ctrl+s' or 'View-->Surface Controller'\n"
+":SPX:"
+"\n") ;
+
    }
    
    if (SUMAg_CF->X->UseSameSurfCont) {
@@ -7576,6 +7700,7 @@ void SUMA_cb_createSurfaceCont_SO(Widget w, XtPointer data, XtPointer callData)
 
    DispFrame = SUMA_CloseBhelp_Frame(rc_gmamma,
                      SUMA_cb_closeSurfaceCont, (XtPointer) ado,
+                     "SurfCont", 
                      "Close Surface controller", SUMA_closeSurfaceCont_help,
                      NULL, NULL, NULL, NULL);
                      
@@ -7627,7 +7752,10 @@ void SUMA_cb_createSurfaceCont_SO(Widget w, XtPointer data, XtPointer callData)
             XmNchildType, XmFRAME_TITLE_CHILD,
             XmNchildHorizontalAlignment, XmALIGNMENT_BEGINNING,
             NULL);
-      
+      SUMA_Register_Widget_Help( NULL , 
+                                 "SurfCont->Surface_Properties",
+                                 "Surface Properties",
+                  "Block providing information about selected surface.") ;
       rc_SurfProp = XtVaCreateWidget ("rowcolumn",
             xmRowColumnWidgetClass, SurfFrame,
             XmNpacking, XmPACK_TIGHT, 
@@ -7691,8 +7819,10 @@ void SUMA_cb_createSurfaceCont_SO(Widget w, XtPointer data, XtPointer callData)
             might refer to. 
             This is only for testing purposes, the pb_close
             button still expects SO in clientData*/
-      MCW_register_hint( SurfCont->SurfInfo_pb , "More info on Surface" ) ;
-      MCW_register_help( SurfCont->SurfInfo_pb , SUMA_SurfContHelp_more ) ;
+      SUMA_Register_Widget_Help( SurfCont->SurfInfo_pb , 
+                                 "SurfCont->Surface_Properties->more",
+                                 "More info on Surface",
+                                 SUMA_SurfContHelp_more ) ;
       XtManageChild (SurfCont->SurfInfo_pb); 
 
       XtManageChild (rc);
@@ -7716,6 +7846,7 @@ void SUMA_cb_createSurfaceCont_SO(Widget w, XtPointer data, XtPointer callData)
       SUMA_BuildMenu (rc, XmMENU_OPTION, 
                                  "Drw", '\0', YUP, RenderMode_Menu, 
                                  (void *)SUMA_SurfCont_GetcurDOp(SurfCont), 
+                                 "SurfCont->Surface_Properties->Drw",
                         "Choose the rendering (drawing) mode for this surface.",
                                  SUMA_SurfContHelp_RenderMode, 
                                  SurfCont->RenderModeMenu );
@@ -7727,6 +7858,7 @@ void SUMA_cb_createSurfaceCont_SO(Widget w, XtPointer data, XtPointer callData)
       SUMA_BuildMenu (rc, XmMENU_OPTION, 
                                  "Trn", '\0', YUP, TransMode_Menu, 
                                  (void *)SUMA_SurfCont_GetcurDOp(SurfCont), 
+                                 "SurfCont->Surface_Properties->Trn",
                         "Choose the transparency for this surface.",
                                  SUMA_SurfContHelp_TransMode, 
                                  SurfCont->TransModeMenu );
@@ -7738,10 +7870,10 @@ void SUMA_cb_createSurfaceCont_SO(Widget w, XtPointer data, XtPointer callData)
       XtAddCallback (pb, XmNactivateCallback, 
                      SUMA_cb_ToggleManagementColPlaneWidget, 
                      (XtPointer)SUMA_SurfCont_GetcurDOp(SurfCont));
-      MCW_register_hint( pb , 
-                        "Show/Hide Dataset (previously Color Plane) "
-                        "controllers" ) ;
-      MCW_register_help( pb , SUMA_SurfContHelp_Dsets ) ;
+      SUMA_Register_Widget_Help( pb, "SurfCont->Surface_Properties->Dsets",
+                                  "Show/Hide Dataset (previously Color Plane) "
+                                  "controllers",
+                                  SUMA_SurfContHelp_Dsets ) ;
       XtManageChild (pb);
       
       XtManageChild (rc);
@@ -7766,7 +7898,10 @@ void SUMA_cb_createSurfaceCont_SO(Widget w, XtPointer data, XtPointer callData)
             XmNchildType, XmFRAME_TITLE_CHILD,
             XmNchildHorizontalAlignment, XmALIGNMENT_BEGINNING,
             NULL);
-            
+      SUMA_Register_Widget_Help( NULL , 
+                                 "SurfCont->Xhair_Info",
+                      "Crosshair Information",
+                                 NULL);     
       /* vertical row column */
       rcv = XtVaCreateWidget ("rowcolumn",
             xmRowColumnWidgetClass, SurfCont->Xhair_fr,
@@ -7804,7 +7939,11 @@ void SUMA_cb_createSurfaceCont_SO(Widget w, XtPointer data, XtPointer callData)
             XmNchildType, XmFRAME_TITLE_CHILD,
             XmNchildHorizontalAlignment, XmALIGNMENT_BEGINNING,
             NULL);
-            
+      SUMA_Register_Widget_Help( NULL , 
+                                 "SurfCont->Dset_Mapping",
+                                 "Dset Color Mapping",
+                                 NULL);     
+      
       /* vertical row column */
       rcv = XtVaCreateWidget ("rowcolumn",
             xmRowColumnWidgetClass, SurfCont->DsetMap_fr,
@@ -7841,7 +7980,9 @@ void SUMA_cb_createSurfaceCont_SO(Widget w, XtPointer data, XtPointer callData)
             XmNchildType, XmFRAME_TITLE_CHILD,
             XmNchildHorizontalAlignment, XmALIGNMENT_BEGINNING,
             NULL);
-            
+      SUMA_Register_Widget_Help( NULL , 
+                                 "SurfCont->Dset_Controls",
+                                 "Dset Controls", "") ;      
       /* vertical row column */
       rcv = XtVaCreateWidget ("rowcolumn",
             xmRowColumnWidgetClass, SurfCont->ColPlane_fr,
@@ -7871,6 +8012,7 @@ void SUMA_cb_createSurfaceCont_SO(Widget w, XtPointer data, XtPointer callData)
          int colw[]={ 3, 27};
          SUMA_CreateTable(rc, 
             2, 2,
+            "SurfCont->Dset_Controls->Lbl+Par",
             Dset_tit, NULL,
             Dset_hint, NULL,
             Dset_help, NULL,
@@ -7894,6 +8036,7 @@ void SUMA_cb_createSurfaceCont_SO(Widget w, XtPointer data, XtPointer callData)
                            2, SUMA_int,
                            NOPE,
                            SUMA_cb_ColPlane_NewOrder, (void *)ado,
+                           "SurfCont->Dset_Controls->Ord",
                            SUMA_SurfCont_ColPlaneOrder_hint, 
                            SUMA_SurfContHelp_DsetOrd,
                            SurfCont->ColPlaneOrder);
@@ -7903,6 +8046,7 @@ void SUMA_cb_createSurfaceCont_SO(Widget w, XtPointer data, XtPointer callData)
                            3, SUMA_float,
                            NOPE,
                            SUMA_cb_ColPlane_NewOpacity, (void *)ado,
+                           "SurfCont->Dset_Controls->Opa",
                            SUMA_SurfCont_ColPlaneOpacity_hint,
                            SUMA_SurfContHelp_DsetOpa,
                            SurfCont->ColPlaneOpacity);
@@ -7922,6 +8066,7 @@ void SUMA_cb_createSurfaceCont_SO(Widget w, XtPointer data, XtPointer callData)
                            3, SUMA_float,
                            YUP,
                            SUMA_cb_ColPlane_NewDimFact, (void *)ado, 
+                           "SurfCont->Dset_Controls->Dim",
                            SUMA_SurfCont_ColPlaneDim_hint, 
                            SUMA_SurfContHelp_DsetDim,
                            SurfCont->ColPlaneDimFact);
@@ -7932,9 +8077,10 @@ void SUMA_cb_createSurfaceCont_SO(Widget w, XtPointer data, XtPointer callData)
       XmToggleButtonSetState (SurfCont->ColPlaneShow_tb, YUP, NOPE);
       XtAddCallback (SurfCont->ColPlaneShow_tb, 
                   XmNvalueChangedCallback, SUMA_cb_ColPlaneShow_toggled, ado);
-      MCW_register_help(SurfCont->ColPlaneShow_tb , 
-                        SUMA_SurfContHelp_DsetView ) ;
-      MCW_register_hint(SurfCont->ColPlaneShow_tb , "Shows/Hides Dset." ) ;
+      SUMA_Register_Widget_Help(SurfCont->ColPlaneShow_tb , 
+                                "SurfCont->Dset_Controls->view",
+                                "Shows/Hides Dset.",
+                                SUMA_SurfContHelp_DsetView ) ;
       SUMA_SET_SELECT_COLOR(SurfCont->ColPlaneShow_tb);
      #else
       SUMA_BuildMenuReset(0);
@@ -7943,6 +8089,7 @@ void SUMA_cb_createSurfaceCont_SO(Widget w, XtPointer data, XtPointer callData)
       SUMA_BuildMenu (rc, XmMENU_OPTION, 
                       "Dsp", '\0', YUP, DsetViewMode_Menu, 
                       (void *)SUMA_SurfCont_GetcurDOp(SurfCont), 
+                      "SurfCont->Dset_Controls->Dsp",
                       "Choose the rendering mode for this dataset.",
                       SUMA_SurfContHelp_DsetViewMode, 
                       SurfCont->DsetViewModeMenu );
@@ -7961,10 +8108,10 @@ void SUMA_cb_createSurfaceCont_SO(Widget w, XtPointer data, XtPointer callData)
                      XmNvalueChangedCallback, 
                      SUMA_cb_ColPlaneShowOneFore_toggled, ado);
                   
-      MCW_register_help(SurfCont->ColPlaneShowOneFore_tb , 
-                        SUMA_SurfContHelp_DsetViewOne ) ;
-      MCW_register_hint(SurfCont->ColPlaneShowOneFore_tb , 
-             "Show ONLY ONE selected Dset. Foreground only. BHelp for more.\n") ;
+      SUMA_Register_Widget_Help(SurfCont->ColPlaneShowOneFore_tb ,
+                                "SurfCont->Dset_Controls->1",
+             "Show ONLY ONE selected Dset. Foreground only. BHelp for more.",
+                                 SUMA_SurfContHelp_DsetViewOne ) ;
       SUMA_SET_SELECT_COLOR(SurfCont->ColPlaneShowOneFore_tb);
            
       /* manage  rc */
@@ -7998,8 +8145,9 @@ void SUMA_cb_createSurfaceCont_SO(Widget w, XtPointer data, XtPointer callData)
          NULL);   
       XtAddCallback (pb, XmNactivateCallback, 
                      SUMA_cb_SurfCont_SwitchColPlane, (XtPointer)ado);
-      MCW_register_hint(pb , "Switch between datasets" ) ;
-      MCW_register_help(pb , SUMA_SurfContHelp_DsetSwitch ) ;
+      SUMA_Register_Widget_Help(pb, "SurfCont->Dset_Controls->Switch_Dset",
+                                "Switch between datasets", 
+                                SUMA_SurfContHelp_DsetSwitch ) ;
       XtManageChild (pb);
       
       pb = XtVaCreateWidget ("Load Dset", 
@@ -8007,9 +8155,9 @@ void SUMA_cb_createSurfaceCont_SO(Widget w, XtPointer data, XtPointer callData)
             NULL);   
          XtAddCallback (pb, XmNactivateCallback, 
                         SUMA_cb_Dset_Load, (XtPointer) ado);
-         MCW_register_hint(pb ,  
-                  "Load a new dataset (much more with BHelp)" ) ;
-         MCW_register_help(pb ,  SUMA_SurfContHelp_DsetLoad ) ;
+         SUMA_Register_Widget_Help(pb, "SurfCont->Dset_Controls->Load_Dset",
+                                   "Load a new dataset (much more with BHelp)",
+                                   SUMA_SurfContHelp_DsetLoad ) ;
          XtManageChild (pb);
       
       pb = XtVaCreateWidget ("Delete", 
@@ -8024,8 +8172,9 @@ void SUMA_cb_createSurfaceCont_SO(Widget w, XtPointer data, XtPointer callData)
          NULL);   
       XtAddCallback (pb, XmNactivateCallback, 
                      SUMA_cb_ColPlane_Load, (XtPointer) ado);
-      MCW_register_hint(pb , "Load a new color plane (more with BHelp)" ) ;
-      MCW_register_help(pb , SUMA_SurfContHelp_DsetLoadCol  ) ;
+      SUMA_Register_Widget_Help(pb, "SurfCont->Dset_Controls->Load_Col",
+                                "Load a new color plane (more with BHelp)",
+                                SUMA_SurfContHelp_DsetLoadCol) ;
       XtManageChild (pb);
       
        
@@ -8049,6 +8198,7 @@ void SUMA_cb_createSurfaceCont_SO(Widget w, XtPointer data, XtPointer callData)
                            2, SUMA_int,
                            YUP,
                            SUMA_cb_SurfCont_SwitchPage, (void *)ado,
+                           "SurfCont->Disp_Cont->Switch",
                            "Switch to other object controller", 
                            "Switch to other object controller",
                            SurfCont->SurfContPage);
@@ -8334,7 +8484,8 @@ void SUMA_cb_createSurfaceCont_GLDO(Widget w, XtPointer data,
 
    DispFrame = SUMA_CloseBhelp_Frame(rc_gmamma,
                      SUMA_cb_closeSurfaceCont, (XtPointer) ado,
-                     "Close Surface controller", SUMA_closeSurfaceCont_help,
+                     "GraphCont",
+                     "Close Graph controller", SUMA_closeSurfaceCont_help,
                      NULL, NULL, NULL, NULL);
    
    XtVaCreateManagedWidget ("sep", xmSeparatorWidgetClass, rc_gmamma , NULL);
@@ -8435,8 +8586,11 @@ void SUMA_cb_createSurfaceCont_GLDO(Widget w, XtPointer data,
                         (XtPointer)SUMA_SurfCont_GetcurDOp(SurfCont));
       XtVaSetValues (SurfCont->SurfInfo_pb, XmNuserData, 
                      (XtPointer)SUMA_SurfCont_GetcurDOp(SurfCont), NULL); 
-      MCW_register_hint( SurfCont->SurfInfo_pb , "More info on Graph Dset" ) ;
-      MCW_register_help( SurfCont->SurfInfo_pb , SUMA_SurfContHelp_more ) ;
+
+      SUMA_Register_Widget_Help( SurfCont->SurfInfo_pb , 
+                                 "GraphCont->Graph_Dset_Properties->More",
+                                 "More info on Graph Dset" , 
+                                 SUMA_SurfContHelp_more ) ;
       XtManageChild (SurfCont->SurfInfo_pb); 
 
       XtManageChild (rc);
@@ -8463,7 +8617,8 @@ void SUMA_cb_createSurfaceCont_GLDO(Widget w, XtPointer data,
       SUMA_BuildMenu (rc, XmMENU_OPTION, 
                                  "Drw", '\0', YUP, RenderMode_Menu, 
                                  (void *)SUMA_SurfCont_GetcurDOp(SurfCont), 
-                        "Choose the rendering (drawing) mode for this surface.",
+                                 "GraphCont->NOT_USED_YET->Drw",
+                        "Choose the rendering (drawing) mode for this graph.",
                                  SUMA_SurfContHelp_RenderMode, 
                                  SurfCont->RenderModeMenu );
       XtManageChild (SurfCont->RenderModeMenu->mw[SW_SurfCont_Render]);
@@ -8474,7 +8629,8 @@ void SUMA_cb_createSurfaceCont_GLDO(Widget w, XtPointer data,
       SUMA_BuildMenu (rc, XmMENU_OPTION, 
                                  "Trn", '\0', YUP, TransMode_Menu, 
                                  (void *)SUMA_SurfCont_GetcurDOp(SurfCont), 
-                        "Choose the transparency for this surface.",
+                                 "GraphCont->NOT_USED_YET->Trn",
+                        "Choose the transparency for this graph.",
                                  SUMA_SurfContHelp_TransMode, 
                                  SurfCont->TransModeMenu );
       XtManageChild (SurfCont->TransModeMenu->mw[SW_SurfCont_Trans]);
@@ -8485,10 +8641,11 @@ void SUMA_cb_createSurfaceCont_GLDO(Widget w, XtPointer data,
       XtAddCallback (pb, XmNactivateCallback, 
                      SUMA_cb_ToggleManagementColPlaneWidget, 
                      (XtPointer)SUMA_SurfCont_GetcurDOp(SurfCont));
-      MCW_register_hint( pb , 
-                        "Show/Hide Dataset (previously Color Plane) "
-                        "controllers" ) ;
-      MCW_register_help( pb , SUMA_SurfContHelp_Dsets ) ;
+      SUMA_Register_Widget_Help( pb,
+                                 "GraphCont->NOT_USED_YET->Dsets",
+                                 "Show/Hide Dataset (previously Color Plane) "
+                                 "controllers", 
+                                 SUMA_SurfContHelp_Dsets ) ;
       XtManageChild (pb);
       
       XtManageChild (rc);
@@ -8531,7 +8688,7 @@ void SUMA_cb_createSurfaceCont_GLDO(Widget w, XtPointer data,
       XtManageChild(SurfCont->Xhair_fr);
    }  /* Xhair Controls */
 
-   SUMA_LHv("\nDset Mapping, surface %s\n", SUMA_ADO_Label(ado));
+   SUMA_LHv("\nGDset Mapping, graph %s\n", SUMA_ADO_Label(ado));
    {  /* Dset Mapping */
       Widget rcv;
       /* put a frame */
@@ -8546,7 +8703,7 @@ void SUMA_cb_createSurfaceCont_GLDO(Widget w, XtPointer data,
          XmNtraversalOn , False ,
          NULL); 
       
-      XtVaCreateManagedWidget ("Dset Mapping",
+      XtVaCreateManagedWidget ("GDset Mapping",
             xmLabelWidgetClass, SurfCont->DsetMap_fr, 
             XmNchildType, XmFRAME_TITLE_CHILD,
             XmNchildHorizontalAlignment, XmALIGNMENT_BEGINNING,
@@ -8569,7 +8726,7 @@ void SUMA_cb_createSurfaceCont_GLDO(Widget w, XtPointer data,
       XtManageChild(SurfCont->DsetMap_fr);
    }
 
-   SUMA_LH("Dset Controls");
+   SUMA_LH("GDset Controls");
    /* Dset Controls */
    {
        Widget rc, rcv, pb;
@@ -8583,7 +8740,7 @@ void SUMA_cb_createSurfaceCont_GLDO(Widget w, XtPointer data,
          XmNtraversalOn , False ,
          NULL); 
       
-      XtVaCreateManagedWidget ("Dset Controls",
+      XtVaCreateManagedWidget ("GDset Controls",
             xmLabelWidgetClass, SurfCont->ColPlane_fr, 
             XmNchildType, XmFRAME_TITLE_CHILD,
             XmNchildHorizontalAlignment, XmALIGNMENT_BEGINNING,
@@ -8616,6 +8773,7 @@ void SUMA_cb_createSurfaceCont_GLDO(Widget w, XtPointer data,
          int colw[]={ 3, 27};
          SUMA_CreateTable(rc, 
             1, 2,
+            "GraphCont->GDset_Controls->Lbl",
             Dset_tit, NULL,
             Dset_hint, NULL,
             Dset_help, NULL,
@@ -8639,6 +8797,7 @@ void SUMA_cb_createSurfaceCont_GLDO(Widget w, XtPointer data,
                            3, SUMA_float,
                            YUP,
                            SUMA_cb_ColPlane_NewDimFact, (void *)ado, 
+                           "GraphCont->GDset_Controls->Dim",
                            SUMA_SurfCont_ColPlaneDim_hint, 
                            SUMA_SurfContHelp_DsetDim,
                            SurfCont->ColPlaneDimFact);
@@ -8654,10 +8813,10 @@ void SUMA_cb_createSurfaceCont_GLDO(Widget w, XtPointer data,
                      XmNvalueChangedCallback, 
                      SUMA_cb_GDSET_ShowBundles_toggled, ado);
                   
-      MCW_register_help(SurfCont->GDSET_ShowBundles_tb , 
+      SUMA_Register_Widget_Help(SurfCont->GDSET_ShowBundles_tb , 
+                        "GraphCont->GDset_Controls->Bundles",
+                        "Show bundles instead of edges if possible.",
                         SUMA_SurfContHelp_GDSET_ViewBundles ) ;
-      MCW_register_hint(SurfCont->GDSET_ShowBundles_tb , 
-                        "Show bundles instead of edges if possible.") ;
       SUMA_SET_SELECT_COLOR(SurfCont->GDSET_ShowBundles_tb);
       
       SUMA_BuildMenuReset(0);
@@ -8666,6 +8825,7 @@ void SUMA_cb_createSurfaceCont_GLDO(Widget w, XtPointer data,
       SUMA_BuildMenu (rc, XmMENU_OPTION, 
                 "CN", '\0', YUP, DsetThrough_Menu,
                 (void *)SUMA_SurfCont_GetcurDOp(SurfCont), 
+                "GraphCont->GDset_Controls->CN",
                 "How to display connection to selected graph node.",
                 SUMA_SurfContHelp_DsetThrough, 
                 SurfCont->DsetThroughMenu );
@@ -8689,6 +8849,7 @@ void SUMA_cb_createSurfaceCont_GLDO(Widget w, XtPointer data,
       SUMA_BuildMenu (rc, XmMENU_OPTION, 
                 "Rd", '\0', YUP, DsetNodeRad_Menu,
                 (void *)SUMA_SurfCont_GetcurDOp(SurfCont), 
+                "GraphCont->GDset_Controls->Rd",
                 "Choose the sizing option for graph nodes.",
                 SUMA_SurfContHelp_DsetNodeRad, 
                 SurfCont->DsetNodeRadMenu );
@@ -8699,6 +8860,7 @@ void SUMA_cb_createSurfaceCont_GLDO(Widget w, XtPointer data,
                            3, SUMA_float,
                            YUP,
                            SUMA_cb_ColPlane_NewNodeRadGain, (void *)ado, 
+                           "GraphCont->GDset_Controls->Rd->Gn",
                            SUMA_SurfCont_NodeRadGain_hint, 
                            SUMA_SurfContHelp_DsetNodeRadGain,
                            SurfCont->NodeRadGainAF);
@@ -8709,6 +8871,7 @@ void SUMA_cb_createSurfaceCont_GLDO(Widget w, XtPointer data,
       SUMA_BuildMenu (rc, XmMENU_OPTION, 
                 "Br", '\0', YUP, DsetGmatBord_Menu,
                 (void *)SUMA_SurfCont_GetcurDOp(SurfCont), 
+                "GraphCont->GDset_Controls->Br",
                 "Choose the partition ratio of matrix.",
                 SUMA_SurfContHelp_DsetGmatBord, 
                 SurfCont->DsetGmatBordMenu );
@@ -8729,6 +8892,7 @@ void SUMA_cb_createSurfaceCont_GLDO(Widget w, XtPointer data,
       SUMA_BuildMenu (rc, XmMENU_OPTION, 
                 "Fo", '\0', YUP, DsetFont_Menu,
                 (void *)SUMA_SurfCont_GetcurDOp(SurfCont), 
+                "GraphCont->GDset_Controls->Fo",
                 "Choose the font for graph node labels.",
                 SUMA_SurfContHelp_DsetFont, 
                 SurfCont->DsetFontMenu );
@@ -8742,6 +8906,7 @@ void SUMA_cb_createSurfaceCont_GLDO(Widget w, XtPointer data,
       SUMA_BuildMenu (rc, XmMENU_OPTION, 
                 "Cl", '\0', YUP, DsetNodeCol_Menu,
                 (void *)SUMA_SurfCont_GetcurDOp(SurfCont), 
+                "GraphCont->GDset_Controls->Cl",
                 "Choose the coloring option for graph nodes.",
                 SUMA_SurfContHelp_DsetNodeCol, 
                 SurfCont->DsetNodeColMenu );
@@ -8754,6 +8919,7 @@ void SUMA_cb_createSurfaceCont_GLDO(Widget w, XtPointer data,
       SUMA_BuildMenu (rc, XmMENU_OPTION, 
                 "Sh", '\0', YUP, DsetTxtShad_Menu,
                 (void *)SUMA_SurfCont_GetcurDOp(SurfCont), 
+                "GraphCont->GDset_Controls->Sh",
                 "Choose the partition ratio of matrix.",
                 SUMA_SurfContHelp_DsetTxtShad, 
                 SurfCont->DsetTxtShadMenu );
@@ -8767,11 +8933,10 @@ void SUMA_cb_createSurfaceCont_GLDO(Widget w, XtPointer data,
       XtAddCallback (SurfCont->GDSET_ShowUncon_tb, 
                      XmNvalueChangedCallback, 
                      SUMA_cb_GDSET_ShowUncon_toggled, ado);
-                  
-      MCW_register_help(SurfCont->GDSET_ShowUncon_tb , 
-                        SUMA_SurfContHelp_GDSET_ViewUncon) ;
-      MCW_register_hint(SurfCont->GDSET_ShowUncon_tb , 
-                        "Show Unconnected Graph Points.") ;
+      SUMA_Register_Widget_Help(SurfCont->GDSET_ShowUncon_tb , 
+                        "GraphCont->GDset_Controls->U",
+                        "Show Unconnected Graph Points.",
+                        SUMA_SurfContHelp_GDSET_ViewUncon) ;            
       SUMA_SET_SELECT_COLOR(SurfCont->GDSET_ShowUncon_tb);
            
 
@@ -8792,6 +8957,7 @@ void SUMA_cb_createSurfaceCont_GLDO(Widget w, XtPointer data,
       SUMA_BuildMenu (rc, XmMENU_OPTION, 
                 "Th", '\0', YUP, DsetEdgeThick_Menu,
                 (void *)SUMA_SurfCont_GetcurDOp(SurfCont), 
+                "GraphCont->GDset_Controls->Th",
                 "Choose the thickness option for graph edges.",
                 SUMA_SurfContHelp_DsetEdgeThick, 
                 SurfCont->DsetEdgeThickMenu );
@@ -8802,6 +8968,7 @@ void SUMA_cb_createSurfaceCont_GLDO(Widget w, XtPointer data,
                            3, SUMA_float,
                            YUP,
                            SUMA_cb_ColPlane_NewEdgeThickGain, (void *)ado, 
+                           "GraphCont->GDset_Controls->Th->Gn",
                            SUMA_SurfCont_EdgeThickGain_hint, 
                            SUMA_SurfContHelp_DsetEdgeThickGain,
                            SurfCont->EdgeThickGainAF);
@@ -8813,6 +8980,7 @@ void SUMA_cb_createSurfaceCont_GLDO(Widget w, XtPointer data,
       SUMA_BuildMenu (rc, XmMENU_OPTION, 
                 "St", '\0', YUP, DsetEdgeStip_Menu,
                 (void *)SUMA_SurfCont_GetcurDOp(SurfCont), 
+                "GraphCont->GDset_Controls->St",
                 "Choose the stippling option for graph edges.",
                 SUMA_SurfContHelp_DsetEdgeStip, 
                 SurfCont->DsetEdgeStipMenu );
@@ -8821,6 +8989,10 @@ void SUMA_cb_createSurfaceCont_GLDO(Widget w, XtPointer data,
       XtManageChild (rc);
      
       
+      #if 0 
+         /* Not sure this is all that useful here.
+            Makes no sense to load a new dataset onto an existing one.
+            Switching certainly makes no sense... */
       XtVaCreateManagedWidget (  "sep", 
                                  xmSeparatorWidgetClass, rcv, 
                                  XmNorientation, XmHORIZONTAL,NULL);
@@ -8849,8 +9021,9 @@ void SUMA_cb_createSurfaceCont_GLDO(Widget w, XtPointer data,
          NULL);   
       XtAddCallback (pb, XmNactivateCallback, 
                      SUMA_cb_SurfCont_SwitchColPlane, (XtPointer)ado);
-      MCW_register_hint(pb , "Switch between datasets" ) ;
-      MCW_register_help(pb , SUMA_SurfContHelp_DsetSwitch ) ;
+      SUMA_Register_Widget_Help(pb, "GraphCont->GDset_Controls->Switch_Dset",
+                                "Switch between datasets", 
+                                SUMA_SurfContHelp_DsetSwitch ) ;
       XtManageChild (pb);
       
       pb = XtVaCreateWidget ("Load Dset", 
@@ -8858,9 +9031,9 @@ void SUMA_cb_createSurfaceCont_GLDO(Widget w, XtPointer data,
             NULL);   
          XtAddCallback (pb, XmNactivateCallback, 
                         SUMA_cb_Dset_Load, (XtPointer) ado);
-         MCW_register_hint(pb ,  
-                  "Load a new dataset (much more with BHelp)" ) ;
-         MCW_register_help(pb ,  SUMA_SurfContHelp_DsetLoad ) ;
+         SUMA_Register_Widget_Help(pb, "GraphCont->GDset_Controls->Load_Dset",
+                                   "Load a new dataset (much more with BHelp)",
+                                   SUMA_SurfContHelp_DsetLoad ) ;
          XtManageChild (pb);
       
       pb = XtVaCreateWidget ("Delete", 
@@ -8873,6 +9046,8 @@ void SUMA_cb_createSurfaceCont_GLDO(Widget w, XtPointer data,
       
        
       XtManageChild (rc);
+      #endif
+      
       /* manage vertical row column */
       XtManageChild (rcv);
       
@@ -8893,6 +9068,7 @@ void SUMA_cb_createSurfaceCont_GLDO(Widget w, XtPointer data,
                            2, SUMA_int,
                            YUP,
                            SUMA_cb_SurfCont_SwitchPage, (void *)ado,
+                           "GraphCont->Disp_Cont->Switch",
                            "Switch to other object controller", 
                            "Switch to other object controller",
                            SurfCont->SurfContPage);
@@ -9179,6 +9355,7 @@ void SUMA_cb_createSurfaceCont_TDO(Widget w, XtPointer data,
 
    DispFrame = SUMA_CloseBhelp_Frame(rc_gmamma,
                      SUMA_cb_closeSurfaceCont, (XtPointer) ado,
+                     "TractCont",
                      "Close Surface controller", SUMA_closeSurfaceCont_help,
                      NULL, NULL, NULL, NULL);
    
@@ -9281,8 +9458,10 @@ void SUMA_cb_createSurfaceCont_TDO(Widget w, XtPointer data,
                         (XtPointer)SUMA_SurfCont_GetcurDOp(SurfCont));
       XtVaSetValues (SurfCont->SurfInfo_pb, XmNuserData, 
                      (XtPointer)SUMA_SurfCont_GetcurDOp(SurfCont), NULL); 
-      MCW_register_hint( SurfCont->SurfInfo_pb , "More info on Tract" ) ;
-      MCW_register_help( SurfCont->SurfInfo_pb , SUMA_SurfContHelp_more ) ;
+      SUMA_Register_Widget_Help( SurfCont->SurfInfo_pb,
+                                 "TractCont->Tract_Properties->more",
+                                 "More info on Tract" , 
+                                 SUMA_SurfContHelp_more ) ;
       XtManageChild (SurfCont->SurfInfo_pb); 
 
       XtManageChild (rc);
@@ -9409,6 +9588,7 @@ void SUMA_cb_createSurfaceCont_TDO(Widget w, XtPointer data,
          int colw[]={ 3, 27};
          SUMA_CreateTable(rc, 
             1, 2,
+            "TractCont->Coloring_Controls->Lbl",
             Dset_tit, NULL,
             Dset_hint, NULL,
             Dset_help, NULL,
@@ -9432,6 +9612,7 @@ void SUMA_cb_createSurfaceCont_TDO(Widget w, XtPointer data,
                            3, SUMA_float,
                            YUP,
                            SUMA_cb_ColPlane_NewDimFact, (void *)ado, 
+                           "TractCont->Coloring_Controls->Dim",
                            SUMA_SurfCont_ColPlaneDim_hint, 
                            SUMA_SurfContHelp_DsetDim,
                            SurfCont->ColPlaneDimFact);
@@ -9441,6 +9622,7 @@ void SUMA_cb_createSurfaceCont_TDO(Widget w, XtPointer data,
                            2, SUMA_int,
                            NOPE,
                            SUMA_cb_ColPlane_NewOrder, (void *)ado,
+                           "TractCont->Coloring_Controls->Ord",
                            SUMA_SurfCont_ColPlaneOrder_hint, 
                            SUMA_SurfContHelp_DsetOrd,
                            SurfCont->ColPlaneOrder);
@@ -9454,10 +9636,10 @@ void SUMA_cb_createSurfaceCont_TDO(Widget w, XtPointer data,
                      XmNvalueChangedCallback, 
                      SUMA_cb_ColPlaneShowOneFore_toggled, ado);
                   
-      MCW_register_help(SurfCont->ColPlaneShowOneFore_tb , 
-                        SUMA_SurfContHelp_DsetViewOne ) ;
-      MCW_register_hint(SurfCont->ColPlaneShowOneFore_tb , 
-             "Show ONLY selected set. Foreground only. BHelp for more.\n") ;
+      SUMA_Register_Widget_Help(SurfCont->ColPlaneShowOneFore_tb ,
+                                "TractCont->Coloring_Controls->1",
+             "Show ONLY selected set. Foreground only. BHelp for more.",
+                                SUMA_SurfContHelp_DsetViewOne ) ;
       SUMA_SET_SELECT_COLOR(SurfCont->ColPlaneShowOneFore_tb);
            
       /* manage  rc */
@@ -9477,6 +9659,7 @@ void SUMA_cb_createSurfaceCont_TDO(Widget w, XtPointer data,
                            3, SUMA_float,
                            NOPE,
                            SUMA_cb_ColPlane_NewOpacity, (void *)ado,
+                           "TractCont->Coloring_Controls->Opa",
                            SUMA_SurfCont_ColPlaneOpacity_hint,
                            SUMA_SurfContHelp_DsetOpa,
                            SurfCont->ColPlaneOpacity);
@@ -9487,6 +9670,7 @@ void SUMA_cb_createSurfaceCont_TDO(Widget w, XtPointer data,
       SUMA_BuildMenu (rc, XmMENU_OPTION, 
                 "Ln", '\0', YUP, TractStyle_Menu,
                 (void *)SUMA_SurfCont_GetcurDOp(SurfCont), 
+                "TractCont->Coloring_Controls->Ln",
                 "Line drawing style",
                 SUMA_SurfContHelp_TractStyle, 
                 SurfCont->TractStyleMenu );
@@ -9509,17 +9693,19 @@ void SUMA_cb_createSurfaceCont_TDO(Widget w, XtPointer data,
                         (XtPointer)SUMA_SurfCont_GetcurDOp(SurfCont));
       XtVaSetValues (SurfCont->Mask_pb, XmNuserData, 
                      (XtPointer)SUMA_SurfCont_GetcurDOp(SurfCont), NULL); 
-      MCW_register_hint( SurfCont->Mask_pb , "Switch to Masks controller" ) ;
-      MCW_register_help( SurfCont->Mask_pb , SUMA_SurfContHelp_Mask ) ;
+      SUMA_Register_Widget_Help( SurfCont->Mask_pb , 
+                                 "TractCont->Coloring_Controls->Masks",
+                                 "Create/Switch to Masks controller",
+                                 SUMA_SurfContHelp_Mask ) ;
       XtManageChild (SurfCont->Mask_pb); 
  
-         
       SUMA_BuildMenuReset(0);
       SurfCont->TractMaskMenu =
           SUMA_Alloc_Menu_Widget(SW_N_SurfCont_TractMask);
       SUMA_BuildMenu (rc, XmMENU_OPTION, 
                 "", '\0', YUP, TractMask_Menu,
                 (void *)SUMA_SurfCont_GetcurDOp(SurfCont), 
+                "TractCont->Coloring_Controls->Hde",
                 "Choose how masked tracts are displayed.",
                 SUMA_SurfContHelp_TractMask, 
                 SurfCont->TractMaskMenu );
@@ -9533,6 +9719,7 @@ void SUMA_cb_createSurfaceCont_TDO(Widget w, XtPointer data,
                            2, SUMA_int,
                            NOPE,
                            SUMA_cb_Tract_NewGray, (void *)ado,
+                           "TractCont->Coloring_Controls->Gry",
                            SUMA_SurfCont_TractMask_hint,
                            SUMA_SurfContHelp_TractMaskGray,
                            SurfCont->TractMaskGray);
@@ -9569,19 +9756,20 @@ void SUMA_cb_createSurfaceCont_TDO(Widget w, XtPointer data,
          NULL);   
       XtAddCallback (pb, XmNactivateCallback, 
                      SUMA_cb_SurfCont_SwitchColPlane, (XtPointer)ado);
-      MCW_register_hint(pb , "Switch between datasets" ) ;
-      MCW_register_help(pb , SUMA_SurfContHelp_DsetSwitch ) ;
+      SUMA_Register_Widget_Help(pb, "TractCont->Coloring_Controls->Switch_Dset",
+                                "Switch between datasets",
+                                SUMA_SurfContHelp_DsetSwitch ) ;
       XtManageChild (pb);
       
       pb = XtVaCreateWidget ("Load Dset", 
             xmPushButtonWidgetClass, rc, 
             NULL);   
-         XtAddCallback (pb, XmNactivateCallback, 
-                        SUMA_cb_Dset_Load, (XtPointer) ado);
-         MCW_register_hint(pb ,  
-                  "Load a new dataset (much more with BHelp)" ) ;
-         MCW_register_help(pb ,  SUMA_SurfContHelp_DsetLoad ) ;
-         XtManageChild (pb);
+      XtAddCallback (pb, XmNactivateCallback, 
+                     SUMA_cb_Dset_Load, (XtPointer) ado);
+      SUMA_Register_Widget_Help(pb, "TractCont->Coloring_Controls->Load_Dset",
+                                "Load a new dataset (much more with BHelp)",
+                                SUMA_SurfContHelp_DsetLoad ) ;
+      /* XtManageChild (pb); Not ready just yet */
       
       pb = XtVaCreateWidget ("Delete", 
          xmPushButtonWidgetClass, rc, 
@@ -9613,6 +9801,7 @@ void SUMA_cb_createSurfaceCont_TDO(Widget w, XtPointer data,
                            2, SUMA_int,
                            YUP,
                            SUMA_cb_SurfCont_SwitchPage, (void *)ado,
+                           "TractCont->Disp_Cont->Switch",
                            "Switch to other object controller", 
                            "Switch to other object controller",
                            SurfCont->SurfContPage);
@@ -9881,6 +10070,7 @@ void SUMA_cb_createSurfaceCont_VO(Widget w, XtPointer data, XtPointer callData)
 
    DispFrame = SUMA_CloseBhelp_Frame(rc_gmamma,
                      SUMA_cb_closeSurfaceCont, (XtPointer) ado,
+                     "VolCont",
                      "Close Surface controller", SUMA_closeSurfaceCont_help,
                      NULL, NULL, NULL, NULL);
    
@@ -9982,8 +10172,10 @@ void SUMA_cb_createSurfaceCont_VO(Widget w, XtPointer data, XtPointer callData)
                         (XtPointer)SUMA_SurfCont_GetcurDOp(SurfCont));
       XtVaSetValues (SurfCont->SurfInfo_pb, XmNuserData, 
                      (XtPointer)SUMA_SurfCont_GetcurDOp(SurfCont), NULL); 
-      MCW_register_hint( SurfCont->SurfInfo_pb , "More info on Volume" ) ;
-      MCW_register_help( SurfCont->SurfInfo_pb , SUMA_SurfContHelp_more ) ;
+      SUMA_Register_Widget_Help( SurfCont->SurfInfo_pb ,
+                                 "VolCont->Volume_Properties->more",
+                                 "More info on Volume",
+                                 SUMA_SurfContHelp_more ) ;
       XtManageChild (SurfCont->SurfInfo_pb); 
 
       XtManageChild (rc);
@@ -10119,6 +10311,7 @@ void SUMA_cb_createSurfaceCont_VO(Widget w, XtPointer data, XtPointer callData)
       SUMA_BuildMenu (  rch, XmMENU_OPTION, 
                         "Trn", '\0', YUP, VTransMode_Menu, 
                         (void *)SUMA_SurfCont_GetcurDOp(SurfCont), 
+                        "VolCont->Slice_Controls->Trn",
                         "Choose the transparency for these slices.",
                         SUMA_SurfContHelp_VTransMode, 
                         SurfCont->VTransModeMenu );
@@ -10129,10 +10322,10 @@ void SUMA_cb_createSurfaceCont_VO(Widget w, XtPointer data, XtPointer callData)
                         xmToggleButtonWidgetClass, rch, NULL);
       XtAddCallback (SurfCont->VSliceAtXYZ_tb, 
                   XmNvalueChangedCallback, SUMA_cb_VSliceAtXYZ_toggled, ado);
-      MCW_register_hint(SurfCont->VSliceAtXYZ_tb,   
-                        "Make slices jump to crosshair location");
-      MCW_register_help(SurfCont->VSliceAtXYZ_tb,   
-                        "Make slices jump to crosshair location");
+      SUMA_Register_Widget_Help(SurfCont->VSliceAtXYZ_tb,
+                                "VolCont->Slice_Controls->Slices_At_+",
+                                "Make slices jump to crosshair location",
+                                "Make slices jump to crosshair location");
 
       SUMA_SET_SELECT_COLOR(SurfCont->VSliceAtXYZ_tb);
       XmToggleButtonSetState (SurfCont->VSliceAtXYZ_tb, 
@@ -10226,6 +10419,7 @@ void SUMA_cb_createSurfaceCont_VO(Widget w, XtPointer data, XtPointer callData)
          int colw[]={ 3, 27};
          SUMA_CreateTable(rc, 
             1, 2,
+            "VolCont->Dset_Controls->Lbl",
             Dset_tit, NULL,
             Dset_hint, NULL,
             Dset_help, NULL,
@@ -10249,6 +10443,7 @@ void SUMA_cb_createSurfaceCont_VO(Widget w, XtPointer data, XtPointer callData)
                            3, SUMA_float,
                            YUP,
                            SUMA_cb_ColPlane_NewDimFact, (void *)ado, 
+                           "VolCont->Dset_Controls->Dim",
                            SUMA_SurfCont_ColPlaneDim_hint, 
                            SUMA_SurfContHelp_DsetDim,
                            SurfCont->ColPlaneDimFact);
@@ -10259,6 +10454,7 @@ void SUMA_cb_createSurfaceCont_VO(Widget w, XtPointer data, XtPointer callData)
                            2, SUMA_int,
                            NOPE,
                            SUMA_cb_ColPlane_NewOrder, (void *)ado,
+                           "VolCont->Dset_Controls->Ord",
                            SUMA_SurfCont_ColPlaneOrder_hint, 
                            SUMA_SurfContHelp_DsetOrd,
                            SurfCont->ColPlaneOrder);
@@ -10280,6 +10476,7 @@ void SUMA_cb_createSurfaceCont_VO(Widget w, XtPointer data, XtPointer callData)
       SUMA_BuildMenu (rc, XmMENU_OPTION, 
                 "Avl", '\0', YUP, DsetAlphaVal_Menu,
                 (void *)SUMA_SurfCont_GetcurDOp(SurfCont), 
+                "VolCont->Dset_Controls->Avl",
                 "Choose method for computing color alpha value for voxels.",
                 SUMA_SurfContHelp_DsetAlphaVal, 
                 SurfCont->DsetAlphaValMenu );
@@ -10290,6 +10487,7 @@ void SUMA_cb_createSurfaceCont_VO(Widget w, XtPointer data, XtPointer callData)
                            3, SUMA_float,
                            YUP,
                            SUMA_cb_ColPlane_NewAlphaThresh, (void *)ado, 
+                           "VolCont->Dset_Controls->Ath",
                            SUMA_SurfCont_ColPlaneAlphaThresh_hint, 
                            SUMA_SurfContHelp_DsetAlphaThresh,
                            SurfCont->ColPlaneAlphaThresh);
@@ -10305,10 +10503,10 @@ void SUMA_cb_createSurfaceCont_VO(Widget w, XtPointer data, XtPointer callData)
                      XmNvalueChangedCallback, 
                      SUMA_cb_ColPlaneShowOneFore_toggled, ado);
                   
-      MCW_register_help(SurfCont->ColPlaneShowOneFore_tb , 
-                        SUMA_SurfContHelp_DsetViewOne ) ;
-      MCW_register_hint(SurfCont->ColPlaneShowOneFore_tb , 
-             "Show ONLY selected set. Foreground only. BHelp for more.\n") ;
+      SUMA_Register_Widget_Help(SurfCont->ColPlaneShowOneFore_tb , 
+                                "VolCont->Dset_Controls->1",
+             "Show ONLY selected set. Foreground only. BHelp for more.\n",
+                                SUMA_SurfContHelp_DsetViewOne ) ;
       SUMA_SET_SELECT_COLOR(SurfCont->ColPlaneShowOneFore_tb);
       #endif
       
@@ -10321,6 +10519,7 @@ void SUMA_cb_createSurfaceCont_VO(Widget w, XtPointer data, XtPointer callData)
                            3, SUMA_float,
                            NOPE,
                            SUMA_cb_ColPlane_NewOpacity, (void *)ado,
+                           "VolCont->Dset_Controls->Opa",
                            SUMA_SurfCont_ColPlaneOpacity_hint,
                            SUMA_SurfContHelp_DsetOpa,
                            SurfCont->ColPlaneOpacity);
@@ -10355,19 +10554,22 @@ void SUMA_cb_createSurfaceCont_VO(Widget w, XtPointer data, XtPointer callData)
          NULL);   
       XtAddCallback (pb, XmNactivateCallback, 
                      SUMA_cb_SurfCont_SwitchColPlane, (XtPointer)ado);
-      MCW_register_hint(pb , "Switch between datasets" ) ;
-      MCW_register_help(pb , SUMA_SurfContHelp_DsetSwitch ) ;
+      SUMA_Register_Widget_Help(pb,
+                                "VolCont->Dset_Controls->Switch_Dset",
+                                "Switch between datasets",
+                                SUMA_SurfContHelp_DsetSwitch ) ;
       XtManageChild (pb);
       
       pb = XtVaCreateWidget ("Load Dset", 
             xmPushButtonWidgetClass, rc, 
             NULL);   
-         XtAddCallback (pb, XmNactivateCallback, 
-                        SUMA_cb_Dset_Load, (XtPointer) ado);
-         MCW_register_hint(pb ,  
-                  "Load a new dataset (much more with BHelp)" ) ;
-         MCW_register_help(pb ,  SUMA_SurfContHelp_DsetLoad ) ;
-         XtManageChild (pb);
+      XtAddCallback (pb, XmNactivateCallback, 
+                     SUMA_cb_Dset_Load, (XtPointer) ado);
+      SUMA_Register_Widget_Help(pb,
+                                "VolCont->Dset_Controls->Load_Dset",
+                                "Load a new dataset (much more with BHelp)",
+                                SUMA_SurfContHelp_DsetLoad ) ;
+      XtManageChild (pb);
       
       pb = XtVaCreateWidget ("Delete", 
          xmPushButtonWidgetClass, rc, 
@@ -10399,6 +10601,7 @@ void SUMA_cb_createSurfaceCont_VO(Widget w, XtPointer data, XtPointer callData)
                            2, SUMA_int,
                            YUP,
                            SUMA_cb_SurfCont_SwitchPage, (void *)ado,
+                           "VolCont->Disp_Cont->Switch",
                            "Switch to other object controller", 
                            "Switch to other object controller",
                            SurfCont->SurfContPage);
@@ -12067,11 +12270,10 @@ void SUMA_CreateDrawROIWindow(void)
       XtVaCreateManagedWidget ("Parent: N/A", 
             xmLabelWidgetClass, rc,
             NULL);
-   MCW_register_help(SUMAg_CF->X->DrawROI->ParentLabel_lb , 
-                     SUMA_DrawROI_ParentLabel_help ) ;
-   MCW_register_hint(SUMAg_CF->X->DrawROI->ParentLabel_lb , 
-                     "Label of the ROI's parent surface" ) ;
-   
+   SUMA_Register_Widget_Help(SUMAg_CF->X->DrawROI->ParentLabel_lb,
+                             "Draw_ROI->ROI->Parent",
+                             "Label of the ROI's parent surface",
+                             SUMA_DrawROI_ParentLabel_help ) ;   
    XtManageChild(rc);
    
    /* row column for the surface labels and the toggle DrawROI buttons */
@@ -12096,10 +12298,10 @@ void SUMA_CreateDrawROIWindow(void)
    XtAddCallback (SUMAg_CF->X->DrawROI->DrawROImode_tb, 
                   XmNvalueChangedCallback, SUMA_cb_DrawROImode_toggled, 
                   NULL);
-   MCW_register_help(SUMAg_CF->X->DrawROI->DrawROImode_tb , 
+   SUMA_Register_Widget_Help(SUMAg_CF->X->DrawROI->DrawROImode_tb , 
+                     "Draw_ROI->ROI->Draw",
+                     "Toggles ROI drawing mode",
                      SUMA_DrawROI_DrawROIMode_help ) ;
-   MCW_register_hint(SUMAg_CF->X->DrawROI->DrawROImode_tb , 
-                     "Toggles ROI drawing mode" ) ;
 
    /* set the toggle button's select color */
    SUMA_SET_SELECT_COLOR(SUMAg_CF->X->DrawROI->DrawROImode_tb);
@@ -12114,10 +12316,10 @@ void SUMA_CreateDrawROIWindow(void)
    XtAddCallback (SUMAg_CF->X->DrawROI->ContROImode_tb, 
                   XmNvalueChangedCallback, SUMA_cb_ContROImode_toggled, 
                   NULL);
-   MCW_register_help(SUMAg_CF->X->DrawROI->ContROImode_tb , 
+   SUMA_Register_Widget_Help(SUMAg_CF->X->DrawROI->ContROImode_tb ,
+                     "Draw_ROI->ROI->Cont.",
+                     "Toggles showing ROI contours",
                      SUMA_DrawROI_ContROIMode_help ) ;
-   MCW_register_hint(SUMAg_CF->X->DrawROI->ContROImode_tb , 
-                     "Toggles showing ROI contours" ) ;
 
    /* set the toggle button's select color */
    SUMA_SET_SELECT_COLOR(SUMAg_CF->X->DrawROI->ContROImode_tb);
@@ -12132,10 +12334,10 @@ void SUMA_CreateDrawROIWindow(void)
    XtAddCallback (SUMAg_CF->X->DrawROI->Penmode_tb, 
                   XmNvalueChangedCallback, SUMA_cb_DrawROIPen_toggled, 
                   NULL);
-   MCW_register_help(SUMAg_CF->X->DrawROI->Penmode_tb , 
+   SUMA_Register_Widget_Help(SUMAg_CF->X->DrawROI->Penmode_tb , 
+                     "Draw_ROI->ROI->Pen",
+                     "Toggles Pen drawing mode",
                      SUMA_DrawROI_PenMode_help ) ;
-   MCW_register_hint(SUMAg_CF->X->DrawROI->Penmode_tb , 
-                     "Toggles Pen drawing mode" ) ;
 
    /* set the toggle button's select color */
    SUMA_SET_SELECT_COLOR(SUMAg_CF->X->DrawROI->Penmode_tb);
@@ -12161,10 +12363,10 @@ void SUMA_CreateDrawROIWindow(void)
    XtAddCallback (SUMAg_CF->X->DrawROI->AfniLink_tb, 
                   XmNvalueChangedCallback, SUMA_cb_AfniLink_toggled, 
                   NULL);
-   MCW_register_help(SUMAg_CF->X->DrawROI->AfniLink_tb , 
+   SUMA_Register_Widget_Help(SUMAg_CF->X->DrawROI->AfniLink_tb , 
+                     "Draw_ROI->ROI->Afni",
+                     "Toggles Link to Afni",
                      SUMA_DrawROI_AfniLink_help ) ;
-   MCW_register_hint(SUMAg_CF->X->DrawROI->AfniLink_tb , 
-                     "Toggles Link to Afni" ) ;
 
    /* set the toggle button's select color */
    SUMA_SET_SELECT_COLOR(SUMAg_CF->X->DrawROI->AfniLink_tb);
@@ -12177,6 +12379,7 @@ void SUMA_CreateDrawROIWindow(void)
    SUMA_BuildMenu (rc, XmMENU_OPTION, 
                    "Dist", '\0', YUP, DrawROI_WhatDist_Menu, 
                    "DoDist", 
+                   "Draw_ROI->ROI->Dist",
                    "Report length of drawn segments? (BHelp for more)", 
                    SUMA_DrawROI_WhatDist_help,   
                    SUMAg_CF->X->DrawROI->WhatDistMenu);
@@ -12197,6 +12400,7 @@ void SUMA_CreateDrawROIWindow(void)
    
    SUMA_CreateTextField ( rc, "Label:",
                            6, SUMA_DrawROI_NewLabel,
+                           "Draw_ROI->ROI->Label",
                            "Label of ROI being drawn", SUMA_DrawROI_Label_help,
                            SUMAg_CF->X->DrawROI->ROIlbl);
                         
@@ -12205,6 +12409,7 @@ void SUMA_CreateDrawROIWindow(void)
                            3, SUMA_int,
                            NOPE,
                            SUMA_DrawROI_NewValue, NULL,
+                           "Draw_ROI->ROI->Value",
                            "Integer value associated with ROI", 
                            SUMA_DrawROI_Value_help,
                            SUMAg_CF->X->DrawROI->ROIval);
@@ -12229,9 +12434,10 @@ void SUMA_CreateDrawROIWindow(void)
       NULL);
    XtAddCallback (SUMAg_CF->X->DrawROI->Undo_pb, 
                   XmNactivateCallback, SUMA_cb_DrawROI_Undo, NULL);   
-   MCW_register_help(SUMAg_CF->X->DrawROI->Undo_pb , SUMA_DrawROI_Undo_help ) ;
-   MCW_register_hint(SUMAg_CF->X->DrawROI->Undo_pb , 
-                     "Undo the last action on the stack" ) ;
+   SUMA_Register_Widget_Help(SUMAg_CF->X->DrawROI->Undo_pb,
+                             "Draw_ROI->ROI->Undo",
+                             "Undo the last action on the stack",
+                             SUMA_DrawROI_Undo_help ) ;
    XtManageChild (SUMAg_CF->X->DrawROI->Undo_pb);
    
    SUMAg_CF->X->DrawROI->Redo_pb = XtVaCreateWidget ("Redo", 
@@ -12239,9 +12445,10 @@ void SUMA_CreateDrawROIWindow(void)
       NULL);
    XtAddCallback (SUMAg_CF->X->DrawROI->Redo_pb, 
                   XmNactivateCallback, SUMA_cb_DrawROI_Redo, NULL);
-   MCW_register_help(SUMAg_CF->X->DrawROI->Redo_pb , SUMA_DrawROI_Redo_help ) ;
-   MCW_register_hint(SUMAg_CF->X->DrawROI->Redo_pb , 
-                     "Redo the last undone action" ) ;
+   SUMA_Register_Widget_Help(SUMAg_CF->X->DrawROI->Redo_pb ,
+                             "Draw_ROI->ROI->Redo",
+                             "Redo the last undone action",
+                             SUMA_DrawROI_Redo_help ) ;
    XtManageChild (SUMAg_CF->X->DrawROI->Redo_pb);
    
    XtVaCreateManagedWidget (  "sep", 
@@ -12253,9 +12460,10 @@ void SUMA_CreateDrawROIWindow(void)
       NULL);
    XtAddCallback (SUMAg_CF->X->DrawROI->Join_pb, 
                   XmNactivateCallback, SUMA_cb_DrawROI_Join, NULL);
-   MCW_register_help(SUMAg_CF->X->DrawROI->Join_pb , SUMA_DrawROI_Join_help ) ;
-   MCW_register_hint(SUMAg_CF->X->DrawROI->Join_pb , 
-                     "Join the first node of the path to the last" ) ;
+   SUMA_Register_Widget_Help(SUMAg_CF->X->DrawROI->Join_pb ,
+                             "Draw_ROI->ROI->Join",
+                             "Join the first node of the path to the last",
+                             SUMA_DrawROI_Join_help ) ;
    XtManageChild (SUMAg_CF->X->DrawROI->Join_pb);
                                  
    SUMAg_CF->X->DrawROI->Finish_pb = XtVaCreateWidget ("Finish", 
@@ -12263,10 +12471,10 @@ void SUMA_CreateDrawROIWindow(void)
       NULL);
    XtAddCallback (SUMAg_CF->X->DrawROI->Finish_pb, 
                   XmNactivateCallback, SUMA_cb_DrawROI_Finish, NULL);
-   MCW_register_help(SUMAg_CF->X->DrawROI->Finish_pb , 
-                     SUMA_DrawROI_Finish_help ) ;
-   MCW_register_hint(SUMAg_CF->X->DrawROI->Finish_pb , 
-                     "Label ROI as finished." ) ;
+   SUMA_Register_Widget_Help(SUMAg_CF->X->DrawROI->Finish_pb ,
+                             "Draw_ROI->ROI->Finish",
+                             "Label ROI as finished.",
+                             SUMA_DrawROI_Finish_help ) ;
    XtManageChild (SUMAg_CF->X->DrawROI->Finish_pb);
    
                                  
@@ -12301,8 +12509,10 @@ void SUMA_CreateDrawROIWindow(void)
                            rc_switch, NULL);
    XtAddCallback (pb, XmNactivateCallback, SUMA_cb_DrawROI_SwitchROI, 
                   SUMAg_CF->X->DrawROI->SwitchROIlst);
-   MCW_register_help(pb , SUMA_DrawROI_SwitchROI_help ) ;
-   MCW_register_hint(pb , "Switch between ROIs." ) ;
+   SUMA_Register_Widget_Help(pb,
+                             "Draw_ROI->ROI->Switch_ROI",
+                             "Switch between ROIs.",
+                             SUMA_DrawROI_SwitchROI_help ) ;
    XtManageChild (pb);
    
    SUMAg_CF->X->DrawROI->Load_pb = XtVaCreateWidget ("Load", 
@@ -12310,8 +12520,10 @@ void SUMA_CreateDrawROIWindow(void)
       NULL);
    XtAddCallback (SUMAg_CF->X->DrawROI->Load_pb, 
                   XmNactivateCallback, SUMA_cb_DrawROI_Load, NULL);
-   MCW_register_help(SUMAg_CF->X->DrawROI->Load_pb , SUMA_DrawROI_Load_help ) ;
-   MCW_register_hint(SUMAg_CF->X->DrawROI->Load_pb , "Load a Drawn ROI" ) ;
+   SUMA_Register_Widget_Help(SUMAg_CF->X->DrawROI->Load_pb ,
+                             "Draw_ROI->ROI->Load",
+                             "Load a Drawn ROI",
+                             SUMA_DrawROI_Load_help ) ;
    XtManageChild (SUMAg_CF->X->DrawROI->Load_pb);
    
    XtVaCreateManagedWidget (  "sep", 
@@ -12323,11 +12535,11 @@ void SUMA_CreateDrawROIWindow(void)
       NULL);
    XtAddCallback (SUMAg_CF->X->DrawROI->Delete_pb, 
                   XmNactivateCallback, SUMA_cb_DrawROI_Delete, NULL);
-   MCW_register_hint(   SUMAg_CF->X->DrawROI->Delete_pb , 
-                        "Click twice in 5 seconds to delete ROI. "
-                        "No Undo for this action." ) ;
-   MCW_register_help( SUMAg_CF->X->DrawROI->Delete_pb , 
-                      SUMA_DrawROI_DeleteROI_help);
+   SUMA_Register_Widget_Help(SUMAg_CF->X->DrawROI->Delete_pb , 
+                             "Draw_ROI->ROI->delete_ROI",
+                             "Click twice in 5 seconds to delete ROI. "
+                             "No Undo for this action.",
+                             SUMA_DrawROI_DeleteROI_help);
    MCW_set_widget_bg( SUMAg_CF->X->DrawROI->Delete_pb , 
                       MCW_hotcolor(SUMAg_CF->X->DrawROI->Delete_pb) , 0 ) ;
 
@@ -12354,9 +12566,10 @@ void SUMA_CreateDrawROIWindow(void)
       NULL);
    XtAddCallback (SUMAg_CF->X->DrawROI->Save_pb, 
                   XmNactivateCallback, SUMA_cb_DrawROI_Save, NULL);
-   MCW_register_help(SUMAg_CF->X->DrawROI->Save_pb , SUMA_DrawROI_Save_help ) ;
-   MCW_register_hint(SUMAg_CF->X->DrawROI->Save_pb , 
-                     "Save the Drawn ROI to disk." ) ;
+   SUMA_Register_Widget_Help(SUMAg_CF->X->DrawROI->Save_pb ,
+                             "Draw_ROI->ROI->Save",
+                             "Save the Drawn ROI to disk.",
+                             SUMA_DrawROI_Save_help ) ;
    XtManageChild (SUMAg_CF->X->DrawROI->Save_pb);
 
    /* Saving Mode */
@@ -12365,9 +12578,11 @@ void SUMA_CreateDrawROIWindow(void)
          SUMA_Alloc_Menu_Widget(SW_N_DrawROI_SaveMode);
    SUMA_BuildMenu (rc_save, XmMENU_OPTION, 
                                "", '\0', YUP, DrawROI_SaveMode_Menu, 
-                               "Frm.", "Format for saving ROI, "
-                                       "use NIML to preserve tracing order. "
-                                       "Use BHelp for more.", 
+                               "Frm.",
+                               "Draw_ROI->ROI->Save->NIML",
+                               "Format for saving ROI, "
+                               "use NIML to preserve tracing order. "
+                               "Use BHelp for more.", 
                                SUMA_DrawROI_SaveFormat_help, 
                                SUMAg_CF->X->DrawROI->SaveModeMenu);
    XtManageChild (SUMAg_CF->X->DrawROI->SaveModeMenu->mw[SW_DrawROI_SaveMode]);
@@ -12378,7 +12593,9 @@ void SUMA_CreateDrawROIWindow(void)
           SUMA_Alloc_Menu_Widget(SW_N_DrawROI_SaveWhat);
    SUMA_BuildMenu (rc_save, XmMENU_OPTION, 
                                "", '\0', YUP, DrawROI_SaveWhat_Menu, 
-                               "What", "Which ROIs to save?", 
+                               "What", 
+                               "Draw_ROI->ROI->Save->All",
+                               "Which ROIs to save?", 
                                SUMA_DrawROI_SaveWhat_help,   
                                SUMAg_CF->X->DrawROI->SaveWhatMenu);
    XtManageChild (SUMAg_CF->X->DrawROI->SaveWhatMenu->mw[SW_DrawROI_SaveWhat]);
@@ -12392,9 +12609,9 @@ void SUMA_CreateDrawROIWindow(void)
       xmPushButtonWidgetClass, rc_save, 
       NULL);
    XtAddCallback (pb, XmNactivateCallback, MCW_click_help_CB, NULL);  
-   MCW_register_help(pb , SUMA_help_help ) ;
-   MCW_register_hint(pb , 
-         "Press this button then click on a button/label/menu for more help." ) ;
+   SUMA_Register_Widget_Help(pb, "Draw_ROI->ROI->BHelp",
+         "Press this button then click on a button/label/menu for more help.",
+                             SUMA_help_help ) ;
    XtManageChild (pb);
     
    SUMAg_CF->X->DrawROI->Close_pb = XtVaCreateWidget ("Close", 
@@ -12402,9 +12619,10 @@ void SUMA_CreateDrawROIWindow(void)
       NULL);   
    XtAddCallback (SUMAg_CF->X->DrawROI->Close_pb, XmNactivateCallback, 
                   SUMA_cb_CloseDrawROIWindow, NULL);
-   MCW_register_hint(SUMAg_CF->X->DrawROI->Close_pb  , 
-                     "Close Draw ROI window" ) ;
-   MCW_register_help(SUMAg_CF->X->DrawROI->Close_pb  , SUMA_closeDrawROI_help ) ;
+   SUMA_Register_Widget_Help(SUMAg_CF->X->DrawROI->Close_pb, 
+                             "Draw_ROI->ROI->Close",
+                             "Close Draw ROI window",
+                             SUMA_closeDrawROI_help ) ;
    XtManageChild (SUMAg_CF->X->DrawROI->Close_pb);  
    
    /* manage rc_save */
@@ -12927,10 +13145,10 @@ void SUMA_CreateScrolledList (
    }
 
 
+   /* set the vertical size of the list */
    XtVaSetValues( LW->list,                  
                   XmNvisibleItemCount, 10,
                   NULL);
-   
 
    
    if (New) {
@@ -12938,6 +13156,9 @@ void SUMA_CreateScrolledList (
       XmListSelectPos(LW->list,1, False); 
       /* realize the widget */
       XtRealizeWidget (LW->toplevel);
+      /* To allow user to adjust list height, I would have to put in a callback 
+      on the rc widget to reset XmNvisibleItemCount manually.
+      Attempts to set  XmNresizeHeight for rc or toplevel did not work*/
    } else {
       XmListSetPos(LW->list,SUMA_MAX_PAIR(1,LW->lastitempos-3));
       XmListSelectPos(LW->list,SUMA_MAX_PAIR(1,LW->lastitempos), False); 
@@ -12982,11 +13203,11 @@ void SUMA_CreateArrowField (  Widget pw, char *label,
                               SUMA_Boolean wrap,
                               void (*NewValueCallback)(void *data), 
                               void *cb_data,
-                              char *hint, char *help,
+                              char *wname, char *hint, char *help,
                               SUMA_ARROW_TEXT_FIELD *AF)
 {
    static char FuncName[]={"SUMA_CreateArrowField"};
-   char sbuf[64];
+   char sbuf[64], sss[256]={""};
    
    SUMA_ENTRY;
    
@@ -13012,9 +13233,11 @@ void SUMA_CreateArrowField (  Widget pw, char *label,
       XmNpacking, XmPACK_TIGHT, 
       XmNorientation , XmHORIZONTAL ,
       NULL);
-   if (hint) MCW_register_hint( AF->rc , hint);
-   if (help) MCW_register_help( AF->rc , help);
    
+   if (hint || help) {
+      SUMA_Register_Widget_Help( AF->rc , wname, hint, help);
+   }
+      
    if (label) {
       AF->label =  XtVaCreateManagedWidget (label,
          xmLabelWidgetClass, AF->rc, 
@@ -13022,8 +13245,10 @@ void SUMA_CreateArrowField (  Widget pw, char *label,
          XmNmarginTop, 0,
          XmNmarginBottom, 0,
          NULL);
-         if (hint) MCW_register_help( AF->label , hint);
-         if (help) MCW_register_help( AF->label , help);
+      if (hint || help) {
+         snprintf(sss, 255,"%s->label", wname);
+         SUMA_Register_Widget_Help( AF->up , sss, NULL, help?help:hint);
+      }
    }else {
       AF->label = NULL;
    }
@@ -13035,8 +13260,10 @@ void SUMA_CreateArrowField (  Widget pw, char *label,
          XmNmarginTop, 0,
          XmNmarginBottom, 0,
          NULL);
-   if (hint) MCW_register_help( AF->up , hint);
-   if (help) MCW_register_help( AF->up , help);
+   if (hint || help) {
+      snprintf(sss, 255,"%s->up", wname);
+      SUMA_Register_Widget_Help( AF->up , sss, NULL, help?help:hint);
+   }
 
    XtVaSetValues (AF->up, XmNuserData, (XtPointer)AF, NULL);
    XtAddCallback (AF->up, XmNarmCallback, SUMA_ATF_start_stop, (XtPointer)1);
@@ -13049,8 +13276,10 @@ void SUMA_CreateArrowField (  Widget pw, char *label,
       XmNmarginTop, 0,
       XmNmarginBottom, 0,
       NULL);
-   if (hint) MCW_register_help( AF->down , hint);
-   if (help) MCW_register_help( AF->down , help);
+   if (hint || help) {
+      snprintf(sss, 255,"%s->down", wname);
+      SUMA_Register_Widget_Help( AF->down , sss, NULL, help?help:hint);
+   }
    XtVaSetValues (AF->down, XmNuserData, (XtPointer)AF, NULL);
    XtAddCallback (AF->down, XmNarmCallback, SUMA_ATF_start_stop, (XtPointer)-1);
    XtAddCallback (AF->down, XmNdisarmCallback, 
@@ -13066,8 +13295,11 @@ void SUMA_CreateArrowField (  Widget pw, char *label,
       XmNmarginTop, 0,
       XmNmarginBottom, 0,
       NULL);
-   if (hint) MCW_register_hint( AF->textfield , hint);
-   if (help) MCW_register_help( AF->textfield , help);
+   
+   if (hint || help) {
+      snprintf(sss, 255,"%s->val", wname);
+      SUMA_Register_Widget_Help( AF->textfield , sss, NULL, help?help:hint);
+   }
    
    XtAddCallback (AF->textfield, XmNactivateCallback, 
                                     SUMA_ATF_cb_label_change, (XtPointer)AF);
@@ -13129,7 +13361,7 @@ SUMA_Boolean SUMA_Set_Menu_Widget(SUMA_MENU_WIDGET *men, int i)
 void SUMA_CreateTextField ( Widget pw, char *label,
                               int cwidth, 
                               void (*NewValueCallback)(void *data),
-                              char *hint, char *help,
+                              char *wname, char *hint, char *help,
                               SUMA_ARROW_TEXT_FIELD *AF)
 {
    static char FuncName[]={"SUMA_CreateTextField"};
@@ -13154,7 +13386,11 @@ void SUMA_CreateTextField ( Widget pw, char *label,
       XmNpacking, XmPACK_TIGHT, 
       XmNorientation , XmHORIZONTAL ,
       NULL);
-   if (hint) MCW_register_hint( AF->rc , hint);
+   
+   if (hint || help) {
+      SUMA_Register_Widget_Help( AF->rc , wname, hint, help);
+   }
+      
 
    if (label) {
       AF->label =  XtVaCreateManagedWidget (label,
@@ -13163,8 +13399,9 @@ void SUMA_CreateTextField ( Widget pw, char *label,
          XmNmarginTop, 0,
          XmNmarginBottom, 0,
          NULL);
-      if (hint) MCW_register_help( AF->label , hint);
-      if (help) MCW_register_help( AF->label , help);
+      if (hint || help) {
+         SUMA_Register_Widget_Help( AF->label , wname, hint, help);
+      }
    }else {
       AF->label = NULL;
    }
@@ -13178,11 +13415,14 @@ void SUMA_CreateTextField ( Widget pw, char *label,
       XmNmarginTop, 0,
       XmNmarginBottom, 0,
       NULL);
-   if (hint) MCW_register_hint( AF->textfield , hint);
-   if (help) MCW_register_help( AF->textfield , help);
+   if (hint || help) {
+      SUMA_Register_Widget_Help( AF->textfield , wname, hint, help);
+   }
    
-   XtAddCallback (AF->textfield, XmNactivateCallback, SUMA_ATF_cb_label_change, (XtPointer)AF);
-   XtAddCallback (AF->textfield, XmNmodifyVerifyCallback, SUMA_ATF_cb_label_Modify, (XtPointer)AF);
+   XtAddCallback (AF->textfield, XmNactivateCallback, 
+                  SUMA_ATF_cb_label_change, (XtPointer)AF);
+   XtAddCallback (AF->textfield, XmNmodifyVerifyCallback, 
+                  SUMA_ATF_cb_label_Modify, (XtPointer)AF);
    
    /* add event handler to nitify when widget was left */
    XtInsertEventHandler( AF->textfield ,        /* notify when */
@@ -15444,7 +15684,7 @@ void SUMA_cb_createSumaCont(Widget w, XtPointer data, XtPointer callData)
    SUMA_ENTRY;
    
    if (SUMAg_CF->X->SumaCont->AppShell) {
-      fprintf (SUMA_STDERR,"Error %s: SUMAg_CF->X->SumaCont->AppShell!=NULL. Should not be here.\n", FuncName);
+      SUMA_S_Err("SUMAg_CF->X->SumaCont->AppShell!=NULL. Should not be here.");
       SUMA_RETURNe;
    }
 
@@ -15454,8 +15694,9 @@ void SUMA_cb_createSumaCont(Widget w, XtPointer data, XtPointer callData)
       sss = "font8";
    }
 
-   /* create as a separate application shell, you do not want a parent to this controller that
-   can be closed or withdrawn temporarily */
+   /* create as a separate application shell, 
+      you do not want a parent to this controller that
+      can be closed or withdrawn temporarily */
    SUMAg_CF->X->SumaCont->AppShell = XtVaAppCreateShell( sss, "Suma" ,
       topLevelShellWidgetClass , SUMAg_CF->X->DPY_controller1 ,
       XmNtitle, "Suma Controller", 
@@ -15561,8 +15802,8 @@ void SUMA_cb_createSumaCont(Widget w, XtPointer data, XtPointer callData)
       XtManageChild (SUMAg_CF->X->SumaCont->Lock_rbg->rb[i]);
       
       /* put some help on the radiobox and its children*/
-      MCW_reghelp_children( SUMAg_CF->X->SumaCont->Lock_rbg->rb[i] , 
-                              SUMA_LockSumaCont_help );
+      SUMA_Register_Widget_Children_Help(SUMAg_CF->X->SumaCont->Lock_rbg->rb[i] ,
+                           "SumaCont->Lock", NULL, SUMA_LockSumaCont_help );
       
       /* initialize radio button created */
       SUMA_set_Lock_rb (SUMAg_CF->X->SumaCont->Lock_rbg, i, SUMAg_CF->Locked[i]);
@@ -15576,8 +15817,9 @@ void SUMA_cb_createSumaCont(Widget w, XtPointer data, XtPointer callData)
                      (XTP_CAST) i);
       XmToggleButtonSetState (SUMAg_CF->X->SumaCont->LockView_tbg[i], 
                               SUMAg_CF->ViewLocked[i], NOPE);
-      /* put some help on this buton*/
-      MCW_reghelp_children( rc_m , SUMA_LockViewSumaCont_help );
+      /* put some help on the view lock*/
+      SUMA_Register_Widget_Children_Help(rc_m ,
+                           "SumaCont->LockView", NULL, SUMA_LockViewSumaCont_help );
             
    }  
    XtManageChild (rc);
@@ -15630,7 +15872,8 @@ void SUMA_cb_createSumaCont(Widget w, XtPointer data, XtPointer callData)
    XtManageChild (SUMAg_CF->X->SumaCont->Lock_rbg->arb);
 
    /* put some help on the radiobox and its children*/
-   MCW_reghelp_children( SUMAg_CF->X->SumaCont->Lock_rbg->arb , 
+   SUMA_Register_Widget_Children_Help(SUMAg_CF->X->SumaCont->Lock_rbg->arb , 
+                         "SumaCont->Lock->All", NULL,
                          SUMA_LockSumaCont_help );
 
    /* initialize radio button created */
@@ -15667,32 +15910,37 @@ void SUMA_cb_createSumaCont(Widget w, XtPointer data, XtPointer callData)
       xmPushButtonWidgetClass, rc, 
       NULL);
    XtAddCallback (pb_new, XmNactivateCallback, SUMA_cb_newSumaCont, NULL);
-   MCW_register_hint( pb_new , "Opens a new viewer" ) ;
-   MCW_register_help( pb_new , SUMA_viewerSumaCont_help );
+   SUMA_Register_Widget_Help(pb_new , "SumaCont->Viewer",
+                             "Opens a new viewer", SUMA_viewerSumaCont_help );
    XtManageChild (pb_new); 
 
    pb_close = XtVaCreateWidget ("Close", 
       xmPushButtonWidgetClass, rc, 
       NULL);   
    XtAddCallback (pb_close, XmNactivateCallback, SUMA_cb_closeSumaCont, NULL);
-   MCW_register_hint( pb_close , "Close SUMA controller" ) ;
-   MCW_register_help( pb_close , SUMA_closeSumaCont_help ) ;
+   SUMA_Register_Widget_Help(pb_close ,"SumaCont->Close",
+                             "Close SUMA controller", SUMA_closeSumaCont_help ) ;
    XtManageChild (pb_close); 
    
    pb_bhelp = XtVaCreateWidget ("BHelp", 
       xmPushButtonWidgetClass, rc, 
       NULL);
    XtAddCallback (pb_bhelp, XmNactivateCallback, MCW_click_help_CB, NULL);
-   MCW_register_help(pb_bhelp , SUMA_help_help ) ;
-   MCW_register_hint(pb_bhelp  , "Press this button then click on a button/label/menu for more help." ) ;
+   SUMA_Register_Widget_Help(pb_bhelp,"SumaCont->BHelp",
+           "Press this button then click on a button/label/menu for more help.",
+                             SUMA_help_help ) ; 
    
    XtManageChild (pb_bhelp); 
    
    SUMAg_CF->X->SumaCont->quit_pb = XtVaCreateWidget ("done", 
       xmPushButtonWidgetClass, rc, 
       NULL);
-   XtAddCallback (SUMAg_CF->X->SumaCont->quit_pb, XmNactivateCallback, SUMA_cb_doneSumaCont, NULL);
-   MCW_register_hint( SUMAg_CF->X->SumaCont->quit_pb , "Click twice in 5 seconds to quit application." ) ;
+   XtAddCallback (SUMAg_CF->X->SumaCont->quit_pb, XmNactivateCallback, 
+                  SUMA_cb_doneSumaCont, NULL);
+   SUMA_Register_Widget_Help(SUMAg_CF->X->SumaCont->quit_pb,
+                             "SumaCont->done",
+                             "Click twice in 5 seconds to quit application.",
+                             "Click twice in 5 seconds to quit application.");
    MCW_set_widget_bg( SUMAg_CF->X->SumaCont->quit_pb , MCW_hotcolor(SUMAg_CF->X->SumaCont->quit_pb) , 0 ) ;
 
    XtManageChild (SUMAg_CF->X->SumaCont->quit_pb); 
@@ -21580,8 +21828,10 @@ void SUMA_CreateXformXformInterface(SUMA_XFORM *xf, Widget parent_frame)
    XtAddCallback (xf->gui->Active_tb, 
                   XmNvalueChangedCallback, SUMA_cb_XformActive_toggled, 
                   (XtPointer)xf);
-   MCW_register_help(xf->gui->Active_tb , SUMA_ActivateXform_help ) ;
-   MCW_register_hint(xf->gui->Active_tb , "Activate/Suspend xform" ) ;
+   SUMA_Register_Widget_Help(xf->gui->Active_tb ,
+                             "Xform->Active",
+                             "Activate/Suspend xform",
+                             SUMA_ActivateXform_help ) ; 
 
    /* set the toggle button's select color */
    SUMA_SET_SELECT_COLOR(xf->gui->Active_tb);
@@ -21622,10 +21872,10 @@ void SUMA_CreateXformParentsInterface(SUMA_XFORM *xf, Widget parent_frame)
                                   "                 N/A \n", 
             xmLabelWidgetClass, rc,
             NULL);
-      MCW_register_help(xf->gui->ParentLabel_lb , 
-                        SUMA_DotXform_ParentLabel_help ) ;
-      MCW_register_hint(xf->gui->ParentLabel_lb , 
-                        "Label of time series dsets transformed" ) ;
+      SUMA_Register_Widget_Help(xf->gui->ParentLabel_lb ,
+                                "Dot->Xform->datasets->TS_Parents",
+                                "Label of time series dsets transformed",
+                                SUMA_DotXform_ParentLabel_help ) ;
    } else {
       SUMA_S_Errv("Don't know how to build xform parent interface for %s\n",
                   xf->name);
@@ -21654,9 +21904,10 @@ void SUMA_CreateXformParentsInterface(SUMA_XFORM *xf, Widget parent_frame)
       XtAddCallback (xf->gui->SavePreProc_pb, 
                      XmNactivateCallback, 
                      SUMA_cb_XformPreProc_Save, (XtPointer)xf);
-      MCW_register_help(xf->gui->SavePreProc_pb , SUMA_XformPreProc_Save_help ) ;
-      MCW_register_hint(xf->gui->SavePreProc_pb , 
-                        "Save the preprocessed dsets to disk." ) ;
+      SUMA_Register_Widget_Help(xf->gui->SavePreProc_pb ,
+                                "Dot->Xform->datasets->Save",
+                        "Save the preprocessed dsets to disk.",
+                                SUMA_XformPreProc_Save_help ) ;
       XtManageChild (xf->gui->SavePreProc_pb);
 
       #if 0 /* complicated, see comment in SUMA_SetXformShowPreProc*/
@@ -21666,10 +21917,10 @@ void SUMA_CreateXformParentsInterface(SUMA_XFORM *xf, Widget parent_frame)
       XtAddCallback (xf->gui->ShowPreProc_tb, 
                      XmNvalueChangedCallback, SUMA_cb_XformShowPreProc_toggled, 
                      (XtPointer)xf);
-      MCW_register_help(xf->gui->ShowPreProc_tb , 
-                        SUMA_ShowPreProcXform_help ) ;
-      MCW_register_hint(xf->gui->ShowPreProc_tb , 
-                        "Make visible preprocessed dsets" ) ;
+      SUMA_Register_Widget_Help(xf->gui->ShowPreProc_tb ,
+                                "Dot->Xform->UNUSED->Show_Intermediate",
+                                "Make visible preprocessed dsets",
+                                SUMA_ShowPreProcXform_help ) ;
 
       /* set the toggle button's select color */
       SUMA_SET_SELECT_COLOR(xf->gui->ShowPreProc_tb);
@@ -22174,6 +22425,7 @@ void SUMA_CreateXformOptionsInterface(SUMA_XFORM *xf, Widget parent_frame)
                         6, SUMA_float,
                         NOPE,
                         SUMA_Xform_NewAF0, (void *)xf, 
+                        "Dot->options->LF",
                         SUMA_DotXform_AF0_hint, 
                         SUMA_DotXform_AF0_help,
                         xf->gui->AF0);
@@ -22182,6 +22434,7 @@ void SUMA_CreateXformOptionsInterface(SUMA_XFORM *xf, Widget parent_frame)
                         6, SUMA_float,
                         NOPE,
                         SUMA_Xform_NewAF1, (void *)xf, 
+                        "Dot->options->HF",
                         SUMA_DotXform_AF1_hint, 
                         SUMA_DotXform_AF1_help,
                         xf->gui->AF1);
@@ -22206,6 +22459,7 @@ void SUMA_CreateXformOptionsInterface(SUMA_XFORM *xf, Widget parent_frame)
                         3, SUMA_int,
                         NOPE,
                         SUMA_Xform_NewAF2, (void *)xf, 
+                        "Dot->options->polort",
                         SUMA_DotXform_AF2_hint, 
                         SUMA_DotXform_AF2_help,
                         xf->gui->AF2);
@@ -22226,8 +22480,10 @@ void SUMA_CreateXformOptionsInterface(SUMA_XFORM *xf, Widget parent_frame)
       XtAddCallback (xf->gui->LoadOrtFile_pb, 
                      XmNactivateCallback, SUMA_cb_XformOrtFile_Load, 
                      (XtPointer)xf);
-      MCW_register_help(xf->gui->LoadOrtFile_pb , SUMA_XformOrtFile_Load_help ) ;
-      MCW_register_hint(xf->gui->LoadOrtFile_pb , "Load an ort file" ) ;
+      SUMA_Register_Widget_Help(xf->gui->LoadOrtFile_pb ,
+                                "Dot->options->OrtFile",
+                                "Load an ort file",
+                                SUMA_XformOrtFile_Load_help ) ;
       XtManageChild (xf->gui->LoadOrtFile_pb);
 
       xmstmp = XmStringCreateLtoR ("no ort file loaded", 
@@ -22259,8 +22515,10 @@ void SUMA_CreateXformOptionsInterface(SUMA_XFORM *xf, Widget parent_frame)
       XtAddCallback (xf->gui->SaveOpts_pb, 
                      XmNactivateCallback, 
                      SUMA_cb_XformOpts_Save, (XtPointer)xf);
-      MCW_register_help(xf->gui->SaveOpts_pb , SUMA_XformOpts_Save_help ) ;
-      MCW_register_hint(xf->gui->SaveOpts_pb , "Save the options to disk." ) ;
+      SUMA_Register_Widget_Help(xf->gui->SaveOpts_pb ,
+                                "Dot->options->Options->Save",
+                                "Save the options to disk.",
+                                SUMA_XformOpts_Save_help ) ;
       XtManageChild (xf->gui->SaveOpts_pb);
       
       xf->gui->ApplyOpts_pb = XtVaCreateWidget ("Apply", 
@@ -22269,8 +22527,10 @@ void SUMA_CreateXformOptionsInterface(SUMA_XFORM *xf, Widget parent_frame)
       XtAddCallback (xf->gui->ApplyOpts_pb, 
                      XmNactivateCallback, 
                      SUMA_cb_XformOpts_Apply, (XtPointer)xf);
-      MCW_register_help(xf->gui->ApplyOpts_pb, SUMA_XformOpts_Apply_help ) ;
-      MCW_register_hint(xf->gui->ApplyOpts_pb, "Apply the options immediately") ;
+      SUMA_Register_Widget_Help(xf->gui->ApplyOpts_pb,
+                                "Dot->options->Options->Apply",
+                                "Apply the options immediately",
+                                SUMA_XformOpts_Apply_help ) ;
       XtManageChild (xf->gui->ApplyOpts_pb);
 
       XtManageChild(rc);
@@ -22411,6 +22671,7 @@ void SUMA_CreateXformInterface(SUMA_XFORM *xf)
    cb_frame = SUMA_CloseBhelp_Frame( frame_rcv,
                               SUMA_cb_CloseXformInterface, 
                               (XtPointer) xf,
+                              "Dot",
                               "Close Xform controller",
                               SUMA_closeXformCont_help,
                               SUMA_cb_helpXformInterface, 

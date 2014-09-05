@@ -10,6 +10,8 @@
 #include "thd_conformist.c"
 
 /*----------------------------------------------------------------------------*/
+/* This program's function is probably limited to its usage in @toMNI_Qwarpar */
+/*----------------------------------------------------------------------------*/
 
 int main( int argc , char *argv[] )
 {
@@ -143,7 +145,7 @@ int main( int argc , char *argv[] )
        if( nwset < 5 ) ERROR_exit("Need at least 5 datasets after '%s'",argv[iarg-1]) ;
        dset_nwarp = (THD_3dim_dataset **)malloc(sizeof(THD_3dim_dataset *)*nwset) ;
        for( kk=0 ; kk < nwset ; kk++ ){
-         dset_nwarp[kk] = THD_open_dataset( argv[iarg+kk] ) ;
+         dset_nwarp[kk] = THD_open_dataset( argv[iarg+kk] ) ; DSET_COPYOVER_REAL(dset_nwarp[kk]) ;
          if( dset_nwarp[kk] == NULL )
            ERROR_exit("can't open warp dataset '%s' :-(",argv[iarg+kk]);
          if( DSET_NVALS(dset_nwarp[kk]) < 3 ) ERROR_exit("dataset '%s' isn't a 3D warp",argv[iarg+kk]);
@@ -166,11 +168,14 @@ int main( int argc , char *argv[] )
          pad_ym = ijkpad[6*kk+2] ; pad_yp = ijkpad[6*kk+3] ;
          pad_zm = ijkpad[6*kk+4] ; pad_zp = ijkpad[6*kk+5] ;
          if( pad_xm > 0 || pad_xp > 0 || pad_ym > 0 || pad_yp > 0 || pad_zm > 0 || pad_zp > 0 ){
-           THD_3dim_dataset *qset = THD_nwarp_extend( dset_nwarp[kk] ,
-                                                      pad_xm,pad_xp,pad_ym,pad_yp,pad_zm,pad_zp ) ;
+           THD_3dim_dataset *qset ;
+           if( verb ) INFO_message("extending input warp #%d: %d %d %d %d %d %d",
+                                    kk , pad_xm,pad_xp,pad_ym,pad_yp,pad_zm,pad_zp ) ;
+           qset = THD_nwarp_extend( dset_nwarp[kk] ,
+                                    pad_xm,pad_xp,pad_ym,pad_yp,pad_zm,pad_zp ) ;
            if( qset == NULL )
-             ERROR_exit("Cannot extend warp dataset %s to match containing grid",DSET_HEADNAME(dset_nwarp[kk])) ;
-
+             ERROR_exit("Cannot extend warp dataset %s to match containing grid",
+                        DSET_HEADNAME(dset_nwarp[kk])) ;
            EDIT_dset_items( qset , ADN_prefix , DSET_prefix_noext(dset_nwarp[kk]) , ADN_none ) ;
            DSET_delete(dset_nwarp[kk]) ; DSET_lock(qset) ; dset_nwarp[kk] = qset ; npad++ ;
          }
@@ -195,7 +200,7 @@ int main( int argc , char *argv[] )
        if( nsset < 5 ) ERROR_exit("Need at least 5 datasets after '%s'",argv[iarg-1]) ;
        dset_src = (THD_3dim_dataset **)malloc(sizeof(THD_3dim_dataset *)*nsset) ;
        for( kk=0 ; kk < nsset ; kk++ ){
-         dset_src[kk] = THD_open_dataset( argv[iarg+kk] ) ;
+         dset_src[kk] = THD_open_dataset( argv[iarg+kk] ) ; DSET_COPYOVER_REAL(dset_src[kk]) ;
          if( dset_src[kk] == NULL )
            ERROR_exit("can't open warp dataset '%s' :-(",argv[iarg+kk]);
          if( DSET_NVALS(dset_src[kk]) > 1 ) ERROR_exit("dataset '%s' has more than 1 sub-brick",argv[iarg+kk]);
@@ -212,7 +217,10 @@ int main( int argc , char *argv[] )
 
      /*---------------*/
 
-     ERROR_exit("Unknown, Illegal, and Fattening option '%s' :-( :-( :-(",argv[iarg]) ;
+     ERROR_message("Weird and Unknown option '%s' :-( :-( :-(",argv[iarg]) ;
+     suggest_best_prog_option(argv[0],argv[iarg]) ;
+     exit(1) ;
+
    }
 
    Hverb = (verb > 0) ;  /* for IW3D_invert */
@@ -264,6 +272,7 @@ int main( int argc , char *argv[] )
    putenv("AFNI_WSINC5_SILENT=YES") ;
 
    if( dset_src != NULL ){
+     INFO_message("Creating average dataset in memory") ;
      dset_sbar = EDIT_empty_copy( dset_src[0] ) ;
      EDIT_dset_items( dset_sbar ,
                         ADN_prefix , prefix ,
@@ -277,7 +286,8 @@ int main( int argc , char *argv[] )
    else if( verb > 1 ) INFO_message("========== Beginning adjustment process ==========") ;
 
    for( kk=0 ; kk < nwset ; kk++ ){
-     if( verb > 1 ) INFO_message("convert dataset warp #%d to index warp",kk) ;
+     if( verb > 1 )
+       INFO_message("convert dataset warp #%d to index warp",kk) ;
      AA = IW3D_from_dataset( dset_nwarp[kk] , 0,0 ) ;
      if( AA == NULL ) continue ;  /* should not happen */
      if( verb > 1 ) ININFO_message("  compose with mean inverse") ;
@@ -325,11 +335,14 @@ int main( int argc , char *argv[] )
 
    if( verb == 1 ) fprintf(stderr,"\n") ;
 
-   fac = 1.0f / nwset ;
-   for( ii=0 ; ii < nxyzs ; ii++ ) sbar[ii] *= fac ;
+   if( dset_sbar != NULL ){
+     fac = 1.0f / nwset ;
+     for( ii=0 ; ii < nxyzs ; ii++ ) sbar[ii] *= fac ;
+     DSET_write(dset_sbar) ;
+     if( verb ) WROTE_DSET(dset_sbar) ;
+     DSET_delete(dset_sbar) ;
+   }
 
-   DSET_write(dset_sbar) ;
-   if( verb ) WROTE_DSET(dset_sbar) ;
    if( verb ) INFO_message("total CPU time = %.1f sec  Elapsed = %.1f\n",
                            COX_cpu_time() , COX_clock_time() ) ;
    exit(0) ;

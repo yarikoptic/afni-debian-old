@@ -38,17 +38,21 @@ ENTRY("AFNI_see_func_CB") ;
      STATUS_IM3D_TMASK(im3d) ;
      STATUS("clear tmask") ;
 #endif
-     IM3D_CLEAR_TMASK(im3d) ;                                /* Mar 2013 */
-     IM3D_CLEAR_THRSTAT(im3d) ;                           /* 12 Jun 2014 */
+     IM3D_CLEAR_TMASK(im3d) ;                                   /* Mar 2013 */
+     IM3D_CLEAR_THRSTAT(im3d) ;                              /* 12 Jun 2014 */
      im3d->vinfo->func_visible = (new_val == 1) ? True : False ;
      if( ! ISVALID_3DIM_DATASET(im3d->fim_now) ){            /* 29 Apr 1997 */
-       im3d->vinfo->func_visible = False ;
+       im3d->vinfo->func_visible = False ; new_val = 0 ;
        MCW_set_bbox( im3d->vwid->view->see_func_bbox , 0 ) ; /* 29 Jan 1999 */
      }
-     IM3D_CLEAR_THRSTAT(im3d) ;       /* 12 Jun 2014 */
-     OVERLAY_SUMA ;                   /* 16 Jun 2003 */
-     AFNI_redisplay_func( im3d ) ;    /* 05 Mar 2002 */
+     IM3D_CLEAR_THRSTAT(im3d) ;          /* 12 Jun 2014 */
+     OVERLAY_SUMA ;                      /* 16 Jun 2003 */
+     AFNI_redisplay_func( im3d ) ;       /* 05 Mar 2002 */
      im3d->vinfo->func_visible_count++ ; /* 03 Aug 2007 */
+     if( new_val == 0 ){                 /* 21 Jul 2014 */
+       XtSetSensitive(im3d->vwid->func->pbar_jumpto_thmax_pb,False) ;
+       XtSetSensitive(im3d->vwid->func->pbar_jumpto_thmin_pb,False) ;
+     }
    }
 
    RESET_AFNI_QUIT(im3d) ;
@@ -704,6 +708,10 @@ ENTRY("AFNI_inten_pbar_CB") ;
 #endif
    IM3D_CLEAR_TMASK(im3d) ;                                /* Mar 2013 */
    IM3D_CLEAR_THRSTAT(im3d) ;                           /* 12 Jun 2014 */
+
+#if 0
+INFO_message("AFNI_inten_pbar_CB(%d)",AFNI_controller_index(im3d)) ;
+#endif
    if( im3d->vinfo->func_visible ) AFNI_redisplay_func( im3d ) ;
 
    AFNI_hintize_pbar( pbar , FIM_RANGE(im3d) ) ;
@@ -2252,7 +2260,11 @@ ENTRY("AFNI_assign_ulay_bricks") ;
          im3d->b123_ulay = im3d->b123_anat ;
          im3d->b231_ulay = im3d->b231_anat ;
          im3d->b312_ulay = im3d->b312_anat ;
+#ifdef USE_UNDERLAY_BBOX
          MCW_set_bbox( im3d->vwid->func->underlay_bbox , 1<<UNDERLAY_ANAT ) ;
+#else
+         im3d->vinfo->underlay_type = UNDERLAY_ANAT ;
+#endif
        }
      break ;
    }
@@ -2271,23 +2283,34 @@ ENTRY("AFNI_assign_ulay_bricks") ;
 
 void AFNI_underlay_CB( Widget w , XtPointer cd , XtPointer cb )
 {
-   Three_D_View *im3d = (Three_D_View *) cd ;
-   int bval ;
+   Three_D_View *im3d = (Three_D_View *)cd ;
+   int bval , force_redraw=(cb != NULL) ;
    Boolean seq_exist ;
 
 ENTRY("AFNI_underlay_CB") ;
 
    if( ! IM3D_OPEN(im3d) ) EXRETURN ;
 
+#ifdef USE_UNDERLAY_BBOX
    if( w != NULL ) bval = AFNI_first_tog( LAST_UNDERLAY_TYPE+1 ,
                                           im3d->vwid->func->underlay_bbox->wbut ) ;
    else            bval = im3d->vinfo->underlay_type ;
+#else
+   bval = im3d->vinfo->underlay_type ;
+#endif
 
    if( bval == im3d->vinfo->underlay_type && w != NULL && IM3D_ULAY_COHERENT(im3d) ) EXRETURN ;
 
    im3d->vinfo->underlay_type = bval ;
 
    AFNI_assign_ulay_bricks(im3d) ;  /* 10 Jun 2014 */
+
+#if 0
+INFO_message("AFNI_underlay_CB: anat:%p %p %p  fim:%p %p %p  ulay:%p %p %p" ,
+             im3d->b123_anat , im3d->b231_anat , im3d->b312_anat ,
+             im3d->b123_fim  , im3d->b231_fim  , im3d->b312_fim  ,
+             im3d->b123_ulay , im3d->b231_ulay , im3d->b312_ulay  ) ;
+#endif
 
    /*--- May 1996: destroy useless graph windows ---*/
 
@@ -2421,7 +2444,7 @@ ENTRY("AFNI_underlay_CB") ;
 
       im3d->ignore_seq_callbacks = AFNI_IGNORE_NOTHING ;
 
-      if( w != NULL ){            /* a real callback */
+      if( w != NULL || force_redraw ){  /* a real callback */
           SHOW_AFNI_PAUSE ;
           AFNI_set_viewpoint( im3d , -1,-1,-1 , REDISPLAY_ALL ) ;
           SHOW_AFNI_READY ;
@@ -4899,6 +4922,26 @@ ENTRY("AFNI_saveas_finalize_CB") ;
    EXRETURN ;
 }
 
+/*---------------------------------------------------------------------------*/
+
+void AFNI_writeout_dataset( THD_3dim_dataset *dset , char *prefix )
+{
+   THD_3dim_dataset *oset ;
+
+ENTRY("AFNI_writeout_dataset") ;
+
+   if( !ISVALID_DSET(dset) || !THD_filename_ok(prefix) ) EXRETURN ;
+   DSET_load(dset) ;            if( !DSET_LOADED(dset) ) EXRETURN ;
+
+   oset = EDIT_full_copy( dset , prefix ) ;
+   THD_force_ok_overwrite(1) ;
+   DSET_write(oset) ;
+   THD_force_ok_overwrite(0) ;
+   WROTE_DSET(oset) ; DSET_delete(oset) ;
+
+   EXRETURN ;
+}
+
 /*-----------------------------------------------------------------
     Obey the command to write out the current dataset
 -------------------------------------------------------------------*/
@@ -5810,6 +5853,8 @@ ENTRY("AFNI_inten_bbox_CB") ;
 
       AFNI_redisplay_func_ignore(0) ;
       AFNI_redisplay_func( im3d ) ;
+      if( AFNI_count_controllers() > 1 && AFNI_check_pbar_lock() ) /* 03 Jul 2014 */
+        AFNI_redisplay_func_all( im3d ) ;
    }
 
    EXRETURN ;

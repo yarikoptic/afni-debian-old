@@ -41,6 +41,11 @@ static char *elist[] = {
 
  "0002 0010" ,  /* Transfer Syntax [RWC - 05 Jul 2006] */
 
+ /*--- The following are added for GE multi-echo EPI sequences [RCR - Aug 2014] ---*/
+ "0008 0018" ,  /* SOP (service object pair) Instance UID - unique to DICOM file*/
+ "0019 10a2" ,  /* GE multi-echo index   */
+ "0020 1002" ,  /* Images in Acquisition */
+
  /*--- The following are for multi-frame DICOM files [RWC - 02 May 2008] ---*/
 
  "0020 0105" ,  /* Number of temporal positions */
@@ -53,7 +58,9 @@ static char *elist[] = {
 
  "0054 1330" ,  /* image index  */
 
+
 NULL } ;
+
 
 #define NUM_ELIST (sizeof(elist)/sizeof(char *)-1)
 
@@ -95,15 +102,19 @@ NULL } ;
 
 #define E_TRANSFER_SYNTAX            29    /* 05 Jul 2006 */
 
-#define E_NUMBER_OF_TIMES            30    /* 02 May 2008 */
-#define E_RS_STUDY_NUM               31    /* 10 Feb 2005: for Imon [rickr] */
-#define E_RS_SERIES_NUM              32
-#define E_INSTANCE_NUMBER            33
-#define E_TIME_INDEX_ID              34
-#define E_TIME_INDEX                 35
-#define E_STACK_INDEX                36
+#define E_SOP_IUID                   30    /* 28 Aug 2014: GEME sort [rickr] */
+#define E_GE_ME_INDEX                31    /* 15 Aug 2014: GEME sort [rickr] */
+#define E_NIM_IN_ACQ                 32    /* 19 Aug 2014: GE multi-echo sort */
 
-#define E_RS_IMAGE_INDEX             37    /* 06 May 2010: for PET [rickr] */
+#define E_NUMBER_OF_TIMES            33    /* 02 May 2008 */
+#define E_RS_STUDY_NUM               34    /* 10 Feb 2005: for Imon [rickr] */
+#define E_RS_SERIES_NUM              35
+#define E_INSTANCE_NUMBER            36
+#define E_TIME_INDEX_ID              37
+#define E_TIME_INDEX                 38
+#define E_STACK_INDEX                39
+
+#define E_RS_IMAGE_INDEX             40    /* 06 May 2010: for PET [rickr] */
 
 
 /*----------------------------------------------------------------------------*/

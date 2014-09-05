@@ -315,6 +315,7 @@ void AFNI_make_wid2 (Three_D_View *) ;
 void AFNI_make_wid3 (Three_D_View *) ;
 
 static Widget wtemp ;
+static char jumpstring[128];                  /* 13 Jun 2014 */
 
 /*--------------------------------------------------------------------*/
 
@@ -896,10 +897,11 @@ STATUS("making imag->rowcol") ;
    /*--- mnito button in menu [01 May 2002] ---*/
 
    if( im3d->type == AFNI_3DDATA_VIEW ){
+      sprintf(jumpstring, "Jump to (%s)", get_jump_space());
       imag->pop_mnito_pb =
          XtVaCreateManagedWidget(
             "dialog" , xmPushButtonWidgetClass , imag->popmenu ,
-               LABEL_ARG("Jump to (MNI)") ,
+               LABEL_ARG(jumpstring) ,
                XmNmarginHeight , 0 ,
                XmNtraversalOn , True  ,
                XmNinitialResourcesPersistent , False ,
@@ -3188,7 +3190,6 @@ STATUS("making func->rowcol") ;
    if( !AFNI_yesenv("AFNI_DISABLE_TEAROFF") ) TEAROFFIZE(func->pbar_menu) ;
 
    XtInsertEventHandler( func->inten_label ,      /* handle events in label */
-
                                0
                              | ButtonPressMask   /* button presses */
                             ,
@@ -3270,6 +3271,36 @@ STATUS("making func->rowcol") ;
    XtAddCallback( func->pbar_flip_pb , XmNactivateCallback ,
                   AFNI_pbar_CB , im3d ) ;
    MCW_register_hint( func->pbar_flip_pb , "Top-to-Bottom color inversion" ) ;
+
+   (void) XtVaCreateManagedWidget(
+            "dialog" , xmSeparatorWidgetClass , func->pbar_menu ,
+             XmNseparatorType , XmSINGLE_LINE , NULL ) ;
+
+   func->pbar_jumpto_thmax_pb =
+      XtVaCreateManagedWidget(
+         "dialog" , xmPushButtonWidgetClass , func->pbar_menu ,
+            LABEL_ARG("Jumpto OLay Max @Thr") ,
+            XmNmarginHeight , 0 ,
+            XmNtraversalOn , True  ,
+            XmNinitialResourcesPersistent , False ,
+         NULL ) ;
+   XtAddCallback( func->pbar_jumpto_thmax_pb , XmNactivateCallback ,
+                  AFNI_jumpto_thminmax_CB , im3d ) ;
+   MCW_register_hint( func->pbar_jumpto_thmax_pb , "Jumpto OLay thresholded maximum" ) ;
+   XtSetSensitive( func->pbar_jumpto_thmax_pb , False ) ;
+
+   func->pbar_jumpto_thmin_pb =
+      XtVaCreateManagedWidget(
+         "dialog" , xmPushButtonWidgetClass , func->pbar_menu ,
+            LABEL_ARG("Jumpto OLay Min @Thr") ,
+            XmNmarginHeight , 0 ,
+            XmNtraversalOn , True  ,
+            XmNinitialResourcesPersistent , False ,
+         NULL ) ;
+   XtAddCallback( func->pbar_jumpto_thmin_pb , XmNactivateCallback ,
+                  AFNI_jumpto_thminmax_CB , im3d ) ;
+   MCW_register_hint( func->pbar_jumpto_thmin_pb , "Jumpto OLay thresholded minimum" ) ;
+   XtSetSensitive( func->pbar_jumpto_thmin_pb , False ) ;
 
    (void) XtVaCreateManagedWidget(
             "dialog" , xmSeparatorWidgetClass , func->pbar_menu ,
@@ -3588,16 +3619,26 @@ STATUS("making func->rowcol") ;
    func->options_label =
       XtVaCreateManagedWidget(
          "dialog" , xmLabelWidgetClass , func->options_top_rowcol ,
-            LABEL_ARG("Background ") ,
+            LABEL_ARG("Edit OLay  ") ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
    LABELIZE(func->options_label) ;
 
+   XtInsertEventHandler( func->options_label ,      /* handle events in label */
+                               0
+                             | ButtonPressMask   /* button presses */
+                            ,
+                            FALSE ,              /* nonmaskable events? */
+                            AFNI_pbar_EV ,       /* handler */
+                            (XtPointer)im3d ,    /* client data */
+                            XtListTail           /* last in queue */
+                          ) ;
+
 #define VEDIT_COLOR_A "#000066"
 #define VEDIT_COLOR_B "#004466"
-#define VEDIT_NOPT  4
+#define VEDIT_NOPT    (VEDIT_LAST_VALUE+1)
    { static char *options_vedit_label[] =
-       { "Clusters" , "InstaCorr" , "InstaCalc" , "GrpInCorr" } ;
+       { "InstaCorr" , "InstaCalc" , "GrpInCorr" } ;
      int nopt = (num_entry==1) ? VEDIT_NOPT : VEDIT_NOPT-1 ;  /* no GrpInCorr after [A] */
      int ibut ;
      func->options_vedit_av = new_MCW_arrowval(
@@ -3653,8 +3694,9 @@ STATUS("making func->rowcol") ;
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
 
-   /*-- underlay type --*/
+   /*--- underlay type [now available only via 'u' keypress: 18 Jun 2014] ---*/
 
+#ifdef USE_UNDERLAY_BBOX  /* don't reactivate this code without deep thought */
    func->underlay_bbox =
       new_MCW_bbox( func->ulaclu_rowcol ,
                     LAST_UNDERLAY_TYPE+1 , UNDERLAY_typestr ,
@@ -3675,19 +3717,15 @@ STATUS("making func->rowcol") ;
                            "Use thresholded overlay dataset for background" } ;
      MCW_bbox_hints( func->underlay_bbox , 3 , hh ) ;
    }
+#else
+   func->underlay_bbox = NULL ;
+#endif
 
-   /*--- 26 Mar 2007: clustering stuff moved here ---*/
-
-   func->vedit_frame = XtVaCreateWidget(
-           "dialog" , xmFrameWidgetClass , func->ulaclu_rowcol ,
-              XmNshadowType , XmSHADOW_ETCHED_IN ,
-              XmNshadowThickness , 2 ,
-              XmNinitialResourcesPersistent , False ,
-           NULL ) ;
+   /*--- 18 Jun 2014: Clusterize separated to be where underlay_bbox used to live ---*/
 
    func->clu_rowcol =
-      XtVaCreateWidget(
-         "dialog" , xmRowColumnWidgetClass , func->vedit_frame ,
+      XtVaCreateManagedWidget(
+         "dialog" , xmRowColumnWidgetClass , func->ulaclu_rowcol ,
             XmNorientation , XmVERTICAL ,
             XmNpacking , XmPACK_TIGHT ,
             XmNmarginHeight, 0 ,
@@ -3697,8 +3735,8 @@ STATUS("making func->rowcol") ;
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
    im3d->vedset.code = 0 ; im3d->vedset.ival = -1 ;
-   im3d->vedskip = 0 ;  /* 20 Dec 2007 */
-   im3d->vednomask = 0 ; /* 01 Aug 2011 */
+   im3d->vedskip     = 0 ; /* 20 Dec 2007 */
+   im3d->vednomask   = 0 ; /* 01 Aug 2011 */
 
    func->clu_cluster_pb =
       XtVaCreateManagedWidget(
@@ -3766,10 +3804,19 @@ STATUS("making func->rowcol") ;
    MCW_register_hint( func->clu_report_pb , "Open cluster report window" ) ;
    XtManageChild( hrc ) ;
 
+   /*--- 26 Mar 2007: other Insta stuff moved here [18 Jun 2014: clustering moved above] ---*/
+
+   func->vedit_frame = XtVaCreateManagedWidget(
+           "dialog" , xmFrameWidgetClass , func->ulaclu_rowcol ,
+              XmNshadowType , XmSHADOW_ETCHED_IN ,
+              XmNshadowThickness , 2 ,
+              XmNinitialResourcesPersistent , False ,
+           NULL ) ;
+
    /*--- 05 May 2009: InstaCorr stuff ---*/
 
    func->icor_rowcol =
-      XtVaCreateWidget(
+      XtVaCreateManagedWidget(
          "dialog" , xmRowColumnWidgetClass , func->vedit_frame ,
             XmNorientation , XmVERTICAL ,
             XmNpacking , XmPACK_TIGHT ,
@@ -4075,6 +4122,16 @@ STATUS("making func->rowcol") ;
 
    MCW_register_hint( func->range_label , "Ranges of dataset values" ) ;
 
+   XtInsertEventHandler( func->range_label ,      /* handle events in label */
+                               0
+                             | ButtonPressMask   /* button presses */
+                            ,
+                            FALSE ,              /* nonmaskable events? */
+                            AFNI_pbar_EV ,       /* handler */
+                            (XtPointer)im3d ,    /* client data */
+                            XtListTail           /* last in queue */
+                          ) ;
+
    /*--- toggle button to control automatic range scaling for pbar ---*/
    /*--- ZSS: Add percentile button, put both in horiz rowcol 27 Apr 2012 ---*/
 
@@ -4340,6 +4397,7 @@ STATUS("making func->rowcol") ;
    XtManageChild( func->inten_rowcol ) ;
    XtManageChild( func->range_rowcol ) ;
    XtManageChild( func->clu_rowcol ) ;
+   XtManageChild( func->icor_rowcol ) ;
    XtManageChild( func->vedit_frame ) ;
    XtManageChild( func->ulaclu_rowcol ) ;
    XtManageChild( func->options_rowcol ) ;
@@ -4735,10 +4793,8 @@ STATUS("making dmode->rowcol") ;
             XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
-
    XtAddCallback( dmode->saveas_anat_pb , XmNactivateCallback ,
                   AFNI_saveas_dataset_CB , im3d ) ;
-
    MCW_register_hint( dmode->saveas_anat_pb ,
                       "Write current underlay to disk at its internal resolution" ) ;
 
@@ -4749,10 +4805,8 @@ STATUS("making dmode->rowcol") ;
             XmNtraversalOn , True  ,
             XmNinitialResourcesPersistent , False ,
          NULL ) ;
-
    XtAddCallback( dmode->saveas_func_pb , XmNactivateCallback ,
                   AFNI_saveas_dataset_CB , im3d ) ;
-
    MCW_register_hint( dmode->saveas_func_pb ,
                       "Write current overlay to disk at its internal resolution" ) ;
 
@@ -5702,8 +5756,8 @@ void AFNI_popup_message( char *str )
    Three_D_View *im3d ;
    if( str == NULL || str[0] == '\0' ) return ;
    im3d = AFNI_find_open_controller() ;
-   (void) MCW_popup_message( im3d->vwid->prog->clone_pb ,
-                             str, MCW_USER_KILL|MCW_TIMER_KILL ) ;
+   (void)MCW_popup_message( im3d->vwid->prog->clone_pb ,
+                            str, MCW_USER_KILL|MCW_TIMER_KILL ) ;
    return ;
 }
 
@@ -6127,6 +6181,8 @@ ENTRY("AFNI_initialize_controller") ;
    POPUP_cursorize( im3d->vwid->func->thr_pval_label ) ;  /* 05 Sep 2006 */
 #endif
    POPUP_cursorize( im3d->vwid->func->inten_label ) ;
+   POPUP_cursorize( im3d->vwid->func->options_label ) ;
+   POPUP_cursorize( im3d->vwid->func->range_label ) ;
    POPUP_cursorize( im3d->vwid->picture ) ;
    POPUP_cursorize( imag->crosshair_label ) ;
    POPUP_cursorize( im3d->vwid->func->thr_label ) ;
@@ -6173,7 +6229,7 @@ void AFNI_clone_controller_CB( Widget wcall , XtPointer cd , XtPointer cbs )
 {
    int ii , xx , yy ;
    Three_D_View *im3d ;
-   Three_D_View *caller_im3d = (Three_D_View *) cd ;
+   Three_D_View *caller_im3d = (Three_D_View *)cd ;
    MCW_DC *new_dc , *old_dc ;
 
 ENTRY("AFNI_clone_controller_CB") ;
@@ -6223,13 +6279,13 @@ ENTRY("AFNI_clone_controller_CB") ;
       if( new_dc == NULL ) new_dc = old_dc ;
 
       GLOBAL_library.controllers[ii] =
-           new_AFNI_controller( NULL , new_dc , AFNI_3DDATA_VIEW ) ;
+        new_AFNI_controller( NULL , new_dc , AFNI_3DDATA_VIEW ) ;
 
       if( caller_im3d != NULL ){
-         MCW_widget_geom( caller_im3d->vwid->top_shell , NULL,NULL , &xx,&yy ) ;
-         xx += 15 ; yy += 15 ;
-         XtVaSetValues( GLOBAL_library.controllers[ii]->vwid->top_shell ,
-                           XmNx , xx , XmNy , yy , NULL ) ;
+        MCW_widget_geom( caller_im3d->vwid->top_shell , NULL,NULL , &xx,&yy ) ;
+        xx += 15 ; yy += 15 ;
+        XtVaSetValues( GLOBAL_library.controllers[ii]->vwid->top_shell ,
+                       XmNx , xx , XmNy , yy , NULL ) ;
       }
    }
 
@@ -6237,15 +6293,23 @@ ENTRY("AFNI_clone_controller_CB") ;
 
    im3d = GLOBAL_library.controllers[ii] ;
 
-   OPEN_CONTROLLER( im3d ) ;
+   if( caller_im3d != NULL ) DISABLE_LOCK ;
+
+   OPEN_CONTROLLER( im3d ) ; /* will return when window is open */
+
    AFNI_initialize_controller( im3d ) ;  /* decide what to see */
-   AFNI_initialize_view( NULL , im3d ) ; /* set up to see it */
+   AFNI_initialize_view( NULL , im3d ) ;   /* set up to see it */
 
    AFNI_controller_clonify() ;
 
-   AFNI_vedit_CB( im3d->vwid->func->options_vedit_av , im3d ) ;  /* 05 May 2009 */
+   AFNI_vedit_CB( im3d->vwid->func->options_vedit_av, im3d ) ; /* 05 May 2009 */
 
    AFNI_coord_filer_setup(im3d) ; /* 07 May 2010 */
+
+   if( caller_im3d != NULL ){     /* 03 Jul 2014 */
+     ENABLE_LOCK ;
+     AFNI_all_locks_carryout( caller_im3d ) ;
+   }
 
    PICTURE_OFF(im3d) ; SHOW_AFNI_READY ; EXRETURN ;
 }
@@ -7056,6 +7120,7 @@ ENTRY("AFNI_vedit_CB") ;
    XtUnmanageChild( im3d->vwid->func->vedit_frame ) ;
 
    switch( av->ival ){
+#if 0
      /* switch to Clusters */
      case 0:
        DISABLE_INSTACALC(im3d) ;                          /* InstaCalc off */
@@ -7068,26 +7133,35 @@ ENTRY("AFNI_vedit_CB") ;
          XtUnmanageChild( im3d->vwid->func->gicor_rowcol ) ;
        XtManageChild  ( im3d->vwid->func->clu_rowcol  ) ;
      break ;
+#endif
 
      /* switch to InstaCorr */
-     case 1:
+     case VEDIT_INSTACORR:
+#if 0
        UNCLUSTERIZE(im3d) ;                               /* Clusters off */
+#endif
        DISABLE_INSTACALC(im3d) ;                          /* InstaCalc off */
        DISABLE_GRPINCORR(im3d) ;                          /* GrpInCorr off */
        XtUnmanageChild( im3d->vwid->func->icalc_rowcol) ;
+#if 0
        XtUnmanageChild( im3d->vwid->func->clu_rowcol  ) ;
+#endif
        if( im3d->vwid->func->gicor_rowcol != NULL )
          XtUnmanageChild( im3d->vwid->func->gicor_rowcol ) ;
        XtManageChild  ( im3d->vwid->func->icor_rowcol ) ;
      break ;
 
      /* switch to InstaCalc [18 Sep 2009] */
-     case 2:
+     case VEDIT_INSTACALC:
+#if 0
        UNCLUSTERIZE(im3d) ;                               /* Clusters off */
+#endif
        DISABLE_INSTACORR(im3d) ;                          /* InstaCorr off */
        DESTROY_ICOR_setup(im3d->iset) ;
        DISABLE_GRPINCORR(im3d) ;                          /* GrpInCorr off */
+#if 0
        XtUnmanageChild( im3d->vwid->func->clu_rowcol  ) ;
+#endif
        XtUnmanageChild( im3d->vwid->func->icor_rowcol ) ;
        if( im3d->vwid->func->gicor_rowcol != NULL )
          XtUnmanageChild( im3d->vwid->func->gicor_rowcol ) ;
@@ -7095,13 +7169,15 @@ ENTRY("AFNI_vedit_CB") ;
      break ;
 
      /* switch to Group InstaCorr [22 Dec 2009] */
-     case 3:
+     case VEDIT_GRINCORR:
        if( im3d->vwid->func->gicor_rowcol != NULL ){
          DISABLE_INSTACALC(im3d) ;                          /* InstaCalc off */
          DISABLE_INSTACORR(im3d) ;                          /* InstaCorr off */
          DESTROY_ICOR_setup(im3d->iset) ;
+#if 0
          UNCLUSTERIZE(im3d) ;                               /* Clusters off */
          XtUnmanageChild( im3d->vwid->func->clu_rowcol  ) ;
+#endif
          XtUnmanageChild( im3d->vwid->func->icor_rowcol ) ;
          XtUnmanageChild( im3d->vwid->func->icalc_rowcol) ;
          XtManageChild  ( im3d->vwid->func->gicor_rowcol) ;
@@ -7503,4 +7579,15 @@ ENTRY("get_3Dview_func_thresh") ;
    }
 
    RETURN(thresh);
+}
+
+void reset_mnito(struct Three_D_View *im3d)
+{
+   if(!im3d) return;
+   if(!im3d->vwid->imag->pop_mnito_pb) return;
+
+   sprintf(jumpstring, "Jump to (%s)", get_jump_space());
+
+   MCW_set_widget_label( im3d->vwid->imag->pop_mnito_pb, jumpstring ) ;
+   XtManageChild( im3d->vwid->imag->pop_mnito_pb ) ;
 }

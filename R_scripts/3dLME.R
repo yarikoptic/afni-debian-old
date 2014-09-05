@@ -14,18 +14,6 @@ ExecName <- '3dLME'
 ##################### Begin 3dLME Input functions ################################
 #################################################################################
 
-greeting.lme <- function ()
-   return( "#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-          ================== Welcome to 3dlme ==================          
-   AFNI Group Analysis Program with Linear Mixed-Effcts Modeling Approach
-#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-Version 1.3, June 3, 2014
-Author: Gang Chen (gangchen@mail.nih.gov)
-Website - http://afni.nimh.nih.gov/sscc/gangc/LME.html
-SSCC/NIMH, National Institutes of Health, Bethesda MD 20892
-#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
-      )
-
 #The help function for 3dLME batch (AFNI-style script mode)
 help.LME.opts <- function (params, alpha = TRUE, itspace='   ', adieu=FALSE) {
 
@@ -34,7 +22,7 @@ help.LME.opts <- function (params, alpha = TRUE, itspace='   ', adieu=FALSE) {
           ================== Welcome to 3dLME ==================          
     AFNI Group Analysis Program with Multi-Variate Modeling Approach
 #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-Version 1.3, May 30, 2014
+Version 1.3.4, Sept 2, 2014
 Author: Gang Chen (gangchen@mail.nih.gov)
 Website - http://afni.nimh.nih.gov/sscc/gangc/LME.html
 SSCC/NIMH, National Institutes of Health, Bethesda MD 20892
@@ -51,7 +39,7 @@ Usage:
  
  F-statistics for main effects and interactions are automatically included in 
  the output for all variables. In addition, Student t-tests for quantitative 
- variables are also in the ouput. In addition, general linear tests (GLTs) can 
+ variables are also in the output. In addition, general linear tests (GLTs) can 
  be requested via symbolic coding.
  
  If you want to cite the analysis approach, use the following:
@@ -217,7 +205,7 @@ read.LME.opts.batch <- function (args=NULL, verb = 0) {
    "         and B, and A*B = A+B+A:B. The effects of within-subject",
    "         factors, if present under -wsVars are automatically assumed",
    "         to interact with the ones specified here. Subject should not",
-   "         occur in the model specifiction here.\n", sep = '\n'
+   "         occur in the model specification here.\n", sep = '\n'
              ) ),
 
       '-ranEff' = apl(n=c(1,100), d=NA, h = paste(
@@ -236,7 +224,7 @@ read.LME.opts.batch <- function (args=NULL, verb = 0) {
       '-qVars' = apl(n=c(1,100), d=NA, h = paste(
    "-qVars variable_list: Identify quantitative variables (or covariates) with",
    "         this option. The list with more than one variable has to be",
-   "         separaated with comma (,) without any other characters such as",
+   "         separated with comma (,) without any other characters such as",
    "         spaces and should be surrounded within (single or double) quotes.",
    "          For example, -qVars \"Age,IQ\"",
    "         WARNINGS:",
@@ -296,15 +284,15 @@ read.LME.opts.batch <- function (args=NULL, verb = 0) {
    "         requests for a test of comparing 2 times House condition",
    "         with 3 times Face condition while Emotion is held at positive",
    "         valence.\n",
-   "         NOTICE:",
-   "         1) The weights for a variable do not have to add up to 0.",   
+   "         NOTE:\n",
+   "         1) The weights for a variable do not have to add up to 0.\n",   
    "         2) When a quantitative variable is present, other effects are",
-   "         tested at the center value of the covariate.",
+   "         tested at the center value of the covariate.\n",
    "         3) The effect for a quantitative variable can be specified with,",
    "         for example, 'Group : 1*Old Age : ', or ",
-   "         'Group : 1*Old - 1*Young Age : '", 
+   "         'Group : 1*Old - 1*Young Age : '\n", 
    "         4) The absence of a categorical variable in a coding means the",
-   "         levels of that factor are averaged (or collapsed) for the GLT.",
+   "         levels of that factor are averaged (or collapsed) for the GLT.\n",
    "         5) The appearance of a categorial variable has to be followed",
    "         by the linear combination of its levels. Only a quantitative",
    "         is allowed to have a dangling coding as seen in 'Age :'\n",         
@@ -312,20 +300,26 @@ read.LME.opts.batch <- function (args=NULL, verb = 0) {
              ) ),
        
      '-dataTable' = apl(n=c(1, 1000000), d=NA, h = paste(
-   "-dataTable TABLE: List the data structure with a header as the first line.",
-   "         NOTE: this option has to occur last; that is, no other options are",
+   "-dataTable TABLE: List the data structure with a header as the first line.\n",
+   "         NOTE:\n",
+   "         1) This option has to occur last; that is, no other options are",
    "         allowed thereafter. Each line should end with a backslash except for",
    "         the last line.\n",
-   "         The first column is fixed with 'Subj', and the last is reserved",
-   "         for 'InputFile'. Each row should contain only one effect estimate",
-   "         in the table of long format (cf. wide format) as defined in R. The",
-   "         level labels of a factor should contain at least one character.",
-   "         Input files can be in AFNI, NIfTI or surface format. AFNI files",
-   "         can be specified with sub-brick selector(square brackets [] within",
-   "         quotes) specified with a number oflabel. Unequal number of subjects",
-   "         across groups is allowed, butsituations with missing data for a",
-   "         within-subject factor are betterhandled with 3dLME.",
-   "         handled with 3dLME.\n", 
+   "         2) The first column is fixed and reserved with label 'Subj', and the",
+   "         last is reserved for 'InputFile'. Each row should contain only one",
+   "         effect estimate in the table of long format (cf. wide format) as",
+   "         defined in R. The level labels of a factor should contain at least",
+   "         one character. Input files can be in AFNI, NIfTI or surface format.",
+   "         AFNI files can be specified with sub-brick selector (square brackets",
+   "         [] within quotes) specified with a number or label.\n",
+   "         3) It is fine to have variables (or columns) in the table that are",
+   "         not modeled in the analysis.\n",
+   "         4) The context of the table can be saved as a separate file, e.g.,",
+   "         called table.txt. Do not forget to include a backslash at the end of",
+   "         each row. In the script specify the data with '-dataTable table.txt'.",
+   "         This option is useful: (a) when there are many input files so that",
+   "         the program complains with an 'Arg list too long' error; (b) when",
+   "         you want to try different models with the same dataset.\n",
              sep = '\n'
                      ) ),
 
@@ -383,7 +377,7 @@ read.LME.opts.batch <- function (args=NULL, verb = 0) {
              num_glt = lop$num_glt <- ops[[i]],
              gltLabel = lop$gltLabel <- ops[[i]],
              gltCode  = lop$gltCode <- ops[[i]],
-             dataTable  = lop$dataTable <- ops[[i]],
+             dataTable  = lop$dataTable <- dataTable.AFNI.parse(ops[[i]]),
              
              help = help.LME.opts(params, adieu=TRUE),
 
@@ -407,7 +401,7 @@ gltConstr <- function(cStr, dataStr) {
    varsOK <- vars %in% colnames(dataStr)
    if(all(varsOK)) {
       gltList <- vector('list', nvar)      
-      for(ii in 1:nvar) {
+      for(ii in seq_len(nvar)) {
          #browser()
 	      lvl  <- levels(dataStr[,vars[ii]])
          gltList[[ii]] <- rep(0, length(lvl))
@@ -519,7 +513,7 @@ process.LME.opts <- function (lop, verb = 0) {
    hi <- len / wd - 1
    
    if(len %% wd != 0)
-      errex.AFNI('The content under -dataTable is not rectangular!') else {
+      errex.AFNI(paste('The content under -dataTable is not rectangular !', len, wd)) else {
       lop$dataStr <- NULL
       #browser()
       for(ii in 1:wd) 
@@ -558,6 +552,11 @@ process.LME.opts <- function (lop, verb = 0) {
    #}
 
    lop$vQV <- NA; lop$vVars <- NA # no voxelwise quantitative variable for now
+
+   # set the covariate values at their centers
+   lop$covVal <- rep(0, length(lop$QV))
+   names(lop$covVal) <- lop$QV
+
    if (lop$num_glt > 0) {
       lop$gltList    <- vector('list', lop$num_glt)
       lop$slpList    <- vector('list', lop$num_glt)
@@ -565,11 +564,13 @@ process.LME.opts <- function (lop, verb = 0) {
          #if(!is.na(lop$qVars)) { if(any(lop$QV %in% lop$gltCode[[n]])) {
          if(!is.na(lop$qVars) & any(lop$QV %in% lop$gltCode[[n]])) {
             QVpos <- which(lop$gltCode[[n]] %in% lop$QV)
-            lop$gltList[[n]]   <- gltConstr(lop$gltCode[[n]][-c(QVpos, QVpos+1)], lop$dataStr)
+            if(QVpos > 1)  lop$gltList[[n]] <- gltConstr(lop$gltCode[[n]][-c(QVpos, QVpos+1)], lop$dataStr)
+            if(QVpos == 1) lop$gltList[[n]] <- NA
             lop$slpList[[n]] <- lop$gltCode[[n]][QVpos]   
          } else if(!is.na(lop$vVars) & any(lop$vQV %in% lop$gltCode[[n]])) {
             vQVpos <- which(lop$gltCode[[n]] %in% lop$vQV)
-            lop$gltList[[n]]   <- gltConstr(lop$gltCode[[n]][-c(vQVpos, vQVpos+1)], lop$dataStr)
+            if(vQVpos > 1)  lop$gltList[[n]] <- gltConstr(lop$gltCode[[n]][-c(vQVpos, vQVpos+1)], lop$dataStr)
+            if(vQVpos == 1) lop$gltList[[n]] <- NA
             lop$slpList[[n]] <- lop$gltCode[[n]][vQVpos]   
          } else lop$gltList[[n]] <- gltConstr(lop$gltCode[[n]], lop$dataStr)
          #} else lop$gltList[[n]] <- gltConstr(lop$gltCode[[n]], lop$dataStr)
@@ -648,8 +649,11 @@ runLME <- function(inData, dataframe, ModelForm, pars) {
             #try(con <- contrast(fm, pars[[4]][[n]][[1]], pars[[4]][[n]][[2]], type="average"),silent=TRUE) 
 	    #if(!is.null(con)) Stat[(pars[[2]]+2*n-1):(pars[[2]]+2*n)] <- c(con$Contrast, con$testStat)
             glt <- NULL
+            if(is.na(pars[[4]][[ii]])) glt <- tryCatch(testInteractions(fm, pair=NULL, slope=pars[[6]][[ii]], 
+               covariates=lop$covVal, adjustment="none"), error=function(e) NULL) else
             glt <- tryCatch(testInteractions(fm, custom=pars[[4]][[ii]], slope=pars[[6]][[ii]], 
-               adjustment="none"), error=function(e) NULL)
+               covariates=lop$covVal, adjustment="none"), error=function(e) NULL)
+            
             #glt <- testInteractions(fm, custom=pars[[4]][[ii]], slope=pars[[6]][[ii]], adjustment="none")
             if(!is.null(glt)) {
                Stat[pars[[2]][1]+2*ii-1] <- glt[1,1]
@@ -743,7 +747,7 @@ read.LME.opts.from.file <- function (modFile='model.txt', verb = 0) {
    if(!exists('.DBG_args')) { 
       args = (commandArgs(TRUE))  
       rfile <- first.in.path(sprintf('%s.R',ExecName))  
-      save(args, rfile, file=".3dLME.dbg.AFNI.args", ascii = TRUE) 
+      try(save(args, rfile, file=".3dLME.dbg.AFNI.args", ascii = TRUE), silent=TRUE)
    } else {
       note.AFNI("Using .DBG_args resident in workspace")
       args <- .DBG_args
@@ -785,8 +789,8 @@ read.LME.opts.from.file <- function (modFile='model.txt', verb = 0) {
 
 if(!is.na(lop$qVarCenters)) lop$qVarCenters <- as.numeric(strsplit(as.character(lop$qVarCenters), '\\,')[[1]])
 
-require("nlme")
-require("phia")
+library("nlme")
+library("phia")
 
 #comArgs <- commandArgs()
 
@@ -824,7 +828,7 @@ for(ii in 2:(dim(lop$dataStr)[2]-1)) if(class(lop$dataStr[,ii]) == 'factor')
 cat(lop$num_glt, 'post hoc tests\n')
 
 cat('\nContingency tables of subject distributions among the categorical variables:\n\n')
-showTab <- as.formula(paste('~', gsub("\\*", "+", lop$model)))
+showTab <- as.formula(paste('~', gsub("\\:", "+", gsub("\\*", "+", lop$model))))
 if(!is.na(lop$qVars)) for(ii in 1:length(lop$QV))
    showTab <- gsub(paste('\\*',lop$QV[ii], sep=' '), '', gsub(paste('\\+',lop$QV[ii], sep=' '), '', showTab))
 showTab <- as.formula(gsub("\\*", "+", showTab))  # in case there are still some *'s like between-subjects factors
@@ -897,7 +901,8 @@ gltRes <- vector('list', lop$num_glt)
 nRanEff <- length(lop$ranEff)
 ranEff <-  vector('list', nRanEff)
 names(ranEff) <- rep('Subj', nRanEff)
-for(n in 1:nRanEff) ranEff[[n]] <- as.formula(lop$ranEff[[n]])
+#for(n in 1:nRanEff) ranEff[[n]] <- as.formula(lop$ranEff[[n]])
+for(n in 1:nRanEff) ranEff[[n]] <-eval(parse(text=lop$ranEff[[n]]))
 
 if(!is.na(lop$corStr[1])) corStr <- as.formula(c('~', lop$corStr[1])) else corStr <- NA
 
@@ -910,7 +915,7 @@ while(is.null(fm)) {
       random=ranEff, data=lop$dataStr), silent=TRUE)
    #if(!is.null(fm)) if (lop$num_glt > 0) {
    #   n <- 1
-   #   require(contrast)
+   #   library(contrast)
    #   gltDF <- array(data=NA, dim=lop$num_glt)
    #   while(!is.null(fm) & (n <= lop$num_glt)) {
    #      gltDF[n] <- tryCatch(contrast(fm, lop$gltList[[n]][[1]], lop$gltList[[n]][[2]], type="average")$df,
@@ -924,7 +929,10 @@ while(is.null(fm)) {
       while(!is.null(fm) & (n <= lop$num_glt)) {
         #gltDF[n] <- tryCatch(contrast(fm, lop$gltContrList[[n]][[1]], lop$gltContrList[[n]][[2]], type="average")$df,
         #    error=function(e) NA)
-        gltRes[[n]] <- tryCatch(testInteractions(fm, custom=lop$gltList[[n]], slope=lop$slpList[[n]], adjustment="none"), error=function(e) NA)
+         if(is.na(lop$gltList[[n]])) gltRes[[n]] <- tryCatch(testInteractions(fm, pair=NULL,
+            covariates=lop$covVal, slope=lop$slpList[[n]], adjustment="none"), error=function(e) NA) else
+         gltRes[[n]] <- tryCatch(testInteractions(fm, custom=lop$gltList[[n]],
+            covariates=lop$covVal, slope=lop$slpList[[n]], adjustment="none"), error=function(e) NA)
          if(is.na(gltRes[[n]])) fm <- NULL
          n <- n+1
       }

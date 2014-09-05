@@ -3,7 +3,7 @@
 #include <math.h>
 
 #include "mrilib.h"     /* from thd_iochan.h    25 Apr 2011 */
-#include "Imon.h"
+#include "Dimon.h"
 #include "realtime.h"
 
 extern ART_comm  gAC;
@@ -246,12 +246,12 @@ int ART_send_volume( ART_comm * ac, vol_t * v, int debug )
 
     /* send one complete volume */
 
-    bytes = ac->param->im_store.im_size;
+    bytes = ac->param->fim_o[v->fs_1].nbytes;
 
     /* note that v->nim will be 1 for siemens mosaic, no matter... */
     for ( slice = 0; slice < v->nim; slice++ )
     {
-        image = (char *)ac->param->im_store.im_ary[v->fl_1 + slice];
+        image = ac->param->fim_o[v->fs_1 + slice].imdata;
 
         if ( ac->swap )               /* maybe we must swap the bytes first */
             swap_2( image, bytes/2 ); /* assuming DATUM short here ...      */
@@ -559,15 +559,15 @@ int ART_send_control_info( ART_comm * ac, vol_t * v, int debug )
     }
 
     /* pass along any user specified realtime command(s)    v3.2 [rickr] */
-    if ( ac->param->opts.rt_list.str )
+    if ( ac->param->opts.rt_list.num )
     {
         string_list * list = &ac->param->opts.rt_list;
         char        * cp;
         int           ns;
 
-        for ( ns = 0; ns < list->nused; ns++ )
+        for ( ns = 0; ns < list->num; ns++ )
         {
-            strncpy( tbuf, list->str[ns], 256 );
+            strncpy( tbuf, list->list[ns], 256 );
 
             /* sneaky... change any "\n" pairs to '\n' */
             for ( cp = tbuf; cp < (tbuf + strlen(tbuf) - 1); cp++ )
@@ -583,15 +583,15 @@ int ART_send_control_info( ART_comm * ac, vol_t * v, int debug )
     }
 
     /* pass along any user specified drive command(s) */
-    if ( ac->param->opts.drive_list.str )
+    if ( ac->param->opts.drive_list.num )
     {
         string_list * list = &ac->param->opts.drive_list;
         char        * cp;
         int           ns;
 
-        for ( ns = 0; ns < list->nused; ns++ )
+        for ( ns = 0; ns < list->num; ns++ )
         {
-            sprintf( tbuf, "DRIVE_AFNI %s", list->str[ns] );
+            sprintf( tbuf, "DRIVE_AFNI %s", list->list[ns] );
 
             /* sneaky... change any "\n" pairs to '\n' */
             for ( cp = tbuf; cp < (tbuf + strlen(tbuf) - 1); cp++ )
@@ -607,15 +607,15 @@ int ART_send_control_info( ART_comm * ac, vol_t * v, int debug )
     }
 
     /* pass along any user specified drive_wait command(s) */
-    if ( ac->param->opts.wait_list.str )
+    if ( ac->param->opts.wait_list.num )
     {
         string_list * list = &ac->param->opts.wait_list;
         char        * cp;
         int           ns;
 
-        for ( ns = 0; ns < list->nused; ns++ )
+        for ( ns = 0; ns < list->num; ns++ )
         {
-            sprintf( tbuf, "DRIVE_WAIT %s", list->str[ns] );
+            sprintf( tbuf, "DRIVE_WAIT %s", list->list[ns] );
 
             /* sneaky... change any "\n" pairs to '\n' */
             for ( cp = tbuf; cp < (tbuf + strlen(tbuf) - 1); cp++ )
@@ -725,19 +725,18 @@ int ART_idisp_ART_comm( char * info, ART_comm * ac )
     }
 
     fprintf( fp,
-            "ART_comm struct at %p :\n"
+            "ART_comm struct :\n"
             "   (state, mode)   = (%d, %d)\n"
             "   (use_tcp, swap) = (%d, %d)\n"
             "   byte_order      = %d\n"
             "   is_oblique      = %d\n"
             "   zorder          = %s\n"
             "   host            = %s\n"
-            "   ioc_name        = %s\n"
-            "   (ioc, param)    = (0x%p, 0x%p)\n",
-            ac, ac->state, ac->mode, ac->use_tcp, ac->swap, ac->byte_order,
+            "   ioc_name        = %s\n",
+            ac->state, ac->mode, ac->use_tcp, ac->swap, ac->byte_order,
             ac->is_oblique,
             CHECK_NULL_STR(ac->zorder), CHECK_NULL_STR(ac->host),
-            CHECK_NULL_STR(ac->ioc_name), ac->ioc, ac->param );
+            CHECK_NULL_STR(ac->ioc_name) );
 
     if( ac->is_oblique ) {
         fprintf(fp, "   oblique_xform:\n");

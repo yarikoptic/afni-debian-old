@@ -43,7 +43,177 @@
 
 afni_history_struct rwcox_history[] = {
 /*=====BELOW THIS LINE=====*/
-  { 12 , JUN , 2014 , RWC , "afni GUI" , MICRO , TYPE_GENERAL ,
+  { 3 , SEP , 2014 , RWC , "r_idisp.c" , MICRO , TYPE_BUG_FIX ,
+   "Fixed formatting bugs (%ld changed to %lld) in 2 places" ,
+   NULL } ,
+
+ { 3 , SEP , 2014 , RWC , "sorting" , MICRO , TYPE_BUG_FIX ,
+   "Fixed bug in special qsort7_* code -- had wrong indexes!" ,
+   "Affects any program calling qsort_float() for array of length 7" } ,
+
+ { 2 , SEP , 2014 , RWC , "afni GUI" , MICRO , TYPE_MODIFY ,
+   "Don't apply 0D and 2D transformations to overlay image in wiper mode" ,
+   NULL } ,
+
+ { 2 , SEP , 2014 , RWC , "3dNwarpAdjust" , MICRO , TYPE_BUG_FIX ,
+   "Tried to write out average dataset when it didn't exist -- Oops." ,
+   "Also fixed bug in mri_nwarp.c where extended warp dataset didn't get the\n"
+   "same 'view' as the input dataset." } ,
+
+ { 29 , AUG , 2014 , RWC , "afni GUI" , MICRO , TYPE_GENERAL ,
+   "Modify wiper scale to be attached to image window form" ,
+   NULL } ,
+
+ { 26 , AUG , 2014 , RWC , "3dNwarpApply and 3dNwarpCat" , MICRO , TYPE_NEW_OPT ,
+   "Add '-expad' option for extra padding, if needed for some reason" ,
+   NULL } ,
+
+ { 26 , AUG , 2014 , RWC , "mri_nwarp.c" , MICRO , TYPE_GENERAL ,
+   "Alter IW3D_read_catenated_warp() to do warp extension" ,
+   "The amount of extension is based on the shifts in the affine components\n"
+   "in the warp chain.  This change is to fix a problem with long distance\n"
+   "shifts catenated with 3dQwarp output, where the input warp grid no\n"
+   "longer encompasses all the requisite domain for the output warp." } ,
+
+ { 22 , AUG , 2014 , RWC , "afni GUI" , MICRO , TYPE_GENERAL ,
+    "Add wiping and mixing between OLay and ULay images" ,
+    "By pressing the '4', '5', or '6' key, user gets a slider for\n"
+    "horizontal wiper, vertical wiper, or intensity mixing between\n"
+    "the images (respectively).  This is Ziad's fault." } ,
+
+  { 11 , AUG , 2014 , RWC , "3dQwarp" , MICRO , TYPE_GENERAL ,
+   "Modify -duplo to only go to lev=3" ,
+   NULL } ,
+
+ { 11 , AUG , 2014 , RWC , "3dQwarp" , MICRO , TYPE_BUG_FIX ,
+   "Fix bug with -pblur" ,
+   "Problem: warped source image Haasrcim was created from source image\n"
+   "blurred at lev=0, which means (with -pblur) it was blurred a lot.  Then\n"
+   "at later levels, it is being slowly replaced with warped patches from a\n"
+   "less-blurred source image.  This produces strange effects, as part of\n"
+   "Haasrcim is now heavily blurred and part is less blurred.  Solution:\n"
+   "re-create Haasrcim from the current warp and from the current amount of\n"
+   "blurring at the start of each level." } ,
+
+ { 7 , AUG , 2014 , RWC , "3dQwarp" , MICRO , TYPE_GENERAL ,
+   "Add customized median filter to mri_nwarp.c" ,
+   "To parallelize with OpenMP, since it might be used a lot with the new\n"
+   "-pblur option." } ,
+
+ { 7 , AUG , 2014 , RWC , "3dQwarp" , MICRO , TYPE_NEW_OPT ,
+   "Add -pblur option, for progressive blurring" ,
+   "That is, more blurring at coarse levels and less blurring at fine\n"
+   "levels.  May become the default after some more experience." } ,
+
+ { 5 , AUG , 2014 , RWC , "3dQwarp" , MICRO , TYPE_GENERAL ,
+   "Move basim blur from 3dQwarp.c to mri_nwarp.c" ,
+   "Preparatory to adding the -pblur option" } ,
+
+ { 5 , AUG , 2014 , RWC , "afni" , MICRO , TYPE_GENERAL ,
+   "Modify -ver output to mollify Chen Gang" ,
+   NULL } ,
+
+ { 24 , JUL , 2014 , RWC , "afni" , MICRO , TYPE_GENERAL ,
+   "Print/Popup warning message if same OLay is Clusterize-d twice" ,
+   NULL } ,
+
+ { 23 , JUL , 2014 , RWC , "various" , MICRO , TYPE_MODIFY ,
+   "Change format '%d' to '%lld' for a few MRI_IMAGE structs" ,
+   "In various files, to eliminate compiler warnings about printing 64-bit\n"
+   "integers with a 32-bit format." } ,
+
+ { 21 , JUL , 2014 , RWC , "afni GUI" , MICRO , TYPE_GENERAL ,
+   "Add 'Jumpto OLay Min' and 'Max' buttons to OLay popup menu" ,
+   "Lets the user jump crosshairs to locations of (thresholded) min and max\n"
+   "values. (May be inaccurate for non-NN resampling of overlay or threshold.)" } ,
+
+ { 18 , JUL , 2014 , RWC , "3dNwarpApply" , MICRO , TYPE_NEW_OPT ,
+   "Add -iwarp option, to invert the result from -nwarp" ,
+   NULL } ,
+
+ { 16 , JUL , 2014 , RWC , "3dAllineate" , MICRO , TYPE_GENERAL ,
+   "Modify labels of shear parameters when '-EPI' is used" ,
+   "Per user Mingbo on the message board" } ,
+
+ { 14 , JUL , 2014 , RWC , "mri_nwarp.c" , MICRO , TYPE_GENERAL ,
+   "Add a boatload of comments to explain how warping works" ,
+   NULL } ,
+
+ { 10 , JUL , 2014 , RWC , "1dplot" , MICRO , TYPE_NEW_OPT ,
+   "-hist option for plotting histogram style" ,
+   NULL } ,
+
+ { 9 , JUL , 2014 , RWC , "3dNwarpXYZ" , MICRO , TYPE_MODIFY ,
+   "Modify the way -iwarp works" ,
+   "Use backwards stream tracing only to initialize a search via Powell's\n"
+   "NEWUOA.  Also, use quintic interpolation for the forward warp, instead\n"
+   "of linear." } ,
+
+ { 7 , JUL , 2014 , RWC , "3dNwarpXYZ" , MICRO , TYPE_NEW_OPT ,
+   "Add -iwarp option to allow for warp inversion" ,
+   "For a few points, should be MUCH faster than using 'INV(warp)' for the\n"
+   "-nwarp option." } ,
+
+ { 7 , JUL , 2014 , RWC , "afni GUI" , MICRO , TYPE_MODIFY ,
+   "Check if 2 pbars are equivalent before locking them" ,
+   "Prevents unneeded flicker and redisplay" } ,
+
+ { 3 , JUL , 2014 , RWC , "afni GUI" , MICRO , TYPE_BUG_FIX ,
+   "pbar locks didn't work right all the time" ,
+   "Needed to force things to happen more violently, and also to force\n"
+   "overlay redraws.  Also, make a new controller be locked at startup\n"
+   "instead of when the user does something." } ,
+
+ { 3 , JUL , 2014 , RWC , "afni GUI" , MICRO , TYPE_BUG_FIX ,
+   "'u' keypress failed when OLay and ULay datasets were the same" ,
+   "Toggling between overlay and underlay as grayscale with 'u' failed when\n"
+   "the 2 datasets were the same.  Problem devolved to a function Ziad put\n"
+   "in to make the selection of sub-brick index to use -- which always\n"
+   "favored the anat_index if the 2 datasets were the same, regardless of\n"
+   "the image type requested.  Now it should work properly -- when the 2\n"
+   "datasets are the same (fim and anat), then the sub-brick index will be\n"
+   "chosen based on the type of image requested." } ,
+
+ { 2 , JUL , 2014 , RWC , "3dNwarpXYZ" , MINOR , TYPE_NEW_PROG ,
+   "Nonlinear transform of xyz coordinate triples -- for Ziad" ,
+   NULL } ,
+
+ { 30 , JUN , 2014 , RWC , "3dQwarp" , MINOR , TYPE_NEW_OPT ,
+   "Add -lpc and -lpa options" ,
+   "Sounds simple, but was really a lot of work to make these reasonably\n"
+   "efficient.  And to work at all, for that matter.  Ugh." } ,
+
+ { 27 , JUN , 2014 , RWC , "3drefti" , MICRO , TYPE_NEW_OPT ,
+   "Add -checkaxes option" ,
+   NULL } ,
+
+ { 19 , JUN , 2014 , RWC , "@Install_ClustScat_Demo" , MINOR , TYPE_NEW_PROG ,
+   "Installs demo for Clusterize scatter plotting" ,
+   NULL } ,
+
+ { 19 , JUN , 2014 , RWC , "afni GUI" , MICRO , TYPE_MODIFY ,
+   "Modify shft+ctrl+drag InstaCorr slightly" ,
+   "So that Clusterize report table is NOT updated until the user releases\n"
+   "the mouse button -- otherwise, the constant table updating slows things\n"
+   "down too much (per Ziad)." } ,
+
+ { 18 , JUN , 2014 , RWC , "afni GUI" , MINOR , TYPE_MODIFY ,
+   "Move Clusterize outside of Instastuff menu" ,
+   "So Clusterize is now available for InstaCorr, etc.  The bkgd:xxxx box is\n"
+   "gone, its functionality living on only in the 'u' image keypress." } ,
+
+ { 16 , JUN , 2014 , RWC , "afni Clusterize GUI" , MICRO , TYPE_MODIFY ,
+   "Save->Mask??" ,
+   "Toggle switch added to hidden popup on top part of report window.  If\n"
+   "switched on, the cluster-wise 'Save' buttons become 'Mask' buttons,\n"
+   "which lets the user save a single-cluster mask dataset (instead of the\n"
+   "multi-cluster dataset of 'SaveMsk')." } ,
+
+ { 16 , JUN , 2014 , RWC , "afni GUI" , MICRO , TYPE_MODIFY ,
+   "Add SAVE_OVERLAY and SAVE_UNDERLAY commands to afni_driver.c" ,
+   NULL } ,
+
+ { 12 , JUN , 2014 , RWC , "afni GUI" , MICRO , TYPE_GENERAL ,
    "Add OLay thresholded range hint" ,
    NULL } ,
 

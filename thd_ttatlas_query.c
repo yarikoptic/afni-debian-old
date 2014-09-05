@@ -598,9 +598,7 @@ char * get_atlas_dirname(void)  /* 31 Jan 2008 -- RWCox */
 
    if( !first ) return adnam ;
    first = 0 ;
-                       epath = getenv("AFNI_PLUGINPATH") ;
-   if( epath == NULL ) epath = getenv("AFNI_PLUGIN_PATH") ;
-   if( epath == NULL ) epath = getenv("PATH") ;
+   epath = get_env_atlas_path();
    if( epath == NULL ) return NULL ;  /* this is bad */
 
    ll = strlen(epath) ;
@@ -626,6 +624,17 @@ char * get_atlas_dirname(void)  /* 31 Jan 2008 -- RWCox */
    } while( epos < ll ) ;
 
    return NULL ;
+}
+
+/* get preferred path for atlases, potentially containing multiple directories*/
+char * get_env_atlas_path()
+{
+   char *epath;
+                       epath = getenv("AFNI_ATLAS_PATH") ;
+   if( epath == NULL ) epath = getenv("AFNI_PLUGINPATH") ;
+   if( epath == NULL ) epath = getenv("AFNI_PLUGIN_PATH") ;
+   if( epath == NULL ) epath = getenv("PATH") ;
+   return(epath);
 }
 
 /*-----------------------------------------------------------------------*/
@@ -681,10 +690,7 @@ THD_3dim_dataset * get_atlas(char *epath, char *aname)
       }
 
       /*----- get path to search -----*/
-
-                          epath = getenv("AFNI_PLUGINPATH") ;
-      if( epath == NULL ) epath = getenv("AFNI_PLUGIN_PATH") ;
-      if( epath == NULL ) epath = getenv("PATH") ;
+      epath = get_env_atlas_path();
       if( epath == NULL ) RETURN(dset) ;
 
       /*----- copy path list into local memory -----*/
@@ -2324,11 +2330,12 @@ char *find_atlas_niml_file(char * nimlname, int niname)
      
    /* okay that didn't work, try the AFNI plugin directory */
    namebuf[0]='\0';
-                       epath = getenv("AFNI_PLUGINPATH") ;
-   if( epath == NULL ) epath = getenv("AFNI_PLUGIN_PATH") ;
+
+
+   epath = get_env_atlas_path();
    if( epath != NULL ) {
       if(wami_verb() > 1) 
-         INFO_message("trying to open %s in AFNI_PLUGINPATH directory %s\n",
+         INFO_message("trying to open %s in AFNI_ATLAS_PATH or AFNI_PLUGINPATH directory %s\n",
               nimlname, epath);   
       fstr = THD_find_regular_file(nimlname, epath);
       if(fstr) {
@@ -6765,8 +6772,7 @@ THD_3dim_dataset *load_atlas_dset(char *dsetname)
    }
 
    /* okay that didn't work, try the AFNI plugin directory */
-                       epath = getenv("AFNI_PLUGINPATH") ;
-   if( epath == NULL ) epath = getenv("AFNI_PLUGIN_PATH") ;
+   epath = get_env_atlas_path();
    if( epath != NULL ) {
       if(epath[strlen(epath)-1]!='/') {
          sprintf(filestr, "%s/", epath);
@@ -8886,13 +8892,31 @@ char * deblank_name (char *name) {
    return(name);
 }
 
-char * depunct_name (char *name) {
+char *deblank_allname(char *name, char fill)
+{
+   int nch = 0, bb=0;
+   
+   if (!name) return(name);
+   
+   name = deblank_name(name);
+   
+   nch = strlen(name);
+   bb=0; 
+   while (name[bb] != '\0') {
+      if (isspace(name[bb])) name[bb]=fill;
+      ++bb;
+   }
+   
+   return(name);
+}
+
+char *depunct_name (char *name) {
    int nch = 0, bb=0, ibb=0, BB=0;
    
    if (!name) return(name);
    
    nch = strlen(name);
-   /* deblank it, leave spaces in middle */
+   /* depunct it, leave spaces in middle */
    bb=0; 
    while (name[bb] != '\0' && IS_PUNCT(name[bb])) {
       ++bb;
@@ -9202,7 +9226,7 @@ int AFNI_get_dset_val_label(THD_3dim_dataset *dset, double val, char *str)
    Unlike AFNI_get_dset_val_label,
    This function has not been tested.
    
-   NEEDS MODIFICATION TO deal with ATLAS datasets.
+   NEEDS MODIFICATION to deal with ATLAS datasets.
 */
 int AFNI_get_dset_label_val(THD_3dim_dataset *dset, double *val, char *str)
 {
@@ -9840,5 +9864,42 @@ wami_xform_coords_print(float *coords, int ncoords,
    free(xfl);
    RETURN(0);
 }
+
+
+int
+wami_xform_xyz(float xi, float yi, float zi, 
+   float *xout, float *yout, float *zout,
+   char *srcspace, char *destspace)
+{
+   float *fptr;
+   ATLAS_XFORM_LIST *xfl = NULL, *cxfl = NULL;
+
+   ENTRY("wami_xform_coords_xyz");
+
+
+   if(strcmp(srcspace, destspace)==0)
+      cxfl = NULL;   /* data already in destination space*/
+   else {
+      xfl = report_xform_chain(srcspace, destspace, 0);
+      cxfl = calc_xform_list(xfl);
+      if(!cxfl){
+         WARNING_message("Could not compute xform between spaces\n");
+         free(xfl);
+         RETURN(-1);
+      }
+   }
+
+   if(cxfl) {
+      apply_xform_chain(cxfl, xi, yi, zi, xout, yout, zout);
+   }
+   else {
+      *xout = xi; *yout = yi; *zout = zi;
+   }
+
+   free(cxfl);
+   free(xfl);
+   RETURN(0);
+}
+
 
 

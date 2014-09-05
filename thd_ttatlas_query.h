@@ -317,6 +317,7 @@ void Show_Atlas (AFNI_ATLAS *aa);
 AFNI_ATLAS *Free_Atlas(AFNI_ATLAS *aa) ;
 AFNI_ATLAS_REGION *ROI_String_Decode(char *str, ATLAS_LIST *atlas_list);
 char * deblank_name(char *name);
+char *deblank_allname(char *name, char fill);
 char * depunct_name(char *name);
 char * dequote_name(char *name, char qo);
 int begins_with(char *name, char *quote, int debl);
@@ -440,6 +441,10 @@ int set_adh_old_way(ATLAS_DSET_HOLDER *adh, char *aname);
 int find_coords_in_space(ATLAS_COORD *acl, int N_acl, char *space_name); 
 int transform_atlas_coords(ATLAS_COORD ac, char **out_spaces, 
                            int N_out_spaces, ATLAS_COORD *acl, char *orcodeout); 
+int wami_xform_xyz(float xi,float yi,float zi,
+   float *xout, float *yout, float *zout,
+   char *srcspace, char *destspace);
+
 void set_wami_verb(int lev);
 int wami_verb(void);
 int wami_lh(void);
@@ -468,6 +473,7 @@ ATLAS_XFORM_LIST *get_G_xform_list(void);
 ATLAS_LIST* get_G_atlas_list(void);
 ATLAS_TEMPLATE_LIST *get_G_templates_list(void);
 char *find_atlas_niml_file(char * nimlname, int nini);
+char * get_env_atlas_path(void);
 ATLAS_LIST *env_atlas_list(void);
 char **env_space_list(int *);
 int env_dec_places(void);

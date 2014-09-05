@@ -243,12 +243,35 @@ void SUMA_usage (SUMA_GENERIC_ARGV_PARSE *ps, int detail)
 "             mv ~/sumarc ~/.sumarc\n" 
 "\n"
 "\n"
+"   [-drive_com DRIVE_SUMA_COM]: Drive suma with command DRIVE_SUMA_COM,\n"
+"            which has the same syntax that you would use for DriveSuma.\n"
+"            For instance:\n"
+"\n"
+"            suma -i ld120 -drive_com '-com surf_cont -view_surf_cont y'\n"      
+"            or \n"
+"            suma -drive_com '-com viewer_cont -key 'F12' -com kill_suma'\n"
+"\n"
+"            You can use repeated instances of -drive_com to have a series\n"
+"            of commands that get executed in the order in which they appear\n"
+"            on the command line.\n"
+"\n"
+"\n"
 "%s", 
        (detail > 1) ? ssym:"     use -help for more detail on loading template surfaces with symbolic notation\n" ,
        (detail > 1) ? sio:"     use -help for more detail on input options\n" , 
        (detail > 1) ? sb:"     use -help for more detail on basic options\n", 
        (detail > 1) ? get_np_help():
                   "     use -help for more detail on communication ports\n");
+   
+   if (detail > 1) { printf(
+"-help_interactive: Write the help for interactive usage into file\n"
+"                   Mouse_Keyboard_Controls.txt\n"
+"-help_sphinx_interactive HOUT: Write the help for interactive usage into \n"
+"                   SPHINX formatted file HOUT"
+"See DriveSuma's -write_*_help options for more\n"
+"-test_help_string_edit: Show example of help string editing and quit\n");
+   }
+   
    if (detail > 1) { printf(
 "   [-list_ports]  List all port assignments and quit\n"
 "   [-port_number PORT_NAME]: Give port number for PORT_NAME and quit\n"
@@ -632,8 +655,38 @@ int main (int argc,char *argv[])
           exit (0);
 		}
       
+      if (strcmp(argv[kar], "-help_sphinx_interactive") == 0) {
+         FILE *fout = NULL;
+         if( ++kar >= argc ) 
+            ERROR_exit("need a file name after -help_sphinx_interactive!"); 		
+          fout = fopen(argv[kar],"w");
+          if (!fout) {
+            SUMA_S_Err("Failed to open %s for writing", argv[kar]);
+            exit(1);
+          }
+          SUMA_help_message(fout,1);
+          fclose(fout); fout = NULL;
+          exit (0);
+		}
+      
+      if (strcmp(argv[kar], "-help_interactive") == 0) {
+			 FILE *fout = fopen("Mouse_Keyboard_Controls.txt","w");
+          if (!fout) {
+            SUMA_S_Err("Failed to open Mouse_Keyboard_Controls.txt for writing");
+            exit(1);
+          }
+          SUMA_help_message(fout,0);
+          fclose(fout); fout = NULL;
+          exit (0);
+		}
+      
+      if (strcmp(argv[kar], "-test_help_string_edit") == 0) {
+         SUMA_Sphinx_String_Edit_Help(SUMA_STDOUT);
+         exit(0);
+      }
+      
       if (strcmp(argv[kar], "-environment") == 0) {
-			 s = SUMA_env_list_help (0);
+			 s = SUMA_env_list_help (0, 0);
           fprintf (SUMA_STDOUT,  
             "#SUMA ENVIRONMENT \n"
             "# If you do not have a ~/.sumarc file, cannot find a SUMA\n"
@@ -656,7 +709,7 @@ int main (int argc,char *argv[])
 		}
       
       if (strcmp(argv[kar], "-default_env") == 0) {
-			 s = SUMA_env_list_help (1);
+			 s = SUMA_env_list_help (1, 0);
           fprintf (SUMA_STDOUT,  
                   "#SUMA DEFAULT ENVIRONMENT (user settings ignored)\n"
                   "# see also suma -udate_env or suma -environment\n"
@@ -715,6 +768,8 @@ int main (int argc,char *argv[])
 			brk = YUP;
          */
 		}
+      
+      
       
       SUMA_SKIP_COMMON_OPTIONS(brk, kar);
       
@@ -788,6 +843,20 @@ int main (int argc,char *argv[])
 			brk = YUP;
 		}		
 		
+		if (!brk && strcmp(argv[kar], "-drive_com") == 0)
+		{
+			kar ++;
+			if (kar >= argc)  {
+		  		fprintf (SUMA_STDERR, "need argument after -drive_com\n");
+				exit (1);
+			}
+			SUMAg_CF->dcom = (char **)SUMA_realloc(SUMAg_CF->dcom,
+                                          (SUMAg_CF->N_dcom+1)*sizeof(char *));
+         SUMAg_CF->dcom[SUMAg_CF->N_dcom] = SUMA_copy_string(argv[kar]);
+         ++SUMAg_CF->N_dcom;
+			brk = YUP;
+		}
+      
 		if (!brk && strcmp(argv[kar], "-ah") == 0)
 		{
 			kar ++;
@@ -806,6 +875,7 @@ int main (int argc,char *argv[])
 
 			brk = YUP;
 		}	
+      
 		if (!brk && strcmp(argv[kar], "-spec") == 0)
 		{ 
 		   kar ++;
@@ -1095,7 +1165,7 @@ int main (int argc,char *argv[])
    }
    
 	/*Main loop */
-	XtAppMainLoop(SUMAg_CF->X->App);
+   XtAppMainLoop(SUMAg_CF->X->App);
 
 	
 	/* Done, clean up time */

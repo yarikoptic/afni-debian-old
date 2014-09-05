@@ -66,6 +66,81 @@
 afni_history_struct ziad_history[] = {
 /*=====BELOW THIS LINE=====*/
  
+ { 03, Sep, 2014, ZSS, "3dSetupGroupInCorr", MINOR, TYPE_BUG_FIX,
+   "Made -labels option work well with -LRpairs",
+   NULL
+ },
+  
+ { 29, Aug, 2014, ZSS, "suma", MINOR, TYPE_NEW_OPT,
+   "Added -drive_com to allow the driving of SUMA by its command line",
+   NULL
+ },
+  
+ { 28, Aug, 2014, ZSS, "3dHist", MINOR, TYPE_NEW_OPT,
+   "Added -equalized to do histogram equalization on the whole volume",
+   NULL
+ },
+  
+ { 25, Aug, 2014, ZSS, "ParseName", MINOR, TYPE_NEW_OPT,
+   "Added -*PrefixView, and improved -out to multi-components",
+   NULL
+ },
+  
+ { 25, Aug, 2014, ZSS, "@Align_Centers", MINOR, TYPE_BUG_FIX,
+   "Made program handle NIFTI input. Irrrrgh.",
+   NULL
+ },
+  
+ { 5, Aug, 2014, ZSS, "@SUMA_Make_Spec_FS", MINOR, TYPE_NEW_OPT,
+   "Made program handle FreeSurfer's -contrasurfreg output",
+   NULL
+ },
+  
+ { 1, Aug, 2014, ZSS, "3dGenFeatureDist", MINOR, TYPE_NEW_PROG,
+   "Program written a while ago, placed in the distribution now",
+   NULL
+ },
+  
+ { 31, Jul, 2014, ZSS, "3dpc", MICRO, TYPE_NEW_OPT,
+   "Added option -nscale to scale covariance matrix by number of samples",
+   "This would make output consistent with R and matlab decompositions\n"
+   "Also changed output files names for 1D files to make program not clobber\n"
+   "results in .1D mode"
+ },
+  
+ { 18, Jul, 2014, ZSS, "3dTstat", MICRO, TYPE_NEW_OPT,
+   "Added option -nscale to avoid scaling with byte/short output",
+   NULL
+ },
+  
+ { 17, Jul, 2014, ZSS, "suma", MICRO, TYPE_NEW_OPT,
+   "Made ROIgrow work with single node ROIs, see help for -node_labels PER_NODE",
+   NULL
+ },
+  
+ { 16, Jul, 2014, ZSS, "suma", MICRO, TYPE_NEW_OPT,
+   "Fixed bug with computation of tract_P0_offset_private values",
+   NULL
+ },
+  
+ { 15, Jul, 2014, ZSS, "suma", MICRO, TYPE_NEW_OPT,
+   "Added different ways to highlight masked tracts",
+   NULL
+ },
+  
+ { 11, Jul, 2014, ZSS, "suma", MICRO, TYPE_MODIFY,
+   "Changes to help functions to create Sphinx friendly keypress docs ",
+   "See hidden options suma -help_interactive and -help_sphinx_interactive\n"
+   "for sample output."
+ },
+  
+ { 7, Jun, 2014, ZSS, "auto_warp", MINOR, TYPE_NEW_OPT,
+   "Made -dataTable options take text file instead of command line opts ",
+   "This makes it possible to have very large tables without exceeding\n"
+   "limit on command line length. File name has to begin with '@'\n"
+   "in keeping with some C-language 3d progs."
+ },
+  
  { 2, Jun, 2014, ZSS, "auto_warp", MINOR, TYPE_NEW_OPT,
    "Added -qworkhard and -qw_opts for finer control of 3dQwarp step ",
    NULL

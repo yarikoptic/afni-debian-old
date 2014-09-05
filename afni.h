@@ -438,6 +438,7 @@ typedef struct {
   Widget wtop, rowcol;      /* containers */
   Widget top_lab;           /* overall report text */
   Widget top_menu , histrange_pb ;
+  MCW_bbox *save_as_mask_bbox ; /* 16 Jun 2014 */
   MCW_bbox *histsqrt_bbox ;
   MCW_bbox *spearman_bbox ; /* 02 Jan 2013 */
 
@@ -467,6 +468,7 @@ typedef struct {
   THD_3dim_dataset *dset ;  /* selected from dataset_pb */
   int coord_mode ;
   int receive_on ;
+  int save_as_mask ;
   float hbot,htop ;
 
   Widget     splot_pb , splot_clear_pb ;
@@ -582,6 +584,8 @@ extern float  get_3Dview_func_thresh(struct Three_D_View *im3d,
                                      int apply_power);
 extern float AFNI_thresh_from_percentile(struct Three_D_View *im3d, float perc);
 
+extern void reset_mnito(struct Three_D_View *im3d);
+
 #define OPEN_PANEL(iq,panel)                                            \
    {  XtManageChild( (iq)->vwid->  panel  ->frame ) ;                    \
       if( ! (iq)->vwid->view->  panel ## _pb_inverted ){                  \
@@ -661,6 +665,8 @@ extern float THR_top_value ;
 
 #undef USE_FUNC_FIM              /* 09 Dec 1997 */
 
+#undef USE_UNDERLAY_BBOX         /* 18 Jun 2014 */
+
 typedef struct {
       Widget frame , rowcol ;
 
@@ -695,8 +701,9 @@ typedef struct {
       MCW_arrowval *pbar_transform2D_av ;
       generic_func *pbar_transform2D_func ;
       int           pbar_transform2D_index ;
-
-      Widget pbar_flip_pb ;                     /* 08 Feb 2012 */
+      Widget        pbar_flip_pb ;              /* 08 Feb 2012 */
+      Widget        pbar_jumpto_thmax_pb ;      /* 21 Jul 2014 */
+      Widget        pbar_jumpto_thmin_pb ;
 
       Widget options_rowcol , options_top_rowcol , options_label ;
       MCW_arrowval *options_vedit_av ;
@@ -1075,6 +1082,11 @@ typedef struct {
 #define IM3D_HAVEGR(ii) ((ii)->g123 != NULL || (ii)->g231 != NULL || (ii)->g312 != NULL)
 #define IM3D_FUNKY(ii)  (IM3D_OPEN(ii) && IM3D_HAVEIM(ii) && (ii)->vinfo->func_visible)
 
+#define IM3D_SHFT_CTRL_DRAG(iq)                                \
+ ( ( (iq)->s123 != NULL && (iq)->s123->shft_ctrl_dragged ) ||  \
+   ( (iq)->s231 != NULL && (iq)->s231->shft_ctrl_dragged ) ||  \
+   ( (iq)->s312 != NULL && (iq)->s312->shft_ctrl_dragged )   )
+
 #define ISVALID_IM3D(ii) IM3D_VALID(ii)
 
 #define AFNI_IGNORE_NOTHING    0
@@ -1141,11 +1153,15 @@ typedef struct Three_D_View {
       float fim_thrtop ;
       float fim_thresh_min ;
       float fim_thresh_max ;
+      int   fim_thresh_min_ijk ;
+      int   fim_thresh_max_ijk ;
 } Three_D_View ;
 
-#define IM3D_CLEAR_THRSTAT(iq)                                                    \
-  do{ (iq)->fim_thrbot     = 666.0f; (iq)->fim_thrtop     = -666.0f;              \
-      (iq)->fim_thresh_min = 666.0f; (iq)->fim_thresh_max = -666.0f; } while(0)
+#define IM3D_CLEAR_THRSTAT(iq)                                       \
+  do{ (iq)->fim_thrbot     = 666.0f; (iq)->fim_thrtop     = -666.0f; \
+      (iq)->fim_thresh_min = 666.0f; (iq)->fim_thresh_max = -666.0f; \
+      (iq)->fim_thresh_min_ijk = (iq)->fim_thresh_max_ijk = -666   ; \
+  } while(0)
 
 #define IM3D_ULAY_COHERENT(iq)                                                    \
  (( (iq)->b123_ulay == (iq)->b123_anat || (iq)->b123_ulay == (iq)->b123_fim ) &&  \
@@ -1214,6 +1230,11 @@ extern void CLU_setup_alpha_tables( Three_D_View * ) ; /* Jul 2010 */
 #define STOP_COLOR "#770000"
 #define GO_COLOR   "#005500"
 #define WORK_COLOR "#888800"
+
+#define VEDIT_INSTACORR  0
+#define VEDIT_INSTACALC  1
+#define VEDIT_GRINCORR   2
+#define VEDIT_LAST_VALUE 2
 
 #define INSTACORR_LABEL_ON(iq)                                          \
  do{ MCW_set_widget_label((iq)->vwid->func->icor_label,"** Ready **") ; \
@@ -1292,7 +1313,7 @@ extern void CLU_setup_alpha_tables( Three_D_View * ) ; /* Jul 2010 */
 
 #define GRPINCORR_LABEL_ON(iq)                                             \
  do{ if( (iq)->vwid->func->gicor_rowcol != NULL ){                         \
-       MCW_set_widget_label((iq)->vwid->func->gicor_label,"** Ready **") ; \
+       MCW_set_widget_label((iq)->vwid->func->gicor_label,"*GIC Ready*") ; \
        MCW_set_widget_bg   ((iq)->vwid->func->gicor_label,GO_COLOR,0   ) ; \
      } } while(0)
 
@@ -1406,6 +1427,9 @@ extern void AFNI_popup_message( char * ) ;
 extern void   AFNI_start_version_check(void) ;   /* 21 Nov 2002 */
 extern int    AFNI_version_check      (void) ;
 extern char * AFNI_make_update_script (void) ;   /* 20 Nov 2003 */
+
+extern void   AFNI_start_compile_date_check(void) ;  /* 17 Jun 2014 */
+extern int    AFNI_compile_date_check      (void) ;
 
 extern char * AFNI_get_friend(void) ;      /* 26 Feb 2001 */
 extern char * AFNI_get_date_trivia(void) ; /* 25 Nov 2002 */
@@ -1677,6 +1701,8 @@ extern void AFNI_lock_clear_CB  ( Widget , XtPointer , XtPointer ) ;
 extern void AFNI_lock_setall_CB ( Widget , XtPointer , XtPointer ) ;
 extern void AFNI_lock_carryout  ( Three_D_View * ) ;
 
+extern void AFNI_all_locks_carryout( Three_D_View *im3d ) ; /* 03 Jul 2014 */
+
 extern void AFNI_time_lock_carryout( Three_D_View * ) ;  /* 03 Nov 1998 */
 extern void AFNI_time_lock_change_CB( Widget , XtPointer , XtPointer ) ;
 
@@ -1785,6 +1811,7 @@ extern void AFNI_assign_ulay_bricks   ( Three_D_View *im3d ) ;             /* 10
 
 extern void AFNI_saveas_dataset_CB   ( Widget , XtPointer , XtPointer ) ;  /* 18 Oct 2010 */
 extern void AFNI_saveas_finalize_CB  ( Widget , XtPointer , MCW_choose_cbs * ) ;
+extern void AFNI_writeout_dataset    ( THD_3dim_dataset * , char * ) ;     /* 16 Jun 2014 */
 
 extern void AFNI_do_many_writes      ( Widget , XtPointer , MCW_choose_cbs * ) ; /* 23 Nov 1996 */
 extern void AFNI_finalize_dataset_CB ( Widget , XtPointer , MCW_choose_cbs * ) ;
@@ -1798,6 +1825,7 @@ extern void AFNI_sumato_CB           ( Widget , XtPointer , MCW_choose_cbs * ) ;
 extern void AFNI_mnito_CB            ( Widget , XtPointer , MCW_choose_cbs * ) ;
 extern void AFNI_check_obliquity     ( Widget , THD_3dim_dataset * ,
                                                 THD_3dim_dataset * ) ;
+extern void AFNI_jumpto_thminmax_CB  ( Widget , XtPointer , XtPointer ) ; /* 21 Jul 2014 */
 
 extern void AFNI_crosshair_pop_CB    ( Widget , XtPointer , XtPointer ) ; /* 12 Mar 2004 */
 extern void AFNI_crosshair_EV        ( Widget , XtPointer , XEvent * , Boolean * ) ;
@@ -1907,6 +1935,7 @@ extern void AFNI_redisplay_func( Three_D_View * ) ;          /* 05 Mar 2002 */
 extern void AFNI_view_setter( Three_D_View *, MCW_imseq *) ; /* 26 Feb 2003 */
 extern void AFNI_range_setter( Three_D_View *, MCW_imseq *); /* 04 Nov 2003 */
 extern void AFNI_redisplay_func_ignore( int ) ;              /* 03 Jun 2014 */
+extern void AFNI_redisplay_func_all( Three_D_View *im3d ) ;  /* 03 Jul 2014 */
 
 extern void AFNI_coord_filer_setup( Three_D_View *im3d ) ;   /* 07 May 2010 */
 

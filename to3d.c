@@ -145,7 +145,8 @@ void AFNI_startup_timeout_CB( XtPointer client_data , XtIntervalId * id )
                     " to3d WARNING: %d negative voxels (%g%%)\n"
                     "               were read in images of shorts.\n"
                     "               It is possible the input\n"
-                    "               images need byte-swapping.\n \n"
+                    "               images need byte-swapping\n"
+                    "               (consider -ushort2float)\n\n"
                     " ** I recommend that you View Images. **\n" ,
               negative_shorts , perc ) ;
 
@@ -245,7 +246,8 @@ int main( int argc , char * argv[] )
       float perc = (100.0*negative_shorts)/nvox_total ;
       fprintf(stderr,
        "++ to3d WARNING: %d negative voxels (%g%%) were read in images of shorts.\n"
-       "++               It is possible the input images need byte-swapping.\n",
+       "++               It is possible the input images need byte-swapping.\n"
+                        "Consider also -ushort2float.\n",
        negative_shorts , perc ) ;
    }
 
@@ -368,10 +370,12 @@ DUMP_MAT44("MRILIB_dicom_matrix",MRILIB_dicom_matrix) ;
 
    /** Mar 1997: if any FOV or SLAB command line inputs are used,
                  then require that they all be given.            **/
+   /** Jun 2014: but only if given axis has nvals > 1    [rickr] **/
 
    if( all_good ){
-      int iii =  (user_inputs.xincode > 0)
-               + (user_inputs.yincode > 0) + (user_inputs.zincode > 0) ;
+      int iii =  (user_inputs.xincode > 0 || user_inputs.nx == 1 )
+               + (user_inputs.yincode > 0 || user_inputs.ny == 1 )
+               + (user_inputs.zincode > 0 || user_inputs.nz == 1 ) ;
 
       if( iii > 0 && iii < 3 ) all_good = False ;
    }
@@ -3280,6 +3284,7 @@ void Syntax()
     "\n"
     "    3D:hglobal:himage:nx:ny:nz:fname   [16 bit input]\n"
     "    3Ds:hglobal:himage:nx:ny:nz:fname  [16 bit input, swapped bytes]\n"
+    "                   (consider also -ushort2float for unsigned shorts)\n"
     "    3Db:hglobal:himage:nx:ny:nz:fname  [ 8 bit input]\n"
     "    3Di:hglobal:himage:nx:ny:nz:fname  [32 bit input]\n"
     "    3Df:hglobal:himage:nx:ny:nz:fname  [floating point input]\n"
@@ -4791,6 +4796,9 @@ printf("T3D_read_images: nvals set to %d\n",nvals) ;
          user_inputs.xyz_centered |= ZCENTERED ;
       else
          user_inputs.xyz_centered &= ~ZCENTERED ;
+   } else if( use_zoff ) { /* single slice dset:   25 Jun 2014 [rickr] */
+        user_inputs.zorigin = zoff ;
+        user_inputs.xyz_centered &= ~ZCENTERED ;
    }
 
    dset->taxis = NULL ;  /* will be patched later, if necessary */

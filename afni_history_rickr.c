@@ -49,6 +49,146 @@
 
 afni_history_struct rickr_history[] = {
 
+ {  4, Sep, 2014, RCR, "r_idisp.o", MICRO, TYPE_MODIFY,
+   "cast int64_t to long long to appease printf across multiple systems",
+   NULL
+ } ,
+
+ {  3, Sep, 2014, RCR, "plug_realtime", MINOR, TYPE_ENHANCE,
+   "merged in changes from C Craddock, with alterations",
+   "This needs some more work."
+ } ,
+
+ {  2, Sep, 2014, RCR, "3dTcat", MICRO, TYPE_ENHANCE,
+   "allow @filename format for -tpattern option",
+   NULL
+ } ,
+
+ { 29, Aug, 2014, RCR, "slow_surf_clustsim.py", MICRO, TYPE_ENHANCE,
+   "included blur in all help examples for clarity",
+   NULL
+ } ,
+
+ { 28, Aug, 2014, RCR, "Dimon", MICRO, TYPE_ENHANCE,
+   "test SOP IUID sorting",
+   NULL
+ } ,
+
+ { 27, Aug, 2014, RCR, "3dcalc", MICRO, TYPE_ENHANCE,
+   "applied AFNI_ORIENT for -LPI/-RAI",
+   "Requested by Shane M. via the message board."
+ } ,
+
+ { 25, Aug, 2014, RCR, "gen_ss_review_table.py", MICRO, TYPE_BUG_FIX,
+   "defined oind (for case that does not currently happen)",
+   NULL
+ } ,
+
+ { 22, Aug, 2014, RCR, "Dimon", MINOR, TYPE_NEW_OPT,
+   "added -sort_method and -save_details",
+   "Using the 'geme_index' sort method allows for real-time sorting\n"
+   "of GE multi-echo data, before volumes are sent to 'afni'.\n"
+   "Modification made for V Roopchansingh."
+ } ,
+
+ { 21, Aug, 2014, RCR, "model_conv_PRF", MICRO, TYPE_GENERAL,
+   "minor details added to help output",
+   NULL
+ } ,
+
+ { 13, Aug, 2014, RCR, "Dimon", MICRO, TYPE_GENERAL,
+   "very minor update",
+   NULL
+ } ,
+
+ { 12, Aug, 2014, RCR, "Dimon", MAJOR, TYPE_MODIFY,
+   "this should basically work like the old version",
+   "While no major change should be seen, this is an overhaul of\n"
+   "the previous version, which should allow for realtime sorting."
+ } ,
+
+ { 12, Aug, 2014, RCR, "Dimon1", MINOR, TYPE_GENERAL,
+   "Dimon1 is a fork of the previous working version of Dimon",
+   "This can be a backup if there are troubles with the new Dimon."
+ } ,
+
+ { 12, Aug, 2014, RCR, "afni_system_check.py", MICRO, TYPE_GENERAL,
+   "afni -ver is now only 1 line of output",
+   NULL
+ } ,
+
+ {  5, Aug, 2014, RCR, "to3d", MICRO, TYPE_GENERAL,
+   "added more comments about -ushort2float",
+   "Requested by J Butman."
+ } ,
+
+ {  2, Aug, 2014, RCR, "make_stim_times.py", MINOR, TYPE_NEW_OPT,
+   "added -run_trs, for cases when the TRs per run vary",
+   "Requested on message board by Rebecca and later by Lisam."
+ } ,
+
+ { 15,  Jul, 2014, RCR, "gen_ss_review_scripts.py", MINOR, TYPE_ENHANCE,
+   "output average motion per stim over response",
+   "This will probably be replaced by averages over stimulus only time.\n"
+   "Requested by D Pine."
+ } ,
+
+ { 15,  Jul, 2014, RCR, "3dClustSim", MICRO, TYPE_GENERAL,
+   "check for bad floats read for -fwhm[xyz]",
+   "Requested by shanusmagnus."
+ } ,
+
+ { 11,  Jul, 2014, RCR, "afni_proc.py", MINOR, TYPE_BUG_FIX,
+   "fixed 1d_tool.py -pad_into_many_runs for bpass w/varying run lengths",
+   "Thanks to d6anders for noting the problem."
+ } ,
+
+ {  3,  Jul, 2014, RCR, "model_conv_PRF", MINOR, TYPE_BUG_FIX,
+   "fixed a name space problem on macs",
+   NULL
+ } ,
+
+ {  2,  Jul, 2014, RCR, "afni-general", MICRO, TYPE_GENERAL,
+   "added model_conv_PRF in Makefile.INCLUDE for distribution",
+   NULL
+ } ,
+
+ { 27,  Jun, 2014, RCR, "model_conv_PRF", MAJOR, TYPE_NEW_PROG,
+   "population receptive field estimate model",
+   "For E Silson and C Baker."
+ } ,
+
+ { 26,  Jun, 2014, RCR, "3dresample", MINOR, TYPE_NEW_OPT,
+   "added -bound_type FOV/SLAB option (FOV is orig and default)",
+   "FOV preserves the field of view, SLAB preserves the SLAB\n"
+   "(so with SLAB the extents should not change)"
+ } ,
+
+ { 26,  Jun, 2014, RCR, "gen_ss_review_table.py", MICRO, TYPE_ENHANCE,
+   "track 'degress of freedom' as 'degrees ...'",
+   NULL
+ } ,
+
+ { 26,  Jun, 2014, RCR, "gen_ss_review_scripts.py", MICRO, TYPE_ENHANCE,
+   "note any anat/EPI mask correlation value; correct 'degress' as 'degrees'",
+   "Typo noted by J Stoddard."
+ } ,
+
+ { 26,  Jun, 2014, RCR, "afni_proc.py", MINOR, TYPE_ENHANCE,
+   "full_mask is now byte (via 3dmask_tool); note correlation with anat mask",
+   NULL
+ } ,
+
+ { 25,  Jun, 2014, RCR, "afni-general", MINOR, TYPE_BUG_FIX,
+   "removed SUMA/SUMA_MakeColorMap, SUMA/SUMA_MakeConsistent from source tree",
+   "Thanks to Y Halchenko for bringing it up."
+ } ,
+
+ { 25,  Jun, 2014, RCR, "to3d", MINOR, TYPE_ENHANCE,
+   "allow -zorigin with x/y SLAB/FOV, particularly in case of nz==1",
+   NULL
+ } ,
+
  {  2,  Jun, 2014, RCR, "slow_surf_clustsim.py", MICRO, TYPE_MODIFY,
    "niter defaults to 1000, to match recommendations and 'quick' example",
    NULL

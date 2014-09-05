@@ -41,6 +41,11 @@ static Widget wwtem ;
 static int scrollwheel_tmask = SWL_TMASK_DEFAULT ;
 static int scrollwheel_debug = 0 ;
 
+void ISQ_set_scale( Widget wscal , int percent ) ;
+void ISQ_render_scal_CB( Widget w, XtPointer client_data, XtPointer call_data ) ;
+void ISQ_popdown_render_scal( MCW_imseq *seq ) ;
+void ISQ_popup_render_scal( MCW_imseq *seq ) ;
+
 /************************************************************************
    Define the buttons and boxes that go in the "Disp" dialog
 *************************************************************************/
@@ -1019,6 +1024,32 @@ if( PRINT_TRACING ){
 
    MCW_register_help( newseq->wform , ISQ_form_help ) ;
 
+#define METER_HEIGHT 10
+   newseq->render_scal =       /* will be hidden later */
+     XtVaCreateManagedWidget(
+            "menu" , xmScaleWidgetClass , newseq->wform ,
+               XmNminimum , 0 ,
+               XmNmaximum , 100 ,
+               XmNscaleMultiple , 1 ,
+               XmNshowValue , True ,
+               XmNvalue , 50 ,
+               XmNorientation , XmHORIZONTAL ,
+               /** XmNscaleWidth , wid , **/
+               XmNscaleHeight , METER_HEIGHT ,
+               XmNborderWidth , 0 ,
+               XmNhighlightThickness , 0 ,
+               XmNshadowThickness , 0 ,
+               XmNtraversalOn , True  ,
+               XmNinitialResourcesPersistent , False ,
+               XmNtopAttachment   , XmATTACH_FORM ,
+               XmNleftAttachment  , XmATTACH_FORM ,
+               XmNrightAttachment , XmATTACH_FORM ,
+            NULL ) ;
+   XtAddCallback( newseq->render_scal , XmNvalueChangedCallback ,
+                  ISQ_render_scal_CB , newseq ) ;
+   XtAddCallback( newseq->render_scal , XmNdragCallback ,
+                  ISQ_render_scal_CB , newseq ) ;
+
    /* drawing area for image space */
 
    newseq->wimage =
@@ -1823,6 +1854,8 @@ STATUS("creation: widgets created") ;
      newseq->timer_id = 0 ;  /* 03 Dec 2003 */
 
      newseq->render_mode = RENDER_DEFAULT ;  /* 0 */
+     newseq->render_fac  = 0.0f ;            /* 22 Aug 2014 */
+     newseq->allowmerger = 0 ;
 
      /*-- labels stuff --*/
 
@@ -2013,6 +2046,7 @@ STATUS("creation: widgets created") ;
      scrollwheel_tmask = (swt == 0) ? SWL_TMASK_DEFAULT : swt ;
    }
 
+   XtUnmanageChild(newseq->render_scal) ;
    RETURN(newseq) ;
 }
 
@@ -2912,17 +2946,22 @@ ENTRY("ISQ_make_image") ;
 
       switch( seq->render_mode ){
         default:
-          tim = ISQ_getimage( seq->im_nr , seq ) ;
+          tim = ISQ_getimage( seq->im_nr , seq ) ;  /* might be cropped */
           if( tim == NULL ) EXRETURN ;
           seq->last_image_type = tim->kind ;
           seq->set_orim = (seq->need_orim != 0) ;  /* 30 Dec 1998 */
-          seq->imim = im = ISQ_process_mri( seq->im_nr , seq , tim ) ;
+          seq->imim = im = ISQ_process_mri( seq->im_nr , seq , tim , 0 ) ;
           KILL_1MRI(tim) ;
           seq->set_orim = 0 ;
           seq->barbot = seq->clbot ; /* 29 Jul 2001 */
           seq->bartop = seq->cltop ;
         break ;
 
+        case RENDER_WIPE_LEFT:    /* WIPE stuff 22 Aug 2014 */
+        case RENDER_WIPE_BOT:
+        case RENDER_MIX:
+        case RENDER_WIPE_RIGHT:
+        case RENDER_WIPE_TOP:
         case RENDER_CHECK_UO:
         case RENDER_CHECK_OU:
           seq->set_orim = 0 ;
@@ -3142,13 +3181,16 @@ ENTRY("ISQ_plot_label") ;
    -- the output will be MRI_short (grayscale index) or MRI_rgb
 -------------------------------------------------------------------------*/
 
-MRI_IMAGE * ISQ_process_mri( int nn , MCW_imseq *seq , MRI_IMAGE *im )
+MRI_IMAGE * ISQ_process_mri( int nn , MCW_imseq *seq , MRI_IMAGE *im , int flags )
 {
    MRI_IMAGE *newim , *flipim , *lim ;
    int  scl_grp ;
    short clbot=0 , cltop=0 ;
    int must_rescale = 1 ;     /* 31 Jan 2002: always turn this on */
    int have_transform ;
+   int do_0D     = (flags & PFLAG_NOTRAN0D) == 0;  /* 02 Sep 2014 */
+   int do_2D     = (flags & PFLAG_NOTRAN2D) == 0;
+   int do_improc = (flags & PFLAG_NOIMPROC) == 0 ;
    char scalestring[8];
 
 ENTRY("ISQ_process_mri") ;
@@ -3197,7 +3239,7 @@ ENTRY("ISQ_process_mri") ;
    }
 
    have_transform = (seq->transform0D_func != NULL ||
-                     seq->transform2D_func != NULL   ) ;
+                     seq->transform2D_func != NULL   ) && (do_0D || do_2D) ;
 
    /****** 11 Feb 1999: if input RGB image, do limited processing *****/
 
@@ -3209,10 +3251,10 @@ ENTRY("ISQ_process_mri") ;
       if( have_transform ) qim = mri_copy( lim ) ;
       else                 qim = lim ;
 
-      if( seq->transform0D_func != NULL )
+      if( seq->transform0D_func != NULL && do_0D )
         mri_rgb_transform_nD( qim, 0, seq->transform0D_func ) ;
 
-      if( seq->transform2D_func != NULL )
+      if( seq->transform2D_func != NULL && do_2D )
         mri_rgb_transform_nD( qim, 2, seq->transform2D_func ) ;
 
       /** histogram flattening (very useless) **/
@@ -3225,7 +3267,7 @@ ENTRY("ISQ_process_mri") ;
 
       /** sharpening (sometimes useful) **/
 
-      if( (seq->opt.improc_code & ISQ_IMPROC_SHARP) != 0 ){
+      if( (seq->opt.improc_code & ISQ_IMPROC_SHARP) != 0 && do_improc ){
         tim = mri_sharpen_rgb( seq->sharp_fac , qim ) ;
         if( qim != lim ) mri_free(qim) ;
         qim = tim ;
@@ -3477,7 +3519,7 @@ STATUS("begin IMPROCessing") ;
 
       /***** 30 Oct 1996: transform image *****/
 
-      if( seq->transform0D_func != NULL ){
+      if( seq->transform0D_func != NULL && do_0D ){
          tim = mri_to_float(qim) ;
 #if 0
          seq->transform0D_func( tim->nvox , MRI_FLOAT_PTR(tim) ) ;
@@ -3489,7 +3531,7 @@ STATUS("begin IMPROCessing") ;
          qim = tim ;
       }
 
-      if( seq->transform2D_func != NULL ){
+      if( seq->transform2D_func != NULL && do_2D ){
          tim = mri_to_float(qim) ;
 #if 0
          seq->transform2D_func( tim->nx , tim->ny ,
@@ -3505,7 +3547,7 @@ STATUS("begin IMPROCessing") ;
 
       /*** flatten ***/
 
-      if( (seq->opt.improc_code & ISQ_IMPROC_FLAT) != 0 ){
+      if( (seq->opt.improc_code & ISQ_IMPROC_FLAT) != 0 && do_improc ){
 STATUS("call mri_flatten") ;
          tim = mri_flatten( qim ) ;
          if( qim != lim ) mri_free(qim) ;
@@ -3528,7 +3570,7 @@ STATUS("clip flattened image") ;
 
       /*** sharpen ***/
 
-      if( (seq->opt.improc_code & ISQ_IMPROC_SHARP) != 0 ){
+      if( (seq->opt.improc_code & ISQ_IMPROC_SHARP) != 0 && do_improc ){
 STATUS("call mri_sharpen") ;
          tim = mri_sharpen( seq->sharp_fac , 0 , qim ) ;
          if( qim != lim ) mri_free(qim) ;
@@ -3537,7 +3579,7 @@ STATUS("call mri_sharpen") ;
 
       /*** Sobel edge detection ***/
 
-      if( (seq->opt.improc_code & ISQ_IMPROC_SOBEL) != 0 ){
+      if( (seq->opt.improc_code & ISQ_IMPROC_SOBEL) != 0 && do_improc ){
          int ii , npix ;
          float *tar ;
 
@@ -4084,7 +4126,7 @@ ENTRY("ISQ_saver_CB") ;
 
          seq->set_orim = 0 ;
          tim  = flim ;
-         flim = ISQ_process_mri( kf , seq , tim ) ;
+         flim = ISQ_process_mri( kf , seq , tim , 0 ) ;
          if( tim != flim ) KILL_1MRI( tim ) ;
 
          /* get overlay and flip it */
@@ -4363,7 +4405,7 @@ ENTRY("ISQ_saver_CB") ;
 
          seq->set_orim = 0 ;  /* 30 Dec 1998 */
          tim  = flim ;
-         flim = ISQ_process_mri( kf , seq , tim ) ;  /* image processing */
+         flim = ISQ_process_mri( kf , seq , tim , 0 ) ;  /* image processing */
          if( tim != flim ) KILL_1MRI( tim ) ;
 
 /* INFO_message("AFNI_IMAGE_SAVESQUARE = %s",getenv("AFNI_IMAGE_SAVESQUARE")); */
@@ -4422,7 +4464,7 @@ ENTRY("ISQ_saver_CB") ;
 
          seq->set_orim = 0 ;  /* 30 Dec 1998 */
          tim  = flim ;
-         flim = ISQ_process_mri( kf , seq , tim ) ;  /* will be shorts now */
+         flim = ISQ_process_mri( kf , seq , tim , 0 ) ;  /* will be shorts now */
          if( tim != flim ) KILL_1MRI( tim ) ;
 
          flar = mri_data_pointer(flim) ;  /* underlay image data */
@@ -5168,9 +5210,9 @@ ENTRY("ISQ_show_image") ;
 
    if( seq->given_xbar == NULL ) ISQ_show_bar( seq ) ;  /* 22 Aug 1998 */
 
-   if( seq->given_xim == NULL ) ISQ_make_image( seq ) ;
+   if( seq->given_xim == NULL )  ISQ_make_image( seq ) ;
 
-   if( seq->given_xim == NULL ) STATUS("bad news: given_xim == NULL!") ;
+   if( seq->given_xim == NULL )  STATUS("bad news: given_xim == NULL!") ;
 
    if( ! MCW_widget_visible(seq->wimage) ) EXRETURN ;  /* 03 Jan 1999 */
 
@@ -5203,6 +5245,8 @@ if( AFNI_yesenv("AFNI_IMSEQ_DEBUG") ){
   DBG_traceback() ;
 }
 #endif
+
+     /**** actually put the image to the screen ****/
 
      XPutImage( seq->dc->display , XtWindow(seq->wimage) , seq->dc->origGC ,
                 seq->sized_xim , 0,0,0,0,
@@ -5527,7 +5571,9 @@ ENTRY("ISQ_drawing_EV") ;
          /* Button1 release: turn off zoom-pan mode, if it was on */
 
          if( event->button == Button1 && w == seq->wimage ){
-           int xrel=event->x , yrel=event->y ;
+           int xrel=event->x , yrel=event->y ; int scd=seq->shft_ctrl_dragged ;
+
+           seq->shft_ctrl_dragged = 0 ;  /* 17 Mar 2010 */
 
            if( seq->zoom_button1 && !AFNI_yesenv("AFNI_KEEP_PANNING") ){
              seq->zoom_button1 = 0 ;
@@ -5541,13 +5587,14 @@ ENTRY("ISQ_drawing_EV") ;
                  plotkill_topshell( seq->graymap_mtd ) ;
                  seq->graymap_mtd = NULL ;
                }
-             } else if( seq->shft_ctrl_dragged ){        /* 17 Mar 2010 */
-               seq->shft_ctrl_dragged = 0 ;
              } else if( seq->status->send_CB != NULL ){  /* 04 Nov 2003 */
                 int imx,imy,nim;
                 seq->wimage_width = -1 ;
-                if( abs(seq->last_bx-xrel)+abs(seq->last_by-yrel) < 8 ){
-                  ISQ_mapxy( seq , seq->last_bx,seq->last_by , &imx,&imy,&nim ) ;
+                if( scd || abs(seq->last_bx-xrel)+abs(seq->last_by-yrel) < 8 ){
+                  int xuse,yuse ;
+                  if( scd ){ xuse = xrel        ; yuse = yrel        ; }
+                  else     { xuse = seq->last_bx; yuse = seq->last_by; }
+                  ISQ_mapxy( seq , xuse,yuse , &imx,&imy,&nim ) ;
                   cbs.reason = isqCR_buttonpress ;
                   cbs.event  = ev ;
                   cbs.xim    = imx ;       /* delayed send of Button1 */
@@ -7420,6 +7467,8 @@ ENTRY("ISQ_but_cnorm_CB") ;
 *    isqDR_get_crop        (int *) 4 ints that specify current crop status
 *    isqDR_set_crop        (int *) 4 ints to change current crop status
 
+*    isqDR_allowmerger     (ignored) allows the 3,4,5,6 'merger' buttons
+
 The Boolean return value is True for success, False for failure.
 -------------------------------------------------------------------------*/
 
@@ -7438,6 +7487,14 @@ ENTRY("drive_MCW_imseq") ;
                  drive_code) ;
          /* XBell( seq->dc->display , 100 ) ; */
          RETURN( False );
+      }
+      break ;
+
+      /*--------- allowmerger [25 Aug 2014] ----------*/
+
+      case isqDR_allowmerger:{
+        seq->allowmerger = 1 ;
+        RETURN( True ) ;
       }
       break ;
 
@@ -9296,9 +9353,14 @@ ENTRY("ISQ_manufacture_one") ;
        default:
          tim = ISQ_getimage( nim , seq ) ;
          if( tim == NULL ) RETURN(NULL) ;
-         im = ISQ_process_mri( nim , seq , tim ) ; mri_free(tim) ;
+         im = ISQ_process_mri( nim , seq , tim , 0 ) ; mri_free(tim) ;
        break ;
 
+       case RENDER_WIPE_LEFT:    /* WIPE stuff 22 Aug 2014 */
+       case RENDER_WIPE_BOT:
+       case RENDER_MIX:
+       case RENDER_WIPE_RIGHT:
+       case RENDER_WIPE_TOP:
        case RENDER_CHECK_UO:
        case RENDER_CHECK_OU:
          im = ISQ_getchecked( nim , seq ) ;
@@ -11637,16 +11699,127 @@ MRI_IMAGE * ISQ_cropim( MRI_IMAGE *tim , MCW_imseq *seq )
 
 /*---------------------------------------------------------------------*/
 
-MRI_IMAGE * ISQ_getulay( int nn , MCW_imseq *seq )
+MRI_IMAGE * ISQ_get_improj( int nn , MCW_imseq *seq , int getcode )
 {
    MRI_IMAGE *tim=NULL , *cim ;
+   int ii , rr , jj , ns , npix , ktim ;
+   MRI_IMAGE *qim=NULL , *fim=NULL ;
+   MRI_IMARR *imar ;
+   float *far , val=0.0f , *qar , **iar ;
 
+ENTRY("ISQ_get_improj") ;
+
+   /* get central slice */
+
+   AFNI_CALL_VALU_3ARG( seq->getim , MRI_IMAGE *,tim ,
+                        int,nn , int,getcode , XtPointer,seq->getaux ) ;
+
+   if( tim == NULL ) RETURN(NULL) ;  /* should not happen */
+
+   cim = ISQ_cropim(tim,seq) ; if( cim != NULL ){ mri_free(tim); tim=cim; }
+
+   /* return just this slice? */
+
+   if( !ISQ_DOING_SLICE_PROJ(seq) ) RETURN(tim) ;
+
+   ns = seq->status->num_series ;
+   rr = seq->slice_proj_range   ; if( rr > ns/2 ) rr = ns/2 ;
+
+   if( rr                    == 0           ||
+       seq->slice_proj_index == 0           ||
+       seq->slice_proj_func  == NULL        ||
+       tim                   == NULL        ||
+       tim->kind             == MRI_rgb     ||
+       tim->kind             == MRI_complex   ){
+
+      RETURN(tim) ;
+   }
+
+   /* return the projection of a bunch of images */
+
+   INIT_IMARR(imar) ;
+
+   ktim = tim->kind ;  /* save for later use */
+
+   /* get the images into imar */
+
+STATUS("projection loop") ;
+
+   for( ii=-rr ; ii <= rr ; ii++ ){
+
+      if( ii == 0 ){                /* at the middle, just put a   */
+         fim = mri_to_float(tim) ;  /* copy of the commanded slice */
+         ADDTO_IMARR(imar,fim) ;
+         continue ;
+      }
+
+      jj = nn+ii ;                    /* offset slice */
+           if( jj < 0   ) jj = 0    ; /* but not past the edges */
+      else if( jj >= ns ) jj = ns-1 ;
+
+STATUS("call getim") ;
+
+      AFNI_CALL_VALU_3ARG( seq->getim , MRI_IMAGE *,qim ,
+                           int,jj , int,getcode , XtPointer,seq->getaux ) ;
+
+      if( qim == NULL )
+         fim = mri_to_float(tim) ;                 /* need something */
+      else if( qim->kind != MRI_float ){
+         fim = mri_to_float(qim) ; mri_free(qim) ; /* convert it */
+      } else
+         fim = qim ;                               /* just put it here */
+
+      cim = ISQ_cropim(fim,seq) ; if( cim != NULL ){ mri_free(fim); fim=cim; }
+      ADDTO_IMARR(imar,fim) ;
+   }
+
+   /* project images, put results into qim */
+
+   qim = mri_new_conforming( tim , MRI_float ) ;
+   qar = MRI_FLOAT_PTR(qim) ; MRI_COPY_AUX(qim,tim) ;
+   mri_free(tim) ; tim = NULL ;
+
+   npix = qim->nvox ;
+   rr   = 2*rr+1 ;
+   far  = (float * )malloc( sizeof(float  ) * rr ) ;
+   iar  = (float **)malloc( sizeof(float *) * rr ) ;
+
+   for( ii=0 ; ii < rr ; ii++ )
+     iar[ii] = MRI_FLOAT_PTR(IMARR_SUBIM(imar,ii)) ;
+
+   for( jj=0 ; jj < npix ; jj++ ){
+     for( ii=0 ; ii < rr ; ii++ ) far[ii] = iar[ii][jj] ;
+     AFNI_CALL_proj_function( seq->slice_proj_func , rr,far , val ) ;
+     qar[jj] = val ;
+   }
+
+   free(iar) ; free(far) ; DESTROY_IMARR(imar) ;
+
+   if( ktim != MRI_float ){
+     tim = mri_to_mri(ktim,qim); mri_free(qim); qim = tim;
+   }
+
+   RETURN(qim) ;
+}
+
+/*---------------------------------------------------------------------*/
+
+MRI_IMAGE * ISQ_getulay( int nn , MCW_imseq *seq )
+{
+   MRI_IMAGE *tim=NULL , *cim=NULL ;
+
+ENTRY("ISQ_getulay") ;
+
+#if 0
    AFNI_CALL_VALU_3ARG( seq->getim , MRI_IMAGE *,tim ,
                         int,nn , int,isqCR_getulayim , XtPointer,seq->getaux ) ;
 
    cim = ISQ_cropim( tim , seq ) ;
    if( cim != NULL ){ mri_free(tim) ; tim = cim ; }
-   return tim ;
+#else
+   tim = ISQ_get_improj( nn , seq , isqCR_getulayim ) ;
+#endif
+   RETURN(tim) ;
 }
 
 /*---------------------------------------------------------------------*/
@@ -11655,12 +11828,14 @@ MRI_IMAGE * ISQ_getolay( int nn , MCW_imseq *seq )
 {
    MRI_IMAGE *tim=NULL , *cim ;
 
+ENTRY("ISQ_getolay") ;
+
    AFNI_CALL_VALU_3ARG( seq->getim , MRI_IMAGE *,tim ,
                         int,nn , int,isqCR_getolayim , XtPointer,seq->getaux ) ;
 
    cim = ISQ_cropim( tim , seq ) ;
    if( cim != NULL ){ mri_free(tim) ; tim = cim ; }
-   return tim ;
+   RETURN(tim) ;
 }
 
 /*---------------------------------------------------------------------*/
@@ -11671,12 +11846,12 @@ MRI_IMAGE *ISQ_getchecked( int nn , MCW_imseq *seq )
 
 ENTRY("ISQ_getchecked") ;
 
-   qim = ISQ_getimage(nn,seq) ; if( qim == NULL ) RETURN(NULL) ;
+   qim = ISQ_getulay(nn,seq) ; if( qim == NULL ) RETURN(NULL) ;
    dx  = qim->dx ; dy = qim->dy ;
-   uim = ISQ_process_mri(nn,seq,qim) ; mri_free(qim) ;
+   uim = ISQ_process_mri(nn,seq,qim,0) ; mri_free(qim) ;
 
-   qim = ISQ_getolay (nn,seq) ; if( qim == NULL ) RETURN(uim) ;
-   oim = ISQ_process_mri(nn,seq,qim) ; mri_free(qim) ;
+   qim = ISQ_getolay(nn,seq) ; if( qim == NULL ) RETURN(uim) ;
+   oim = ISQ_process_mri(nn,seq,qim,PFLAG_NOTHING) ; mri_free(qim) ;
 
    if( uim->kind == MRI_rgb && oim->kind == MRI_short ){
      qim = ISQ_index_to_rgb( seq->dc , 0 , oim ) ;
@@ -11688,13 +11863,104 @@ ENTRY("ISQ_getchecked") ;
 
    if( seq->render_mode == RENDER_CHECK_OU )
      qim = mri_check_2D( seq->wbar_checkbrd_av->ival , oim , uim ) ;
-   else
+   else if( seq->render_mode == RENDER_CHECK_UO )
      qim = mri_check_2D( seq->wbar_checkbrd_av->ival , uim , oim ) ;
+   else if( seq->render_mode == RENDER_WIPE_LEFT )    /* WIPE stuff 22 Aug 2014 */
+     qim = mri_wiper_2D( WIPER_FROM_LEFT   , seq->render_fac , oim,uim ) ;
+   else if( seq->render_mode == RENDER_WIPE_BOT )
+     qim = mri_wiper_2D( WIPER_FROM_BOTTOM , seq->render_fac , oim,uim ) ;
+   else if( seq->render_mode == RENDER_MIX )
+     qim = mri_mix_2D  (                     seq->render_fac , uim,oim ) ;
+   else if( seq->render_mode == RENDER_WIPE_RIGHT )
+     qim = mri_wiper_2D( WIPER_FROM_LEFT   , seq->render_fac , uim,oim ) ;
+   else if( seq->render_mode == RENDER_WIPE_TOP )
+     qim = mri_wiper_2D( WIPER_FROM_BOTTOM , seq->render_fac , uim,oim ) ;
 
    mri_free(oim) ;
    if( qim == NULL ){ uim->dx = dx ; uim->dy = dy ; RETURN(uim) ; }
 
    mri_free(uim) ;    qim->dx = dx ; qim->dy = dy ; RETURN(qim) ;
+}
+
+/*--------------------------------------------------------------------*/
+
+void ISQ_set_scale( Widget wscal , int percent )
+{
+   int val , old ;
+
+   val = percent ;
+   if( wscal == NULL || val < 0 || val > 100 ) return ;
+   XmScaleGetValue( wscal , &old ) ; if( val == old ) return ;
+   XtVaSetValues( wscal , XmNvalue , val , NULL ) ;
+   XmUpdateDisplay(wscal) ;
+   return ;
+}
+
+/*---------------------------------------------------------------------*/
+
+void ISQ_popdown_render_scal( MCW_imseq *seq )
+{
+   if( seq->render_scal != NULL ) XtUnmanageChild( seq->render_scal ) ;
+   return ;
+}
+
+/*---------------------------------------------------------------------*/
+
+void ISQ_popup_render_scal( MCW_imseq *seq )
+{
+#undef  NCOL
+#define NCOL 30
+   static char *cname[] = {
+      "#0000ff", "#3300ff", "#6600ff", "#9900ff", "#cc00ff",
+      "#ff00ff", "#ff00cc", "#ff0099", "#ff0066", "#ff0033",
+      "#ff0000", "#ff3300", "#ff6600", "#ff9900", "#ffcc00",
+      "#ffff00", "#ccff00", "#99ff00", "#66ff00", "#33ff00",
+      "#00ff00", "#00ff33", "#00ff66", "#00ff99", "#00ffcc",
+      "#00ffff", "#00ccff", "#0099ff", "#0066ff", "#0033ff"
+   } ;
+   int wid , icol ; Widget ws ;
+
+   if( seq->render_scal == NULL ) return ;
+
+   XtManageChild( seq->render_scal ) ;
+   XtVaSetValues( seq->render_scal , XmNrightAttachment,XmATTACH_FORM , NULL ) ;
+
+   ws = XtNameToWidget(seq->render_scal,"Scrollbar") ;
+   icol = lrand48() % NCOL ;
+   MCW_widget_geom( seq->wform , &wid , NULL,NULL,NULL ) ;
+   if( ws != NULL ){
+     XtVaSetValues( ws ,
+                      XtVaTypedArg , XmNtroughColor , XmRString ,
+                                     cname[icol] , strlen(cname[icol])+1 ,
+                    NULL ) ;
+     XWarpPointer( XtDisplay(ws) , None , XtWindow(ws) ,
+                   0,0,0,0 , wid/2+1 , METER_HEIGHT/4 ) ;
+   }
+
+   MCW_widget_geom( seq->wform , &wid , NULL,NULL,NULL ) ;
+   XtVaSetValues( seq->render_scal , XmNwidth , wid , NULL ) ;
+   XmUpdateDisplay(seq->render_scal) ;
+   return ;
+}
+
+/*---------------------------------------------------------------------*/
+
+void ISQ_render_scal_CB( Widget w, XtPointer client_data, XtPointer call_data )
+{
+   MCW_imseq *seq = (MCW_imseq *)client_data ;
+   XmScaleCallbackStruct *cbs = (XmScaleCallbackStruct *)call_data ;
+   float fff ;
+   int ival ;
+
+   if( ! ISQ_VALID(seq) ) return ;
+
+   if( cbs != NULL ) ival = cbs->value ;
+   else              XmScaleGetValue( w , &ival ) ;
+
+   seq->render_fac = 0.01f * ival ;
+   ISQ_redisplay( seq , -1 , isqDR_display ) ;
+   ISQ_draw_winfo( seq ) ;
+   return ;
 }
 
 /*---------------------------------------------------------------------*/
@@ -12713,11 +12979,38 @@ ENTRY("ISQ_handle_keypress") ;
      case '3':
      case '#':{
        int rr = seq->render_mode ;
+       if( !seq->allowmerger ){ busy=0 ; RETURN(1) ; }
 
             if( key == '3'             ) rr = 0 ;
        else if( rr  == RENDER_CHECK_OU ) rr = RENDER_CHECK_UO ;
        else                              rr = RENDER_CHECK_OU ;
+       if( seq->render_scal != NULL ) ISQ_popdown_render_scal(seq) ;
        seq->render_mode = rr ;
+       ISQ_redisplay( seq , -1 , isqDR_display ) ;
+       ISQ_draw_winfo( seq ) ;
+       busy=0 ; RETURN(1) ;
+     }
+     break ;
+
+     case '$':
+     case '%':
+     case '4':
+     case '5':
+     case '6':{  /* 22 Aug 2014 */
+       if( !seq->allowmerger ){ busy=0 ; RETURN(1) ; }
+       if( seq->render_mode != 0 ){
+         ISQ_popdown_render_scal(seq) ; seq->render_mode = 0 ; seq->render_fac = 0.0f ;
+       } else {
+         ISQ_popup_render_scal(seq) ;
+         switch( key ){
+           case '4': seq->render_mode = RENDER_WIPE_LEFT  ; break ;
+           case '5': seq->render_mode = RENDER_WIPE_BOT   ; break ;
+           case '6': seq->render_mode = RENDER_MIX        ; break ;
+           case '$': seq->render_mode = RENDER_WIPE_RIGHT ; break ;
+           case '%': seq->render_mode = RENDER_WIPE_TOP   ; break ;
+         }
+         ISQ_set_scale( seq->render_scal , 50 ) ; seq->render_fac = 0.50f ;
+       }
        ISQ_redisplay( seq , -1 , isqDR_display ) ;
        ISQ_draw_winfo( seq ) ;
        busy=0 ; RETURN(1) ;
@@ -13151,7 +13444,7 @@ ENTRY("ISQ_save_anim") ;
 
       seq->set_orim = 0 ;
       tim  = flim ;
-      flim = ISQ_process_mri( kf , seq , tim ) ;
+      flim = ISQ_process_mri( kf , seq , tim , 0 ) ;
       if( tim != flim ) KILL_1MRI( tim ) ;
 
       /* get overlay and flip it */
@@ -13418,5 +13711,3 @@ ENTRY("ISQ_save_anim") ;
 
    DESTROY_SARR(agif_list) ; free(prefix) ; free(fnamep); EXRETURN ;
 }
-
-

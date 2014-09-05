@@ -560,6 +560,9 @@ typedef struct MCW_imseq {
 
      int render_mode ;                                /* 25 Oct 2008 */
      MCW_arrowval *wbar_checkbrd_av ;
+     float render_fac ;                               /* 22 Aug 2014 */
+     Widget render_scal ;
+     int allowmerger ;
 
      MCW_arrowval *wbar_animdup_av ;                  /* 10 Feb 2009 */
 
@@ -568,10 +571,15 @@ typedef struct MCW_imseq {
      char *overlay_label ;                            /* 23 Dec 2011 */
 } MCW_imseq ;
 
-#define RENDER_DEFAULT    0
-#define RENDER_CHECK_UO   1
-#define RENDER_CHECK_OU   2
-#define RENDER_LASTMODE   2
+#define RENDER_DEFAULT     0
+#define RENDER_CHECK_UO    1
+#define RENDER_CHECK_OU    2
+#define RENDER_WIPE_LEFT   3
+#define RENDER_WIPE_BOT    4
+#define RENDER_MIX         5
+#define RENDER_WIPE_RIGHT  6
+#define RENDER_WIPE_TOP    7
+#define RENDER_LASTMODE    7
 
 #define ISQ_TIMERFUNC_INDEX  701
 #define ISQ_TIMERFUNC_BOUNCE 702
@@ -646,6 +654,7 @@ extern MCW_imseq * open_MCW_imseq( MCW_DC * , get_ptr , XtPointer ) ;
 #define isqDR_setrange      131
 #define isqDR_bgicon        132
 #define isqDR_settopclip    133  /* 14 Sep 2007 */
+#define isqDR_allowmerger   134  /* 25 Aug 2014 */
 
 #define isqDR_arrowpadhint  201
 #define isqDR_winfotext     202
@@ -760,7 +769,8 @@ extern MRI_IMAGE * ISQ_binarize_overlay( MRI_IMAGE * ) ; /* Mar 2013 */
 extern void ISQ_opacity_CB( MCW_arrowval * , XtPointer ) ;
 extern char * ISQ_opacity_label( int ) ;
 extern MRI_IMAGE * ISQ_index_to_rgb( MCW_DC * , int , MRI_IMAGE * ) ;
-#define ISQ_SKIP_OVERLAY(isq) ((isq)->opt.no_overlay || (isq)->ov_opacity == 0.0)
+#define ISQ_SKIP_OVERLAY(isq) \
+   ( (isq)->opt.no_overlay || (isq)->ov_opacity == 0.0 || (isq)->render_mode > 0 )
 
 extern MRI_IMAGE * ISQ_manufacture_one( int nim , int overlay , MCW_imseq * seq ) ;
 extern void ISQ_make_montage( MCW_imseq * ) ;
@@ -769,7 +779,13 @@ extern void ISQ_make_bar( MCW_imseq * ) ;
 extern void ISQ_show_bar( MCW_imseq * ) ;
 extern void ISQ_set_barhint( MCW_imseq * , char * ) ; /* 29 Jul 2001 */
 
-extern MRI_IMAGE * ISQ_process_mri( int , MCW_imseq * , MRI_IMAGE * ) ;
+#define PFLAG_NOTRAN0D 1
+#define PFLAG_NOTRAN2D 2
+#define PFLAG_NOTRAN   (PFLAG_NOTRAN0D | PFLAG_NOTRAN2D)
+#define PFLAG_NOIMPROC 4
+#define PFLAG_NOTHING  65535
+
+extern MRI_IMAGE * ISQ_process_mri( int , MCW_imseq * , MRI_IMAGE * , int ) ;
 
 extern MRI_IMAGE    * ISQ_getimage  ( int , MCW_imseq * ) ; /* 31 Jan 2002 */
 extern MRI_IMAGE    * ISQ_getoverlay( int , MCW_imseq * ) ; /* 11 Jun 2002 */
@@ -777,6 +793,9 @@ extern MEM_plotdata * ISQ_getmemplot( int , MCW_imseq * ) ;
 extern char         * ISQ_getlabel  ( int , MCW_imseq * ) ;
 extern MRI_IMAGE    * ISQ_getchecked( int nn , MCW_imseq *seq ) ;
 extern int_triple ISQ_get_crosshairs( MCW_imseq *seq ) ;    /* 27 Aug 2009 */
+
+extern void ISQ_render_scal_CB( Widget , XtPointer , XtPointer ) ; /* 22 Aug 2014 */
+extern void ISQ_destroy_render_scal( MCW_imseq *seq ) ;
 
 extern void ISQ_free_alldata( MCW_imseq * ) ;
 

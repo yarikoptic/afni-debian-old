@@ -49,6 +49,42 @@
 
 
 afni_history_struct dglen_history[] = {
+{ 4 , SEP, 2014 , DRG , "AFNI_ATLAS_PATH" , 
+    MINOR , TYPE_NEW_ENV, 
+    "Atlases and templates may be stored in location set by AFNI_ATLAS_PATH",
+    "Atlases and templates need not be in the default afni binary directory.\n"
+    "This variable may hold multiple directories that specify the possible\n"
+    "locations of atlases when the atlas definition does not include the\n"
+    "path in the filename. The atlases are typically defined in \n"
+    "AFNI_atlas_spaces.niml file or in a CustomAtlases.niml file."
+} ,
+
+{ 9 , JUL, 2014 , DRG , "3dDWItoDT" , 
+    MINOR , TYPE_NEW_OPT, 
+    "Mean b=0 values computed for linear estimate",
+    "New -mean_b0 option allows for averaging of b=0 values\n"
+    "used in linear model and initial linear estimate for nonlinear\n"
+    "method."
+} ,
+
+{ 3 , JUL, 2014 , DRG , "3dAllineate" , 
+    MINOR , TYPE_BUG_FIX, 
+    "oblique NIFTI dataset handling",
+    "NIFTI datasets with oblique orientations were written\n"
+    "with incorrect (original) orientations after alignment. Dataset is\n"
+    "now cardinalized and input obliquity is ignored"
+} ,
+
+{ 13 , JUN, 2014 , DRG , "afni" , 
+    MINOR , TYPE_GENERAL, 
+    "Jump to MNI or any space coordinates",
+    "Jump to MNI in afni GUI enhanced to recognize current dataset\n"
+    "space and not assume MNI to TLRC transformation. Also can jump\n"
+    "to other space coordinates by setting AFNI_JUMPTO_SPACE in\n"
+    ".afnirc or Environment plugin"
+} ,
+
+
 { 23 , MAY, 2014 , DRG , "whereami linkrbrain" , 
     MINOR , TYPE_BUG_FIX, 
     "Fixed linkrbrain coordinates and malloc/free error",
@@ -75,6 +111,14 @@ afni_history_struct dglen_history[] = {
     "Toggle edge detection with 'e' key in viewer",
     "Can toggle with keypress from viewer allowing plugout to drive\n"
     "edge detection."
+} ,
+
+{ 9 , APR, 2014 , DRG , "whereami supplemental web-based info" , 
+    MINOR , TYPE_GENERAL, 
+    "Atlases may have supplemental information available from a website",
+    "Further information can be opened through a web browser for individual\n"
+    "structures. This feature is implemented initially for the support of the \n"
+    "Saleem macaque atlas."
 } ,
 
 { 04 , APR, 2014 , DRG , "whereami -linkrbrain" , 

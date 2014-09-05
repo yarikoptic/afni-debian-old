@@ -50,6 +50,8 @@ static int AFNI_drive_set_ijk_index( char *cmd ) ;  /* 29 Jul 2010 */
 static int AFNI_drive_set_xhairs( char *cmd ) ;     /* 28 Jul 2005 */
 static int AFNI_drive_save_filtered( char *cmd ) ;  /* 14 Dec 2006 */
 static int AFNI_drive_save_allpng( char *cmd ) ;    /* 15 Dec 2006 */
+static int AFNI_drive_write_underlay( char *cmd ) ; /* 16 Jun 2014 */
+static int AFNI_drive_write_overlay( char *cmd ) ;  /* 16 Jun 2014 */
 
 static int AFNI_drive_system( char *cmd ) ;         /* 19 Dec 2002 */
 static int AFNI_drive_chdir ( char *cmd ) ;         /* 19 Dec 2002 */
@@ -205,6 +207,12 @@ static AFNI_driver_pair dpair[] = {
  { "QUIET_PLUGOUTS"     , AFNI_drive_quiet_plugouts    } , /* 15 Oct 2008 */
  { "NOISY_PLUGOUTS"     , AFNI_drive_noisy_plugouts    } , /* 15 Oct 2008 */
  { "SET_FUNC_PERCENTILE", AFNI_set_func_percentile     } , /* 27 Apr 2012,zss */
+
+ { "SAVE_OVERLAY"       , AFNI_drive_write_overlay     } , /* 16 Jun 2014 */
+ { "WRITE_OVERLAY"      , AFNI_drive_write_overlay     } ,
+ { "SAVE_UNDERLAY"      , AFNI_drive_write_underlay    } ,
+ { "WRITE_UNDERLAY"     , AFNI_drive_write_underlay    } ,
+
 
  { NULL , NULL }  /* flag that we've reached the end times */
 } ;
@@ -1982,9 +1990,9 @@ ENTRY("AFNI_drive_set_pbar_number") ;
      float pmax=pbar->pval_save[npane][0][jm] ,
            pmin=pbar->pval_save[npane][npane][jm] ;
      PBAR_set_bigmode( pbar , 1 , pmin,pmax ) ;
-     AFNI_inten_pbar_CB( pbar , im3d , 0 ) ;
      POPUP_cursorize( pbar->panew ) ;  /* 08 Apr 2005 */
    }
+   AFNI_inten_pbar_CB( pbar , im3d , 0 ) ;
    FIX_SCALE_SIZE(im3d) ;
 
    RETURN(0) ;
@@ -2147,9 +2155,9 @@ ENTRY("AFNI_drive_set_pbar_all") ;
      PBAR_set_bigmap( pbar , str ) ;
      rotate_MCW_pbar( pbar , rota ) ;  /* 07 Feb 2004 */
      if( flip ) PBAR_flip( pbar ) ;    /* 07 Feb 2004 */
-     AFNI_inten_pbar_CB( pbar , im3d , 0 ) ;
      POPUP_cursorize( pbar->panew ) ;  /* 08 Apr 2005 */
    }
+   AFNI_inten_pbar_CB( pbar , im3d , 0 ) ;
    FIX_SCALE_SIZE(im3d) ;
 
    RETURN(0) ;
@@ -3311,6 +3319,53 @@ static int AFNI_read_niml_file( char *cmd )  /* 01 Feb 2008 */
      return 0 ;
    }
    return -1;
+}
+
+/*--------------------------------------------------------------------*/
+/* WRITE_OVERLAY [c] prefix */
+
+static int AFNI_drive_write_overlay( char *cmd )  /* 16 Jun 2014 */
+{
+   int ic, dadd=2 , ii ; Three_D_View *im3d ; char *prefix ;
+
+   if( strlen(cmd) < 3 ) return -1 ;
+
+   ic = AFNI_controller_code_to_index( cmd ) ;
+   if( ic < 0 ){ ic = 0 ; dadd = 0 ; }
+   im3d = GLOBAL_library.controllers[ic] ;
+   if( !IM3D_OPEN(im3d) || !ISVALID_DSET(im3d->fim_now) ) return -1 ;
+
+   /* skip blanks */
+
+   for( ii=dadd ; cmd[ii] != '\0' && isspace(cmd[ii]) ; ii++ ) ; /*nada*/
+   prefix = cmd+ii ;
+   if( !THD_filename_ok(prefix) ) return -1 ;
+
+   AFNI_writeout_dataset( im3d->fim_now , prefix ) ;
+   return 0 ;
+}
+
+/*--------------------------------------------------------------------*/
+/* WRITE_UNDERLAY [c] prefix */
+
+static int AFNI_drive_write_underlay( char *cmd )  /* 16 Jun 2014 */
+{
+   int ic, dadd=2 , ii ; Three_D_View *im3d ; char *prefix ;
+
+   if( strlen(cmd) < 3 ) return -1 ;
+
+   ic = AFNI_controller_code_to_index( cmd ) ;
+   if( ic < 0 ){ ic = 0 ; dadd = 0 ; }
+   im3d = GLOBAL_library.controllers[ic] ;
+   if( !IM3D_OPEN(im3d) || !ISVALID_DSET(im3d->anat_now) ) return -1 ;
+
+   /* skip blanks */
+
+   for( ii=dadd ; cmd[ii] != '\0' && isspace(cmd[ii]) ; ii++ ) ; /*nada*/
+   prefix = cmd+ii ; if( !THD_filename_ok(prefix) ) return -1 ;
+
+   AFNI_writeout_dataset( im3d->anat_now , prefix ) ;
+   return 0 ;
 }
 
 /*--------------------------------------------------------------------*/

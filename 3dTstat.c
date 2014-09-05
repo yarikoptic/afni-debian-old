@@ -78,6 +78,7 @@ static int meth[MAX_NUM_OF_METHS]  = {METH_MEAN};
 static int nmeths                  = 0;
 static char prefix[THD_MAX_PREFIX] = "stat" ;
 static int datum                   = MRI_float ;
+static int nscale                  = 0;
 static float basepercent           = 0.5;  /* 50% assumed for duration unless user specified */
 
 static int do_tdiff = 0 ;  /* 25 May 2011 */
@@ -188,6 +189,8 @@ void usage_3dTstat(int detail)
  " -datum d  = use data type 'd' for the type of storage\n"
  "               of the output, where 'd' is one of\n"
  "               'byte', 'short', or 'float' [DEFAULT=float]\n"
+ " -nscale = Do not scale output values when datum is byte or short.\n"
+ "           Scaling is done by default.\n"
  "\n"
  " -basepercent nn = Percentage of maximum for duration calculation\n"
  "\n"
@@ -589,6 +592,12 @@ int main( int argc , char *argv[] )
         do_tdiff = 1 ; nopt++ ; continue ;
       }
 
+      /*-- nscale --*/
+
+      if( strcasecmp(argv[nopt],"-nscale") == 0 ){  /* 25 May 2011 */
+        nscale = 1 ; nopt++ ; continue ;
+      }
+      
       /*-- datum --*/
 
       if( strcasecmp(argv[nopt],"-datum") == 0 ){
@@ -733,7 +742,8 @@ int main( int argc , char *argv[] )
                  nbriks ,               /* number of briks */
                  STATS_tsfunc ,         /* timeseries processor */
                  NULL,                  /* data for tsfunc */
-                 mmm
+                 mmm,
+                 nscale
               ) ;
 
    if( new_dset != NULL ){
