@@ -334,7 +334,7 @@ Last-Update: 2010-09-21
 +ENDIF(NOT AFNI_BUILD_CORELIBS_ONLY)
 --- /dev/null
 +++ b/CMakeLists_apps.txt
-@@ -0,0 +1,226 @@
+@@ -0,0 +1,227 @@
 +##
 +## This file is to be included in the toplevel CMakeLists.txt
 +##
@@ -378,7 +378,7 @@ Last-Update: 2010-09-21
 +  3dNwarpCalc dicom_hinfo apsearch 3dNormalityTest 3dmask_tool FIRdesign
 +  2perm 3dClustCount 3dTransformGroupInCorr 3dExtractGroupInCorr 3dUnifize
 +  3dNwarpCat 3dQwarp 3dLocalHistog 3dNwarpAdjust 3dNwarpFuncs 3dTproject
-+  afni_open 3dConformist ${EXTRAS})
++  afni_open 3dConformist 3dNwarpXYZ ${EXTRAS})
 +
 +SET(SCRIPTS
 +  @4Daverage @CommandGlobb @GetAfniOrient @DTI_studio_reposition
@@ -403,7 +403,8 @@ Last-Update: 2010-09-21
 +  @global_parse @AfniEnv @Atlasize @Install_TSrestMovieDemo
 +  @Install_AfniRetinoDemo @Install_FATCAT_DEMO
 +  @Install_RSFMRI_Motion_Group_Demo @Install_MEICA_Demo @T1scale 3dMVM
-+  @compute_gcor 3dLME @move.to.series.dirs @toMNI_Awarp @toMNI_Qwarpar
++  @compute_gcor 3dLME @Install_ClustScat_Demo @Install_FATMVM_DEMO
++  @move.to.series.dirs @toMNI_Awarp @toMNI_Qwarpar
 +  @simulate_motion @afni.run.me 3dRprogDemo)
 +
 +
@@ -786,7 +787,7 @@ Last-Update: 2010-09-21
 +  COMPONENT Development)
 --- /dev/null
 +++ b/CMakeLists_plugins.txt
-@@ -0,0 +1,70 @@
+@@ -0,0 +1,69 @@
 +##
 +## This file is to be included in the toplevel CMakeLists.txt
 +##
@@ -801,14 +802,13 @@ Last-Update: 2010-09-21
 +  plug_histog_multi plug_afnihistory)
 +
 +SET(models
-+
 +  model_constant model_linear model_quadratic model_null model_diffusion
 +  model_beta model_sinewave_ap model_sinewave_apf model_squarewave_ap
 +  model_squarewave_apf model_trnglwave_ap model_trnglwave_apf model_exp
 +  model_diffexp model_gammavar model_convgamma model_convgamma2a
 +  model_michaelis_menton model_linplusort model_zero model_demri_3
 +  model_expr2 model_conv_diffgamma model_expMEMRI model_expMEMRI3
-+  model_conv_cosine4)
++  model_conv_cosine4 model_conv_PRF)
 +
 +SET(ziad_plugins
 +  plug_3Ddump_V2 plug_4Ddump plug_delay_V2 plug_extract)
@@ -878,7 +878,7 @@ Last-Update: 2010-09-21
 +  DESTINATION ${AFNI_INSTALL_SCRIPT_DIR} COMPONENT Runtime)
 --- /dev/null
 +++ b/SUMA/CMakeLists.txt
-@@ -0,0 +1,177 @@
+@@ -0,0 +1,178 @@
 +PROJECT(SUMA)
 +
 +##
@@ -929,6 +929,7 @@ Last-Update: 2010-09-21
 +  SUMA_IsoSurfaceFunc.c SUMA_BrainWrap.c SUMA_global.c SUMA_ExpEval.c
 +  SUMA_SurfaceToSurface.c SUMA_LocalStat.c SUMA_spharm.c
 +  SUMA_dot.c SUMA_plot.c SUMA_volume_render.c SUMA_SegFunc.c SUMA_SegOpts.c
++  SUMA_driver.c
 +  PLY/plyfile.c PLY/obj_io.c MarchingCubes/MarchingCubes.c)
 +
 +# add libGLw symbols if requested
@@ -971,7 +972,7 @@ Last-Update: 2010-09-21
 +  suma prompt_user MakeColorMap ScaleToMap
 +  inflate_compare SurfaceMetrics ConvertSurface
 +  ConvertDset ROI2dataset SurfSmooth SurfPatch SurfQual SurfClust IsoSurface
-+  ConvexHull 3dSkullStrip 3dSeg 3dCRUISEtoAFNI 3dGenPriors 3dBRAIN_VOYAGERtoAFNI 3dVol2Surf
++  ConvexHull 3dSkullStrip 3dSeg 3dCRUISEtoAFNI 3dGenPriors 3dGenFeatureDist 3dBRAIN_VOYAGERtoAFNI 3dVol2Surf
 +  SurfMeasures FSread_annot SampBias volume_render 3dSurfMask SurfToSurf
 +  ROIgrow AnalyzeTrace DriveSuma SurfDist SpharmReco SpharmDeco SurfDsetInfo
 +  SurfLocalStat SurfFWHM NikoMap SurfInfo 3dSurf2Vol SurfRetinoMap ParseName
@@ -1268,11 +1269,11 @@ Last-Update: 2010-09-21
 +  DESTINATION ${AFNI_INSTALL_SCRIPT_DIR} COMPONENT Runtime)
 --- /dev/null
 +++ b/rickr/CMakeLists.txt
-@@ -0,0 +1,27 @@
+@@ -0,0 +1,31 @@
 +PROJECT(rickr)
 +
 +IF(NOT AFNI_BUILD_CORELIBS_ONLY)
-+  SET(PROGRAMS 3dresample file_tool Dimon serial_helper column_cat)
++  SET(PROGRAMS 3dresample file_tool Dimon1 Dimon serial_helper column_cat)
 +
 +  ADD_EXECUTABLE(3dresample 3dresample.c)
 +  TARGET_LINK_LIBRARIES(3dresample ${AFNI_LIBS})
@@ -1287,6 +1288,10 @@ Last-Update: 2010-09-21
 +  ADD_EXECUTABLE(Dimon
 +          Dimon.c realtime.c)
 +  TARGET_LINK_LIBRARIES(Dimon ${AFNI_LIBS}) # For thd_iochan
++
++  ADD_EXECUTABLE(Dimon1
++          Dimon1.c realtime1.c)
++  TARGET_LINK_LIBRARIES(Dimon1 ${AFNI_LIBS}) # For thd_iochan
 +
 +  ADD_EXECUTABLE(serial_helper serial_helper.c)
 +  ADD_EXECUTABLE(column_cat column_cat.c)
