@@ -22,7 +22,7 @@ help.LME.opts <- function (params, alpha = TRUE, itspace='   ', adieu=FALSE) {
           ================== Welcome to 3dLME ==================          
     AFNI Group Analysis Program with Multi-Variate Modeling Approach
 #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-Version 1.3.4, Sept 2, 2014
+Version 1.3.5, Sept 5, 2014
 Author: Gang Chen (gangchen@mail.nih.gov)
 Website - http://afni.nimh.nih.gov/sscc/gangc/LME.html
 SSCC/NIMH, National Institutes of Health, Bethesda MD 20892
@@ -553,9 +553,12 @@ process.LME.opts <- function (lop, verb = 0) {
 
    lop$vQV <- NA; lop$vVars <- NA # no voxelwise quantitative variable for now
 
-   # set the covariate values at their centers
-   lop$covVal <- rep(0, length(lop$QV))
-   names(lop$covVal) <- lop$QV
+   # set the covariate default values at their centers
+   lop$covVal <- NULL
+   if(length(lop$QV)>0) {
+      lop$covVal <- rep(0, length(lop$QV))
+      names(lop$covVal) <- lop$QV
+   }
 
    if (lop$num_glt > 0) {
       lop$gltList    <- vector('list', lop$num_glt)
@@ -1030,7 +1033,7 @@ if(dimy == 1 & dimz == 1) {
    library(snow)
    cl <- makeCluster(lop$nNodes, type = "SOCK")
    clusterEvalQ(cl, library(nlme)); clusterEvalQ(cl, library(phia))
-   clusterExport(cl, "ModelForm")
+   clusterExport(cl, "ModelForm", "lop")
    for(kk in 1:nSeg) {
       if(NoBrick > 1) Stat[,kk,] <- aperm(parApply(cl, inData[,kk,], 1, runLME, dataframe=lop$dataStr,
             ModelForm=ModelForm, pars=pars), c(2,1)) else
@@ -1061,7 +1064,7 @@ if(dimy == 1 & dimz == 1) {
       library(snow)
       cl <- makeCluster(lop$nNodes, type = "SOCK")
       clusterEvalQ(cl, library(nlme)); clusterEvalQ(cl, library(phia))
-      clusterExport(cl, "ModelForm")  # for some reason phia needs this for multiple CPUs
+      clusterExport(cl, "ModelForm", "lop")  # for some reason phia needs this for multiple CPUs
       for (kk in 1:dimz) {
          if(NoBrick > 1) Stat[,,kk,] <- aperm(parApply(cl, inData[,,kk,], c(1,2), runLME, 
                dataframe=lop$dataStr, ModelForm=ModelForm, pars=pars), c(2,3,1)) else
