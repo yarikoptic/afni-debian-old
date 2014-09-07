@@ -1269,7 +1269,7 @@ Last-Update: 2010-09-21
 +  DESTINATION ${AFNI_INSTALL_SCRIPT_DIR} COMPONENT Runtime)
 --- /dev/null
 +++ b/rickr/CMakeLists.txt
-@@ -0,0 +1,31 @@
+@@ -0,0 +1,32 @@
 +PROJECT(rickr)
 +
 +IF(NOT AFNI_BUILD_CORELIBS_ONLY)
@@ -1282,8 +1282,9 @@ Last-Update: 2010-09-21
 +  TARGET_LINK_LIBRARIES(file_tool ${AFNI_LIBS}) # Just for ge4_header
 +
 +  SET(IMON_OBS l_mcw_glob.c realtime.c)
-+  ADD_EXECUTABLE(Imon Imon.c ${IMON_OBS})
-+  TARGET_LINK_LIBRARIES(Imon ${AFNI_LIBS}) # For thd_iochan
++# yoh: Has not been built by upstream for a while
++#  ADD_EXECUTABLE(Imon Imon.c ${IMON_OBS})
++#  TARGET_LINK_LIBRARIES(Imon ${AFNI_LIBS}) # For thd_iochan
 +
 +  ADD_EXECUTABLE(Dimon
 +          Dimon.c realtime.c)

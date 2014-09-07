@@ -1,0 +1,38 @@
+--- a/SUMA/SUMA_help.c
++++ b/SUMA/SUMA_help.c
+@@ -1266,7 +1266,7 @@ char * SUMA_hkf(char *keyi, int target)
+    switch (target) {
+       default:
+       case 0: /* SUMA */
+-         snprintf(key1, 255, keyi);
++         snprintf(key1, 255, "%s", keyi);
+          snprintf(s, 255, "  %s", key1);
+          return(s);
+          break;
+@@ -1275,11 +1275,11 @@ char * SUMA_hkf(char *keyi, int target)
+          if (strstr(keyi,"->") == keyi) {
+             /* Won't work if you pass key with blanks before '->'
+                But why do such a thing? */ 
+-            snprintf(key1, 255, keyi+2);
+-            snprintf(key2, 255, keyi+2);
++            snprintf(key1, 255, "%s", keyi+2);
++            snprintf(key2, 255, "%s", keyi+2);
+          } else {
+-            snprintf(key1, 255, keyi);
+-            snprintf(key2, 255, keyi);
++            snprintf(key1, 255, "%s", keyi);
++            snprintf(key2, 255, "%s", keyi);
+          }
+          if (target == 1) direc = "kbd";
+          else direc = "menuselection";
+--- a/SUMA/SUMA_ParseName.c
++++ b/SUMA/SUMA_ParseName.c
+@@ -205,7 +205,7 @@ int main (int argc,char *argv[])
+       nisa = SUMA_comp_str_2_NI_str_ar(out, " ");
+       for (kk=0; kk<nisa->num; ++kk) {
+          out = nisa->str[kk];
+-         if (kk > 0) fprintf(SUMA_STDOUT, sep);
++         if (kk > 0) fprintf(SUMA_STDOUT, "%s", sep);
+          if (strcmp(out,"RelName") == 0) {
+             fprintf(SUMA_STDOUT, "%s%s", 
+                         Test->RelPath,Test->FileName);
