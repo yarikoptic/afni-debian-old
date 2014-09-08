@@ -31,6 +31,8 @@ Testing
 Missing installations
 =====================
 
+scan_niml_vals.csh , CA_EZ_atlas.csh - missing from source distribution
+
 Incorrect paths
 ===============
 

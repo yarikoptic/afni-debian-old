@@ -1240,7 +1240,7 @@ Last-Update: 2010-09-21
 +  DESTINATION ${AFNI_INSTALL_POEMS_DIR} COMPONENT Runtime)
 --- /dev/null
 +++ b/python_scripts/CMakeLists.txt
-@@ -0,0 +1,26 @@
+@@ -0,0 +1,27 @@
 +PROJECT(PYTHON_SCRIPTS)
 +
 +# script being programs on their own
@@ -1251,7 +1251,8 @@ Last-Update: 2010-09-21
 +  lpc_align.py make_pq_script.py make_random_timing.py make_stim_times.py
 +  neuro_deconvolve.py python_module_test.py quick.alpha.vals.py realtime_receiver.py
 +  slow_surf_clustsim.py timing_tool.py uber_align_test.py uber_proc.py
-+  uber_skel.py uber_subject.py uber_ttest.py xmat_tool.py gen_ss_review_table.py)
++  uber_skel.py uber_subject.py uber_ttest.py xmat_tool.py gen_ss_review_table.py
++  fat_mvm_gridconv.py fat_mvm_scripter.py FAT_MVM_GRID_READERS.py fat_mvm_prep.py)
 +
 +# everything else that is not meant to be a standalone script
 +SET(MODULES
