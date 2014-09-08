@@ -1411,7 +1411,7 @@ Last-Update: 2010-09-21
 +PROJECT(PKUNDU)
 +
 +# script being programs on their own
-+SET(SCRIPTS meica.py meicaX.py)
++SET(SCRIPTS meica.py)
 +
 +
 +INSTALL(PROGRAMS ${SCRIPTS}

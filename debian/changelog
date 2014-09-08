@@ -9,9 +9,11 @@ afni (0.20140908~dfsg.1-1) neurodebian; urgency=medium
       otherwise using default path on Debian systems (/usr/share/afni/atlases)
     - cmake_sharedlibs, ffmpeg_support, up_3dNetCorrFix,
       up_condition_dset_unload -- refreshed, with some conflicts resolved
-    - cmake_sharedlibs -- updated for changes in upstream build infrastructure
+    - cmake_sharedlibs
+      - updated for changes in upstream build infrastructure
+      - removed meicaX.py
 
- -- Yaroslav Halchenko <debian@onerussian.com>  Mon, 08 Sep 2014 10:33:12 -0400
+ -- Yaroslav Halchenko <debian@onerussian.com>  Mon, 08 Sep 2014 11:59:31 -0400
 
 afni (0.20140612~dfsg.1-1) neurodebian; urgency=low
 
