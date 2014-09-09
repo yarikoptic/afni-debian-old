@@ -37,6 +37,128 @@ VAR_LABEL_roilistQ = 'Qvar_list'
 VAR_LABEL_roilistC = 'Cvar_list'
 LOG_LABEL_command = 'Made_by_command'
 
+OldFash_parnames = ['NT', 'fNT', 'FA', 'sFA', 'MD',         \
+                        'sMD', 'RD', 'sRD', 'L1', 'sL1',    \
+                        'NV']
+
+
+
+
+
+###------------------------------------------------------------------
+###------------------------------------------------------------------
+###-------------------- START: Row selection features ---------------
+###------------------------------------------------------------------
+###------------------------------------------------------------------
+
+''' Input the grid file name, and return:
+    1)  a list of data [NMAT, NROI, NROI];
+    2)  a list of labels [NMAT];
+    3)  a supplementary dictionary for each calling use;
+    4)  and a list of (int) ROI labels (which may not be consecutive).'''
+
+def Select_Row_From_FATmat(X4, outname, ele):
+
+    Ngrid = len( X4[1] )
+    ROI_LABS = list(X4[3])
+    Nroi = len( ROI_LABS )
+
+    # have tested previously to make sure that ROI_LABS contains ele
+    ele_ind = ROI_LABS.index(ele)
+
+    f = open(outname, 'w')
+    f.write('# %d # Number of network ROIs\n' % Nroi)
+    f.write('# %d # Number of grid matrices\n' % Ngrid)
+    f.write('# %s # Special element\n' % ele)
+
+    for roi in ROI_LABS:
+        f.write("%12s\t" % roi)
+    f.write('\n')
+
+    for i in range(Ngrid):
+        f.write('# %s\n' % X4[1][i])
+        for k in range(Nroi):
+            if X4[1][i]=='NT':
+                f.write('%12d\t' % X4[0][i][ele_ind][k])
+            else:
+                f.write('%12e\t' % X4[0][i][ele_ind][k])
+        f.write('\n')
+
+    f.close()
+
+
+
+
+
+
+###------------------------------------------------------------------
+
+def MakeRowFile_From_FATmat(fname, outname, ele):
+
+    X4 = LoadInGridOrNetcc(fname)
+    if X4[3].__contains__(ele):
+        y = Select_Row_From_FATmat(X4, outname, ele)
+    else:
+        print "** Error: chosen element ",
+        print "'%s' doesn't appear in file's ROI list!" % ele
+        print X4[3]
+        sys.exit(55)
+
+    return y
+
+###------------------------------------------------------------------
+
+def DefaultNamingOutRowfile(list_all, ele):
+    
+    out = []
+
+    # take half of element id
+    name = ElementNameMaker(ele, ele)
+    lele = (len(name)-1)/2
+    roi = name[:lele] 
+
+    for x in list_all:
+        if not(x[-5:] == '.grid') and not(x[-6:] == '.netcc'):
+            print "ERROR-- doesn't look like this is a *.grid or *netcc file!"
+        elif x[-5:] == '.grid' :
+            out.append(x[:-5]+'_grid_'+roi+'.row')
+        else:
+            out.append(x[:-6]+'_netcc_'+roi+'.row')
+
+    return out
+
+###------------------------------------------------------------------
+###------------------------------------------------------------------
+###--------------------- STOP: Row selection features ---------------
+###------------------------------------------------------------------
+###------------------------------------------------------------------
+
+
+###------------------------------------------------------------------
+###------------------------------------------------------------------
+###----------------------- START: Assorted --------------------------
+###------------------------------------------------------------------
+###------------------------------------------------------------------
+
+def RecapAttach(comm_str, opt, arg):
+    '''Silly parsing of commandline options+arguments in order to be able
+    to return the command with delineating apostrophes around user-input
+    lists.'''
+
+    comm_str+=' '+opt
+    if arg:
+        if opt[:2]=='--':
+            comm_str+="="
+        else:
+            comm_str+=" "
+        comm_str+="'"+arg+"' "
+    else:
+        comm_str+=" "
+
+    return comm_str
+
+###------------------------------------------------------------------
+
 def LoadInTable(fname):
     ''' open up a file, and return a 2-tuple: (raw) data set and header.'''
 
@@ -74,24 +196,7 @@ def LoadInTable(fname):
     
     return data, header
 
-
-def RecapAttach(comm_str, opt, arg):
-    '''Silly parsing of commandline options+arguments in order to be able
-    to return the command with delineating apostrophes around user-input
-    lists.'''
-
-    comm_str+=' '+opt
-    if arg:
-        if opt[:2]=='--':
-            comm_str+="="
-        else:
-            comm_str+=" "
-        comm_str+="'"+arg+"' "
-    else:
-        comm_str+=" "
-
-    return comm_str
-
+#----------------------------------------------------------------
 
 def CheckVar_and_FindCategVar(tab_data, tab_colvars, tab_coltypes, par_list):
 
@@ -150,6 +255,14 @@ def GetFromLogFile(fname, ltype):
         sys.exit(10)
 
     return outlist
+
+
+###------------------------------------------------------------------
+###------------------------------------------------------------------
+###------------------------ STOP: Assorted --------------------------
+###------------------------------------------------------------------
+###------------------------------------------------------------------
+
 
 
 ###------------------------------------------------------------------
@@ -581,7 +694,7 @@ def GetSet(x, ftype):
     
     if not(ftype=='GRID' or ftype=='NETCC'):
         print "** ERROR: unrecognized matrix type. Don't know what to do."
-        return set()
+        sys.exit(34)
 
     #if ftype=='GRID': # later, grid vs netcc
     Ntar = len(x[3])
@@ -603,16 +716,50 @@ def ElementNameMaker(A, B):
     '''Current format for turning integer ROI labels into 
     ROI element name.'''
     # paranoia
-    if (type(A) != int) or (type(A) != int):
-        print "ERROR in element maker: why not 'int' element labels?"
-    if A > 999:
-        print "POSSIBLE error in element maker: big label %d > 999!" % A
-    if B > 999:
-        print "POSSIBLE error in element maker: big label %d > 999!" % B
+    if (type(A) != str) or (type(B) != str):
+        print "** ERROR: problem in element name-maker. Help!"
+        sys.exit(43)
+        
+    # first case is original style
+    # second case is if data labels are used
+    if A.isdigit() and B.isdigit():
+        aint = int(A)
+        bint = int(B)
 
-    x = str("%03d" % (A))
-    y = str("%03d" % (B))
+        if aint > 999:
+            print "*+ POSSIBLE error in element maker: big label %d > 999!" % A
+            print "\tUgliness may ensue!"
+        if bint > 999:
+            print "*+ POSSIBLE error in element maker: big label %d > 999!" % B
+            print "\tUgliness may ensue!"
+
+        x = str("%03d" % (aint))
+        y = str("%03d" % (bint))
+
+    else:
+        x = str(A)
+        y = str(B)
+
     return x+'_'+y
+
+#### Old version: used to treat ROI labels of elements as ints; 
+#### new possibility that they will be strings now-- so treat all as str
+#def ElementNameMaker(A, B):
+#    '''Current format for turning integer ROI labels into 
+#    ROI element name.'''
+#    # paranoia
+#    if (type(A) != int) or (type(A) != int):
+#        print "ERROR in element maker: why not 'int' element labels?"
+#    if A > 999:
+#        print "POSSIBLE error in element maker: big label %d > 999!" % A
+#    if B > 999:
+#        print "POSSIBLE error in element maker: big label %d > 999!" % B
+#
+#    x = str("%03d" % (A))
+#    y = str("%03d" % (B))
+#    return x+'_'+y
+
+
 
 ###------------------------------------------------------------------
 ###------------------------------------------------------------------
@@ -868,31 +1015,32 @@ def HeaderInfo(RawX):
     if not(RawX[0].split()[0] == '#'):
         print "** ERROR: the file format doesn't look modern!"
         print "**\t-> run Grid_Modernizer?"
-        return 0,0, []
+        sys.exit(52)
 
     Nroi = int(RawX[0].split()[1])
     if Nroi <=0:
         print "ERROR reading header! Number of ROIs is: %d" % Nroi
-        return [0,0,0]
+        sys.exit(53)
 
     Nmat = int(RawX[1].split()[1])
     if Nmat <=0:
         print "ERROR reading header! Number of Matrices is: %d" % Nmat
-        return [0,0,0]
+        sys.exit(54)
 
     ListLabels=RawX[2].split()
     ll = len(ListLabels)
     if not( ll == Nroi ):
         print "ERROR reading header!"
         print "  Number of ROIs (%d) doesn't match Labels (%d)" % (Nroi,ll)
-        return [0,0,0]
+        sys.exit(55)
 
-    for i in range(ll):
-        ListLabels[i] = int(ListLabels[i])
-        if ListLabels[i] <=0:
-            print "ERROR reading header! ListLabel[%d]=%d." % \
-            (i,ListLabels[i])
-            return [0,0,0]
+    ### Don't do this--> may have non-numeric labels
+#    for i in range(ll):
+#        ListLabels[i] = int(ListLabels[i])
+#        if ListLabels[i] <=0:
+#            print "ERROR reading header! ListLabel[%d]=%d." % \
+#            (i,ListLabels[i])
+#            sys.exit(56)
 
     return Nroi, Nmat, ListLabels
 
@@ -910,9 +1058,6 @@ def HeaderInfo(RawX):
 ###------------------------------------------------------------------
 ###------------------------------------------------------------------
 
-OldFash_parnames = ['NT', 'fNT', 'FA', 'sFA', 'MD',         \
-                      'sMD', 'RD', 'sRD', 'L1', 'sL1',    \
-                      'NV']
 
 def OldFash_Grid_modernize(fname, outname):
 
@@ -972,9 +1117,9 @@ def mod_func_write(Nroi, ROI_LABS, Y, fname, outname):
 
     f = open(outname, 'w')
     f.write('# %d # Number of network ROIs\n' % Nroi)
-    f.write('# %d # Number of grid matrices (=NT+fNT+2*N_par+NV)\n' % Ngrid)
+    f.write('# %d # Number of grid matrices\n' % Ngrid)
     for roi in ROI_LABS:
-        f.write("%8s    \t" % roi)
+        f.write("%12s\t" % roi)
     f.write('\n')
 
     for i in range(Ngrid):
