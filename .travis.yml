@@ -1,0 +1,25 @@
+# vim ft=yaml
+language: erlang
+env:
+ global:
+ matrix:
+before_install:
+    # The ultimate one-liner setup for NeuroDebian repository
+    - bash <(wget --no-check-certificate -q -O- https://raw.githubusercontent.com/neurodebian/neurodebian/master/tools/nd-configurerepo) -c software,data --overwrite --sources -f full
+    # See what we have
+    - sudo apt-cache policy
+    # Install all build dependencies
+    - travis_retry sudo apt-get build-dep afni
+    # For some obnoxious reason it doesn't get installed
+    - travis_retry sudo apt-get install libnifti-dev
+    - travis_retry sudo apt-get install git quilt
+    - git remote add gh-yarikoptic git://github.com/yarikoptic/afni
+    - git fetch gh-yarikoptic
+install:
+    # merge packaging branch
+    - git merge gh-yarikoptic/master
+    # apply all of our patches
+    - QUILT_PATCHES=debian/patches quilt push -a
+script:
+    # build and run tests at once
+    - fakeroot debian/rules binary
