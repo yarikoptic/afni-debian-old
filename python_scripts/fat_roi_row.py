@@ -1,16 +1,16 @@
 #!/usr/bin/env python
 #
-# Version 1.0, July, 2014.
+# Version 1.0, Sept, 2014.
 # written:  PA Taylor (UCT, AIMS).
 #
-# Modernize the format of *.grid files for fat_mvm_prep.py.  For a
-# long time, the matrices weren't explicitly labelled using the
-# commented '#' lines.  Now they are, and life is better for all.
-# This program 'modernizes' the format of bare grid files.
+# Select a single row out of a connectivity matrix file (*.grid
+# or *.netcc) for viewing and/or further analysis.
+# 
+# 
 # 
 #
 #  # for help on commandline running and usage:
-#  $  fat_mvm_convert.py -h
+#  $  fat_roi_row.py -h
 #
 #
 ###########################################################################
@@ -22,36 +22,32 @@ from numpy import set_printoptions
 import getopt, sys 
 from glob import glob
 
-
 def main(argv):
     '''Basic reading in of commandline options.'''
 
     help_line = ''' \
 * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
-     ++ July, 2014.
-     ++ Preprocess some 'old school' (=poorly formatted) *.grid files
-           so that they can be fat_mvm_prep'ed for statistical modeling
-           using 3dMVM.
+     ++ Sept, 2014.
+
+     ++ Select a single ROI's row out of a connectivity matrix file (*.grid
+           or *.netcc) for viewing and/or further analysis.
      ++ written by PA Taylor.
-     
-     This program is designed to convert old 3dTrackID output *.grid files
-     (which have no labels in '#'-started comments) into modern format.
-     This program reads in individual or a set of old *.grid files, and
-     outputs new ones in the same folder with '_MOD.grid' postfix (or
-     an explicit output prefix can be entered using '--list_match').
-     
+
 * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
 
-     TO USE (from a terminal commandline):\n
-      $ fat_mvm_gridconv.py { -m MATR_FILES | -l LIST }
+     TO USE (from a terminal commandline):
+
+      $ fat_roi_row.py  -r ROI  { -m MATR_FILES | -l LIST }
      where:
+        -r, --roi=ROI            :specify which ROI's row of connectivity you
+                                  want to select out.
         -m, --matr_in=MATR_FILES :one way of providing the set of matrix
-                                  (*.grid) files- by searchable path.
-                                  This can be a globbable entry in quotes
+                                  (*.grid or *.netcc) file(s)- by searchable 
+                                  path. This can be a globbable entry in quotes
                                   containing wildcard characters, such as
                                   'DIR1/*/*000.grid'.
         -l, --list_match=LIST    :another way of inputting the matrix
-                                  (*.grid) files-- by explicit
+                                  (*.grid or *.netcc) files-- by explicit
                                   path in a text file.
                                   The LIST text file must contain at least
                                   one column:
@@ -62,25 +58,31 @@ def main(argv):
                                   The first line can be '#'-commented,
                                   which is not read for filenames).
                                   If no second column is given, then the
-                                  default '_MOD.grid' postfix is applied.
-     
+                                  default naming convention is applied:
+                                  NAME.grid   ->  NAME_grid_ROI.row
+                                  NAME.netcc  ->  NAME_netcc_ROI.row
+                                  where 'ROI' would be the 3-zero-padded 
+                                  ROI label.
+
 * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
 
      Example:
-       $ fat_mvm_gridconv.py --matr_in='./GROUP/*/*_000.grid' 
+       $ fat_roi_row.py  --roi=3  --matr_in='./GROUP/*/*_000.grid' 
      or, equivalently:
-       $ fat_mvm_gridconv.py -m './GROUP/*/*_000.grid' 
+       $ fat_roi_row.py  -r 3  -m './GROUP/*/*_000.grid' 
 
 -----------------------------------------------------------------------------
 \n'''
 
-    file_csv = ''
     file_matr_glob = ''
-    file_prefix = ''
     file_listmatch = ''
+    ele = 0
 
     try:
-        opts, args = getopt.getopt(argv,"hm:l:",["matr_in=","list_match="])
+        opts, args = getopt.getopt(argv,"hm:l:r:",[ "help",
+                                                    "matr_in=",
+                                                    "list_match=",
+                                                    "roi="])
     except getopt.GetoptError:
         print help_line
         sys.exit(2)
@@ -92,6 +94,8 @@ def main(argv):
             file_matr_glob = arg
         elif opt in ("-l", "--list_match"):
             file_listmatch = arg
+        elif opt in ("-r", "--roi"):
+            ele = arg
 
     if ( file_matr_glob == '' ) and ( file_listmatch == '' ):
 	print "** ERROR: missing a necessary matrix file input."
@@ -102,15 +106,16 @@ def main(argv):
         print " been input for the matrix file."
         print "\tThe glob one after '-m' will be ignored."
 
-    return file_matr_glob, file_listmatch
-
+    return file_matr_glob, file_listmatch, ele
 
 ########################################################################
+
+
 
 if __name__=="__main__":
     set_printoptions(linewidth=200)
     print "\n"
-    file_matr_glob, file_listmatch = main(sys.argv[1:])
+    file_matr_glob, file_listmatch, ele = main(sys.argv[1:])
 
     # get file list from either of two ways.
     if file_listmatch:
@@ -121,11 +126,12 @@ if __name__=="__main__":
         print "** Error! Cannot read in matrix files."
         sys.exit(4)
 
+
     # this one gets the matched pair name.
     if GR.IsFirstUncommentedSection_Multicol(file_listmatch):
         list_all_out = GR.ReadSection_and_Column(file_listmatch, 1)
     else:
-        list_all_out = GR.DefaultNamingOutGrid(list_all)
+        list_all_out = GR.DefaultNamingOutRowfile(list_all, ele)
 
     N = len(list_all)
     if not( N ==len(list_all_out)) :
@@ -133,10 +139,12 @@ if __name__=="__main__":
         sys.exit(6)
 
     for i in range(N):
-        p = GR.OldFash_Grid_modernize(list_all[i], list_all_out[i])
+        p = GR.MakeRowFile_From_FATmat(list_all[i], list_all_out[i], ele)
+        print "++ Wrote:  %s" % list_all_out[i]
 
     if 1:
         print "++ DONE.\n\n"
-    else:
-        print "\n** Some error in file writing of table file."
-        print "\tSo close, yet so far."
+
+
+
+
