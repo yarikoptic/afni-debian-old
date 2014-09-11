@@ -1386,7 +1386,7 @@ Last-Update: 2010-09-21
 +
 +IF (GSL_LIBRARY AND GTS_FOUND)
 +  MESSAGE(STATUS "Found GSL and GTS libraries, compiling tracktools")
-+  SET(SOURCES DoTrackit.c TrackIO.c rsfc.c diffusiony.c FuncTrac.c)
++  SET(SOURCES DoTrackit.c TrackIO.c rsfc.c diffusiony.c FuncTrac.c roiing.c)
 +  ADD_LIBRARY(tracktools ${SOURCES})
 +  TARGET_LINK_LIBRARIES(tracktools gts mri ${GSL_LIBRARIES})
 +  SET(PROGRAMS
