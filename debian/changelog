@@ -1,3 +1,11 @@
+afni (0.20140910~dfsg.1-1) UNRELEASED; urgency=medium
+
+  * debian/patches
+    - accounted for added roiing.* files
+    - accounted for renames/new python mvm scripts
+
+ -- Yaroslav Halchenko <debian@onerussian.com>  Thu, 11 Sep 2014 11:00:30 -0400
+
 afni (0.20140908~dfsg.1-1) neurodebian; urgency=medium
 
   * New upstream code
