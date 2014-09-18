@@ -66,6 +66,38 @@
 afni_history_struct ziad_history[] = {
 /*=====BELOW THIS LINE=====*/
  
+ { 17, Sep, 2014, ZSS, "ConvertSurface", MINOR, TYPE_NEW_OPT,
+   "Added -pc_proj and -node_depth options.",
+   "These options are meant to help localizing seeds along DBS electrodes.\n"
+   "Relevant C code functions: SUMA_NodeDepth(), SUMA_Project_Coords_PCA()\n"
+   "and SUMA_*_PC_XYZ_Proj()\n"
+ },
+  
+ { 17, Sep, 2014, ZSS, "suma", MINOR, TYPE_BUG_FIX,
+   "A few miscellaneous errors here and there",
+   "One was caused by extra space in driver command\n"
+   "Another was caused by loading multiple surfs on the command line\n"
+   "followed by a command line drive command.\n"
+   "Intersection parameters were not fully initialized under some conditions.\n"
+ },
+  
+ { 16, Sep, 2014, ZSS, "suma", MINOR, TYPE_BUG_FIX,
+   "Use of percentiles in range settings was broken. That is no more.",
+   "Problem was caused by reliance on colp->V without resetting it\n"
+   "when a new range was set. That is because colp->V gets clamped\n"
+   "by the range of values being set."
+ },
+  
+ { 12, Sep, 2014, ZSS, "suma", MINOR, TYPE_BUG_FIX,
+   "Crosshair mismatch when prying surfs in multiple linked viewers",
+   NULL
+ },
+  
+ { 12, Sep, 2014, ZSS, "suma", MINOR, TYPE_BUG_FIX,
+   "Fixed crash caused by toggling off 'I' selection for volumes",
+   NULL
+ },
+  
  { 03, Sep, 2014, ZSS, "3dSetupGroupInCorr", MINOR, TYPE_BUG_FIX,
    "Made -labels option work well with -LRpairs",
    NULL
