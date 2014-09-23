@@ -192,7 +192,7 @@ SCRIPTS = @4Daverage @CommandGlobb @GetAfniOrient @DTI_studio_reposition        
           @Install_MEICA_Demo @T1scale 3dMVM @compute_gcor 3dLME                  \
           @Install_ClustScat_Demo @Install_FATMVM_DEMO                            \
           @move.to.series.dirs @toMNI_Awarp @toMNI_Qwarpar @simulate_motion	    \
-          @afni.run.me 3dRprogDemo
+          @afni.run.me 3dRprogDemo @ExamineGenFeatDists 
 
 
 PY_DIR = python_scripts
@@ -2500,6 +2500,10 @@ gtest:
 column_cat: rickr/column_cat.c
 	$(RM) $@
 	$(CC) -o column_cat rickr/column_cat.c
+
+3dexample1: 3dexample1.o libmri.a
+	$(RM) $@
+	$(CC) -o 3dexample1 3dexample1.o $(LFLAGS) $(LLIBS)
 
 
 #######
