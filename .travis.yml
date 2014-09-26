@@ -16,8 +16,8 @@ before_install:
     - git remote add gh-yarikoptic git://github.com/yarikoptic/afni
     - git fetch gh-yarikoptic
 install:
-    # merge packaging branch
-    - git merge gh-yarikoptic/master
+    # merge packaging branch and testing branch which might have additional changes past last official package
+    - git merge gh-yarikoptic/master gh-yarikoptic/testing
     # apply all of our patches
     - QUILT_PATCHES=debian/patches quilt push -a
 script:
