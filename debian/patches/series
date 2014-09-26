@@ -11,4 +11,3 @@ fixes
 debian_paths
 cmake_sharedlibs
 cmake_tests
-up_string_format
