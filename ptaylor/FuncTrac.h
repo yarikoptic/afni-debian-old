@@ -58,12 +58,13 @@ typedef struct {
    char *NAMEIN_outmode;          //  "-tract_out_mode"
    int dump_opts;                 //  "-write_opts"
    int ROIS_OUT;                  //  "-write_rois"
-   int DUMP_ORIG_LABS;            //  "-lab_orig_rois"
+   int DUMP_ORIG_LABS;            //  "-dump_lab_consec"
    int POST;                      //  "-posteriori"
    int DUMP_TYPE;                 //  "-dump_rois"
+   int DUMP_with_LABELS;          //  "-dump_no_labtab"
    int RECORD_ORIG;               //  "-rec_orig"
-   int PAIRPOWER;                 //  "-pair_out_int"
-   int EXTRA_TR_PAR;              //  "-pair_out_int"
+   int PAIRPOWER;                 //  "-pair_out_power"
+   int EXTRA_TR_PAR;              //  "-extra_tr_par"
 
    // EXPIRED OPTIONS, just gives message/error:
    // "-cut_at_rois"
