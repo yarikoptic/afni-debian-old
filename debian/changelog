@@ -1,10 +1,11 @@
-afni (0.20140910~dfsg.1-1) UNRELEASED; urgency=medium
+afni (0.20140910~dfsg.1-2) neurodebian; urgency=medium
 
   * debian/patches
     - accounted for added roiing.* files
     - accounted for renames/new python mvm scripts
+    - accounted in AFNIio.R for the rename R_io.so -> librio.so in our build
 
- -- Yaroslav Halchenko <debian@onerussian.com>  Thu, 11 Sep 2014 11:00:30 -0400
+ -- Yaroslav Halchenko <debian@onerussian.com>  Sun, 12 Oct 2014 17:00:23 -0400
 
 afni (0.20140908~dfsg.1-1) neurodebian; urgency=medium
 
