@@ -1,4 +1,4 @@
-afni (0.20140910~dfsg.1-2) neurodebian; urgency=medium
+afni (0.20140910~dfsg.1-1) neurodebian; urgency=medium
 
   * debian/patches
     - accounted for added roiing.* files
