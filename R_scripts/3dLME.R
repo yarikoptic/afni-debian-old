@@ -22,9 +22,9 @@ help.LME.opts <- function (params, alpha = TRUE, itspace='   ', adieu=FALSE) {
           ================== Welcome to 3dLME ==================          
     AFNI Group Analysis Program with Multi-Variate Modeling Approach
 #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-Version 1.3.6, Sept 15, 2014
+Version 1.3.7, Oct 14, 2014
 Author: Gang Chen (gangchen@mail.nih.gov)
-Website - http://afni.nimh.nih.gov/sscc/gangc/LME.html
+Website - http://afni.nimh.nih.gov/sscc/gangc/lme.html
 SSCC/NIMH, National Institutes of Health, Bethesda MD 20892
 #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
@@ -45,7 +45,7 @@ Usage:
  If you want to cite the analysis approach, use the following:
  
  Chen, G., Saad, Z.S., Britton, J.C., Pine, D.S., Cox, R.W. (2013). Linear
- Mixed-Effects Modeling Approach to FMRI Group Analysis. NeuroImage,
+ Mixed-Effects Modeling Approach to FMRI Group Analysis. NeuroImage 73:176-190.
  http://dx.doi.org/10.1016/j.neuroimage.2013.01.047
  
  Input files for 3dLME can be in AFNI, NIfTI, or surface (niml.dset) format.
@@ -596,7 +596,7 @@ process.LME.opts <- function (lop, verb = 0) {
 
    if(!is.na(lop$maskFN)) {
       if(verb) cat("Will read ", lop$maskFN,'\n')
-      if(is.null(mm <- read.AFNI(lop$maskFN, verb=lop$verb, meth=lop$iometh))) {
+      if(is.null(mm <- read.AFNI(lop$maskFN, verb=lop$verb, meth=lop$iometh, forcedset = TRUE))) {
          warning("Failed to read mask", immediate.=TRUE)
          return(NULL)
       }
@@ -792,8 +792,9 @@ read.LME.opts.from.file <- function (modFile='model.txt', verb = 0) {
 
 if(!is.na(lop$qVarCenters)) lop$qVarCenters <- as.numeric(strsplit(as.character(lop$qVarCenters), '\\,')[[1]])
 
-library("nlme")
-library("phia")
+#library("nlme")
+#library("phia")
+pkgLoad(c('nlme', 'phia'))
 
 #comArgs <- commandArgs()
 
@@ -862,7 +863,7 @@ NoFile <- dim(lop$dataStr[1])[1]
 cat('Reading input files now...\n\n')
 
 # Read in the 1st input file so that we have the dimension information
-inData <- read.AFNI(lop$dataStr[1, FileCol], verb=lop$verb, meth=lop$iometh)
+inData <- read.AFNI(lop$dataStr[1, FileCol], verb=lop$verb, meth=lop$iometh, forcedset = TRUE)
 dimx <- inData$dim[1]
 dimy <- inData$dim[2]
 dimz <- inData$dim[3]
@@ -872,12 +873,12 @@ head <- inData
 # ww <- inData$NI_head
 #myHist <- inData$header$HISTORY_NOTE; myOrig <- inData$origin; myDelta <- inData$delta
 # Read in all input files
-inData <- unlist(lapply(lapply(lop$dataStr[,FileCol], read.AFNI, verb=lop$verb, meth=lop$iometh), '[[', 1))
+inData <- unlist(lapply(lapply(lop$dataStr[,FileCol], read.AFNI, verb=lop$verb, meth=lop$iometh, forcedset = TRUE), '[[', 1))
 dim(inData) <- c(dimx, dimy, dimz, NoFile)
 
 if (!is.na(lop$maskFN)) {
-	Mask <- read.AFNI(lop$maskFN, verb=lop$verb, meth=lop$iometh)$brk[,,,1]
-	inData <- array(apply(inData, 4, function(x) x*read.AFNI(lop$maskFN, verb=lop$verb, meth=lop$iometh)$brk[,,,1]),
+	Mask <- read.AFNI(lop$maskFN, verb=lop$verb, meth=lop$iometh, forcedset = TRUE)$brk[,,,1]
+	inData <- array(apply(inData, 4, function(x) x*read.AFNI(lop$maskFN, verb=lop$verb, meth=lop$iometh, forcedset = TRUE)$brk[,,,1]),
       dim=c(dimx,dimy,dimz,NoFile))
 }
 
@@ -1030,7 +1031,8 @@ if(dimy == 1 & dimz == 1) {
    }
    
    if (lop$nNodes>1) {
-   library(snow)
+   #library(snow)
+   pkgLoad('snow')
    cl <- makeCluster(lop$nNodes, type = "SOCK")
    clusterEvalQ(cl, library(nlme)); clusterEvalQ(cl, library(phia))
    clusterExport(cl, c("ModelForm", "lop"), envir=environment())
@@ -1061,7 +1063,8 @@ if(dimy == 1 & dimz == 1) {
    } 
 
    if (lop$nNodes>1) {
-      library(snow)
+      #library(snow)
+      pkgLoad('snow')
       cl <- makeCluster(lop$nNodes, type = "SOCK")
       clusterEvalQ(cl, library(nlme)); clusterEvalQ(cl, library(phia))
       clusterExport(cl, c("ModelForm", "lop"), envir=environment())  # for some reason phia needs this for multiple CPUs

@@ -733,7 +733,7 @@ void Qhelp(void)
     "                is an alternate way to specify when the program should stop.\n"
     "               * To only do global polynomial warping, use '-maxlev 0'.\n"
     "               * If you use both '-minpatch' and '-maxlev', then you are\n"
-    "                 living on the edge of danger.\n"
+    "                 walking on the knife edge of danger.\n"
     "               * Of course, I know that you LIVE for such thrills.\n"
     "\n"
     " -duplo       = Start off with 1/2 scale versions of the volumes,\n"
@@ -813,8 +813,9 @@ void Qhelp(void)
     "                 commands are left as an exercise for the aspiring AFNI Jedi Master.\n"
     "               * You can use the semi-secret '-pmBASE' option to get the V(x)\n"
     "                 warp and the source dataset warped to base space, in addition to\n"
-    "                 Wp(x) '_PLUS' and Wm(x) '_MINUS' warps.\n"
+    "                 the Wp(x) '_PLUS' and Wm(x) '_MINUS' warps.\n"
     "           -->>* Alas: -plusminus does not work with -duplo or -allineate :-(\n"
+    "               * However, you can use -iniwarp with -plusminus :-)\n"
 #ifdef USE_PLUSMINUS_INITIALWARP
     "               * If -plusminus is used, the -plusminus warp is initialized by\n"
     "                 a coarse warping of the source to the base, then these warp\n"
@@ -1011,7 +1012,7 @@ void Qallineate( char *basname , char *srcname , char *emkname , char *allopt )
                   " -source %s"
                   " -prefix %s.nii"
                   " -1Dmatrix_save %s"
-                  " -cmass -final wsinc5 -float -master BASE" ,
+                  " -cmass -final wsinc5 -float -master BASE -twobest 7" ,
             basname , srcname , Qunstr , Qunstr ) ;
 
    /* add options to the command string */

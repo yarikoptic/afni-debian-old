@@ -1603,21 +1603,33 @@ ENTRY("mri_read_many_files") ;
                if nx is negative, then nx and ny are set
                to be the dimensions of the very first image
                read.
+               if ny is negative then resample but do not modify
+               the aspect ratio of the image. After resampling,
+               padding is used to achieve final pixel count.
+    \param pval padding value, if padding is to be used.
     \return An array of 2D images (NULL if nothing was found)
 
     Added Jan 07
 */
-MRI_IMARR * mri_read_resamp_many_files( int nf, char * fn[] , int nxnew, int nynew)
+MRI_IMARR * mri_read_resamp_many_files( int nf, char * fn[] , int nxnew, 
+                                        int nynew, byte pval)
 {
    MRI_IMARR * newar , * outar ;
-   int kf , ii, nxi, nyi ;
-   MRI_IMAGE * bim, *qim, *imin;
+   int kf , ii, nxi, nyi , keepaspect , bot;
+   MRI_IMAGE * bim, *qim, *imin, *zim;
 
    ENTRY("mri_read_resamp_many_files") ;
 
    if( nf <= 0 ) RETURN( NULL );  /* no inputs! */
    INIT_IMARR(outar) ;          /* initialize output array */
 
+   if (nynew < 0) {
+      keepaspect = 1; 
+      nynew = -nynew;
+   } else {
+      keepaspect = 0;
+   }
+   
    for( kf=0 ; kf < nf ; kf++ ){
       newar = mri_read_file( fn[kf] ) ;  /* read all images in this file */
 
@@ -1637,12 +1649,12 @@ MRI_IMARR * mri_read_resamp_many_files( int nf, char * fn[] , int nxnew, int nyn
          nxi = imin->nx;
          nyi = imin->ny;
          if (nxi != nxnew || nyi != nynew) { /* resampling needed (adapted from galler.c)*/
-            float fx , fy ;
+            float fx , fy , fxm ;
             fx = nxnew / (float)nxi ; fy = nynew / (float)nyi ;
-            fx = MIN(fx,fy) ;
-            /* fprintf(stderr,"Resizing from %dx%d to %dx%d.\n fx = %.3f\n", nxi, nyi, nxnew, nynew, fx); */
-            if( fx < 0.95f ){
-               float sigma = 0.3456789f/fx ;
+            fxm = MIN(fx,fy) ;
+            /* fprintf(stderr,"Resizing from %dx%d to %dx%d.\n fx = %.3f\n", nxi, nyi, nxnew, nynew, fxm); */
+            if( fxm < 0.95f ){
+               float sigma = 0.3456789f/fxm ;
                /* fprintf(stderr,"sigma %f\n", sigma); */
                if (imin->kind == MRI_rgb) {
                   bim = mri_rgb_blur2D( sigma , imin ) ;
@@ -1650,8 +1662,32 @@ MRI_IMARR * mri_read_resamp_many_files( int nf, char * fn[] , int nxnew, int nyn
                   bim = mri_byte_blur2D( sigma , imin ) ;
                }
             } else bim = imin ;
-            qim = mri_resize( bim , nxnew , nynew ) ;
-            /* fprintf(stderr,"qim now %dx%d\n", qim->nx, qim->ny); */
+            if (keepaspect && fx != fy) {
+               if (fx < fy) {
+                  qim = mri_resize(bim, nxnew, (int)(fx*nyi));
+                  /* fprintf(stderr,"qim X now %dx%d\n", qim->nx, qim->ny); */
+                  bot = (nynew - (int)(fx*nyi))/2;
+                  zim = mri_valpad_2D( 0 , 0 , 
+                                        bot, nynew-(int)(fx*nyi)-bot, qim, pval);
+                  if (qim != zim) mri_free(qim) ;
+                  qim = zim; zim = NULL;
+                  /* fprintf(stderr,"qim X padded %dx%d, bot=%d\n", 
+                                 qim->nx, qim->ny, bot);     */
+               } else {
+                  qim = mri_resize(bim, (int)(fy*nxi), nynew);
+                  /* fprintf(stderr,"qim Y now %dx%d\n", qim->nx, qim->ny); */
+                  bot = (nxnew - (int)(fy*nxi))/2;
+                  zim = mri_valpad_2D( bot, nxnew-(int)(fy*nxi)-bot, 
+                                        0, 0, qim, pval);
+                  if (qim != zim) mri_free(qim) ;
+                  qim = zim; zim = NULL;
+                  /* fprintf(stderr,"qim Y padded %dx%d, bot=%d\n", 
+                                 qim->nx, qim->ny, bot);      */
+               }
+            } else {
+               qim = mri_resize( bim , nxnew , nynew ) ;
+               /* fprintf(stderr,"qim now %dx%d\n", qim->nx, qim->ny); */
+            }
             ADDTO_IMARR( outar , qim ) ;
             if( bim != imin ) mri_free(bim) ;
             mri_free( imin );
