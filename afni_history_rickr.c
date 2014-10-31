@@ -49,6 +49,47 @@
 
 afni_history_struct rickr_history[] = {
 
+ { 28, Oct, 2014, RCR, "timing_tool.py", MICRO, TYPE_ENHANCE,
+   "expanded -help_basis",
+   NULL
+ } ,
+
+ { 27, Oct, 2014, RCR, "Dimon", MINOR, TYPE_BUG_FIX,
+   "fixed strcmp trap in -sbns; have -sb_num_suffix look for any last integer",
+   NULL
+ } ,
+
+ { 27, Oct, 2014, RCR, "afni-general", MINOR, TYPE_ENHANCE,
+   "added 107 face images for 20 years",
+   NULL
+ } ,
+
+ { 23, Oct, 2014, RCR, "afni_util.py", MINOR, TYPE_ENHANCE,
+   "enhanced read_text_file and added shuffle_blocks",
+   NULL
+ } ,
+
+ { 22, Oct, 2014, RCR, "3dmask_tool", MICRO, TYPE_BUG_FIX,
+   "if padding for dilate/erode steps, preserve ijk_to_dicom_real",
+   "Thanks to A Kurani for nothing the problem."
+ } ,
+
+ { 20, Oct, 2014, RCR, "imcat", MINOR, TYPE_BUG_FIX,
+   "z and r: fixed y-padding",
+   NULL
+ } ,
+
+ { 16, Oct, 2014, RCR, "Dimon", MINOR, TYPE_NEW_OPT,
+   "added sort_methods: none, acq_time, default, num_suffix, zposn",
+   NULL
+ } ,
+
+ {  8, Oct, 2014, RCR, "Dimon", MINOR, TYPE_BUG_FIX,
+   "added -save_errors and more recovery chances, fixed sb_num_suffix app",
+   "Stage 3 of sorting broke stage 2 of sorting.\n"
+   "Thanks to V Roopchansingh for noting the problem."
+ } ,
+
  { 25, Sep, 2014, RCR, "Dimon", MICRO, TYPE_BUG_FIX,
    "fixed use of altered add_to_string_list()",
    "The changed usage broke options -drive_afni, -drive_wait and -rt_cmd.\n"

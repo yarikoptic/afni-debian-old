@@ -4,7 +4,7 @@
 /* 
 
    Historical Note from Fri Jan  3 10:21:52 EST 2003:
-   the method for hiding a surface viewer (and other controllers), used to have     three options prior to Fri Jan  3 10:21:52 EST 2003
+   the method for hiding a surface viewer (and other controllers), used to have      three options prior to Fri Jan  3 10:21:52 EST 2003
    Now only SUMA_WITHDRAW and NOT SUMA_DESTROY should be used.
 
    As of Wed Sep 23 14:45:59 EDT 2009
@@ -15,7 +15,8 @@
    It appears that GLX implementation is full of uninitialzation errors, 
    according to Valgrind. 
    
-   So now one can choose between three closing modes. For widgets with GLX drawables (Viewers, and SurfaceControllers) use SUMA_UNREALIZE.
+   So now one can choose between three closing modes. For widgets with GLX
+   drawables (Viewers, and SurfaceControllers) use SUMA_UNREALIZE.
    For other, stick with SUMA_WITHDRAW as previously done.
 */
 
@@ -474,7 +475,10 @@ void SUMA_ATF_SetValue (SUMA_ARROW_TEXT_FIELD * AF);
 void SUMA_ATF_cb_label_Modify (Widget w, XtPointer client_data, XtPointer call_data);
 void SUMA_leave_EV( Widget w , XtPointer client_data ,
                   XEvent * ev , Boolean * continue_to_dispatch );
-void SUMA_ATF_cb_label_Focus (Widget w, XtPointer client_data, XtPointer call_data);
+void SUMA_press_EV( Widget w , XtPointer client_data ,
+                    XEvent * ev , Boolean * continue_to_dispatch );
+void SUMA_ATF_cb_label_Focus (Widget w, XtPointer client_data, 
+                    XtPointer call_data);
 void SUMA_PositionWindowRelative (Widget New, Widget Ref, SUMA_WINDOW_POSITION Loc);
 void SUMA_cb_DrawROI_Finish (Widget w, XtPointer data, XtPointer client_data);
 void SUMA_cb_DrawROI_Join (Widget w, XtPointer data, XtPointer client_data);
@@ -834,6 +838,7 @@ SUMA_Boolean SUMA_ModifyTable(SUMA_TABLE_FIELD *TF, int Nrows);
 void SUMA_delete_mask_timeout_CB( XtPointer client_data , XtIntervalId * id);
 void SUMA_cb_Mask_Delete(Widget wcall, XtPointer cd1, XtPointer cbs);
 SUMA_Boolean SUMA_DeleteMask(char *ado_id);
+SUMA_Boolean SUMA_DeleteAllMasks(char *labeled, SUMA_DO *dov, int N_dov);
 SUMA_MaskDO * SUMA_findanyMDOp_inDOv(SUMA_DO *dov, int N_dov, int *dov_id);
 SUMA_MaskDO * SUMA_findanyMDOp(int *dov_id);
 DList *SUMA_AssembleMasksList(int withShadow);
@@ -1167,7 +1172,7 @@ SUMA_Boolean SUMA_Register_Widget_Children_Help(Widget, char *name,
    "viewer."
 
 #define SUMA_SurfCont_ColPlaneDim_hint \
-   "Dimming factor to apply to colormap." \
+   "Dimming factor to apply to colormap or color datasets." \
 
 #define SUMA_SurfCont_NodeRadGain_hint \
    "Gain factor to apply to node radius." \

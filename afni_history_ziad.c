@@ -65,6 +65,39 @@
 
 afni_history_struct ziad_history[] = {
 /*=====BELOW THIS LINE=====*/
+
+ { 17, Oct, 2014, ZSS, "suma", MAJOR, TYPE_GENERAL,
+   "Modifications for help generating functions",
+   "New tools allow for automatic Sphinx formatted documentation straight \n"
+   "from BHelp buttons. Added scrolling to arrow fields."
+ },
+ 
+ { 17, Oct, 2014, ZSS, "DriveSuma", MINOR, TYPE_NEW_OPT,
+   "Added -load_masks, -save_masks, and -masks for driving tract controller",
+   "Options help in creating all GUI help and herald the automation of the \n"
+   "tract and tract masking controller."
+ },
+ 
+ { 17, Oct, 2014, ZSS, "afni-general", MAJOR, TYPE_GENERAL,
+   "Checked in first pass of SUMA sphinx documentation",
+   "GUI documentaiton is automatically generated from BHelp text."
+ },
+ 
+ { 15, Oct, 2014, ZSS, "imcat", MINOR, TYPE_NEW_OPT,
+   "Added -respad_in, -gscale, and -pad_val options",
+   "Proces involved modifications to mri_read_resamp_many_files(),\n"
+   "mri_zeropad_2D(), and a new mri_valpad_2D(). See imcat -help for details."
+ },
+ 
+ { 10, Oct, 2014, ZSS, "suma", MINOR, TYPE_NEW_OPT,
+   "Added directions and point clouds as DOs",
+   "See interactive help for #directions, #points"
+ },
+ 
+ { 7, Oct, 2014, ZSS, "AFNIio.R", MINOR, TYPE_NEW_OPT,
+   "Allowed specification and inheritance of TR in write functions",
+   NULL
+ },
  
  { 30, Sep, 2014, ZSS, "suma", MAJOR, TYPE_BUG_FIX,
    "Fixed bug with NUMLOCK keeping surfaces from rotating on linux!",

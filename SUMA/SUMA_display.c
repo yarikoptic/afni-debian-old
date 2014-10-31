@@ -1006,6 +1006,22 @@ void SUMA_LoadSegDO (char *s, void *csvp )
          SDO->do_type = dotp;
          VDO = (void *)SDO;
          break;
+     case ODIR_type:
+         if (!(SDO = SUMA_ReadDirDO(s, 1, NULL))) {
+            SUMA_SL_Err("Failed to read directions file.\n");
+            SUMA_RETURNe;
+         }
+         SDO->do_type = dotp;
+         VDO = (void *)SDO;
+         break;
+     case DIR_type:
+         if (!(SDO = SUMA_ReadDirDO(s, 0, NULL))) {
+            SUMA_SL_Err("Failed to read directions file.\n");
+            SUMA_RETURNe;
+         }
+         SDO->do_type = dotp;
+         VDO = (void *)SDO;
+         break;
       case NBOLS_type:
          if (!(SO = SUMA_SV_Focus_SO(sv))) {
             SUMA_SL_Err("No surface in focus to which "
@@ -1032,7 +1048,13 @@ void SUMA_LoadSegDO (char *s, void *csvp )
          SDO->do_type = dotp;
          VDO = (void *)SDO;
          break;
-      
+      case PNT_type:
+         if (!(VDO = (void *)SUMA_ReadPntDO(s))) {
+            SUMA_SL_Err("Failed to read points file.\n");
+            SUMA_RETURNe;
+         }
+         ((SUMA_SphereDO * )VDO)->do_type = dotp;
+         break;
       case SP_type:
          if (!(VDO = (void *)SUMA_ReadSphDO(s))) {
             SUMA_SL_Err("Failed to read spheres file.\n");
@@ -2283,6 +2305,7 @@ void SUMA_display_one(SUMA_SurfaceViewer *csv, SUMA_DO *dov)
                break;
             case NBSP_type:
             case SP_type:
+            case PNT_type:
                SUMA_SL_Warn("Not ready yet!");
                break;
             case SO_type:
@@ -2317,6 +2340,8 @@ void SUMA_display_one(SUMA_SurfaceViewer *csv, SUMA_DO *dov)
             case NBV_type:
             case OLS_type:
             case LS_type:
+            case DIR_type:
+            case ODIR_type:
             case NBOLS_type:
             case NBLS_type:
                if (!SUMA_DrawSegmentDO (
@@ -2467,6 +2492,8 @@ void SUMA_display_one(SUMA_SurfaceViewer *csv, SUMA_DO *dov)
                break;
             case OLS_type:
             case LS_type:
+            case DIR_type:
+            case ODIR_type:
                if (!SUMA_DrawSegmentDO (
                      (SUMA_SegmentDO *)dov[sRegistDO[i].dov_ind].OP, csv)) {
                   fprintf( SUMA_STDERR, 
@@ -2476,6 +2503,13 @@ void SUMA_display_one(SUMA_SurfaceViewer *csv, SUMA_DO *dov)
                break;
             case NBSP_type:
                /* those are drawn by SUMA_DrawMesh */
+               break;
+            case PNT_type:
+               if (!SUMA_DrawPointDO (
+                     (SUMA_SphereDO *)dov[sRegistDO[i].dov_ind].OP, csv)) {
+                  fprintf( SUMA_STDERR, 
+                           "Error %s: Failed in SUMA_DrawPntDO.\n", FuncName);
+               }
                break;
             case SP_type:
                if (!SUMA_DrawSphereDO (
@@ -7635,32 +7669,6 @@ void SUMA_cb_createSurfaceCont_SO(Widget w, XtPointer data, XtPointer callData)
          XtUnmanageChild (scroller);
       }
       
-      SUMA_Register_Widget_Help( NULL , 
-                                 "SurfCont",
-                                 "The Surface Controller",
-"The surface controller is for controlling the way surfaces and datasets "
-"defined over them are displayed. The same controller is shared by a "
-":SPX::term:`family of surfaces <Family of surfaces>`:DEF:"
-"family of surfaces:SPX:"
-" and all the datasets displayed on them. Left and Right "
-"surfaces have separate controllers though in most cases actions on one "
-"hemisphere's controller are automatically mirrored on the contralateral "
-"side. The surface controller is initialized by the currently selected "
-"surface - the one said to be in focus.\n"
-":SPX:"
-"You can launch the :ref:`Surface Controller <SurfCont>` with:"
-" :ref:`ctrl+s <LC_Ctrl+s>` or :menuselection:`View-->Surface Controller`\n"
-"\n"
-".. figure:: images/SurfaceController.jpg\n"
-"   :align: center\n"
-"\n\n"
-"   ..\n\n"
-":DEF:"
-"You can launch the Surface Controller with:"
-"\n'ctrl+s' or 'View-->Surface Controller'\n"
-":SPX:"
-"\n") ;
-
    }
    
    if (SUMAg_CF->X->UseSameSurfCont) {
@@ -7711,6 +7719,33 @@ void SUMA_cb_createSurfaceCont_SO(Widget w, XtPointer data, XtPointer callData)
                      "Close Surface controller", SUMA_closeSurfaceCont_help,
                      NULL, NULL, NULL, NULL);
                      
+   SUMA_Register_Widget_Help( NULL , 
+                                 "SurfCont",
+                                 "The Surface Controller",
+"The surface controller is for controlling the way surfaces and datasets "
+"defined over them are displayed. The same controller is shared by a "
+":SPX::term:`family of surfaces <Family of surfaces>`:DEF:"
+"family of surfaces:SPX:"
+" and all the datasets displayed on them. Left and Right "
+"surfaces have separate controllers though in most cases actions on one "
+"hemisphere's controller are automatically mirrored on the contralateral "
+"side. The surface controller is initialized by the currently selected "
+"surface - the one said to be in focus.\n"
+":SPX:"
+"You can launch the :ref:`Surface Controller <SurfCont>` with:"
+" :ref:`ctrl+s <LC_Ctrl+s>` or :menuselection:`View-->Object Controller`\n"
+"\n"
+".. figure:: media/SurfaceController.jpg\n"
+"   :align: center\n"
+"\n\n"
+"   ..\n\n"
+":DEF:"
+"You can launch the Surface Controller with:"
+"\n'ctrl+s' or 'View-->Object Controller'\n"
+":SPX:"
+"\n") ;
+
+
    XtVaCreateManagedWidget ("sep", xmSeparatorWidgetClass, rc_gmamma , NULL);
    
    rc_mamma = XtVaCreateWidget ("rowcolumn",
@@ -8207,7 +8242,7 @@ void SUMA_cb_createSurfaceCont_SO(Widget w, XtPointer data, XtPointer callData)
                            SUMA_cb_SurfCont_SwitchPage, (void *)ado,
                            "SurfCont->Disp_Cont->Switch",
                            "Switch to other object controller", 
-                           "Switch to other object controller",
+                           SUMA_Switch_Cont_BHelp,
                            SurfCont->SurfContPage);
          xmstmp = XmStringCreateLtoR (SUMA_ADO_CropLabel(ado, 
                                           SUMA_SURF_CONT_SWITCH_LABEL_LENGTH), 
@@ -8495,6 +8530,24 @@ void SUMA_cb_createSurfaceCont_GLDO(Widget w, XtPointer data,
                      "Close Graph controller", SUMA_closeSurfaceCont_help,
                      NULL, NULL, NULL, NULL);
    
+   SUMA_Register_Widget_Help( NULL , 
+                              "GraphCont",
+                              "The Graph Dataset Controller",
+"The graph controller is for controlling the way graphs (matrices) are rendered.  Each graph gets its own controller. You can use the switch button above to switch between them. The graph controller is initialized by the graph of the last selected edge/cell.\n After you have selected an edge, "
+":SPX:"
+"you can launch the :ref:`Graph Controller <VolCont>` with:"
+" :ref:`ctrl+s <LC_Ctrl+s>` or :menuselection:`View-->Object Controller`\n"
+"\n"
+".. figure:: media/GraphController.jpg\n"
+"   :align: center\n"
+"\n\n"
+"   ..\n\n"
+":DEF:"
+"you can launch the Graph Controller with:"
+"\n'ctrl+s' or 'View-->Object Controller'\n"
+":SPX:"
+"\n") ;
+
    XtVaCreateManagedWidget ("sep", xmSeparatorWidgetClass, rc_gmamma , NULL);
          
    rc_mamma = XtVaCreateWidget ("rowcolumn",
@@ -8543,6 +8596,10 @@ void SUMA_cb_createSurfaceCont_GLDO(Widget w, XtPointer data,
             XmNchildType, XmFRAME_TITLE_CHILD,
             XmNchildHorizontalAlignment, XmALIGNMENT_BEGINNING,
             NULL);
+      SUMA_Register_Widget_Help( NULL , 
+                              "GraphCont->Graph_Dset_Properties",
+                              "Properties of graph dset",
+                              NULL) ;
       
       rc_SurfProp = XtVaCreateWidget ("rowcolumn",
             xmRowColumnWidgetClass, SurfFrame,
@@ -8595,7 +8652,7 @@ void SUMA_cb_createSurfaceCont_GLDO(Widget w, XtPointer data,
                      (XtPointer)SUMA_SurfCont_GetcurDOp(SurfCont), NULL); 
 
       SUMA_Register_Widget_Help( SurfCont->SurfInfo_pb , 
-                                 "GraphCont->Graph_Dset_Properties->More",
+                                 "GraphCont->Graph_Dset_Properties->more",
                                  "More info on Graph Dset" , 
                                  SUMA_SurfContHelp_more ) ;
       XtManageChild (SurfCont->SurfInfo_pb); 
@@ -8678,7 +8735,10 @@ void SUMA_cb_createSurfaceCont_GLDO(Widget w, XtPointer data,
             XmNchildType, XmFRAME_TITLE_CHILD,
             XmNchildHorizontalAlignment, XmALIGNMENT_BEGINNING,
             NULL);
-            
+      SUMA_Register_Widget_Help( NULL , 
+                                 "GraphCont->Xhair_Info",
+                      "Crosshair Information",
+                                 NULL);                 
       /* vertical row column */
       rcv = XtVaCreateWidget ("rowcolumn",
             xmRowColumnWidgetClass, SurfCont->Xhair_fr,
@@ -8715,7 +8775,11 @@ void SUMA_cb_createSurfaceCont_GLDO(Widget w, XtPointer data,
             XmNchildType, XmFRAME_TITLE_CHILD,
             XmNchildHorizontalAlignment, XmALIGNMENT_BEGINNING,
             NULL);
-            
+      SUMA_Register_Widget_Help( NULL , 
+                              "GraphCont->GDset_Mapping",
+                              "Control mapping of edge/cell values to color map",
+                              NULL) ;
+       
       /* vertical row column */
       rcv = XtVaCreateWidget ("rowcolumn",
             xmRowColumnWidgetClass, SurfCont->DsetMap_fr,
@@ -8752,7 +8816,12 @@ void SUMA_cb_createSurfaceCont_GLDO(Widget w, XtPointer data,
             XmNchildType, XmFRAME_TITLE_CHILD,
             XmNchildHorizontalAlignment, XmALIGNMENT_BEGINNING,
             NULL);
-            
+      
+      SUMA_Register_Widget_Help( NULL , 
+                        "GraphCont->GDset_Controls",
+                        "Control appearance of 3D graphs and matrices",
+                        NULL) ;
+      
       /* vertical row column */
       rcv = XtVaCreateWidget ("rowcolumn",
             xmRowColumnWidgetClass, SurfCont->ColPlane_fr,
@@ -8927,7 +8996,7 @@ void SUMA_cb_createSurfaceCont_GLDO(Widget w, XtPointer data,
                 "Sh", '\0', YUP, DsetTxtShad_Menu,
                 (void *)SUMA_SurfCont_GetcurDOp(SurfCont), 
                 "GraphCont->GDset_Controls->Sh",
-                "Choose the partition ratio of matrix.",
+                "Choose the shading options for node labels.",
                 SUMA_SurfContHelp_DsetTxtShad, 
                 SurfCont->DsetTxtShadMenu );
       XtManageChild (SurfCont->DsetTxtShadMenu->mw[SW_SurfCont_DsetTxtShad]);
@@ -8942,7 +9011,7 @@ void SUMA_cb_createSurfaceCont_GLDO(Widget w, XtPointer data,
                      SUMA_cb_GDSET_ShowUncon_toggled, ado);
       SUMA_Register_Widget_Help(SurfCont->GDSET_ShowUncon_tb , 
                         "GraphCont->GDset_Controls->U",
-                        "Show Unconnected Graph Points.",
+                        "Show Unconnected graph nodes.",
                         SUMA_SurfContHelp_GDSET_ViewUncon) ;            
       SUMA_SET_SELECT_COLOR(SurfCont->GDSET_ShowUncon_tb);
            
@@ -9077,7 +9146,7 @@ void SUMA_cb_createSurfaceCont_GLDO(Widget w, XtPointer data,
                            SUMA_cb_SurfCont_SwitchPage, (void *)ado,
                            "GraphCont->Disp_Cont->Switch",
                            "Switch to other object controller", 
-                           "Switch to other object controller",
+                           SUMA_Switch_Cont_BHelp,
                            SurfCont->SurfContPage);
          xmstmp = XmStringCreateLtoR (SUMA_ADO_CropLabel(ado, 
                                        SUMA_SURF_CONT_SWITCH_LABEL_LENGTH), 
@@ -9314,6 +9383,7 @@ void SUMA_cb_createSurfaceCont_TDO(Widget w, XtPointer data,
          scroller = XtNameToWidget (SUMAg_CF->X->SC_Notebook, "PageScroller");
          XtUnmanageChild (scroller);
       }
+
    }
    
    if (SUMAg_CF->X->UseSameSurfCont) {
@@ -9365,6 +9435,25 @@ void SUMA_cb_createSurfaceCont_TDO(Widget w, XtPointer data,
                      "TractCont",
                      "Close Surface controller", SUMA_closeSurfaceCont_help,
                      NULL, NULL, NULL, NULL);
+   SUMA_Register_Widget_Help( NULL , 
+                              "TractCont",
+                              "The Network/Tracts Controller",
+"The tract controller is for controlling the way tracts and values "
+"defined over them are displayed. "
+"Each network of tracts gets its own controller. "
+":SPX:"
+"You can launch the :ref:`Tract Controller <TractCont>` with:"
+" :ref:`ctrl+s <LC_Ctrl+s>` or :menuselection:`View-->Object Controller`\n"
+"\n"
+".. figure:: media/TractController.jpg\n"
+"   :align: center\n"
+"\n\n"
+"   ..\n\n"
+":DEF:"
+"You can launch the Tract Controller with:"
+"\n'ctrl+s' or 'View-->Tract Controller'\n"
+":SPX:"
+"\n") ;
    
    XtVaCreateManagedWidget ("sep", xmSeparatorWidgetClass, rc_gmamma , NULL);
          
@@ -9414,6 +9503,11 @@ void SUMA_cb_createSurfaceCont_TDO(Widget w, XtPointer data,
             XmNchildType, XmFRAME_TITLE_CHILD,
             XmNchildHorizontalAlignment, XmALIGNMENT_BEGINNING,
             NULL);
+      SUMA_Register_Widget_Help( NULL , 
+                                 "TractCont->Tract_Properties",
+                                 "Tract Properties",
+               "Name and number of bundles, tracts, and points making up the "
+               " selected network of tracts. ") ;
       
       rc_SurfProp = XtVaCreateWidget ("rowcolumn",
             xmRowColumnWidgetClass, SurfFrame,
@@ -9467,7 +9561,7 @@ void SUMA_cb_createSurfaceCont_TDO(Widget w, XtPointer data,
                      (XtPointer)SUMA_SurfCont_GetcurDOp(SurfCont), NULL); 
       SUMA_Register_Widget_Help( SurfCont->SurfInfo_pb,
                                  "TractCont->Tract_Properties->more",
-                                 "More info on Tract" , 
+                                 "More info on network of tracts" , 
                                  SUMA_SurfContHelp_more ) ;
       XtManageChild (SurfCont->SurfInfo_pb); 
 
@@ -9493,6 +9587,10 @@ void SUMA_cb_createSurfaceCont_TDO(Widget w, XtPointer data,
             XmNchildType, XmFRAME_TITLE_CHILD,
             XmNchildHorizontalAlignment, XmALIGNMENT_BEGINNING,
             NULL);
+      SUMA_Register_Widget_Help( NULL , 
+                                 "TractCont->Xhair_Info",
+                                 "Information at crosshair",
+                                 NULL) ;
             
       /* vertical row column */
       rcv = XtVaCreateWidget ("rowcolumn",
@@ -9530,6 +9628,10 @@ void SUMA_cb_createSurfaceCont_TDO(Widget w, XtPointer data,
             XmNchildType, XmFRAME_TITLE_CHILD,
             XmNchildHorizontalAlignment, XmALIGNMENT_BEGINNING,
             NULL);
+      SUMA_Register_Widget_Help( NULL , 
+                                 "TractCont->Dset_Mapping",
+                                 "Tract Dset Color Mapping",
+                                 NULL);     
             
       /* vertical row column */
       rcv = XtVaCreateWidget ("rowcolumn",
@@ -9568,6 +9670,17 @@ void SUMA_cb_createSurfaceCont_TDO(Widget w, XtPointer data,
             XmNchildHorizontalAlignment, XmALIGNMENT_BEGINNING,
             NULL);
             
+      SUMA_Register_Widget_Help( NULL , 
+                                 "TractCont->Coloring_Controls",
+                                 "Coloring Controls",
+"Controls the final coloration of the tracts based on the tract datasets"
+" available. What's a tract dataset you say? It is a dataset defined over the"
+" collection of points that define the tracts of a network. And where do we get"
+" these sets? Nowhere at the moment. For now they are generated internally and"
+" they are only of the RGB variety. This will change in the future, when you"
+" would be able to drive a flying car and have arbitrary sets much like on"
+" surfaces or volumes."
+                                 ) ;
       /* vertical row column */
       rcv = XtVaCreateWidget ("rowcolumn",
             xmRowColumnWidgetClass, SurfCont->ColPlane_fr,
@@ -9590,7 +9703,7 @@ void SUMA_cb_createSurfaceCont_TDO(Widget w, XtPointer data,
          number of nodes and number of facesets */
       {
          char *Dset_tit[]  =  {  "Lbl", NULL };
-         char *Dset_hint[] =  {  "Label of Tract Coloring",  NULL };
+         char *Dset_hint[] =  {  "Label of dataset displayed on tracts",  NULL };
          char *Dset_help[] =  {  SUMA_SurfContHelp_DsetLblTblr0, NULL };
          int colw[]={ 3, 27};
          SUMA_CreateTable(rc, 
@@ -9631,7 +9744,7 @@ void SUMA_cb_createSurfaceCont_TDO(Widget w, XtPointer data,
                            SUMA_cb_ColPlane_NewOrder, (void *)ado,
                            "TractCont->Coloring_Controls->Ord",
                            SUMA_SurfCont_ColPlaneOrder_hint, 
-                           SUMA_SurfContHelp_DsetOrd,
+                           SUMA_TractContHelp_DsetOrd,
                            SurfCont->ColPlaneOrder);
            
       SurfCont->ColPlaneShowOneFore_tb = 
@@ -9645,8 +9758,8 @@ void SUMA_cb_createSurfaceCont_TDO(Widget w, XtPointer data,
                   
       SUMA_Register_Widget_Help(SurfCont->ColPlaneShowOneFore_tb ,
                                 "TractCont->Coloring_Controls->1",
-             "Show ONLY selected set. Foreground only. (BHelp for more)",
-                                SUMA_SurfContHelp_DsetViewOne ) ;
+             "Show ONLY selected set. (BHelp for more)",
+                                SUMA_TractContHelp_DsetViewOne ) ;
       SUMA_SET_SELECT_COLOR(SurfCont->ColPlaneShowOneFore_tb);
            
       /* manage  rc */
@@ -9668,7 +9781,7 @@ void SUMA_cb_createSurfaceCont_TDO(Widget w, XtPointer data,
                            SUMA_cb_ColPlane_NewOpacity, (void *)ado,
                            "TractCont->Coloring_Controls->Opa",
                            SUMA_SurfCont_ColPlaneOpacity_hint,
-                           SUMA_SurfContHelp_DsetOpa,
+                           SUMA_TractContHelp_DsetOpa,
                            SurfCont->ColPlaneOpacity);
 
       SUMA_BuildMenuReset(0);
@@ -9765,7 +9878,7 @@ void SUMA_cb_createSurfaceCont_TDO(Widget w, XtPointer data,
                      SUMA_cb_SurfCont_SwitchColPlane, (XtPointer)ado);
       SUMA_Register_Widget_Help(pb, "TractCont->Coloring_Controls->Switch_Dset",
                                 "Switch between datasets",
-                                SUMA_SurfContHelp_DsetSwitch ) ;
+                                SUMA_TractContHelp_DsetSwitch ) ;
       XtManageChild (pb);
       
       pb = XtVaCreateWidget ("Load Dset", 
@@ -9810,7 +9923,7 @@ void SUMA_cb_createSurfaceCont_TDO(Widget w, XtPointer data,
                            SUMA_cb_SurfCont_SwitchPage, (void *)ado,
                            "TractCont->Disp_Cont->Switch",
                            "Switch to other object controller", 
-                           "Switch to other object controller",
+                           SUMA_Switch_Cont_BHelp,
                            SurfCont->SurfContPage);
          xmstmp = XmStringCreateLtoR (SUMA_ADO_CropLabel(ado, 
                                           SUMA_SURF_CONT_SWITCH_LABEL_LENGTH), 
@@ -10081,6 +10194,24 @@ void SUMA_cb_createSurfaceCont_VO(Widget w, XtPointer data, XtPointer callData)
                      "Close Surface controller", SUMA_closeSurfaceCont_help,
                      NULL, NULL, NULL, NULL);
    
+   SUMA_Register_Widget_Help( NULL , 
+                                 "VolCont",
+                                 "The Volume Controller",
+"The volume controller is for controlling the way volumes are rendered. Each volume gets its own controller. You can use the switch button above to switch between them. The volume controller is initialized by the volume of the last selected voxel.\n After you have selected a voxel, "
+":SPX:"
+"you can launch the :ref:`Volume Controller <VolCont>` with:"
+" :ref:`ctrl+s <LC_Ctrl+s>` or :menuselection:`View-->Object Controller`\n"
+"\n"
+".. figure:: media/VolumeController.jpg\n"
+"   :align: center\n"
+"\n\n"
+"   ..\n\n"
+":DEF:"
+"you can launch the Volume Controller with:"
+"\n'ctrl+s' or 'View-->Object Controller'\n"
+":SPX:"
+"\n") ;
+
    XtVaCreateManagedWidget ("sep", xmSeparatorWidgetClass, rc_gmamma , NULL);
          
    rc_mamma = XtVaCreateWidget ("rowcolumn",
@@ -10127,6 +10258,10 @@ void SUMA_cb_createSurfaceCont_VO(Widget w, XtPointer data, XtPointer callData)
             XmNchildType, XmFRAME_TITLE_CHILD,
             XmNchildHorizontalAlignment, XmALIGNMENT_BEGINNING,
             NULL);
+      SUMA_Register_Widget_Help( NULL , 
+                                 "VolCont->Volume_Properties",
+                                 "Volume Properties",
+                  "Block providing information about selected volume.") ;
       
       rc_SurfProp = XtVaCreateWidget ("rowcolumn",
             xmRowColumnWidgetClass, SurfFrame,
@@ -10207,7 +10342,11 @@ void SUMA_cb_createSurfaceCont_VO(Widget w, XtPointer data, XtPointer callData)
             XmNchildType, XmFRAME_TITLE_CHILD,
             XmNchildHorizontalAlignment, XmALIGNMENT_BEGINNING,
             NULL);
-            
+      SUMA_Register_Widget_Help( NULL , 
+                                 "VolCont->Xhair_Info",
+                                 "Information at crosshair",
+                                 NULL);     
+      
       /* vertical row column */
       rcv = XtVaCreateWidget ("rowcolumn",
             xmRowColumnWidgetClass, SurfCont->Xhair_fr,
@@ -10244,6 +10383,10 @@ void SUMA_cb_createSurfaceCont_VO(Widget w, XtPointer data, XtPointer callData)
             XmNchildType, XmFRAME_TITLE_CHILD,
             XmNchildHorizontalAlignment, XmALIGNMENT_BEGINNING,
             NULL);
+      SUMA_Register_Widget_Help( NULL , 
+                                 "VolCont->Dset_Mapping",
+                                 "Dset Color Mapping",
+                                 NULL);     
             
       /* vertical row column */
       rcv = XtVaCreateWidget ("rowcolumn",
@@ -10279,7 +10422,11 @@ void SUMA_cb_createSurfaceCont_VO(Widget w, XtPointer data, XtPointer callData)
             XmNchildType, XmFRAME_TITLE_CHILD,
             XmNchildHorizontalAlignment, XmALIGNMENT_BEGINNING,
             NULL);
-      
+      SUMA_Register_Widget_Help( NULL , 
+                                 "VolCont->Slice_Controls",
+                             "Set up which and how many slices are displayed",
+                                 NULL);     
+
       /* vertical row column */
       rcv = XtVaCreateWidget ("rowcolumn",
             xmRowColumnWidgetClass, SurfCont->Slice_fr,
@@ -10360,7 +10507,10 @@ void SUMA_cb_createSurfaceCont_VO(Widget w, XtPointer data, XtPointer callData)
             XmNchildType, XmFRAME_TITLE_CHILD,
             XmNchildHorizontalAlignment, XmALIGNMENT_BEGINNING,
             NULL);
-      
+      SUMA_Register_Widget_Help(NULL,
+                                "VolCont->Volume_Rendering_Controls",
+                                "Set the parameters for 3D rendering",
+                                "Set the parameters for 3D rendering");
       /* vertical row column */
       rcv = XtVaCreateWidget ("rowcolumn",
             xmRowColumnWidgetClass, SurfCont->VR_fr,
@@ -10398,7 +10548,11 @@ void SUMA_cb_createSurfaceCont_VO(Widget w, XtPointer data, XtPointer callData)
             XmNchildType, XmFRAME_TITLE_CHILD,
             XmNchildHorizontalAlignment, XmALIGNMENT_BEGINNING,
             NULL);
-            
+      SUMA_Register_Widget_Help( NULL , 
+                                 "VolCont->Dset_Controls",
+                                 "Dset Controls",
+                                 NULL);     
+      
       /* vertical row column */
       rcv = XtVaCreateWidget ("rowcolumn",
             xmRowColumnWidgetClass, SurfCont->ColPlane_fr,
@@ -10610,7 +10764,7 @@ void SUMA_cb_createSurfaceCont_VO(Widget w, XtPointer data, XtPointer callData)
                            SUMA_cb_SurfCont_SwitchPage, (void *)ado,
                            "VolCont->Disp_Cont->Switch",
                            "Switch to other object controller", 
-                           "Switch to other object controller",
+                           SUMA_Switch_Cont_BHelp,
                            SurfCont->SurfContPage);
          xmstmp = XmStringCreateLtoR (SUMA_ADO_CropLabel(ado, 
                                        SUMA_SURF_CONT_SWITCH_LABEL_LENGTH), 
@@ -13221,6 +13375,7 @@ void SUMA_CreateArrowField (  Widget pw, char *label,
 {
    static char FuncName[]={"SUMA_CreateArrowField"};
    char sbuf[64], sss[256]={""};
+   char *sh=NULL;
    
    SUMA_ENTRY;
    
@@ -13260,7 +13415,15 @@ void SUMA_CreateArrowField (  Widget pw, char *label,
          NULL);
       if (hint || help) {
          snprintf(sss, 255,"%s->label", wname);
+         if (AF->type == SUMA_int || AF->type == SUMA_float) {
+            sh = SUMA_append_replace_string(help,
+              "For numeric arrow fields, you can also change values by scrolling"
+              "with the pointer over the text field.", ":LR:\n",0);
+         } else {
+            sh = help;
+         }
          SUMA_Register_Widget_Help( AF->label , sss, NULL, help?help:hint);
+         if (sh != help) { SUMA_ifree(sh); }
       }
    }else {
       AF->label = NULL;
@@ -13275,7 +13438,15 @@ void SUMA_CreateArrowField (  Widget pw, char *label,
          NULL);
    if (hint || help) {
       snprintf(sss, 255,"%s->up", wname);
+      if (AF->type == SUMA_int || AF->type == SUMA_float) {
+         sh = SUMA_append_replace_string(help,
+            "For numeric arrow fields, you can also change values by scrolling"
+            "with the pointer over the text field.", ":LR:\n",0);
+      } else {
+         sh = help;
+      }
       SUMA_Register_Widget_Help( AF->up , sss, NULL, help?help:hint);
+      if (sh != help) { SUMA_ifree(sh); }
    }
 
    XtVaSetValues (AF->up, XmNuserData, (XtPointer)AF, NULL);
@@ -13291,7 +13462,15 @@ void SUMA_CreateArrowField (  Widget pw, char *label,
       NULL);
    if (hint || help) {
       snprintf(sss, 255,"%s->down", wname);
+      if (AF->type == SUMA_int || AF->type == SUMA_float) {
+         sh = SUMA_append_replace_string(help,
+            "For numeric arrow fields, you can also change values by scrolling"
+            "with the pointer over the text field.", ":LR:\n",0);
+      } else {
+         sh = help;
+      }
       SUMA_Register_Widget_Help( AF->down , sss, NULL, help?help:hint);
+      if (sh != help) { SUMA_ifree(sh); }
    }
    XtVaSetValues (AF->down, XmNuserData, (XtPointer)AF, NULL);
    XtAddCallback (AF->down, XmNarmCallback, SUMA_ATF_start_stop, (XtPointer)-1);
@@ -13311,7 +13490,15 @@ void SUMA_CreateArrowField (  Widget pw, char *label,
    
    if (hint || help) {
       snprintf(sss, 255,"%s->val", wname);
-      SUMA_Register_Widget_Help( AF->textfield , sss, NULL, help?help:hint);
+      if (AF->type == SUMA_int || AF->type == SUMA_float) {
+         sh = SUMA_append_replace_string(help,
+            "For numeric arrow fields, you can also change values by scrolling"
+            "with the pointer over the text field.", ":LR:\n",0);
+      } else {
+         sh = help;
+      }
+      SUMA_Register_Widget_Help( AF->textfield , sss, NULL, sh?sh:hint);
+      if (sh != help) { SUMA_ifree(sh); }
    }
    
    XtAddCallback (AF->textfield, XmNactivateCallback, 
@@ -13326,6 +13513,12 @@ void SUMA_CreateArrowField (  Widget pw, char *label,
                          SUMA_leave_EV,
                          (XtPointer) AF ,
                          XtListTail ) ;     /* last in queue */      
+   XtInsertEventHandler( AF->textfield  ,      /* handle events in cell */
+                         ButtonPressMask ,  /* button presses */
+                         FALSE ,            /* nonmaskable events? */
+                         SUMA_press_EV,  /* handler */
+                         (XtPointer) AF ,   /* client data */
+                         XtListTail ) ;
    XtManageChild (AF->rc);
    SUMA_RETURNe;
 }
@@ -13490,6 +13683,73 @@ void SUMA_leave_EV( Widget w , XtPointer client_data ,
    
    SUMA_RETURNe;
 }
+
+/*!
+   \brief This function is called when button presses happen in arrow text field 
+*/
+void SUMA_press_EV( Widget w , XtPointer client_data ,
+                    XEvent * ev , Boolean * continue_to_dispatch )
+{
+   static char FuncName[]={"SUMA_press_EV"};
+   SUMA_ARROW_TEXT_FIELD *AF=NULL; 
+   XButtonEvent * bev = (XButtonEvent *) ev ;
+   XmAnyCallbackStruct cbs ;
+   int incr=0, ival=0;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+
+   SUMA_LH("Called");
+   AF = (SUMA_ARROW_TEXT_FIELD *)client_data ;
+
+   /* see note in bbox.c optmenu_EV for the condition below*/
+   if( bev->button == Button2 ) {
+     XUngrabPointer( bev->display , CurrentTime ) ;
+     SUMA_RETURNe ;
+   }
+   
+   if( w == NULL || AF == NULL ) { SUMA_RETURNe ; }
+      
+   incr = 0;
+   switch (bev->button) {
+      case Button1:
+         SUMA_LH("Button 1");
+         break;
+      case Button2:
+         SUMA_LH("Button 2");
+         break;
+      case Button3:
+         SUMA_LH("Button 3");
+         break;
+      case Button4:
+      case 6:  /* This is shift and wheel on mac, Button6 is not in X.h ! */
+         SUMA_LH("Button 4/6 %d", bev->button);
+         incr = -1;
+         break;
+      case Button5:
+      case 7: 
+         SUMA_LH("Button 5/7 %d", bev->button);
+         incr = 1;
+         break;
+      default:
+         SUMA_RETURNe;
+   }
+      
+   if (incr) {
+      AF->direction = incr;
+      ival = AF->value;
+      SUMA_ATF_change_value (AF, NULL );
+      if (ival != AF->value) {
+         if (!AF->NewValueCallbackData) 
+               AF->NewValueCallback((void*)AF);
+         else 
+               AF->NewValueCallback(AF->NewValueCallbackData);
+      }
+   }
+    
+   SUMA_RETURNe;
+}
+
 
 /*!
    \brief This function is called when the label field is activated by the user
@@ -14914,10 +15174,11 @@ void SUMA_ATF_change_value(XtPointer client_data, XtIntervalId *id)
 
    SUMA_ATF_SetString (AF);
 
-   AF->arrow_timer_id =
-     XtAppAddTimeOut (SUMAg_CF->X->App, (INT_CAST)id==1? 500 : 100, 
-                        SUMA_ATF_change_value, (XtPointer)AF);
-   
+   if (id) {
+      AF->arrow_timer_id =
+         XtAppAddTimeOut (SUMAg_CF->X->App, (INT_CAST)id==1? 500 : 100, 
+                           SUMA_ATF_change_value, (XtPointer)AF);
+   }
    /* turn off the modified field because it should only be on 
       when the user edits the field */
    SUMA_RETURNe;

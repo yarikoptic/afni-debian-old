@@ -1522,7 +1522,7 @@ void AFNI_sigfunc_alrm(int sig)
      "Money talks, but usually just to say 'Goodbye'"                ,
      "Are you a Bayesian Heretic or a Frequentist True Believer?"    ,
      "Are you ready for the Big Rip?"                                ,
-     "I hereby declare the Null Hypothesis to be ........ Falsified" ,
+     "I hereby declare the Null Hypothesis to be ..... Falsified"    ,
      "I'm sick of thinking about p-values -- how about you?"         ,
      "Did you fail to negate the opposite of the null hypothesis?"   ,
      "All suspicion points to a Frost-Bellgowan plot"                ,
@@ -1534,8 +1534,16 @@ void AFNI_sigfunc_alrm(int sig)
      "Like dreams, statistics are a form of wish fulfillment"        ,
      "I wish I were in Lobuche right now, eating momos"              ,
      "Next stop: Bora Bora and Rangiroa"                             ,
-     "Do you still miss the NIH Bear?  I do"                         ,
+     "Do you still miss the NIH Bear? I do"                          ,
      "Advice from the NIH Bear -- honey goes good with brains"       ,
+     "Always be patient with the rich and powerful"                  ,
+     "Better to visit hell in your lifetime than afterwards"         ,
+     "Halfway is 12 miles, when you have 14 miles to go"             ,
+     "How beautiful it is to do nothing, then rest afterwards"       ,
+     "When the sky falls, hold up your hands"                        ,
+     "If you can't bite, don't show your teeth"                      ,
+     "Three statisticians ==> Four opinions on data analysis"        ,
+     "A fool and his p-value are soon non-replicated"                ,
 
      "For every complex problem there is an answer that is clear, simple, and wrong"  ,
      "For every simple problem there is an answer that is murky, complex, and wrong"  ,
@@ -2222,12 +2230,13 @@ STATUS("call 13") ;
         AFNI_register_2D_function( "Winsor9" , winsor9_box_func ) ;
         AFNI_register_2D_function( "OSfilt9" , osfilt9_box_func ) ;
 
-        AFNI_register_2D_function( "Median21" , median21_box_func );
-        AFNI_register_2D_function( "Winsor21" , winsor21_box_func );
-        AFNI_register_2D_function( "AdptMean21" , adapt_mean_21_box_func ); /* 04 Sep 2009 */
+        AFNI_register_2D_function( "Median21"  , median21_box_func );
+        AFNI_register_2D_function( "Winsor21"  , winsor21_box_func );
+        AFNI_register_2D_function( "AdptMean21", adapt_mean_21_box_func ); /* 04 Sep 2009 */
 
         AFNI_register_2D_function( "abs[FFT2D]" , fft2D_absfunc   );
         AFNI_register_2D_function( "arg[FFT2D]" , fft2D_phasefunc );
+        AFNI_register_2D_function( "Sharpness"  , sharpness2D_func);   /* 28 Oct 2014 */
 
         /* 01 Feb 2000: see afni_fimfunc.c */
 
@@ -4617,6 +4626,7 @@ if(PRINT_TRACING)
 #if 1
         switch( cbs->key ){  /* 05 Mar 2007: keys that AFNI needs */
                                        /* to process, not imseq.c */
+          case 'U':
           case 'u':{
             int uu = im3d->vinfo->underlay_type ; /* toggle Overlay as Underlay */
             uu = (uu+1) % (LAST_UNDERLAY_TYPE+1) ;
@@ -4626,6 +4636,15 @@ if(PRINT_TRACING)
 #else
             im3d->vinfo->underlay_type = uu ;
             AFNI_underlay_CB( NULL , im3d , (XtPointer)666 ) ;
+            if( cbs->key == 'U' ){
+              int qq ; Three_D_View *qq3d ;
+              for( qq=0 ; qq < MAX_CONTROLLERS ; qq++ ){
+                qq3d = GLOBAL_library.controllers[qq] ;
+                if( qq3d == im3d || !IM3D_OPEN(qq3d) ) continue ;
+                qq3d->vinfo->underlay_type = uu ;
+                AFNI_underlay_CB( NULL , qq3d , (XtPointer)666 ) ;
+              }
+            }
 #endif
           }
           break ;
@@ -6317,6 +6336,7 @@ static char * AFNI_image_help =
  "Ctrl+m = cycle through image global range settings\n"
  "o = toggle (color) overlay on/off\n"
  "u = toggle background from underlay/overlay dataset\n"
+ "U = toggle background in ALL image viewers\n"
  "e = toggle edge detection in underlay\n"
  "#/3 = toggle underlay/overlay checkerboard display\n"
  "4 or 5 or 6 = slider for merging ULay/OLay images\n"
@@ -10593,13 +10613,13 @@ ENTRY("AFNI_jumpto_thminmax_CB") ;
           ijk = im3d->fim_thresh_max_ijk ;
    else if( w == im3d->vwid->func->pbar_jumpto_thmin_pb )
           ijk = im3d->fim_thresh_min_ijk ;
-   
+
    if (ijk == -777) { /* Not sure when this can happen, but
-                         return if there is nothing to do 
+                         return if there is nothing to do
                          without complaint   ZSS Aug. 2014 */
-      EXRETURN ;  
+      EXRETURN ;
    }
-   
+
    if( ijk < 0 ){ BEEPIT ; SENSITIZE(w,False) ; EXRETURN ; }
 
    ii = DSET_index_to_ix(im3d->fim_now,ijk) ;

@@ -832,6 +832,7 @@ extern char *      mri_dicom_hdrinfo( char *fname, int natt, char **att , int np
 extern int mri_allzero( MRI_IMAGE *im ) ;  /* check if all pixels are 0 */
 
 extern MRI_IMAGE * mri_zeropad_3D( int,int,int,int,int,int , MRI_IMAGE * ) ;
+extern MRI_IMAGE * mri_valpad_2D( int,int,int,int, MRI_IMAGE *, byte val ) ;
 extern MRI_IMAGE * mri_zeropad_2D( int,int,int,int, MRI_IMAGE * ) ;
 
 extern double mri_max( MRI_IMAGE * ) ;
@@ -896,7 +897,7 @@ extern MRI_IMAGE * mri_read_ascii_ragged_complex(char *,float); /* 08 Mar 2007 *
 extern MRI_IMAGE * mri_read_ascii_ragged_fvect( char *, float, int ) ;
 extern MRI_IMARR * mri_fvect_to_imarr( MRI_IMAGE *inim ) ;
 extern MRI_IMAGE * mri_imarr_to_fvect( MRI_IMARR *imar ) ;
-extern MRI_IMAGE * mri_float_arrays_to_image(float **vecs, int vec_len, 
+extern MRI_IMAGE * mri_float_arrays_to_image(float **vecs, int vec_len,
                                              int vec_num); /* 16 Apr 2014 */
 extern MRI_IMAGE * mri_pair_to_fvect( MRI_IMAGE *, MRI_IMAGE * ) ;
 extern MRI_IMAGE * mri_triple_to_fvect( MRI_IMAGE *, MRI_IMAGE *, MRI_IMAGE *) ;
@@ -945,7 +946,8 @@ extern MRI_IMARR * mri_read_3A( char * ) ;
 extern MRI_IMARR * mri_read_file( char * ) ;
 extern int mri_imcount( char * ) ;
 extern MRI_IMARR * mri_read_many_files( int nf , char * fn[] ) ;
-extern MRI_IMARR * mri_read_resamp_many_files( int nf, char * fn[] , int nxnew, int nynew);
+extern MRI_IMARR * mri_read_resamp_many_files( int nf, char * fn[] ,
+                                               int nxnew, int nynew, byte pval);
 
 /** returns array of byte images: red, green, blue **/
 
@@ -989,6 +991,9 @@ extern MRI_IMAGE * mri_sharpen_rgb( float , MRI_IMAGE * ) ;
 extern MRI_IMAGE * mri_flatten_rgb( MRI_IMAGE * ) ;
 extern void mri_invert_inplace( MRI_IMAGE *) ;   /* 07 Apr 2003 */
 extern void mri_gamma_rgb_inplace( float gam , MRI_IMAGE *im ) ;
+
+extern MRI_IMAGE * mri_median21( MRI_IMAGE *innim ) ; /* 28 Oct 2014 */
+extern MRI_IMAGE * mri_sharpness( MRI_IMAGE *inim ) ;
 
 extern MRI_IMAGE * mri_make_rainbow( int, int, int, rgbyte * ) ;
 
@@ -1129,6 +1134,8 @@ extern void mri_flatfilter_usedxyz  ( int i ) ;
 
 void mri_Set_KO_catwrap(void);
 void mri_Set_OK_catwrap(void);
+void mri_Set_OK_catwrap(void);
+void mri_Set_OK_catrandwrap(void);
 extern MRI_IMAGE * mri_cat2D( int,int,int,void *,MRI_IMARR *) ;
 extern MRI_IMARR * mri_uncat2D( int , int , MRI_IMAGE * im ) ; /* 09 May 2000 */
 
@@ -2190,6 +2197,37 @@ typedef struct {
   mat44 iwarp ;
 } mat44_pair ;
 
+typedef struct { /* 17 Oct 2014 */
+  int   nmar ;
+  char  fname[128] ;
+  mat44 *mar ;
+} mat44_vec ;
+
+#define M44V_mat(mmm,iii) ( ((iii) < (mmm)->nmar) ? (mmm)->mar[iii]             \
+                                                  : (mmm)->mar[(mmm)->nmar-1] )
+
+#define DESTROY_mat44_vec(mv)                  \
+ do{ if( (mv)->mar != NULL ) free((mv)->mar) ; \
+     free(mv) ;                                \
+ } while(0) ;
+
+typedef struct { /* 17 Oct 2014 */
+  int ncat , nvar , flags ;
+  THD_3dim_dataset **nwarp ;
+  mat44_vec        **awarp ;
+} Nwarp_catlist ;
+
+#define NWC_INVERT_MASK 1  /* for flags field */
+
+#define NWC_nwarp(nnn,iii) ( ((nnn)->nwarp != NULL) ? (nnn)->nwarp[iii] : NULL )
+#define NWC_awarp(nnn,iii) ( ((nnn)->awarp != NULL) ? (nnn)->awarp[iii] : NULL )
+#define NWC_null(nnn,iii)  ( NWC_nwarp(nnn,iii)==NULL && NWC_awarp(nnn,iii)==NULL )
+
+extern THD_3dim_dataset * IW3D_from_nwarp_catlist( Nwarp_catlist * , int ) ;
+extern void IW3D_destroy_nwarp_catlist( Nwarp_catlist * ) ;
+extern int IW3D_reduce_nwarp_catlist( Nwarp_catlist * ) ;
+extern Nwarp_catlist * IW3D_read_nwarp_catlist( char * ) ;
+
 extern IndexWarp3D * IW3D_create( int nx , int ny , int nz ) ;
 extern void IW3D_destroy( IndexWarp3D *AA ) ;
 extern float IW3D_normL1  ( IndexWarp3D *AA , IndexWarp3D *BB ) ;
@@ -2227,6 +2265,12 @@ extern THD_3dim_dataset * THD_nwarp_dataset( THD_3dim_dataset *dset_nwarp ,
                                              char *prefix , int wincode , int dincode ,
                                              float dxyz_mast , float wfac , int nvlim ,
                                              MRI_IMAGE *amatim ) ;
+
+extern THD_3dim_dataset * THD_nwarp_dataset_NEW( Nwarp_catlist    *nwc       ,
+                                                 THD_3dim_dataset *dset_src  ,
+                                                 THD_3dim_dataset *dset_mast ,
+                                                 char *prefix, int wincode, int dincode,
+                                                 float dxyz_mast, float wfac, int nvlim ) ;
 
 /*----------------------------------------------------------------------------*/
 

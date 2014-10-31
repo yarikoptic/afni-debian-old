@@ -43,7 +43,43 @@
 
 afni_history_struct rwcox_history[] = {
 /*=====BELOW THIS LINE=====*/
-  { 25 , SEP , 2014 , RWC , "3dQwarp" , MICRO , TYPE_GENERAL ,
+  { 28 , OCT , 2014 , RWC , "afni GUI" , MICRO , TYPE_GENERAL ,
+   "Add 2D Sharpness function to transformations.  For fun." ,
+   NULL } ,
+
+ { 23 , OCT , 2014 , RWC , "3dNwarpCat" , MICRO , TYPE_BUG_FIX ,
+   "Fix bug introduced with changes made for 3dNwarpApply" ,
+   NULL } ,
+
+ { 23 , OCT , 2014 , RWC , "3dNwarpApply" , MICRO , TYPE_MODIFY ,
+   "Make the -interp option work properly for the warp input" ,
+   NULL } ,
+
+ { 22 , OCT , 2014 , RWC , "3dNwarpApply" , MAJOR , TYPE_MODIFY ,
+   "Alter -nwarp option a lot" ,
+   "Specifically, allow time-dependent matrix inputs in any position in the\n"
+   "-nwarp catenation stream (only for this program, not the fixed-warp\n"
+   "programs 3dNwarpCat, 3dNwarpXYZ, 3dNwarpFuncs).  Removes the -affter\n"
+   "option, which is now absorbed into the -nwarp processing." } ,
+
+ { 10 , OCT , 2014 , RWC , "3dAllineate" , MICRO , TYPE_NEW_OPT ,
+   "-realaxes ==> use ijk_to_dicom_real vs. ijk_to_dicom" ,
+   NULL } ,
+
+ { 9 , OCT , 2014 , RWC , "AFNI GUI" , MICRO , TYPE_MODIFY ,
+   "'U' key does overlay/underlay switch on all controllers" ,
+   "whereas 'u' does just one controller" } ,
+
+ { 7 , OCT , 2014 , RWC , "InstaCorr in AFNI GUI" , MINOR , TYPE_MODIFY ,
+   "Multiple sections to be correlated" ,
+   "Input 'Start,End' in the format 'Start@Length,Number,Delta' to get\n"
+   "sections of the given 'Length'." } ,
+
+ { 3 , OCT , 2014 , RWC , "3dTsmooth" , MICRO , TYPE_NEW_OPT ,
+   "Add adaptive mean filtering as an option" ,
+   NULL } ,
+
+ { 25 , SEP , 2014 , RWC , "3dQwarp" , MICRO , TYPE_GENERAL ,
    "sending QUIT signal (kill -s QUIT) will cause a graceful death" ,
    "'Live fast, Die young, Leave a pretty corpse'.  That is, break out of\n"
    "the optimization loops and write the current result out before exiting." } ,
