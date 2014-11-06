@@ -5476,7 +5476,8 @@ void SUMA_input(Widget w, XtPointer clientData, XtPointer callData)
                      hit = SUMA_ComputeLineDOsIntersect (sv, SUMAg_DOv, 0, NULL);
                      if ( (Kev.state & ShiftMask) && 
                          !(Kev.state & ControlMask) &&
-                         !SUMA_ALTHELL) { /* Show me the click buffer */
+                         !SUMA_ALTHELL && !SUMAg_CF->ROI_mode){ 
+                         /* Show me the click buffer */
                         SUMA_MarkPickInBuffer4(sv, 1, NULL);
                      }
                      if (hit < 0) {
@@ -11775,7 +11776,8 @@ void SUMA_JumpIndex_VO (char *s, SUMA_SurfaceViewer *sv,
    SUMA_Boolean LocalHead = NOPE; 
 
    SUMA_ENTRY;
-
+   
+   SUMA_LH("Called");
    if (!s || !sv || !vo ||
        !(dset = SUMA_VO_dset(vo)) ||
        !(dims = SUMA_GetDatasetDimensions(dset))) SUMA_RETURNe;
@@ -11809,7 +11811,8 @@ void SUMA_JumpIndex_VO (char *s, SUMA_SurfaceViewer *sv,
       iv15[SUMA_VOL_IJK] = 
          SUMA_3D_2_1D_index(iv15[SUMA_VOL_I], iv15[SUMA_VOL_J], iv15[SUMA_VOL_K],
          dims[0], dims[0]*dims[1] );
-
+         
+      it = iv15[SUMA_VOL_IJK];
 
       SUMA_LHv("Voxel ID %d from I%d J%d K%d\n",
                iv15[SUMA_VOL_IJK], iv15[SUMA_VOL_I], iv15[SUMA_VOL_J], 
