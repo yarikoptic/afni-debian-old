@@ -9,7 +9,7 @@ void SUMA_cb_createSurfaceCont_MDO(Widget w, XtPointer data,
                                      XtPointer callData)
 {
    static char FuncName[] = {"SUMA_cb_createSurfaceCont_MDO"};
-   Widget tl, pb, form, DispFrame, SurfFrame, 
+   Widget tl, pb, form,  
           rc_left, rc_right, rc_mamma, rc_gmamma, tls=NULL;
    Display *dpy;
    SUMA_ALL_DO *ado;
@@ -191,7 +191,7 @@ void SUMA_cb_createSurfaceCont_MDO(Widget w, XtPointer data,
             NULL);
    
 
-   DispFrame = SUMA_CloseBhelp_Frame(rc_gmamma,
+   SurfCont->DispFrame = SUMA_CloseBhelp_Frame(rc_gmamma,
                      SUMA_cb_closeSurfaceCont, (XtPointer) ado,
                      "MaskCont", "Close Surface controller", 
                      SUMA_closeSurfaceCont_help,
@@ -275,7 +275,7 @@ SUMA_SHPINX_BREAK
       Widget rc, label, rc_SurfProp, pb;
      
       /* put a frame */
-      SurfFrame = XtVaCreateWidget ("dialog",
+      SurfCont->SurfFrame = XtVaCreateWidget ("dialog",
          xmFrameWidgetClass, rc_left,
          XmNshadowType , XmSHADOW_ETCHED_IN ,
          XmNshadowThickness , 5 ,
@@ -283,16 +283,21 @@ SUMA_SHPINX_BREAK
          NULL); 
       
       XtVaCreateManagedWidget ("Masks",
-            xmLabelWidgetClass, SurfFrame, 
+            xmLabelWidgetClass, SurfCont->SurfFrame, 
             XmNchildType, XmFRAME_TITLE_CHILD,
             XmNchildHorizontalAlignment, XmALIGNMENT_BEGINNING,
             NULL);
       SUMA_Register_Widget_Help( NULL , 
                                  "MaskCont->Masks",
                           "Create/delete masks and setup masking expression",
-                                 NULL) ;
+                  ":SPX:\n\n"
+                  ".. figure:: media/MaskCont.auto.Masks.jpg\n"
+                  "   :align: right\n\n"
+                  "   ..\n\n"
+                  ":SPX:") ;            
+
       rc_SurfProp = XtVaCreateWidget ("rowcolumn",
-            xmRowColumnWidgetClass, SurfFrame,
+            xmRowColumnWidgetClass, SurfCont->SurfFrame,
             XmNpacking, XmPACK_TIGHT, 
             XmNorientation , XmVERTICAL ,
             XmNmarginHeight, 0 ,
@@ -472,7 +477,7 @@ SUMA_SHPINX_BREAK
       
       XtManageChild (rc_SurfProp);
       if (!XtIsManaged(SurfCont->rcswr)) XtManageChild (SurfCont->rcswr);
-      XtManageChild (SurfFrame);
+      XtManageChild (SurfCont->SurfFrame);
    }
    
    if (!SUMA_InitMasksTable(SurfCont)) {
@@ -483,7 +488,7 @@ SUMA_SHPINX_BREAK
    if (SUMAg_CF->X->UseSameSurfCont) {
       Widget rc=NULL;
       /* put something to cycle through objects */
-      if ((rc = SUMA_FindChildWidgetNamed(DispFrame, "rowcolumnCBF"))) {
+      if ((rc = SUMA_FindChildWidgetNamed(SurfCont->DispFrame,"rowcolumnCBF"))) {
          XtVaCreateManagedWidget (  "sep", 
                               xmSeparatorWidgetClass, rc, 
                               XmNorientation, XmVERTICAL,NULL);
@@ -4204,7 +4209,7 @@ SUMA_Boolean SUMA_Register_Widget_Help(Widget w, char *name,
    if (w) {
       if (help) {
          s = SUMA_copy_string(help);
-         SUMA_Sphinx_String_Edit(s, 0);
+         s = SUMA_Sphinx_String_Edit(&s, 0, 0);
          st = s;
          s = SUMA_Break_String(st, 60); SUMA_ifree(st); 
          /* DO not free s, MCW_register_help uses the pointer as 
@@ -4242,7 +4247,7 @@ SUMA_Boolean SUMA_Register_Widget_Children_Help(Widget w, char *name,
    
    if (help) {
       s = SUMA_copy_string(help);
-      SUMA_Sphinx_String_Edit(s, 0);
+      s = SUMA_Sphinx_String_Edit(&s, 0, 0);
       st = s;
       s = SUMA_Break_String(st, 60); SUMA_ifree(st); 
          /* DO not free s, MCW_register_help uses the pointer as 
@@ -4257,4 +4262,40 @@ SUMA_Boolean SUMA_Register_Widget_Children_Help(Widget w, char *name,
       MCW_register_hint(w, s);
    }
    SUMA_RETURN(YUP);
+}
+
+SUMA_Boolean SUMA_wait_till_visible(Widget w, int maxms) 
+{
+   static char FuncName[]={"SUMA_wait_till_visible"};
+   int k, del=100, vis=0;
+   
+   SUMA_ENTRY;
+   
+   if (!w) SUMA_RETURN(NOPE);
+   
+   if (0 && !XtIsManaged(w)) {/* possible to return 0 because of asychrony */
+      SUMA_S_Err("Widget not managed");
+      SUMA_RETURN(NOPE);
+   }
+   if (!XtIsRealized(w)) {
+      SUMA_S_Err("Widget not realized");
+      SUMA_RETURN(NOPE);
+   }
+   
+   if (MCW_widget_visible(w)) SUMA_RETURN(YUP);
+   if (maxms < 0) maxms = 10000;
+   k = 0;
+   while ( !(vis=MCW_widget_visible(w)) && (k < maxms) ) {
+      fprintf(stderr,".");
+      if (k == 0) {
+         /* try to hurry things along */
+         XtPopup(w, XtGrabNone);
+         XmUpdateDisplay(w ) ;
+         XSync(XtDisplay(w), 0);
+      }
+      NI_sleep(del); k += del;     
+   }
+   if (k>0) fprintf(stderr,"\n");
+   
+   SUMA_RETURN((SUMA_Boolean)vis);
 }

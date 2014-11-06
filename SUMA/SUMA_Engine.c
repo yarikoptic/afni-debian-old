@@ -4339,6 +4339,13 @@ SUMA_Boolean SUMA_Engine (DList **listp)
             }
 
             if ((cbuf = NI_get_attribute(EngineData->ngr, 
+                                          "Snap_Surf_Cont_Widgets"))) {
+               if (!SUMA_Snap_AllCont(SO_type, cbuf)) {
+                  SUMA_S_Err("Failed to write SurfCont widgets to %s", cbuf);
+               }
+            }
+
+            if ((cbuf = NI_get_attribute(EngineData->ngr, 
                                           "Write_Surf_Cont_Sphinx_Help"))) {
                if (!SUMA_WriteCont_Help(SO_type, 1, cbuf)) {
                   SUMA_S_Err("Failed to write SurfCont help to %s", cbuf);
@@ -4350,8 +4357,12 @@ SUMA_Boolean SUMA_Engine (DList **listp)
                if (!SUMA_WriteCont_Help(TRACT_type, 0, cbuf)) {
                   SUMA_S_Err("Failed to write TractCont help to %s", cbuf);
                }
-               if (!SUMA_WriteCont_Help(MASK_type, 0, cbuf)) {
-                  SUMA_S_Err("Failed to write TractCont help to %s", cbuf);
+            }
+
+            if ((cbuf = NI_get_attribute(EngineData->ngr, 
+                                          "Snap_Tract_Cont_Widgets"))) {
+               if (!SUMA_Snap_AllCont(TRACT_type, cbuf)) {
+                  SUMA_S_Err("Failed to write TractCont widgets to %s", cbuf);
                }
             }
 
@@ -4360,15 +4371,41 @@ SUMA_Boolean SUMA_Engine (DList **listp)
                if (!SUMA_WriteCont_Help(TRACT_type, 1, cbuf)) {
                   SUMA_S_Err("Failed to write TractCont help to %s", cbuf);
                }
+            }
+
+            if ((cbuf = NI_get_attribute(EngineData->ngr, 
+                                          "Write_Mask_Cont_Help"))) {
+               if (!SUMA_WriteCont_Help(MASK_type, 0, cbuf)) {
+                  SUMA_S_Err("Failed to write MaskCont help to %s", cbuf);
+               }
+            }
+
+            if ((cbuf = NI_get_attribute(EngineData->ngr, 
+                                          "Snap_Mask_Cont_Widgets"))) {
+               if (!SUMA_Snap_AllCont(MASK_type, cbuf)) {
+                  SUMA_S_Err("Failed to write MaskCont widgets to %s", cbuf);
+               }
+            }
+
+            if ((cbuf = NI_get_attribute(EngineData->ngr, 
+                                          "Write_Mask_Cont_Sphinx_Help"))) {
                if (!SUMA_WriteCont_Help(MASK_type, 1, cbuf)) {
+                  SUMA_S_Err("Failed to write MaskCont help to %s", cbuf);
+               }
+            }
+
+            
+            if ((cbuf = NI_get_attribute(EngineData->ngr, 
+                                          "Write_Vol_Cont_Help"))) {
+               if (!SUMA_WriteCont_Help(VO_type, 0, cbuf)) {
                   SUMA_S_Err("Failed to write TractCont help to %s", cbuf);
                }
             }
 
             if ((cbuf = NI_get_attribute(EngineData->ngr, 
-                                          "Write_Vol_Cont_Help"))) {
-               if (!SUMA_WriteCont_Help(VO_type, 0, cbuf)) {
-                  SUMA_S_Err("Failed to write TractCont help to %s", cbuf);
+                                          "Snap_Vol_Cont_Widgets"))) {
+               if (!SUMA_Snap_AllCont(VO_type, cbuf)) {
+                  SUMA_S_Err("Failed to write VolCont widgets to %s", cbuf);
                }
             }
 
@@ -4387,9 +4424,37 @@ SUMA_Boolean SUMA_Engine (DList **listp)
             }
 
             if ((cbuf = NI_get_attribute(EngineData->ngr, 
+                                          "Snap_Graph_Cont_Widgets"))) {
+               if (!SUMA_Snap_AllCont(GRAPH_LINK_type, cbuf)) {
+                  SUMA_S_Err("Failed to write GraphCont widgets to %s", cbuf);
+               }
+            }
+
+            if ((cbuf = NI_get_attribute(EngineData->ngr, 
                                           "Write_Graph_Cont_Sphinx_Help"))) {
                if (!SUMA_WriteCont_Help(GRAPH_LINK_type, 1, cbuf)) {
                   SUMA_S_Err("Failed to write GraphCont help to %s", cbuf);
+               }
+            }
+
+            if ((cbuf = NI_get_attribute(EngineData->ngr, 
+                                          "Write_ROI_Cont_Help"))) {
+               if (!SUMA_WriteCont_Help(ROIdO_type, 0, cbuf)) {
+                  SUMA_S_Err("Failed to write ROICont help to %s", cbuf);
+               }
+            }
+
+            if ((cbuf = NI_get_attribute(EngineData->ngr, 
+                                          "Snap_ROI_Cont_Widgets"))) {
+               if (!SUMA_Snap_AllCont(ROIdO_type, cbuf)) {
+                  SUMA_S_Err("Failed to write ROICont widgets to %s", cbuf);
+               }
+            }
+
+            if ((cbuf = NI_get_attribute(EngineData->ngr, 
+                                          "Write_ROI_Cont_Sphinx_Help"))) {
+               if (!SUMA_WriteCont_Help(ROIdO_type, 1, cbuf)) {
+                  SUMA_S_Err("Failed to write ROICont help to %s", cbuf);
                }
             }
 
