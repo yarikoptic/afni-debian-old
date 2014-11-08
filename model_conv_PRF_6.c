@@ -1,19 +1,36 @@
 /*****************************************************************************
-   Based on model_conv_cosine3.c.
+   Based on model_conv_PRF.c, but this is with 6 parameters.
 
-   The model is from:
+   The original (4 parameter) model is from:
 
         Population receptive field estimates in human visual cortex
         NeuroImage 39 (2008) 647-660
         Serge O. Dumoulin, Brian A. Wandell
 
-   Given stimulus images over time s(x,y,t), find x0, y0, sigma values that
-   produce a best fit of the model to the data, where the model function of
-   x0, y0 and sigma is constructed as follows:
+   Given stimulus images over time s(x,y,t), find x0, y0, sigma, R and theta
+   values that produce a best fit of the model to the data.  Here x0, y0 are
+   taken to be the center of the population receptive field, sigma is the
+   basic width of it, R is the ratio of axis lengths (sigma_y / sigma_x), and
+   theta is the rotation from the y-direction major axis (so zero is in the
+   positive y-direction).
+
+   domains:
+      x,y       : [-1,1], scaled by the mask, itself
+      sigma     : (0,1], where 1 means the mask radius
+      R         : [1,inf), since sigma defines the smaller size
+      theta     : [-PI/2, PI/2), since rotation by PI has no effect
+
+   The model function of x0, y0, sigma, R and theta is constructed as follows:
 
         1. generate a 2-D Gaussian density function, centered at x0, y0,
-           and with given sigma
-           -> pRF model g(x,y) = e^-([(x-x0)^2+(y-y0)^2] / 2*sigma^2)
+           with given sigma, R (=sigma_y/sigma_x), and theta:
+
+           -> pRF model g(x,y) = e^-(A(x-x0)^2 + B(x-x0)(y-y0) + C(y-y0)^2)
+
+              where A = cos^2(theta)
+                        ------------
+                        
+
         2. integrate (dot product) over binary stimulus image per time point
            -> pRF response r(t)
         3. convolve with HRF
@@ -54,7 +71,6 @@ static int   g_exp_ipieces = 1000; /* vals per unit length */
 static int     g_exp_nvals = 0;   /* maxval*ipieces + 1 */
 static float * g_exp_ts  = NULL;  /* exp(-x) for x at index VAL*pieces */
 
-
 static THD_3dim_dataset * g_saset=NULL; /* stimulus aperature dataset */
 
 /* prototypes */
@@ -66,12 +82,17 @@ THD_3dim_dataset * convert_to_blurred_masks(THD_3dim_dataset *);
 THD_3dim_dataset * THD_reorg_dset(THD_3dim_dataset * din);
 int convolve_dset(THD_3dim_dataset * tset);
 float * get_float_volume_copy(THD_3dim_dataset * dset, int index, int nz);
-int compute_e_x_grid(float *e, int nx, int ny, float x0, float y0, float sigma);
+int compute_e_x_grid(float * e, int nx, int ny, float x0, float y0,
+                     float sigma, float sigrat, float theta);
 int fill_computed_farray(float * ts, int tslen, THD_3dim_dataset * dset,
-                         float x0, float y0, float sigma, float A, int debug);
+                         float x0, float y0, float sigma, float sigrat,
+                         float theta, float A, int debug);
 int fill_scaled_farray(float * fdest, int nt, THD_3dim_dataset * dsrc,
                        float x, float y, float sigma, float scale, int debug);
-int inputs_to_coords(THD_3dim_dataset * dset, float x, float y, float sigma);
+int get_ABC(float sigma, float sigrat, float theta,
+            double * A, double * B, double * C);
+int inputs_to_coords(THD_3dim_dataset * dset, float x, float y, float sigma,
+                     float sigrat, float theta);
 
 static int   disp_floats(char * mesg, float * p, int len);
 static int   model_help(void);
@@ -99,6 +120,8 @@ int    genv_debug    = 0;       /* AFNI_MODEL_DEBUG */
 int    genv_on_grid      = 0;   /* restrict computations and results to grid */
 float  genv_sigma_max    = 1.0; /* on_grid: maximum blur sigma */
 int    genv_sigma_nsteps = 100; /* on_grid: number of blur steps */
+int    genv_sigma_ratio_nsteps = 4; /* integers >= 1, or any >= 1 if 0 */
+int    genv_theta_nsteps = 6;   /* truncate [-PI/2,PI/2) to S steps (if > 0) */
 
 int    genv_get_help = 0;       /* AFNI_MODEL_HELP_ALL or HELP_CONV_PRF */
 
@@ -123,8 +146,16 @@ int set_env_vars(void)
    genv_sigma_max = AFNI_numenv_def("AFNI_MODEL_PRF_SIGMA_MAX", genv_sigma_max);
    genv_sigma_nsteps = (int)AFNI_numenv_def("AFNI_MODEL_PRF_SIGMA_NSTEPS",
                                             genv_sigma_nsteps);
-   if( genv_on_grid ) fprintf(stderr,"-- PRF: sigma_max = %f, nsteps = %d\n",
-                              genv_sigma_max, genv_sigma_nsteps);
+   genv_sigma_ratio_nsteps =
+            (int)AFNI_numenv_def("AFNI_MODEL_PRF_SIGMA_RATIO_NSTEPS",
+                                 genv_sigma_ratio_nsteps);
+   genv_theta_nsteps = (int)AFNI_numenv_def("AFNI_MODEL_PRF_THETA_NSTEPS",
+                                 genv_theta_nsteps);
+   if( genv_on_grid )
+      fprintf(stderr, "-- PRF: sigma_max = %f, nsteps = %d,"
+                      " ratio_steps = %d, theta_steps = %d\n", 
+              genv_sigma_max, genv_sigma_nsteps,
+              genv_sigma_ratio_nsteps, genv_theta_nsteps);
 
    /* help */
    genv_get_help = AFNI_yesenv("AFNI_MODEL_HELP_CONV_PRF")
@@ -462,20 +493,20 @@ THD_3dim_dataset * THD_reorg_dset(THD_3dim_dataset * din)
    if(genv_debug>1)fprintf(stderr, "\n== reorg finished at %6.1f\n",
                            0.001*NI_clock_time());
 
-if( genv_debug > 2 ) {
-  MRI_IMAGE * im;
-  float     * fp;
-  int i, j, k;
+   if( genv_debug > 2 ) {
+     MRI_IMAGE * im;
+     float     * fp;
+     int i, j, k;
 
-  i = in_nx/3; j = in_ny/3; k = in_nz/3;
+     i = in_nx/3; j = in_ny/3; k = in_nz/3;
 
-  im = THD_extract_series(i+j*in_nx+k*in_nxy, din, 0);
-  disp_floats("== ARY: sig [nxyz/3]: ", MRI_FLOAT_PTR(im), in_nt);
-  fp =  ((float *)DSET_ARRAY(dout,k)) + i*out_nx + j*out_nxy;
-  disp_floats("== ARY: reorg       : ", fp, out_nx);
+     im = THD_extract_series(i+j*in_nx+k*in_nxy, din, 0);
+     disp_floats("== ARY: sig [nxyz/3]: ", MRI_FLOAT_PTR(im), in_nt);
+     fp =  ((float *)DSET_ARRAY(dout,k)) + i*out_nx + j*out_nxy;
+     disp_floats("== ARY: reorg       : ", fp, out_nx);
 
-  mri_free(im);
-}
+     mri_free(im);
+   }
 
    return dout;
 }
@@ -592,7 +623,7 @@ void conv_model( float *  gs      , int     ts_length ,
 
    if( genv_debug > 1 ) {                       /* babble */
       if( genv_on_grid ) iter_step = 100000;
-      else               iter_step = 100;
+      else               iter_step = 1000;
       if( (g_iter % iter_step) == 0 ) {
          if( g_iter % (10*iter_step) ) fputc('\r', stderr);
          fprintf(stderr, "-- time for %d iter set %5d : %6.1f\n",
@@ -689,6 +720,15 @@ static int disp_floats(char * mesg, float * p, int len)
 
 /*-----------------------------------------------------------------------*/
 
+/*----------------------------------------------------------------------*
+ * for use in signal model
+ *----------------------------------------------------------------------*/
+#ifdef PI
+#undef PI
+#endif
+#define PI 3.141592653589793238462643
+
+
 DEFINE_MODEL_PROTOTYPE
 
 MODEL_interface * initialize_model ()
@@ -696,7 +736,7 @@ MODEL_interface * initialize_model ()
   MODEL_interface * mi = NULL;
 
   /*----- first, see if the user wants help -----*/
-  if ( AFNI_yesenv("AFNI_MODEL_HELP_CONV_PRF") ||
+  if ( AFNI_yesenv("AFNI_MODEL_HELP_CONV_PRF_6") ||
        AFNI_yesenv("AFNI_MODEL_HELP_ALL") ) model_help();
 
   /*----- allocate memory space for model interface -----*/
@@ -705,7 +745,7 @@ MODEL_interface * initialize_model ()
 
   /*----- name of this model -----*/
 
-  strcpy (mi->label, "Conv_PRF");
+  strcpy (mi->label, "Conv_PRF_6");
 
   /*----- this is a signal model -----*/
 
@@ -713,7 +753,7 @@ MODEL_interface * initialize_model ()
 
   /*----- number of parameters in the model -----*/
 
-  mi->params = 4;
+  mi->params = 6;
 
   /*----- parameter labels -----*/
 
@@ -721,6 +761,8 @@ MODEL_interface * initialize_model ()
   strcpy (mi->plabel[1], "X");
   strcpy (mi->plabel[2], "Y");
   strcpy (mi->plabel[3], "Sigma");
+  strcpy (mi->plabel[4], "SigRat");
+  strcpy (mi->plabel[5], "Theta");
 
   /*----- minimum and maximum parameter constraints -----*/
 
@@ -731,21 +773,14 @@ MODEL_interface * initialize_model ()
   mi->min_constr[2] =    -1.0;    mi->max_constr[2] =     1.0;
 
   mi->min_constr[3] =     0.0;    mi->max_constr[3] =     1.0;
+  mi->min_constr[4] =     1.0;    mi->max_constr[4] =    10.0;
+  mi->min_constr[5] =   -PI/2.0;  mi->max_constr[5] =    PI/2.0;
 
   /*----- function which implements the model -----*/
   mi->call_func = conv_model;
 
   return (mi);
 }
-
-
-/*----------------------------------------------------------------------*
- * for use in signal model
- *----------------------------------------------------------------------*/
-#ifdef PI
-#undef PI
-#endif
-#define PI 3.141592653589793238462643
 
 
 /*----------------------------------------------------------------------*/
@@ -758,6 +793,8 @@ MODEL_interface * initialize_model ()
          gs[1] = x0     = x-coordinate of gaussian center
          gs[2] = y0     = y-coordinate of gaussian center
          gs[3] = sigma  = "width" of gaussian curve
+         gs[4] = sigrat = sigma ratio = sigma_y / sigma_x
+         gs[5] = theta  = angle from "due north"
 
   For each TR, integrate g(x,y) over stim aperature dset.
 
@@ -778,15 +815,18 @@ static int signal_model
   int    it;            /* time index */
   int    maxind;        /* largest dimension */
   float  A, x, y, sigma;/* model params */
+  float  sigrat, theta;
 
   /* assign parameters */
   A = gs[0];
-  x = gs[1]; y = gs[2]; sigma = gs[3];
+  x = gs[1]; y = gs[2];
+  sigma = gs[3]; sigrat = gs[4]; theta = gs[5];
 
   if( debug ) fprintf(stderr, "-d model_conv_PRF parameters: "
                               "A = %f, x = %f, y = %f, sigma = %f\n"
+                              "   sigrat = %f, theta = %f\n"
                               "   nz = %d, nvals = %d, ts_len = %d\n",
-                      A, x, y, sigma,
+                      A, x, y, sigma, sigrat, theta,
                       DSET_NZ(g_saset), DSET_NVALS(g_saset), ts_length);
 
   if( ! ISVALID_3DIM_DATASET(g_saset) ) return 0;
@@ -797,9 +837,13 @@ static int signal_model
 
   /* time array must be ordered according to stim dset */
   if( genv_on_grid ) /* scale data directly from grid */
+{
+fprintf(stderr,"== rcr - need to apply sigrat, theta on grid\n");
      fill_scaled_farray(ts_array, maxind, g_saset, x, y, sigma, A, debug);
+}
   else
-     fill_computed_farray(ts_array, maxind, g_saset, x, y, sigma, A, debug);
+     fill_computed_farray(ts_array, maxind, g_saset, x, y,
+                          sigma, sigrat, theta, A, debug);
 
   if( debug )
      disp_floats("+d signal model result : ", ts_array, ts_length);
@@ -855,10 +899,13 @@ int fill_scaled_farray(float * fdest, int length, THD_3dim_dataset * dsrc,
 
 
 /* as in fill_scaled_farray, but map x,y,s to i,j,k */
-int inputs_to_coords(THD_3dim_dataset * dset, float x, float y, float sigma)
+int inputs_to_coords(THD_3dim_dataset * dset, float x, float y, float sigma,
+                     float sigrat, float theta)
 {
    int     nx, ny, nz;
    int     i, j, k;
+   float   eval;
+   double  A, B, C;
 
    nx = DSET_NX(dset);  ny = DSET_NY(dset);  nz = DSET_NZ(dset);
 
@@ -876,23 +923,28 @@ int inputs_to_coords(THD_3dim_dataset * dset, float x, float y, float sigma)
    if     ( k <  0 )  k = 0;
    else if( k >= nz ) k = nz-1;
 
+   get_ABC(sigma, sigrat, theta, &A, &B, &C);  /* get exp coefficients */
+   eval = A*x*x + B*x*y + C*y*y;
+
    fprintf(stderr,"-- fill_array from x=%f, y=%f, s=%f\n"
                   "   at i=%d, j=%d, k=%d\n",
            x, y, sigma, i, j, k);
+   fprintf(stderr,"   sigrat=%f, theta=%f, exp=%.3f\n",
+           sigrat, theta, eval);
 
    return 0;
 }
 
 
 
-/* compute the response value directly, given x,y,sigm:
+/* compute the response value directly, given parameters:
  * - compute at a given index, under the assumption that
- *   such computations will be sequential (at least
- *   starting from 0
+ *   such computations will be sequential (at least starting from 0)
  * - at index 0, a new e^x slice will be computed and
  *   applied across time */
 int fill_computed_farray(float * ts, int tslen, THD_3dim_dataset * dset,
-                          float x0, float y0, float sigma, float A, int debug)
+                         float x0, float y0, float sigma, float sigrat,
+                         float theta, float A, int debug)
 {
    static float * sexpgrid = NULL;
    static int     snxy=0;
@@ -917,7 +969,7 @@ int fill_computed_farray(float * ts, int tslen, THD_3dim_dataset * dset,
    }
 
    /* get current e^x grid (scaled to unit area) */
-   if( compute_e_x_grid(sexpgrid, nx, ny, x0, y0, sigma) ) {
+   if( compute_e_x_grid(sexpgrid, nx, ny, x0, y0, sigma, sigrat, theta) ) {
       fprintf(stderr,"PRF:FCA: e_x_g failure\n");
       return 1;
    }
@@ -944,25 +996,59 @@ int fill_computed_farray(float * ts, int tslen, THD_3dim_dataset * dset,
    return 0;
 }
 
-/* - compute a Gaussian curve over the current grid, centered at x0, y0,
- *   and with the given sigma (unless x0,y0,sigma are the same as previous)
- *
- * fill with e^-[((x-x0)^2 + (y-y0)^2) / (2*sigma^2)]
+/* ------------------------------------------------------------ */
+/* A = [R^2cos^2(theta) + sin^2(theta)] / [2R^2sigma^2]
+ * B = -(R^2-1) * sin(2theta) / [4R^2sigma^2]
+ * C = [R^2sin^2(theta) + cos^2(theta)] / [2R^2sigma^2]
  */
-int compute_e_x_grid(float * e, int nx, int ny, float x0, float y0, float sigma)
+int get_ABC(float sigma, float sigrat, float theta,
+            double * A, double * B, double * C)
 {
-   float  * eptr;
-   double   wscale, sig2, sum;
-   float    xoff, yoff, maxdiff, eval, expval;
+   double   R2, R2S2, C2, S2, So2;
+
+   R2   = sigrat*sigrat;
+   R2S2 = 2*R2*sigma*sigma;
+   C2   = cos(theta)*cos(theta);
+   S2   = sin(theta)*sin(theta);
+   So2  = sin(2*theta);
+
+   *A = (R2 * C2 + S2) / R2S2;
+   *B = -(R2 - 1.0) * So2 / (2.0 * R2S2);
+   *C = (R2 * S2 + C2) / R2S2;
+
+   return 0;
+}
+
+
+/* - compute an elliptic Gaussian curve over the current grid,
+ *   centered at x0, y0, with the given sigma, sigrat and theta
+ *
+ * old: fill with e^-[((x-x0)^2 + (y-y0)^2) / (2*sigma^2)]
+ * new: e^-[A(x-x0)^2 + B(x-x0)(y-y0) + C(y-y0)^2], where
+ *      A = [R^2cos^2(theta) + sin^2(theta)] / [2R^2sigma^2]
+ *      B = -(R^2-1) * sin(2theta) / [4R^2sigma^2]
+ *      C = [R^2sin^2(theta) + cos^2(theta)] / [2R^2sigma^2]
+ *
+ * We do not have to be too efficient in computing A,B,C, since those
+ * are constant across the image.  Only x-x0 and y-y0 vary.
+ *
+ * Compute:
+ *   R^2, 2R^2sigma^2,
+ *   cos^2(theta), sin^2(theta), sin(2theta)
+ */
+int compute_e_x_grid(float * e, int nx, int ny, float x0, float y0,
+                     float sigma, float sigrat, float theta)
+{
+   float  * eptr, eval;
+   double   wscale, sum;
+   double   xoff, yoff, expval;
    int      ix, iy, eind;
 
-   wscale = 2.0/(nx-1.0);       /* scale [0,nx-1] to [0,2] */
-   sig2 = 0.5/sigma/sigma;      /* get 1/(2*sigma^2) */
+   double   A, B, C;
 
-   /* restrict |x-x0|^2 to 2*sigma^2*g_exp_maxval
-    * so, diff <= sigma*sqrt(2*g_exp_maxval)
-    */
-   maxdiff = sigma * sqrt(2*g_exp_maxval);
+   wscale = 2.0/(nx-1.0);       /* scale [0,nx-1] to [0,2] */
+
+   get_ABC(sigma, sigrat, theta, &A, &B, &C);  /* get exp coefficients */
 
    eptr = e;                    /* base pointer */
    sum = 0.0;                   /* for scaling to unit integral */
@@ -971,14 +1057,14 @@ int compute_e_x_grid(float * e, int nx, int ny, float x0, float y0, float sigma)
          xoff = ix*wscale - 1.0f - x0; /* map to [-1,1] and dist from x0 */
          yoff = iy*wscale - 1.0f - y0;
 
-         /* if we are out of range, skip */
-         if( fabs(xoff) > maxdiff || fabs(yoff) > maxdiff ) {
+         /* compute (positive) power of e, will scale by g_exp_ipieces */
+         eval = A*xoff*xoff + B*xoff*yoff + C*yoff*yoff;
+         if( eval > g_exp_maxval ) {
            *eptr++ = 0.0f;
            continue;
          }
 
-         eval = (xoff*xoff+yoff*yoff)*sig2;
-         if( eval < 0.0f ) eval = 0.0f; /* just to be sure */
+         if( eval < 0.0f ) eval = 0.0f;
 
          /* could do expval = exp(-eval); */
          eind = (int)(eval*g_exp_ipieces);  /* truncate towards 0? */
@@ -1005,24 +1091,62 @@ static int model_help(void)
 {
    printf(
 "----------------------------------------------------------------------\n"
-"PRF    - population receptive field (in visual cortex)\n"
+"PRF_6  - 6 parameter population receptive field (in visual cortex)\n"
 "\n"
-"   This model is from the paper:\n"
+"      Given stimulus images over time s(x,y,t), find x0, y0, sigma, R and\n"
+"      theta values that produce a best fit of the model to the data.  Here\n"
+"      x0, y0 are taken to be the center of the population receptive field,\n"
+"      sigma is the minor width of it (sigma_x, below), sigrat R is the ratio\n"
+"      (sigma_y / sigma_x), and theta is the rotation from the y-direction\n"
+"      major axis (so zero is in the positive y-direction).\n"
 "\n"
-"      Population receptive field estimates in human visual cortex\n"
-"      NeuroImage 39 (2008) 647-660\n"
-"      Serge O. Dumoulin, Brian A. Wandell\n"
+"      We assume sigma_y >= sigma_x and refer to sigrat >= 1, since that\n"
+"      sufficiently represents all possibilities.  The reciprocol would\n"
+"      come from the negative complimentary angle, and would therefore be a\n"
+"      redundant solution.\n"
 "\n"
-"   The model is made from parameters A, x0, y0, sigma, and from stimulus\n"
-"   time series input (visual field masks over time) by:\n"
+"      parameter domains:\n"
+"         x,y        : [-1,1], scaled by the mask, itself\n"
+"         sigma      : (0,1], where 1 means the mask radius\n"
+"         R (sigrat) : [1,inf), since sigma defines the smaller size\n"
+"         theta      : [-PI/2, PI/2), since rotation by PI has no effect\n"
 "\n"
-"      1. compute a Gaussian curve centered at x0, y0 of with sigma\n"
-"      2. multiply this 2-D image by each 2-D stimulus mask image\n"
-"      3. convolve the result with an ideal HRF\n"
-"      4. scale by the amplitude A\n"
+"      The model function of x0, y0, sigma, R and theta is constructed as\n"
+"      follows:\n"
 "\n"
-"   Currently, x0, y0, and sigma are limited to [-1,1], which the stimulus\n"
-"   images are evaluated on.  This use may be altered in the future.\n"
+"         1. generate a 2-D elliptical Gaussian density function,\n"
+"            centered at x0, y0, with given sigma, R (=sigma_y/sigma_x),\n"
+"            and theta (rotation of major direction from positive y):\n"
+"\n"
+"            -> pRF model g(x,y) = generalized 2-D Gaussian\n"
+"\n"
+"                e^-(A(x-x0)^2 + B(x-x0)(y-y0) + C(y-y0)^2), where\n"
+"\n"
+"                     cos^2(theta)     sin^2(theta)\n"
+"                 A = ------------  +  ------------\n"
+"                      2sigma_x^2       2sigma_y^2\n"
+"\n"
+"                       sin(2theta)     sin(2theta)\n"
+"                 B = - -----------  +  -----------\n"
+"                       4sigma_x^2      4sigma_y^2\n"
+"\n"
+"                     sin^2(theta)     cox^2(theta)\n"
+"                 C = ------------  +  ------------\n"
+"                      2sigma_x^2       2sigma_y^2\n"
+"\n"
+"            Substituting sigma_x = sigma, sigma_y = Rsigma_x yields,\n"
+"                           \n"
+"                     R^2cos^2(theta) + sin^2(theta)\n"
+"                 A = ------------------------------\n"
+"                              2R^2sigma^2\n"
+"\n"
+"                              sin(2theta)\n"
+"                 B = -(R^2-1) -----------\n"
+"                              4R^2sigma^2\n"
+"\n"
+"                     R^2sin^2(theta) + cos^2(theta)\n"
+"                 C = ------------------------------\n"
+"                              2R^2sigma^2\n"
 "\n"
 "--------------------------------------------------\n"
 "To use this model function:\n"
@@ -1073,6 +1197,8 @@ static int model_help(void)
 "              -sconstr 1 -1.0 1.0          \\\n"
 "              -sconstr 2 -1.0 1.0          \\\n"
 "              -sconstr 3 0.0 1.0           \\\n"
+"              -sconstr 4 1.0 4.0           \\\n"
+"              -sconstr 5 -1.571 1.570      \\\n"
 "              -BOTH                        \\\n"
 "              -nrand 10000                 \\\n"
 "              -nbest 5                     \\\n"

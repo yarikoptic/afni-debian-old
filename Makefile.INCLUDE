@@ -192,7 +192,7 @@ SCRIPTS = @4Daverage @CommandGlobb @GetAfniOrient @DTI_studio_reposition        
           @Install_MEICA_Demo @T1scale 3dMVM @compute_gcor 3dLME                  \
           @Install_ClustScat_Demo @Install_FATMVM_DEMO                            \
           @move.to.series.dirs @toMNI_Awarp @toMNI_Qwarpar @simulate_motion	    \
-          @afni.run.me 3dRprogDemo @ExamineGenFeatDists 
+          @afni.run.me 3dRprogDemo @ExamineGenFeatDists rPkgsInstall
 
 
 PY_DIR = python_scripts
@@ -2232,7 +2232,8 @@ models: model_constant.$(SO) model_linear.$(SO) model_quadratic.$(SO)  \
         model_michaelis_menton.$(SO) model_linplusort.$(SO)            \
         model_zero.$(SO) model_demri_3.$(SO) model_expr2.$(SO)         \
         model_conv_diffgamma.$(SO) model_expMEMRI.$(SO)                \
-        model_expMEMRI3.$(SO) model_conv_cosine4.$(SO) model_conv_PRF.$(SO)
+        model_expMEMRI3.$(SO) model_conv_cosine4.$(SO)                 \
+        model_conv_PRF.$(SO) model_conv_PRF_6.$(SO)
 
 # Contributed plugins go last, since they might not compile well
 
