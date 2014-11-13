@@ -1,3 +1,11 @@
+afni (0.20141107~dfsg.1-1) neurodebian; urgency=medium
+
+  * New upstream code
+  * debian/patches
+    - updated for changes in upstream code (new sources, one patch was adopted)
+
+ -- Yaroslav Halchenko <debian@onerussian.com>  Thu, 13 Nov 2014 11:02:42 -0500
+
 afni (0.20140910~dfsg.1-1) neurodebian; urgency=medium
 
   * debian/patches
