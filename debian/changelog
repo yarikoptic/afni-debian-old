@@ -1,11 +1,19 @@
-afni (0.20140925~dfsg.1-1) UNRELEASED; urgency=medium
+afni (0.20141107~dfsg.1-1) neurodebian; urgency=medium
+
+  * New upstream code
+  * debian/patches
+    - updated for changes in upstream code (new sources, one patch was adopted)
+
+ -- Yaroslav Halchenko <debian@onerussian.com>  Thu, 13 Nov 2014 11:02:42 -0500
+
+afni (0.20140910~dfsg.1-1) neurodebian; urgency=medium
 
   * debian/patches
     - accounted for added roiing.* files
     - accounted for renames/new python mvm scripts
-    - remove up_string_format -- upstreamed
+    - accounted in AFNIio.R for the rename R_io.so -> librio.so in our build
 
- -- Yaroslav Halchenko <debian@onerussian.com>  Fri, 26 Sep 2014 15:16:54 -0400
+ -- Yaroslav Halchenko <debian@onerussian.com>  Sun, 12 Oct 2014 17:00:23 -0400
 
 afni (0.20140908~dfsg.1-1) neurodebian; urgency=medium
 
