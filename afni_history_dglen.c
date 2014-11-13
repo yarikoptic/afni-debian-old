@@ -49,6 +49,27 @@
 
 
 afni_history_struct dglen_history[] = {
+{ 20 , OCT, 2014 , DRG , "Haskins Pediatric templates and atlases" , 
+    MAJOR , TYPE_GENERAL, 
+    "Nonlinear and affine versions of Haskins Pediatric templates and atlases",
+    "New templates with matching segmentation atlases are provided for\n"
+    "pediatric subjects, ages 8-12"
+} ,
+
+{ 17 , SEP, 2014 , DRG , "MNI nonlinear templates" , 
+    MINOR , TYPE_MODIFY, 
+    "Nonlinear version of MNI-152 template in distribution",
+    "The nonlinear 2009c version is more useful, particularly as a base for\n"
+    "nonlinear alignment. AFNI_atlas_spaces.niml includes descriptions for\n"
+    "native MNI152 2009c T1 template and a transformed version aligned to\n"
+    "the TT_N27 dataset in Talairach space"
+} ,
+
+{ 17 , SEP, 2014 , DRG , "auto_warp.py" , 
+    MICRO , TYPE_BUG_FIX, 
+    "Did not pass qw_opts properly to 3dQwarp"
+} ,
+
 { 4 , SEP, 2014 , DRG , "AFNI_ATLAS_PATH" , 
     MINOR , TYPE_NEW_ENV, 
     "Atlases and templates may be stored in location set by AFNI_ATLAS_PATH",
@@ -56,7 +77,7 @@ afni_history_struct dglen_history[] = {
     "This variable may hold multiple directories that specify the possible\n"
     "locations of atlases when the atlas definition does not include the\n"
     "path in the filename. The atlases are typically defined in \n"
-    "AFNI_atlas_spaces.niml file or in a CustomAtlases.niml file."
+    "AFNI_atlas_spaces.niml file or in a CustomAtlases.niml file"
 } ,
 
 { 9 , JUL, 2014 , DRG , "3dDWItoDT" , 

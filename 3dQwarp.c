@@ -445,6 +445,12 @@ void Qhelp(void)
     "                         * But you cannot use just one of '-base' or '-source'\n"
     "                           and then put the other input dataset name at the\n"
     "                           end of the command line!\n"
+    "                       *** Please note that if you are using 3dUnifize on\n"
+    "                           one dataset (or the template was made with 3dUnifize-d\n"
+    "                           datasets), then the other dataset should also be\n"
+    "                           processed the same way for better results.  This dictum\n"
+    "                           applies in general: the source and base datasets should\n"
+    "                           be pre-processed the same way, as far as possible.\n"
     "\n"
     " -prefix ppp  = Sets the prefix for the output datasets.\n"
     "               * The source dataset is warped to match the base\n"
@@ -727,7 +733,7 @@ void Qhelp(void)
     "                is an alternate way to specify when the program should stop.\n"
     "               * To only do global polynomial warping, use '-maxlev 0'.\n"
     "               * If you use both '-minpatch' and '-maxlev', then you are\n"
-    "                 living on the edge of danger.\n"
+    "                 walking on the knife edge of danger.\n"
     "               * Of course, I know that you LIVE for such thrills.\n"
     "\n"
     " -duplo       = Start off with 1/2 scale versions of the volumes,\n"
@@ -807,8 +813,9 @@ void Qhelp(void)
     "                 commands are left as an exercise for the aspiring AFNI Jedi Master.\n"
     "               * You can use the semi-secret '-pmBASE' option to get the V(x)\n"
     "                 warp and the source dataset warped to base space, in addition to\n"
-    "                 Wp(x) '_PLUS' and Wm(x) '_MINUS' warps.\n"
+    "                 the Wp(x) '_PLUS' and Wm(x) '_MINUS' warps.\n"
     "           -->>* Alas: -plusminus does not work with -duplo or -allineate :-(\n"
+    "               * However, you can use -iniwarp with -plusminus :-)\n"
 #ifdef USE_PLUSMINUS_INITIALWARP
     "               * If -plusminus is used, the -plusminus warp is initialized by\n"
     "                 a coarse warping of the source to the base, then these warp\n"
@@ -877,6 +884,30 @@ void Qhelp(void)
     "\n"
     " -verb        = Print out very very verbose progress messages (to stderr) :-)\n"
     " -quiet       = Cut out most of the fun fun fun progress messages :-(\n"
+    "\n"
+    "-----------------------------------\n"
+    "INTERRUPTING the program gracefully\n"
+    "-----------------------------------\n"
+    "If you want to stop the program AND have it write out the results up to\n"
+    "the current point, you can do so with a command like\n"
+    "  kill -s QUIT processID\n"
+    "where 'processID' is the process identifier number (pid) for the 3dQwarp\n"
+    "program you want to terminate.  A command like\n"
+    "  ps aux | grep 3dQwarp\n"
+    "will give you a list of all your processes with the string '3dQwarp' in\n"
+    "the command line.  For example, at the moment I wrote this text, I would\n"
+    "get the response\n"
+    "  rwcox 62873 693.8  2.3  3274496 755284   p2  RN+  12:36PM 380:25.26 3dQwarp -prefix ...\n"
+    "  rwcox  6421   0.0  0.0  2423356    184   p0  R+    1:33PM   0:00.00 grep 3dQwarp\n"
+    "  rwcox  6418   0.0  0.0  2563664   7344   p4  S+    1:31PM   0:00.15 vi 3dQwarp.c\n"
+    "so the processID for the actual run of 3dQwarp was 62873.\n"
+    "\n"
+    "The program will 'notice' the QUIT signal at the end of the optimization\n"
+    "of the next patch, so it may be a moment or two before it actually saves\n"
+    "the output dataset(s) and exits.\n"
+    "\n"
+    "Of course, if you just want to kill the process in a brute force way, with\n"
+    "nothing left behind to examine, then 'kill processID' will work.\n"
     "\n"
     "----------------------------------------------------------------\n"
     "CLARIFICATION about the confusing forward and inverse warp issue\n"
@@ -981,7 +1012,7 @@ void Qallineate( char *basname , char *srcname , char *emkname , char *allopt )
                   " -source %s"
                   " -prefix %s.nii"
                   " -1Dmatrix_save %s"
-                  " -cmass -final wsinc5 -float -master BASE" ,
+                  " -cmass -final wsinc5 -float -master BASE -twobest 7" ,
             basname , srcname , Qunstr , Qunstr ) ;
 
    /* add options to the command string */
@@ -1384,6 +1415,7 @@ int main( int argc , char *argv[] )
            Hworkhard2 = (int)strtod(++cpt,NULL) ;
          }
        }
+       if( argv[nopt][1] == 'W' ) Hqhard = 1 ;  /* SECRET */
        nopt++ ; continue ;
      }
 
@@ -2287,6 +2319,8 @@ STATUS("construct weight/mask volume") ;
 
    /*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
    /*------------------------- do some actual work! --------------------------*/
+
+   IW3D_setup_signal_quit() ; /* QUIT signal => graceful death [25 Sep 2014] */
 
    if( Hverb )
      INFO_message("+++++++++++ Begin warp optimization:  base=%s  source=%s" ,

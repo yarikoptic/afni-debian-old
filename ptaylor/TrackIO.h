@@ -26,6 +26,7 @@ typedef struct {
    int *tract_P0_offset_private; /* Index of 1st point in each tract 
                                     Index of 1st point of 1st tract is 0 */
    int N_points_private; /* Sum of points in all tracts of bundle */
+   char *bundle_ends; // labels, added Sept 2014
 } TAYLOR_BUNDLE;
 
 typedef struct {
@@ -84,7 +85,7 @@ TAYLOR_TRACT *NIel_2_Tract(NI_element *nel);
 
 TAYLOR_NETWORK *AppAddBundleToNetwork(TAYLOR_NETWORK *network, 
                                       TAYLOR_BUNDLE **tb,int tag, int alt_tag,
-                                      THD_3dim_dataset *grid);
+                                      THD_3dim_dataset *grid, char *EleName);
 NI_group *Network_2_NIgr(TAYLOR_NETWORK *network, int mode);
 NI_group *Network_link(char *filename);
 TAYLOR_NETWORK *NIgr_2_Network(NI_group *ngr); 

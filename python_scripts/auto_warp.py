@@ -39,7 +39,7 @@ g_help_string = """
 ## BEGIN common functions across scripts (loosely of course)
 class RegWrap:
    def __init__(self, label):
-      self.align_version = "0.01" # software version (update for changes)
+      self.align_version = "0.02" # software version (update for changes)
       self.label = label
       self.valid_opts = None
       self.user_opts = None
@@ -699,11 +699,11 @@ class RegWrap:
          com = shell_com(  \
                 "3dQwarp                                       "\
                 "         -prefix %s                           "\
-                "         -blur %s %s %s             "\
-                "         -useweight %s %s  %s                 "\
+                "         -blur %s %s %s                       "\
+                "         %s -base %s -source %s               "\
                 % ( n.input(), self.qblur[0], self.qblur[1],
                     whopt,
-                    b.input(), a.input(), self.qw_opts), ps.oexec)
+                    self.qw_opts, b.input(), a.input()), ps.oexec)
          com.run()
          if (not n.exist() and not ps.dry_run()):
             self.error_msg("Failed in warping step");
@@ -725,9 +725,11 @@ class RegWrap:
       if (not n.exist() or ps.rewrite or ps.dry_run()):
          n.delete(ps.oexec)
          if (aff != "ID"):
-            waff = "-affter %s" % aff
+            # waff = "-affter %s" % aff
+            nwarp = '"%s %s"' % (wrp.input(), aff)      # 7 Nov, 2014 [rickr]
          else:
-            waff = ""
+            # waff = ""
+            nwarp = '%s' % wrp.input()
          if (dxyz==0.0):
             dxopt = ""
          else:
@@ -741,10 +743,10 @@ class RegWrap:
                 "3dNwarpApply          "\
                 "-nwarp %s             "\
                 "-master %s            "\
-                "     %s   %s          "\
+                "     %s               "\
                 "-source %s            "\
                 "-prefix %s            "\
-                % ( wrp.input(), mast_str, waff, dxopt, a.input(), n.input()),
+                % ( nwarp, mast_str, dxopt, a.input(), n.input()),
                     ps.oexec)
          com.run()
          if (not n.exist() and not ps.dry_run()):

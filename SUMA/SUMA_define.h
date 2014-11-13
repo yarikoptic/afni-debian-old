@@ -249,7 +249,8 @@ typedef enum { SE_Empty,
                SE_SaveViewFileSelection, SE_LoadSegDO,
                SE_OpenDsetFileSelection, SE_OpenCmapFileSelection, SE_SetClip, 
                SE_OpenDsetFile, SE_OpenColFile, SE_OneOnly, SE_OpenSurfCont,
-               SE_SetSurfCont, SE_SetViewerCont, SE_SetRecorderCont,
+               SE_SetSurfCont, SE_SetObjectCont, SE_SetViewerCont, 
+               SE_SetRecorderCont,
                SE_SetDsetViewMode, SE_SetDsetFont, SE_SetDsetNodeRad, 
                SE_SetDsetThrough, 
                SE_SetDsetNodeCol, SE_SetDsetEdgeThick, SE_SetDsetEdgeStip,
@@ -260,7 +261,8 @@ typedef enum { SE_Empty,
                SE_BadCode} SUMA_ENGINE_CODE; 
                         /* DO not forget to modify SUMA_CommandCode */
 typedef enum { SE_niEmpty,
-               SE_niSetSurfCont, SE_niSetViewerCont, SE_niSetRecorderCont, 
+               SE_niSetSurfCont, SE_niSetObjectCont, SE_niSetViewerCont, 
+               SE_niSetRecorderCont, 
                SE_niKillSuma,
                SE_niBadCode} SUMA_NI_COMMAND_CODE;
                                 
@@ -1626,6 +1628,8 @@ typedef struct {
                                 controlling the masking method */
    Widget ColPlane_fr; /*!< the frame controlling the colorplanes */
    Widget Slice_fr;
+   Widget DispFrame;
+   Widget SurfFrame;
    Widget VR_fr;
    Widget DsetMap_fr; /*!< the frame for mapping Dset to colormap */
    Widget Xhair_fr; /*!< The frame for cross hair Info and controls */ 
@@ -1781,6 +1785,8 @@ typedef struct {
    Widget AppShell; /*!< AppShell widget for the DrawROI window*/ 
    Widget DrawROImode_tb; /*!< widget for toggling draw ROI mode */
    Widget ContROImode_tb;
+   Widget form;
+   Widget frame;
    Widget Penmode_tb;   /*!< widget for toggling draw with Pen mode */
    Widget AfniLink_tb; /*!< widget for toggling link to Afni */
    Widget ParentLabel_lb; /*!< widget for specifying a label for 
@@ -3683,6 +3689,9 @@ typedef struct {
 typedef struct {
    SUMA_Boolean Dev; /*!< Flag for developer option 
                      (allows the use of confusing or kludge options) */
+   SUMA_Boolean Fake_Cmap; /*!< Flag to create X11 cmap for the purpose of 
+                              automated picture taking. It should not be set
+                              on for any other reason. */
    SUMA_Boolean InOut_Notify; /*!< prints to STDERR a notice when a function 
                                  is entered or exited */ 
    SUMA_Boolean Echo_KeyPress; /*!< prints to STDERR a notice when a function 

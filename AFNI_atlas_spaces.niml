@@ -72,7 +72,12 @@
           "They created a specific affine transform for this to and from TLRC"
 ></TEMPLATE_SPACE>
 
- 
+<TEMPLATE_SPACE
+  space_name="HaskinsPeds"
+  generic_space="HaskinsPeds"
+  comment="Aligned to Haskins Pediatric Template"
+></TEMPLATE_SPACE>
+
 
 #**********Atlas transformations****************
 # *****tlrc type spaces to and from generic TLRC
@@ -346,6 +351,22 @@
 >
 </XFORM>
 
+
+<XFORM
+  ni_type="12*float"
+  ni_dimen="1"
+  xform_name="HaskinsPeds::MNI"
+  source="HaskinsPeds"
+  dest="MNI"
+  comment="Affine Transform"
+  xform_type="Affine" >
+      1.06288  -0.000580174    0.00371916      -1.21725
+  -0.00296935       1.03773   -0.00969077      0.445977
+ -0.000604645   -0.00660926       1.13005      -3.24892
+>
+</XFORM>
+
+
 #*******Atlas datasets ************************
 # list of atlas datasets
 # these are not templates. They contain segmentation
@@ -517,6 +538,21 @@
    comment="Smoothed maximum maps masked by unsmoothed maximum map"
 ></ATLAS>
 
+<ATLAS
+ atlas_name="Haskins_Pediatric_Affine_1.0"
+ dset_name="HaskinsPeds_aff_atlas1.0+tlrc.HEAD"
+ template_space="HaskinsPeds"
+ description="Version 1.0"
+ comment="Haskins Atlas 1.0.  REF: Molfese, Glen, Mesite, Pugh... (In Prep.)"
+></ATLAS>
+
+<ATLAS
+ atlas_name="Haskins_Pediatric_Nonlinear_1.0"
+ dset_name="HaskinsPeds_NL_atlas1.0+tlrc.HEAD"
+ template_space="HaskinsPeds"
+ description="Version 1.0"
+ comment="Haskins Atlas 1.0.  REF: Molfese, Glen, Mesite, Pugh... (In Prep.)"
+></ATLAS>
 
 #*******Template datasets ************************
 # list of template datasets
@@ -535,6 +571,14 @@
    template_name="TT_N27+tlrc"
    template_space="TT_N27"
    comment="Colin brain. Single subject, 27 scan mean,manually transformed to Talairach" 
+></TEMPLATE>
+
+<TEMPLATE
+   template_name="TT_152_2009c+tlrc"
+   template_space="TT_N27"
+   comment="Talairached MNI 2009c template, aligned to TT_N27
+      with @auto_tlrc. See MNI152_T1_2009c+tlrc for copyright
+      and citation information"
 ></TEMPLATE>
 
 <TEMPLATE
@@ -567,6 +611,31 @@
 ></TEMPLATE>
 
 <TEMPLATE
+   template_name="MNI152_T1_2009c+tlrc"
+   template_space="MNI"
+   comment="152 subjects T1 nonlinear at 1mm
+      VS Fonov, et al, Unbiased average age-appropriate atlases for pediatric
+      studies,NeuroImage,Volume 54, Issue 1, January 2011, ISSN 1053-8119,
+      DOI: 10.1016/j.neuroimage.2010.07.033
+
+      VS Fonov, et al, Unbiased nonlinear average age-appropriate brain
+      templates from birth to adulthood NeuroImage, Volume 47, Supplement 1,
+      July 2009, Page S102 Organization for Human Brain Mapping 2009 Annual
+      Meeting, DOI: 10.1016/S1053-8119(09)70884-5
+
+      Copyright (C) 1993-2004 Louis Collins, McConnell Brain Imaging Centre,
+      Montreal Neurological Institute, McGill University. Permission to use,
+      copy, modify, and distribute this software and its documentation for
+      any purpose and without fee is hereby granted, provided that the above
+      copyright notice appear in all copies. The authors and McGill University
+      make no representations about the suitability of this software for any
+      purpose. It is provided as is without express or implied warranty. The
+      authors are not responsible for any data loss, equipment damage,
+      property loss, or injury to subjects or patients resulting from the use
+      or misuse of this software package."
+></TEMPLATE>
+
+<TEMPLATE
    template_name="MNI152.nii"
    template_space="MNI"
 ></TEMPLATE>
@@ -586,5 +655,16 @@
    template_space="MNI_ANAT"
 ></TEMPLATE>
 
+<TEMPLATE
+   template_name="HaskinsPeds_NL_template1.0+tlrc"
+   template_space="HaskinsPeds"
+   comment="Haskins Pediatric Atlas 1.0.  REF: Molfese, Glen, Mesite, Pugh... (In Prep.)"
+></TEMPLATE>
+
+<TEMPLATE
+   template_name="HaskinsPeds_aff_template1.0+tlrc"
+   template_space="HaskinsPeds"
+   comment="Haskins Pediatric Atlas 1.0.  REF: Molfese, Glen, Mesite, Pugh... (In Prep.)"
+></TEMPLATE>
 
 #**********************************************

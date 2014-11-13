@@ -1602,6 +1602,7 @@ int SUMA_Find_ColorMap ( char *Name, SUMA_COLOR_MAP **CMv, int N_maps, int sgn)
    SUMA_LH("Failed to find map");
    SUMA_RETURN(imap);   
 }
+
 SUMA_COLOR_MAP *SUMA_FindNamedColMap(char *Name) 
 {
    static char FuncName[]={"SUMA_FindNamedColMap"};
@@ -5804,25 +5805,39 @@ float * SUMA_PercRangeVol (float *V, byte *mask, int N_V,
             }
          }
       }
+      if (LocalHead && N_sorted < 1000) {
+         SUMA_LH("Unsorted vector");
+         for (i=0; i<N_sorted; ++i) {
+            fprintf(SUMA_STDERR,"%.3f   ", Vmsort[i]);
+         }
+         fprintf(SUMA_STDERR,"\n");
+      }
       /* sort Vmsort */
       isort = SUMA_z_qsort (Vmsort  , N_sorted ); SUMA_free(isort);
    } 
    if (N_Vmsort) *N_Vmsort = N_sorted;
    
+   if (LocalHead && N_sorted < 1000) {
+      SUMA_LH("Sorted vector");
+      for (i=0; i<N_sorted; ++i) {
+         fprintf(SUMA_STDERR,"%.3f   ", Vmsort[i]);
+      }
+      fprintf(SUMA_STDERR,"\n");
+   }
    /* choose the index for the lower range */
    for (i=0; i<N_PercRange; ++i) {
       il = (int)rint((N_sorted-1)*PercRange[i]/100.0);
       PercRangeVal[i] = Vmsort[il];
+      if (LocalHead) 
+         fprintf(SUMA_STDERR,
+                 "%d: %.3f%% --> %f %.3f @ sample %d in sorted array\n", 
+            i, PercRange[i], PercRangeVal[i], 
+            (float)i*100.0/(N_PercRange-1), il);
       if (iPercRangeVal) { 
          iPercRangeVal[i] = il;
       }
    }
-   if (LocalHead) {
-      for (i=0; i<N_PercRange; ++i) {
-         fprintf(SUMA_STDERR,"%d: %f %.3f\n", 
-            i, PercRangeVal[i], (float)i*100.0/(N_PercRange-1));
-      }
-   }
+
    SUMA_RETURN (Vmsort);
 }
 
@@ -6722,12 +6737,14 @@ SUMA_Boolean SUMA_Overlays_2_GLCOLAR4(SUMA_ALL_DO *ado,
             }
             /* done with isort, free it */
             SUMA_free(isort);
-         } 
-         if (NshowOverlays  == 1) {
+         } else if (NshowOverlays  == 1) {
             ShowOverLays_sort[0] = ShowOverLays[0];   
+         } else { /* be safe */
+            ShowOverLays_sort[0] = 0;
          }
          SUMA_LH("Have %d overlays to mix", NshowOverlays);
-         if (!SUMA_MixOverlays ( VSaux->Overlays, VSaux->N_Overlays, 
+         if (NshowOverlays &&
+             !SUMA_MixOverlays ( VSaux->Overlays, VSaux->N_Overlays, 
                                  ShowOverLays_sort, NshowOverlays, 
                                  glcolar, N_dat, 
                                  VSaux->isColored, NOPE)) {
@@ -6735,7 +6752,8 @@ SUMA_Boolean SUMA_Overlays_2_GLCOLAR4(SUMA_ALL_DO *ado,
             SUMA_RETURN (NOPE);
          }
          SUMA_LH("Loading into texture %d voxels.\n"
-                 "Using VE zero's textureonly", N_dat);
+                 "Using VE zero's (%p) textureonly", 
+                 N_dat, vo->VE ? vo->VE[0]:NULL);
          if (!(tex3ddata = vo->VE[0]->texvec)) {
             SUMA_S_Err("No texture vector?.");
             SUMA_RETURN (NOPE);
@@ -6764,14 +6782,15 @@ SUMA_Boolean SUMA_Overlays_2_GLCOLAR4(SUMA_ALL_DO *ado,
             } 
          }
          /* Set the alphas, for now this would work for one volume only.
-         When mixing multiple overlays, my decide who will be doing
+         When mixing multiple overlays, may decide who will be doing
          the mixing and how, if at all ColAlpha is to play with
          LocalOpacity ...*/
-         {
+         if (NshowOverlays > 0) {
             SUMA_OVERLAYS *Sover=VSaux->Overlays[ShowOverLays_sort[0]];
             int cnt;
-            SUMA_LH("Have AlphaVal of %d", Sover->AlphaVal);
-            if (Sover->ColAlpha && Sover->NodeDef) {
+            SUMA_LH("Have AlphaVal of %d (%d)", 
+                     Sover ? Sover->AlphaVal:-999, ShowOverLays_sort[0]);
+            if (Sover && Sover->ColAlpha && Sover->NodeDef) {
                if (NshowOverlays != 1) {
                   SUMA_S_Warn(
                      "ColAlpha has not been considered for multiple overlays\n"
@@ -6802,6 +6821,7 @@ SUMA_Boolean SUMA_Overlays_2_GLCOLAR4(SUMA_ALL_DO *ado,
    }
    SUMA_RETURN(NOPE);
 }
+
 /*!
 
    function to turn color overlay planes into GL color array
@@ -7443,13 +7463,13 @@ SUMA_Boolean SUMA_MixOverlays (  SUMA_OVERLAYS ** Overlays, int N_Overlays,
       NshowOverlays = N_Overlays;
    }
    if (!NshowOverlays) { /* nothing to see here */
-      fprintf (SUMA_STDERR, "Warning %s: Nothing to do.\n", FuncName); 
       if (FILL) {
-         fprintf (SUMA_STDERR, 
-                  "Warning %s: Filling with blank default color\n", FuncName); 
+         SUMA_LH("Nothing to show, Filling with blank default color\n"); 
          SUMA_FillBlanks_GLCOLAR4(isColored, N_Node, SUMA_GRAY_NODE_COLOR, 
                                   SUMA_GRAY_NODE_COLOR, SUMA_GRAY_NODE_COLOR, 
                                   glcolar);
+      } else {
+         SUMA_LH("Nothing to show, nothing filled.\n"); 
       }
       SUMA_RETURN (YUP);
    }
@@ -10094,7 +10114,8 @@ SUMA_Boolean SUMA_LoadDsetOntoSO_eng (char *filename, SUMA_SurfaceObject *SO,
                   } else {
                      if (ss=NI_get_attribute(nilink,"network_file")) {
                         SUMA_S_Errv(
-                           "Could not find network_file \"%s\" on disk.\n", ss);
+                           "Could not find network_file \"%s\" "
+                           "on disk for dset %s\n", ss, SDSET_FILENAME(dset));
                      } else {
                         SUMA_S_Err("Could not find network_file attribute "
                                     "in network_link");                     
@@ -10102,7 +10123,6 @@ SUMA_Boolean SUMA_LoadDsetOntoSO_eng (char *filename, SUMA_SurfaceObject *SO,
                   }
                }
             }
-            
             if (GSaux->net) ngrnet = GSaux->net;
             else ngrnet = dset->ngr; /* old defunct style */
             for (ip=0; ip<ngrnet->part_num; ++ip) {

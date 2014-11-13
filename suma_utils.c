@@ -3100,6 +3100,46 @@ char *SUMA_Break_String(char *si, int mxln)
    SUMA_RETURN(so);
 }
 
+/* offset each line by off blanks
+Must free returned string */
+char *SUMA_Offset_Lines(char *si, int off)
+{
+   static char FuncName[]={"SUMA_Offset_Lines"};
+   char *so = NULL, *s=NULL;
+   int nnl=0, nso_max, nso=0, i, slen;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   
+   if (!si) SUMA_RETURN(so);
+      
+   SUMA_LH("Have string:>s=>%s<\n", si);
+   slen = strlen(si);
+   s = si; nnl = 1;
+   while (*s != '\0') {
+      if (*s == '\n') ++ nnl;
+      ++s;
+   }
+   nso_max = slen+(nnl+1)*off;
+   so = (char *)SUMA_calloc(nso_max, sizeof(char));
+   nso = 0;
+   for (i=0; i<off; ++i) so[nso++] = ' ';
+   s = si;
+   while (*s != '\0') {
+      so[nso++] = *s;
+      if (*s == '\n' && (strncmp(s+1,":NOF:",5))) {
+         /* You could conceivably get rid of :NOF: here...
+         but I get rid of it later so that's OK for now */
+         for (i=0; i<off; ++i) so[nso++] = ' ';
+      } 
+      ++s;  
+   }
+   
+   so[nso] = '\0';
+   SUMA_LH("Returning:>so=>%s>", so);
+   SUMA_RETURN(so);
+}
+
 char *SUMA_Cut_String(char *s, char *sc)
 {
    static char FuncName[]={"SUMA_Cut_String"};
@@ -3142,6 +3182,27 @@ char *SUMA_Sphinx_DeRef(char *s, char *r)
       SUMA_RETURN(s);
    }
    
+   if (!strcmp(r,":LIT:")) { /* special case for non Sphinx directive */
+      so = s;
+      nso = 0; 
+      while (ss) {
+         while (s < ss) {
+            so[nso++]=*(s++);      
+         }
+         if (nso && !SUMA_IS_PURE_BLANK(so[nso-1])) so[nso++] = ':'; 
+         s += strlen(r);
+         ss=strstr(s, r);
+      }
+      /* copy till end */
+      while (*s != '\0') {
+         so[nso++]=*(s++);
+      }
+      so[nso] = '\0';
+   
+      SUMA_RETURN(so);
+   }
+   
+   /* Things of the form :DIREC:`something <SOMETHING>` */
    so = s;
    nso = 0; 
    while (ss) {
@@ -3173,10 +3234,10 @@ char *SUMA_Sphinx_DeRef(char *s, char *r)
             /* move s till after closing quote */
             s = sef+1;
          } else {
-            SUMA_S_Warn("No closing forward quote after ref!");
+            SUMA_S_Warn("No closing forward quote after ref! in %s", so);
          }
       } else {
-         SUMA_S_Warn("No forward quote after ref!");
+         SUMA_S_Warn("No forward quote after ref! in %s", so);
       }
       ss=strstr(s, r);
    }
@@ -3214,7 +3275,7 @@ char *SUMA_Swap_String(char *s, char *sc, char *sw)
          so[nso++]=*(s++);      
       }
       for (ww=0; ww<strlen(sw); ++ww) so[nso++]=sw[ww];
-      s += (strlen(sc)-strlen(sw))+1;
+      s += strlen(sc);
       ss=strstr(s, sc);
    }
    /* copy till end */
@@ -3349,6 +3410,14 @@ void SUMA_Sphinx_String_Edit_Help(FILE *fout)
 "     when SPHINX output is used:\n\n"
 " :LR: Replace this marker with a new line character for \n"
 "      Sphinx output. Cut it out for regular output.\n"
+" :LIT: Replace this marker with '::\n' to mark an upoming literal\n"
+"       paragraph for sphinx. If the character before :LIT:\n"
+"       is a non blank, a ':' will terminate the sentence preceding\n"
+"       the literal paragraph.\n"
+"       For regular output, :LIT: is cut out if it is preceded by\n"
+"       a blank. Otherwise it is replaced by a ':'\n"
+"       Note that the literal paragraph must be indented relative to\n"
+"       the preceding one.\n"
 "\n"
 " :ref:`Some Label <reference_key>` Leave such a block untouched for\n"
 "                              sphinx format. Replace whole thing\n"
@@ -3364,6 +3433,10 @@ void SUMA_Sphinx_String_Edit_Help(FILE *fout)
 "       without the escape character in default output. This is\n"
 "       needed to keep sphinx from considering words between vertical\n"
 "       bars to be substitution references.\n"
+"\n"
+" :NOF:When found right after a new line, don't let function \n"
+"      SUMA_Offset_Lines() insert any spaces. :NOF: is otherwise cut\n"
+"      from all output\n"
 "\n" 
 "See function SUMA_Sphinx_String_Edit_Help() for a code sample.\n"
 "\n"
@@ -3392,6 +3465,15 @@ void SUMA_Sphinx_String_Edit_Help(FILE *fout)
 "\n"
 "Example 4:\n"
 "... or if '\\|T\\|' is used then ...\n"
+"\n"
+"Example 5:\n"
+"A sample file would be: test.1D.col with content:LIT:\n"   \
+"   0    0.1 0.2 1   \n"   
+"   1    0   1   0.8 \n"   
+"   4    1   1   1   \n"   
+"   7    1   0   1   \n"
+"   14   0.7 0.3 0   "
+"\n"
 };
       
    if (!fout) fout = SUMA_STDERR;
@@ -3400,13 +3482,32 @@ void SUMA_Sphinx_String_Edit_Help(FILE *fout)
    s0 = strdup(s); s1 = strdup(s);
    fprintf(fout,"\n        Source Code Version:\n%s\n    -------\n", s);
    fprintf(fout,"\n        Edited   for   SUMA:\n%s\n    -------\n", 
-                  SUMA_Sphinx_String_Edit(s0,0));
+                  SUMA_Sphinx_String_Edit(&s0,0,0));
    fprintf(fout,"\n        Edited  for  SPHINX:\n%s\n    -------\n", 
-                  SUMA_Sphinx_String_Edit(s1,1));
+                  SUMA_Sphinx_String_Edit(&s1,1, 0));
    free(s0); free(s1);
 
    return;
 }
+
+char *SUMA_Sphinx_File_Edit(char *fname, int targ, int off)
+{
+   static char FuncName[]={"SUMA_Sphinx_File_Edit"};
+   char *s=NULL;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   
+   if (!fname) SUMA_RETURN(s);
+   
+   if (!SUMA_suck_file(fname, &s)) {
+      SUMA_S_Err("Empty file or file not found");
+      SUMA_RETURN(NULL);
+   }
+   
+   SUMA_RETURN(SUMA_Sphinx_String_Edit(&s, targ, off));
+}
+
 
 /*
    A function that allows me to format help strings for 
@@ -3414,31 +3515,33 @@ void SUMA_Sphinx_String_Edit_Help(FILE *fout)
    fancier SPHINX formatted output.
    
    See SUMA_Sphinx_String_Edit_Help() for documentation.
-   
-   This function returns the a modified version of the input pointer.
+   .
 */
 
-char *SUMA_Sphinx_String_Edit(char *s, int targ) 
+char *SUMA_Sphinx_String_Edit(char **suser, int targ, int off) 
 {
    static char FuncName[]={"SUMA_Sphinx_String_Edit"};
-   char stmp[6]={""};
+   char stmp[6]={""}, *s=NULL;
    SUMA_Boolean LocalHead = NOPE;
    
    SUMA_ENTRY;
    
-   if (!s) SUMA_RETURN(s);
+   if (!suser || !(*suser)) SUMA_RETURN(s);
+   
+   s = *suser;
    
    switch (targ) {
       case 0: /* Default C output */
          SUMA_LH(">s=>\n%s\n<", s);
          SUMA_Cut_Between_String(s, ":SPX:", ":SPX:", ":DEF:");
-         SUMA_Cut_String(s,":LR:");
+         SUMA_Cut_String(s,":LR:"); SUMA_Cut_String(s,":NOF:");  
          SUMA_Sphinx_LineSpacer(s, targ);
          sprintf(stmp,"\\|"); /* to avoid compile warning for 
                                  direct use of "\|" in SUMA_Swap_String below */
          SUMA_Swap_String(s, stmp,"|");
          SUMA_Sphinx_DeRef(s,":ref:");
          SUMA_Sphinx_DeRef(s,":term:");
+         SUMA_Sphinx_DeRef(s, ":LIT:");
          SUMA_LH(">so=>\n%s\n<", s);
          SUMA_RETURN(s);
          break;
@@ -3447,7 +3550,14 @@ char *SUMA_Sphinx_String_Edit(char *s, int targ)
                SUMA_Cut_Between_String(s, ":DEF:", ":SPX:", NULL), ":SPX:");
          SUMA_Swap_String(s, ":LR:","\n");
          SUMA_Sphinx_LineSpacer(s, targ);
+         SUMA_Swap_String(s, ":LIT:","::\n");
          SUMA_Cut_String(s,"(more with BHelp)");
+         if (off) {
+            *suser = SUMA_Offset_Lines(s,off);
+            SUMA_ifree(s); s = *suser;
+         }
+         SUMA_Cut_String(s,":NOF:"); 
+         SUMA_Cut_String(s,"(BHelp for more)");
          SUMA_Cut_String(s,"(much more with BHelp)");
          break;
       default:
@@ -3457,6 +3567,67 @@ char *SUMA_Sphinx_String_Edit(char *s, int targ)
    
    SUMA_RETURN(s); 
 }
+
+char *sphinxize_prog_help (char *prog, int verb) 
+{
+   static char FuncName[]={"sphinxize_prog_help"};
+   char **ws=NULL, *sout=NULL, *ofile=NULL, *bb=NULL;
+   char *sh=NULL, *oh=NULL, *l=NULL, sins[1024]={""};
+   int N_ws=0, ishtp=0, nb = 0, i, k, nalloc, offs;
+   
+   SUMA_ENTRY;
+   
+   if (!prog || !(ws = approx_str_sort_all_popts(prog, &N_ws,  
+                   1, NULL,
+                   NULL, NULL, 1, 0, '\\'))) {
+      SUMA_RETURN(0);
+   }
+   
+   /* Get the original help string */
+   if (!(oh = phelp(prog, verb))) {
+      ERROR_message("Weird, dude");
+      SUMA_RETURN(0);
+   }
+   nalloc = 2*strlen(oh);
+   sh = (char*)calloc(2*strlen(oh), sizeof(char));
+   strcpy(sh, oh);
+   sh[strlen(oh)]='\0';
+   
+   snprintf(sins, 1020, "%s\n", prog); bb = sins+strlen(sins);
+   for (i=0; i<strlen(prog); ++i) {*bb='-'; ++bb;}
+   *bb='\0';
+   strcat(sins,"\n\n");
+   sh = insert_in_string(&sh, sh, sins, &nalloc); 
+   for (i=0; i<N_ws; ++i) {
+      if (ws[i]) {
+         l = find_popt(sh,ws[i], &nb);
+         if (l) {
+            offs = l - sh -nb;
+            if (verb) {
+               fprintf(stderr,"Found option %s at::", ws[i]);
+               write_string(l-nb, "\n", "\n",50, 0, stderr);
+            }
+            snprintf(sins, 1020, "\n.. _%s-%s:\n\n", 
+                     prog, ws[i]);
+            sh = insert_in_string(&sh, l-nb, sins, &nalloc);
+            sh = insert_in_string(&sh, l+strlen(sins), "**", &nalloc);
+            sh = insert_in_string(&sh, l+strlen(sins)+2+strlen(ws[i]), 
+                                                       "**\\ ", &nalloc);
+            if (verb) {
+               write_string(sh+offs, "    Now have\n", "\n\n",50, 1, stderr);
+            }
+         } else {
+            fprintf(stderr,"Option %s not found\n\n", ws[i]);
+         }
+         SUMA_free(ws[i]); ws[i]=NULL;
+      }
+   }
+   SUMA_free(ws); ws = NULL;
+   SUMA_free(oh); oh = NULL;
+   
+   SUMA_RETURN(SUMA_Sphinx_String_Edit(&sh, 1, 0));
+}
+
 
 /*
    Check if string begins with sphinx directives
@@ -3518,7 +3689,13 @@ char *SUMA_Sphinx_LineSpacer(char *s, int targ)
                while(s[ns] != ':') { so[nso++] = s[ns++]; }
                so[nso++] = ' '; ++ns;
             } else { /* remove all spaces */
-               if (nso>1 && so[nso-1] == '\n') so[nso-1]=' ';
+               /* remove preceding new line just to keep superfluous 
+               new line characters that were there for the purpose of keeping
+               the output width short. Do not remove the newline if there
+               is two of them in a row, or there is certain punctuation 
+               before the newline.*/
+               if (nso>1 && so[nso-1] == '\n' && 
+                           (so[nso-2] != '\n' && so[nso-2] != ':'))so[nso-1]=' ';
                ns += bln+2;
             }
          } else {
@@ -4873,7 +5050,7 @@ char * SUMA_env_list_help(int DEFAULT_values, int targ){
       switch (targ) {
          case 0: /* default */
             sli = SUMA_ReplaceChars(se.envhelp, "\n","\n//      ");
-            sli = SUMA_Sphinx_String_Edit(sli, targ);
+            sli = SUMA_Sphinx_String_Edit(&sli, targ, 0);
             SS = SUMA_StringAppend_va(SS,
                            "// %03d-%s:\n"
                            "//     %s\n"
@@ -4890,7 +5067,7 @@ char * SUMA_env_list_help(int DEFAULT_values, int targ){
          default:
          case 1: /* Sphinxy */
             sli = SUMA_copy_string(se.envhelp);
-            sli = SUMA_Sphinx_String_Edit(sli, targ);
+            sli = SUMA_Sphinx_String_Edit(&sli, targ, 0);
             SS = SUMA_StringAppend_va(SS,
                            ".. _%s:\n\n"
                            ":envvar:`%s`: %s\n\n"

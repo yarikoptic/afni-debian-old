@@ -424,11 +424,11 @@ extern int SARR_lookfor_substring( THD_string_array * sar , char * sub , int nst
 /*! Dynamic array of xyz and ijk points. */
 
 typedef struct {
-      int num ;                          /*!< Number of points currently in use */
-      int nall ;                         /*!< Number of points currently allocated */
-      THD_fvec3 * xyz ;                  /*!< Array of xyz coordinates in parent */
-      THD_ivec3 * ijk ;                  /*!< Array of ijk indexes in parent */
-      struct THD_3dim_dataset * parent ; /*!< Dataset these things come from */
+      int num ;                         /*!< Number of points currently in use */
+      int nall ;                        /*!< Number of points currently allocated */
+      THD_fvec3 *xyz ;                  /*!< Array of xyz coordinates in parent */
+      THD_ivec3 *ijk ;                  /*!< Array of ijk indexes in parent */
+      struct THD_3dim_dataset *parent ; /*!< Dataset these things come from */
 } THD_vector_list ;
 
 #define INC_VLIST 64
@@ -1433,6 +1433,13 @@ typedef struct {
 
       XtPointer parent ;    /*!< Dataset that "owns" this struct */
 } THD_dataxes ;
+
+#define DAXES_CMAT(dax,rrr)                               \
+   ( ( rrr && ISVALID_MAT44((dax)->ijk_to_dicom_real) )   \
+     ? (dax)->ijk_to_dicom_real                           \
+     : (dax)->ijk_to_dicom      )
+
+#define DSET_CMAT(ds,rrr)  DAXES_CMAT( (ds)->daxes , (rrr) )
 
 #define DAXES_COPYOVER_REAL(dax)                  \
   (dax)->ijk_to_dicom_real = (dax)->ijk_to_dicom  /* 27 Jun 2014 */
@@ -2764,8 +2771,6 @@ static int ANAT_ival_zero[] = { 0,0,0,0,0,0,0,0,0,0,0,0 , 0 } ;
 
 /* the data structure itself */
 
-struct THD_3dim_dataset_array ;  /* incomplete definition */
-
 /*! One AFNI dataset structure.
     Most elements are accessed via macros, and should only be changed via EDIT_dset_items(). */
 
@@ -2877,8 +2882,8 @@ typedef struct THD_3dim_dataset {
 #define ISVALID_3DIM_DATASET(ds)                       \
    ( (ds) != NULL && (ds)->type >= FIRST_3DIM_TYPE  && \
                      (ds)->type <= LAST_3DIM_TYPE   && \
-                (ds)->view_type >= FIRST_VIEW_TYPE &&  \
-                (ds)->view_type <= LAST_VIEW_TYPE  &&  \
+                (ds)->view_type >= FIRST_VIEW_TYPE  && \
+                (ds)->view_type <= LAST_VIEW_TYPE   && \
       ISVALID_DATABLOCK((ds)->dblk)                     )
 
 /*! Determine if ds is a pointer to a valid dataset. */
@@ -4854,6 +4859,9 @@ extern void THD_vectim_quadrant ( MRI_vectim *mrv, float *vec, float *dp ) ; /* 
 extern void THD_vectim_ktaub    ( MRI_vectim *mrv, float *vec, float *dp ) ; /* 29 Apr 2010 */
 extern void THD_vectim_tictactoe( MRI_vectim *mrv, float *vec, float *dp ) ; /* 30 Mar 2011 */
 
+extern void THD_vectim_pearson_section( MRI_vectim *mrv, float *vec,
+                                        float *dp, int ibot , int itop ) ; /* 07 Oct 0214 */
+
 extern void THD_vectim_applyfunc( MRI_vectim *mrv , void *vp ) ;        /* 10 May 2012 */
 
 extern void THD_vectim_pearsonBC( MRI_vectim *mrv, float srad, int sijk, int pv, float *par ) ;
@@ -4876,6 +4884,7 @@ typedef struct {
   byte *mmm ;
   MRI_IMAGE *gortim ;
   int start,end , automask , mindex ;
+  int clen,cnum,cstep ;
   float fbot , ftop , blur , sblur ;
   int polort , cmeth , despike , change ;
   MRI_vectim *mv ;
@@ -4904,8 +4913,9 @@ typedef struct {
  }} while(0)
 
 extern int         THD_instacorr_prepare( ICOR_setup *iset ) ;
-extern MRI_IMAGE * THD_instacorr        ( ICOR_setup *iset, int ijk, int ata ) ;
+extern MRI_IMAGE * THD_instacorr        ( ICOR_setup *iset, int ijk ) ;
 extern int         THD_instacorr_cmeth_needs_normalize( int cmeth );
+extern MRI_IMARR * THD_instacorr_collection( ICOR_setup *iset, int ijk ) ;
 /*---------------------------------------------------------------------------*/
 
 extern int THD_extract_array      ( int, THD_3dim_dataset *, int, void * ) ;
@@ -5107,7 +5117,7 @@ extern int THD_mask_fillin_completely( int,int,int, byte *, int ) ; /* 19 Apr 20
 extern int THD_mask_fillin_once      ( int,int,int, byte *, int ) ;
 
 extern int THD_mask_clip_neighbors( int,int,int, byte *, float,float,float *) ; /* 28 Oct 2003 */
-extern int THD_mask_fill_holes( int,int,int, byte *, int);  /* 27 Apr 2012 */
+extern int THD_mask_fill_holes( int,int,int, byte *, THD_ivec3 *, int);
 
 
 extern void THD_mask_clust( int nx, int ny, int nz, byte *mmm ) ;

@@ -2211,7 +2211,8 @@ double SUMA_NewAreaAtRadius(SUMA_SurfaceObject *SO, double r,
                   Use this when SO->Center is not OK for some reason. Else, SO->Center
                   is used.
 */
-SUMA_Boolean SUMA_NewSurfaceRadius(SUMA_SurfaceObject *SO, double r, float *Center)
+SUMA_Boolean SUMA_NewSurfaceRadius(SUMA_SurfaceObject *SO, 
+                                   double r, float *Center)
 {
    static char FuncName[]={"SUMA_NewSurfaceRadius"};
    double Un, U[3], Dn, P2[2][3], c[3];
@@ -2231,7 +2232,9 @@ SUMA_Boolean SUMA_NewSurfaceRadius(SUMA_SurfaceObject *SO, double r, float *Cent
       if (Un) {
          SUMA_COPY_VEC(Center, c, 3, float, double);
          SUMA_POINT_AT_DISTANCE_NORM(U, c, r, P2);
-         SO->NodeList[3*i] = (float)P2[0][0]; SO->NodeList[3*i+1] = (float)P2[0][1]; SO->NodeList[3*i+2] = (float)P2[0][2];
+         SO->NodeList[3*i  ] = (float)P2[0][0]; 
+         SO->NodeList[3*i+1] = (float)P2[0][1]; 
+         SO->NodeList[3*i+2] = (float)P2[0][2];
       } else {
          SUMA_SL_Err("Identical points!\n"
                      "No coordinates modified");
@@ -7470,16 +7473,197 @@ SUMA_Boolean SUMA_FixNN_Oversampling ( SUMA_SurfaceObject *SO, SUMA_DSET *dset,
    if (bfull) bfull = NULL;
    SUMA_RETURN(YUP);
 }
+
+SUMA_PC_XYZ_PROJ *SUMA_New_PC_XYZ_Proj(void)
+{
+   static char FuncName[]={"SUMA_New_PC_XYZ_Proj"};
+   SUMA_PC_XYZ_PROJ *pcp=NULL;
+   
+   SUMA_ENTRY;
+   
+   pcp = (SUMA_PC_XYZ_PROJ *)SUMA_calloc(1,sizeof(SUMA_PC_XYZ_PROJ));
+   pcp->RotMat[0][0] = pcp->RotMat[1][1] = 
+                       pcp->RotMat[2][2] = pcp->RotMat[3][3] = 1.0;
+   pcp->target[0] = '\0';
+   
+   pcp->lowest_node = pcp->highest_node = -1;
+   
+   SUMA_RETURN(pcp);
+}
+
+SUMA_PC_XYZ_PROJ *SUMA_Free_PC_XYZ_Proj(SUMA_PC_XYZ_PROJ *pcp)
+{
+   static char FuncName[]={"SUMA_Free_PC_XYZ_Proj"};
+   
+   SUMA_ENTRY;
+   
+   if (!pcp) SUMA_RETURN(NULL);
+   SUMA_ifree(pcp->xyzp);
+   SUMA_ifree(pcp);
+   
+   SUMA_RETURN(pcp);
+}
+
+SUMA_Boolean SUMA_Write_PC_XYZ_Proj(SUMA_PC_XYZ_PROJ *pcp, char *prefix)
+{
+   static char FuncName[]={"SUMA_Write_PC_XYZ_Proj"};
+   FILE *fout=NULL;
+   char *s1=NULL, *s2=NULL;
+   int i;
+   
+   SUMA_ENTRY;
+   
+   if (!prefix) prefix = FuncName;
+   if (!strcmp(prefix,"stdout")) {
+      fout = stdout;
+   } else if (!strcmp(prefix,"stderr")) {
+      fout = stderr;
+   } else {
+      s2 = SUMA_ModifyName(prefix, "append",".xyzp", NULL);
+      s1 = SUMA_Extension(s2,".1D.coord",NOPE); SUMA_ifree(s2);
+      if (!THD_ok_overwrite() && SUMA_filexists(s1)) {
+         SUMA_S_Err(
+            "%s exists already, will not overwrite without -overwrite!",s1);
+         SUMA_ifree(s1); SUMA_RETURN(NOPE);
+      }
+
+      if (!(fout = fopen(s1,"w"))) {
+         SUMA_S_Err("Failed to open %s for writing", s1);
+         SUMA_RETURN(NOPE);
+      }
+   }
+   
+   if (pcp->target[0] == 'p') {
+      fprintf(fout,"#Projection onto %s [%f %f %f %f]\n",
+                  pcp->target, pcp->target_params[0], pcp->target_params[1],
+                  pcp->target_params[2], pcp->target_params[3]); 
+   } else if (pcp->target[0] == 'l') {
+      fprintf(fout,"#Projection onto %s [%f %f %f]\n",
+                  pcp->target, pcp->target_params[0], pcp->target_params[1],
+                  pcp->target_params[2]);
+   } else if (pcp->target[0] == '\0') {
+      fprintf(fout,"#No projection\n");
+   } else {
+      fprintf(fout,"#Target %s not known\n", pcp->target);
+   }
+   
+   fprintf(fout,"#\n#Transformation\n");
+   fprintf(fout,"#   %.5f   %.5f   %.5f   %.5f\n"
+                "#   %.5f   %.5f   %.5f   %.5f\n"
+                "#   %.5f   %.5f   %.5f   %.5f\n",
+                pcp->RotMat[0][0], pcp->RotMat[0][1], 
+                                   pcp->RotMat[0][2], pcp->RotMat[0][3],
+                pcp->RotMat[1][0], pcp->RotMat[1][1], 
+                                   pcp->RotMat[1][2], pcp->RotMat[1][3],
+                pcp->RotMat[2][0], pcp->RotMat[2][1], 
+                                   pcp->RotMat[2][2], pcp->RotMat[2][3]);
+   
+   fprintf(fout,"#\n"
+                "#Eigen values, Eigen vectors, and closest cardinal direction\n"
+                "#   %f      %f   %f   %f      %c\n"
+                "#   %f      %f   %f   %f      %c\n"
+                "#   %f      %f   %f   %f      %c\n",
+             pcp->eig[0], pcp->PC[0], pcp->PC[1], pcp->PC[2], pcp->closest[0],
+             pcp->eig[1], pcp->PC[3], pcp->PC[4], pcp->PC[5], pcp->closest[1],
+             pcp->eig[2], pcp->PC[6], pcp->PC[7], pcp->PC[8], pcp->closest[2]);
+               
+   fprintf(fout,"#\n#%d points, CM %f %f %f\n", 
+                pcp->N_xyz, pcp->avg[0], pcp->avg[1], pcp->avg[2]);
+   
+   if (pcp->lowest_node >= 0) {
+      fprintf(fout,"#\n#Min, Max extrema coordinates on projection line\n"
+                "#%d    %f %f %f%s\n"
+                "#%d    %f %f %f%s\n",
+                pcp->lowest_node, 
+                   pcp->lowest_proj[0], 
+                      pcp->lowest_proj[1], pcp->lowest_proj[2],
+                   pcp->lowest_node < 0 ? "   #(Not computed)":"",
+                pcp->highest_node, 
+                   pcp->highest_proj[0], 
+                      pcp->highest_proj[1], pcp->highest_proj[2],
+                   pcp->highest_node < 0 ? "   #(Not computed)":"");
+   } else {
+      fprintf(fout,"#\n#No extrema along line computed.\n");
+   }
+   fprintf(fout,"#\n#Projection coordinates (including any applied rotation)\n"
+                "#   Col. 0: X\n"
+                "#   Col. 1: Y\n"
+                "#   Col. 0: Z\n");
+   if (pcp->xyzp) {
+      for (i=0; i<pcp->N_xyz; ++i) {
+         fprintf(fout, "%f   %f   %f\n", 
+                        pcp->xyzp[3*i], pcp->xyzp[3*i+1], pcp->xyzp[3*i+2]);
+      }
+   }
  
+   if (fout != stdout && fout != stderr) fclose(fout); fout = NULL;
+   SUMA_ifree(s1);
+   
+   /* Now write the eigen vectors into a DO */
+   if (strcmp(prefix,"stdout") && strcmp(prefix,"stderr")) {
+      s2 = SUMA_ModifyName(prefix, "append",".eigvec", NULL);
+      s1 = SUMA_Extension(s2,".1D.do",NOPE); SUMA_ifree(s2);
+      if (!THD_ok_overwrite() && SUMA_filexists(s1)) {
+         SUMA_S_Err(
+            "%s exists already, will not overwrite without -overwrite!",s1);
+         SUMA_ifree(s1); SUMA_RETURN(NOPE);
+      }
+
+      if (!(fout = fopen(s1,"w"))) {
+         SUMA_S_Err("Failed to open %s for writing", s1);
+         SUMA_RETURN(NOPE);
+      }
+      fprintf(fout,"#oriented_segments\n"
+                   "%f %f %f    %f %f %f    %f %f %f %f\n"
+                   "%f %f %f    %f %f %f    %f %f %f %f\n"
+                   "%f %f %f    %f %f %f    %f %f %f %f\n",
+         pcp->avg[0], pcp->avg[1], pcp->avg[2],
+            pcp->avg[0]+pcp->PC[0]*pcp->eig[0]/2.0, 
+            pcp->avg[1]+pcp->PC[1]*pcp->eig[0]/2.0,
+            pcp->avg[2]+pcp->PC[2]*pcp->eig[0]/2.0,
+               1.0, 0.0, 0.0, 1.0,
+         pcp->avg[0], pcp->avg[1], pcp->avg[2],
+            pcp->avg[0]+pcp->PC[3]*pcp->eig[1]/2.0, 
+            pcp->avg[1]+pcp->PC[4]*pcp->eig[1]/2.0,
+            pcp->avg[2]+pcp->PC[5]*pcp->eig[1]/2.0,
+               0.0, 1.0, 0.0, 1.0,
+         pcp->avg[0], pcp->avg[1], pcp->avg[2],
+            pcp->avg[0]+pcp->PC[6]*pcp->eig[2]/2.0, 
+            pcp->avg[1]+pcp->PC[7]*pcp->eig[2]/2.0,
+            pcp->avg[2]+pcp->PC[8]*pcp->eig[2]/2.0,
+               0.0, 0.0, 1.0, 1.0);
+      fclose(fout); fout = NULL;
+      SUMA_ifree(s1);
+   }   
+     
+   SUMA_RETURN(YUP);
+}
+
 /*!
    \brief Project coordinates along a plane prependicular to one
    of the principal components.
    
    \param xyz (float *): vector of coordinate triplets
    \param N_xyz (int) : number of coordinate triplets (nodes)
-   \param iref (int): Make projection plane pass through node iref 
-                     iref has coords xyz[3*iref], xyz[3*iref+1], xyz[3*iref+2]
-                     If -1, then the function chooses iref = 0
+   \param iref (int): When projecting onto a plane, make plane pass through 
+                      node iref at xyz[3*iref], xyz[3*iref+1], xyz[3*iref+2]
+                      
+                      When projecting onto a direction, the projections are
+                      offset by xyz[3*iref], xyz[3*iref+1], xyz[3*iref+2]
+                      
+                      If iref == -1, the function chooses iref = 0 if projecting
+                      to a plane. A negative iref is ignored if projecting to a
+                      direction.
+                      
+                      iref is ignored when xyzref is not null.
+                      
+   \param xyzref (float *): Instead of using coordinates of node iref,
+                            use coordinates from xyzref. 
+                            When projecting onto a line, xyzref is an
+                            offset applied to projected coordinates.
+                            When projecting onto a plane, that plane is
+                            made to pass through xyzref
+                            
    \param compnum (SUMA_PC_PROJ): Choose  the projection plane's normal 
                               or the projection direction line:
               
@@ -7510,46 +7694,65 @@ SUMA_Boolean SUMA_FixNN_Oversampling ( SUMA_SurfaceObject *SO, SUMA_DSET *dset,
                         If projecting to lines, then 
                            ROT_2_Z rotates line to Z axis
                            ROT_2_Y rotates line to Y axis
-                           ROT_2_X rotates line to X axis   
-*/                              
-float *SUMA_Project_Coords_PCA (float *xyz, int N_xyz, int iref, 
-                                SUMA_PC_PROJ compnum, SUMA_PC_ROT rotate)  
+                           ROT_2_X rotates line to X axis  
+   \param remean (int): if non-zero, then add the mean of each column back to
+                        xyz after it got removed by the PC decomposition  
+*/
+                             
+SUMA_PC_XYZ_PROJ *SUMA_Project_Coords_PCA (float *xyz, int N_xyz, int iref, 
+                                float *xyzref,
+                                SUMA_PC_PROJ compnum, SUMA_PC_ROT rotate,
+                                int remean)  
 {
    static char FuncName[]={"SUMA_Project_Coords_PCA"};
    int i, i3, lineproj=0;
-   double trace, pc_vec[9], pc_eig[3], Eq[4], pc0[3], proj[3], rdot;
-   float *xyzp=NULL, fv[3], **fm=NULL, *p1, 
+   double trace, pc_vec[9], pc_eig[3], Eq[4], pc0[3], proj[3], rdot, avg[3];
+   float *xyzp=NULL, fv[3], **fm=NULL, *p1, avgf[3], 
          pcf0[3], pp[3], ddx[3], ddy[3], ddz[3], dx, dy, dz;
    char pc_m[3];
+   SUMA_PC_XYZ_PROJ *pcp=NULL;
    SUMA_Boolean LocalHead = NOPE;
    
    SUMA_ENTRY;
 
-   SUMA_LH("Xforming");
+   SUMA_LH("Xforming, iref=%d, xref=%p, remean=%d", iref, xyzref, remean);
+
    if (compnum < NO_PRJ || compnum >= N_PRJ) {
       SUMA_S_Errv("Bad compnum %d, range [%d %d]\n", 
                   compnum, NO_PRJ, N_PRJ-1);
       SUMA_RETURN(NULL);
    }
    
-   if (iref < 0) iref = 0;
-   if (iref >= N_xyz) {
-      SUMA_S_Errv("Bad iref %d, range [%d %d]\n", iref, 0, N_xyz-1);
-      SUMA_RETURN(NULL);
+   if (compnum >= E1_DIR_PRJ) lineproj = 1;
+   else lineproj = 0;
+
+   if (xyzref) {
+      if (iref >= 0) {
+         SUMA_S_Warn("iref ignored when xyzref is not NULL");
+         iref = -1;
+      }
+   } else {
+      if (iref < 0 && !lineproj) iref = 0;
+      if (iref >= N_xyz) {
+         SUMA_S_Errv("Bad iref %d, range [%d %d]\n", iref, 0, N_xyz-1);
+         SUMA_RETURN(NULL);
+      }
    }
-   
+      
    /* Need to go column major */
    xyzp = (float *)SUMA_calloc(N_xyz*3, sizeof(float));
+   avg[0] = avg[1] = avg[2] = 0.0;
    for (i=0; i<N_xyz; ++i) {
-      xyzp[i]         = xyz[3*i];
-      xyzp[i+N_xyz]   = xyz[3*i+1];
-      xyzp[i+2*N_xyz] = xyz[3*i+2];
+      xyzp[i]         = xyz[3*i  ]; avg[0] += xyz[3*i  ];
+      xyzp[i+N_xyz]   = xyz[3*i+1]; avg[1] += xyz[3*i+1];
+      xyzp[i+2*N_xyz] = xyz[3*i+2]; avg[2] += xyz[3*i+2];
    }
-   
+   avg[0] /= N_xyz; avg[1] /= N_xyz; avg[2] /= N_xyz;
+    
    if ((trace = pca_fast3(xyzp, N_xyz, 1, pc_vec, pc_eig)) < 0){
       SUMA_S_Err("Failed calculating PC\n");
       SUMA_free(xyzp); xyzp=NULL;
-      SUMA_RETURN(xyzp); 
+      SUMA_RETURN(NULL); 
    }
    
    /* relate directions to principal directions */
@@ -7580,30 +7783,52 @@ float *SUMA_Project_Coords_PCA (float *xyz, int N_xyz, int iref,
    SUMA_LHv("PCA results:\n"
             "Eig[0]=%f     pc[0]=[%f %f %f] closest to %c axis\n"
             "Eig[1]=%f     pc[1]=[%f %f %f] closest to %c axis\n"
-            "Eig[2]=%f     pc[2]=[%f %f %f] closest to %c axis\n",
+            "Eig[2]=%f     pc[2]=[%f %f %f] closest to %c axis\n"
+            "Avg coord: %f %f %f\n",
             pc_eig[0], pc_vec[0], pc_vec[3], pc_vec[6], pc_m[0],
             pc_eig[1], pc_vec[1], pc_vec[4], pc_vec[7], pc_m[1],
-            pc_eig[2], pc_vec[2], pc_vec[5], pc_vec[8], pc_m[2]);
+            pc_eig[2], pc_vec[2], pc_vec[5], pc_vec[8], pc_m[2],
+            avg[0], avg[1], avg[2]);
+   
+   /* prep for output */
+   pcp = SUMA_New_PC_XYZ_Proj();
+   SUMA_COPY_VEC(avg, pcp->avg, 3, double, double);
+   SUMA_COPY_VEC(pc_eig, pcp->eig, 3, double, double);
+   SUMA_COPY_VEC(pc_m, pcp->closest, 3, char, char);
+   pcp->PC[0] = pc_vec[0]; 
+   pcp->PC[1] = pc_vec[3]; 
+   pcp->PC[2] = pc_vec[6];
+   pcp->PC[3] = pc_vec[1]; 
+   pcp->PC[4] = pc_vec[4]; 
+   pcp->PC[5] = pc_vec[7];
+   pcp->PC[6] = pc_vec[2]; 
+   pcp->PC[7] = pc_vec[5]; 
+   pcp->PC[8] = pc_vec[8];
+   pcp->xyzp = xyzp;
+   pcp->N_xyz = N_xyz;
             
    /* need to transpose xyzp again for the remainder  */         
+   if (!remean) avg[0] = avg[1] = avg[2] = 0.0;
+   
    {
       float *xxx=(float *)SUMA_calloc(N_xyz*3, sizeof(float));
       memcpy(xxx, xyzp,3*N_xyz*sizeof(float));
       for (i=0; i<N_xyz; ++i) {
-         xyzp[3*i] = xxx[i];
-         xyzp[3*i+1] = xxx[i+N_xyz];
-         xyzp[3*i+2] = xxx[i+2*N_xyz];
+         xyzp[3*i  ] = xxx[i        ]+avg[0];
+         xyzp[3*i+1] = xxx[i+  N_xyz]+avg[1];
+         xyzp[3*i+2] = xxx[i+2*N_xyz]+avg[2];
       }
       SUMA_free(xxx); xxx=NULL;
    }  
+   if (0 && LocalHead) {
+      SUMA_WRITE_ARRAY_1D(xyzp,3*N_xyz,3,"DBGafterpc.1D");
+   }
+   if (compnum == NO_PRJ) SUMA_RETURN(pcp); 
    
-   if (compnum == NO_PRJ) SUMA_RETURN(xyzp); 
-   
-   if (compnum >= E1_DIR_PRJ) lineproj = 1;
-   else lineproj = 0;
    
    if (compnum != E1_PLN_PRJ && compnum != E2_PLN_PRJ &&
-       compnum != E3_PLN_PRJ) {
+       compnum != E3_PLN_PRJ && compnum != E1_DIR_PRJ &&
+       compnum != E2_DIR_PRJ && compnum != E3_DIR_PRJ ) {
              if (compnum == EZ_PLN_PRJ || compnum == EZ_DIR_PRJ) {
          /* find direction closest to Z */
                if (pc_m[0] == 'Z') compnum = E1_PLN_PRJ;
@@ -7624,19 +7849,41 @@ float *SUMA_Project_Coords_PCA (float *xyz, int N_xyz, int iref,
                      compnum);
          compnum = 0;
       }
+   } else if (compnum == E1_DIR_PRJ || compnum == E2_DIR_PRJ ||
+              compnum == E3_DIR_PRJ) {
+      switch (compnum) {
+         case E1_DIR_PRJ:
+            compnum = E1_PLN_PRJ;
+            break;
+         case E2_DIR_PRJ:
+            compnum = E2_PLN_PRJ;
+            break;
+         case E3_DIR_PRJ:
+            compnum = E3_PLN_PRJ;
+            break;
+         default:
+            SUMA_S_Err("Should not be here with %d\nLeaky return.", compnum);
+            SUMA_RETURN(NULL); 
+      }    
    }
    
+   if (compnum < 0 || compnum > 2) {
+      SUMA_S_Err("Not at this stage, compnum (%d) must now be between 0 and 2", 
+                  compnum);
+      SUMA_RETURN(SUMA_Free_PC_XYZ_Proj(pcp));
+   }
    if (!lineproj) {
-      /* Find equation of plane passing by node iref and having the PC 
+      /* Find equation of plane passing by node iref or xyzref and having the PC 
          for a normal */
       pc0[0] = pc_vec[compnum  ]; 
       pc0[1] = pc_vec[compnum+3]; 
       pc0[2] = pc_vec[compnum+6];
       for (i=0; i<3;++i) pcf0[i]=pc0[i];
 
-      p1 = &(xyzp[3*iref]);
+      if (xyzref) p1 = xyzref;
+      else p1 = &(xyz[3*iref]);
       SUMA_LHv("   Forming plane with normal [%f %f %f], \n"
-               "   passing by point iref [%f %f %f]\n", 
+               "   passing by point xyzref [%f %f %f]\n", 
          pc0[0], pc0[1], pc0[2], p1[0], p1[1], p1[2]); 
       SUMA_PLANE_NORMAL_POINT(pc0, p1, Eq);
 
@@ -7646,26 +7893,64 @@ float *SUMA_Project_Coords_PCA (float *xyz, int N_xyz, int iref,
          proj[0] = xyzp[i3];proj[1] = xyzp[i3+1];proj[2] = xyzp[i3+2];
          SUMA_PROJECT_ONTO_PLANE(Eq, proj, (xyzp+3*i));
       }
-      SUMA_LHv(" After plane projection\n"
-               "izero now: [%f %f %f]\n"
-               "iref  now: [%f %f %f]\n",
-               xyzp[0], xyzp[1], xyzp[2],
-               xyzp[iref*3], xyzp[iref*3+1], xyzp[iref*3+2]);
+      if (iref) {
+         SUMA_LHv(" After plane projection\n"
+                  "izero now: [%f %f %f]\n"
+                  "iref  now: [%f %f %f] %d\n",
+                  xyzp[0], xyzp[1], xyzp[2],
+                  xyzp[iref*3], xyzp[iref*3+1], xyzp[iref*3+2], iref);
+      } else {
+         SUMA_LHv(" After plane projection\n"
+                  "izero now: [%f %f %f]\n",
+                  xyzp[0], xyzp[1], xyzp[2]);
+      }
+      sprintf(pcp->target,"plane");
+      SUMA_COPY_VEC(Eq, pcp->target_params, 4, double, double);
    } else {
+      if (iref >= 0) xyzref = &(xyz[3*iref]);
+      if (!xyzref && remean) {
+         avgf[0] = avg[0]; avgf[1] = avg[1]; avgf[2] = avg[2]; 
+         xyzref = avgf;
+      }
       pc0[0] = pc_vec[compnum  ]; 
       pc0[1] = pc_vec[compnum+3]; 
       pc0[2] = pc_vec[compnum+6];
+      SUMA_LH( "Projecting onto direction [%f %f %f]", pc0[0], pc0[1], pc0[2]);
       for (i=0; i<3;++i) pcf0[i]=pc0[i];
       for (i=0; i<N_xyz; ++i) {
          i3=3*i;
-         proj[0] = xyzp[i3];proj[1] = xyzp[i3+1];proj[2] = xyzp[i3+2];
+         proj[0] = xyzp[i3]-avg[0];
+         proj[1] = xyzp[i3+1]-avg[1];
+         proj[2] = xyzp[i3+2]-avg[2];
          SUMA_PROJECT_ONTO_DIR(pc0, proj, (xyzp+3*i));
+         
       }
-      SUMA_LHv(" After line projection\n"
-               "izero now: [%f %f %f]\n"
-               "iref  now: [%f %f %f]\n",
-               xyzp[0], xyzp[1], xyzp[2],
-               xyzp[iref*3], xyzp[iref*3+1], xyzp[iref*3+2]);
+      
+      if (xyzref) {
+         SUMA_LH( "Offseting projections by [%f %f %f]",
+                  xyzref[0], xyzref[1], xyzref[2] );
+         for (i=0; i<N_xyz; ++i) {
+            i3=3*i;
+            xyzp[i3  ] += xyzref[0];
+            xyzp[i3+1] += xyzref[1];
+            xyzp[i3+2] += xyzref[2];
+         }
+      }
+      
+      if (iref) {
+         SUMA_LHv(" After line projection\n"
+                  "izero now: [%f %f %f]\n"
+                  "iref  now: [%f %f %f]\n",
+                  xyzp[0], xyzp[1], xyzp[2],
+                  xyzp[iref*3], xyzp[iref*3+1], xyzp[iref*3+2]);
+      } else {
+         SUMA_LHv(" After line projection\n"
+                  "izero now: [%f %f %f]\n",
+                  xyzp[0], xyzp[1], xyzp[2]);
+      }
+      sprintf(pcp->target,"line");
+      SUMA_COPY_VEC(pc0, pcp->target_params, 3, double, double);
+      pcp->target_params[3] = 0.0;
    }
    if (rotate > NO_ROT) {
       /* Now rotate all projected points*/
@@ -7681,8 +7966,7 @@ float *SUMA_Project_Coords_PCA (float *xyz, int N_xyz, int iref,
             break;
          default:
             SUMA_S_Errv("Bad rotation parameter %d\n", rotate);
-            SUMA_free(xyzp); xyzp=NULL;
-            SUMA_RETURN(xyzp); 
+            SUMA_RETURN(SUMA_Free_PC_XYZ_Proj(pcp)); 
       }
       rdot = SUMA_SIGN(SUMA_MT_DOT(pcf0, fv));
       SUMA_LHv("Dot product before rotation: %f\n",
@@ -7690,9 +7974,8 @@ float *SUMA_Project_Coords_PCA (float *xyz, int N_xyz, int iref,
       fm = (float **)SUMA_allocate2D(4,4,sizeof(float));
       if (!SUMA_FromToRotation (pcf0, fv,  fm)) {
             SUMA_S_Err("Failed to get rotation");
-         SUMA_free(xyzp); xyzp=NULL;
-         SUMA_free2D((char **)fm, 2); fm = NULL;
-         SUMA_RETURN(xyzp); 
+         SUMA_free2D((char **)fm, 4); fm = NULL;
+         SUMA_RETURN(SUMA_Free_PC_XYZ_Proj(pcp)); 
       }
       proj[0] = pcf0[0]*fm[0][0] + 
                 pcf0[1]*fm[0][1] +
@@ -7721,7 +8004,14 @@ float *SUMA_Project_Coords_PCA (float *xyz, int N_xyz, int iref,
          xyzp[i3+1] = proj[1];
          xyzp[i3+2] = proj[2];
       }
-
+      
+      for (i=0; i<4; ++i) {
+         for (i3=0; i3<4; ++i3) {
+            pcp->RotMat[i][i3] = fm[i][i3];
+         }
+      }
+      pcp->RotMat[3][3] = 1.0;
+      
       SUMA_LHv("After rotate %d\n"
                "izero now: [%f %f %f]\n"
                "iref  now: [%f %f %f]\n"
@@ -7734,7 +8024,7 @@ float *SUMA_Project_Coords_PCA (float *xyz, int N_xyz, int iref,
       if (fm) SUMA_free2D((char **)fm, 2); fm = NULL;
    }
    
-   SUMA_RETURN(xyzp); 
+   SUMA_RETURN(pcp); 
 }
 
 int SUMA_VoxelDepth(THD_3dim_dataset *dset, float **dpth,
@@ -7799,7 +8089,7 @@ int SUMA_VoxelDepth(THD_3dim_dataset *dset, float **dpth,
    SUMA_LHv("Calling depth function, thr %f\n", thr);
    N_inmask = SUMA_NodeDepth(xyz, nvox, 
                              dpth ? &sdpth:NULL, 
-                             thr, &scmask);
+                             thr, &scmask, NULL, NULL);
    SUMA_LHv("%d / %d voxels met threshold\n", N_inmask, nvox);
    SUMA_free(xyz); xyz = NULL;
   
@@ -8153,20 +8443,31 @@ int SUMA_VoxelPlaneCut(THD_3dim_dataset *dset, float *Eq,
       thr (float): Depth threshold
       cmask (byte **): If not NULL, return a mask of 0 where nodes
                        are deeper than threshold.
+      mxdpth (float *): To contain maximum depth encountered.
+                        Pass NULL if you do not care for it.
+      pcpu (SUMA_PC_XYZ_PROJ **): If !NULL, return all of the pcp
+                        struct in *pcpu
    Returns the number of nodes in the mask. -1 on error
 */                   
 int SUMA_NodeDepth(float *NodeList, int N_Node, float **dpth, 
-                   float thr, byte **cmaskp)
+                   float thr, byte **cmaskp, float *mxdpth,
+                   SUMA_PC_XYZ_PROJ **pcpu)
 {
    static char FuncName[]={"SUMA_NodeDepth"};
    float *xyzp=NULL;
    int ii, iimax, iimin;
    byte *cmask=NULL;
    int N_inmask = -1;
+   SUMA_PC_XYZ_PROJ *pcp=NULL;
+   
    SUMA_Boolean LocalHead = NOPE;
 
    SUMA_ENTRY;
-
+   
+   if (pcpu && *pcpu) {
+      SUMA_S_Err("Need an empty pointer to *pcpu, or a NULL pcpu");
+      SUMA_RETURN(-1);
+   }
    if (dpth && *dpth) {
       SUMA_S_Err("If passing dpth, *dpth must be NULL");
       SUMA_RETURN(-1);
@@ -8177,9 +8478,14 @@ int SUMA_NodeDepth(float *NodeList, int N_Node, float **dpth,
    }
 
    /* PCA of coords, project points along direction closest. 
-      to Z axis then rotate projection to Z axis */
-   xyzp = SUMA_Project_Coords_PCA (NodeList, N_Node, 2, 
-                                   EZ_DIR_PRJ, ROT_2_Z); 
+      to Z axis then rotate projection to Z axis            
+      Don't mess with parameters of call below without checking
+      on effect of lowest/highest node locations below        */
+   pcp = SUMA_Project_Coords_PCA (NodeList, N_Node, -1, NULL,
+                                   EZ_DIR_PRJ, ROT_2_Z, 0); 
+   
+   xyzp = pcp->xyzp;
+   
    /* Find the highest node */
    iimax = 0; iimin = 0;
    for (ii=1; ii<N_Node; ++ii) {
@@ -8197,6 +8503,32 @@ int SUMA_NodeDepth(float *NodeList, int N_Node, float **dpth,
                     NodeList[3*iimax], NodeList[3*iimax+1], NodeList[3*iimax+2],
                 iimin, xyzp[3*iimin], xyzp[3*iimin+1], xyzp[3*iimin+2], 
                     NodeList[3*iimin], NodeList[3*iimin+1], NodeList[3*iimin+2]);
+   
+   /* store location BEFORE the rotation of the extrema */
+   pcp->lowest_node = iimin;
+   pcp->lowest_proj[0]  = xyzp[3*iimin  ];
+   pcp->lowest_proj[1]  = xyzp[3*iimin+1];
+   pcp->lowest_proj[2]  = xyzp[3*iimin+2];
+   pcp->highest_node = iimax;
+   pcp->highest_proj[0] = xyzp[3*iimax  ];
+   pcp->highest_proj[1] = xyzp[3*iimax+1];
+   pcp->highest_proj[2] = xyzp[3*iimax+2];
+   /* Now undo the rotation, then add the CM back 
+     *** Must not set 'remean' to 1 in call to SUMA_Project_Coords_PCA()
+         above.                                                          */
+   SUMA_Apply_Coord_xform(pcp->lowest_proj, 1, 3, pcp->RotMat,
+                          1, NULL);
+   SUMA_Apply_Coord_xform(pcp->highest_proj, 1, 3, pcp->RotMat,
+                          1, NULL);
+   pcp->lowest_proj[0]  += pcp->avg[0];
+   pcp->lowest_proj[1]  += pcp->avg[1];
+   pcp->lowest_proj[2]  += pcp->avg[2];
+   pcp->highest_proj[0]  += pcp->avg[0];
+   pcp->highest_proj[1]  += pcp->avg[1];
+   pcp->highest_proj[2]  += pcp->avg[2];
+    
+   if (LocalHead) SUMA_Write_PC_XYZ_Proj(pcp, NULL);
+   
    /* Create a mask of nodes more than XXmm from the highest node */
    cmask = (byte *)SUMA_calloc(N_Node, sizeof(byte));
    N_inmask = 0;
@@ -8207,6 +8539,8 @@ int SUMA_NodeDepth(float *NodeList, int N_Node, float **dpth,
       }
    }
 
+   if (mxdpth) *mxdpth = xyzp[3*iimax+2] - xyzp[3*iimin+2];
+   
    if (dpth) {
       float ref=xyzp[3*iimax+2];
       float *ddd = (float*)SUMA_calloc(N_Node, sizeof(float));
@@ -8215,8 +8549,14 @@ int SUMA_NodeDepth(float *NodeList, int N_Node, float **dpth,
       } 
       *dpth = ddd; 
    }
-   SUMA_free(xyzp); xyzp = NULL;
-
+   
+   xyzp = NULL;
+   if (!pcpu) {
+      pcp = SUMA_Free_PC_XYZ_Proj(pcp);
+   } else {
+      *pcpu = pcp;
+   }
+   
    if (!cmaskp) SUMA_free(cmask);
    else *cmaskp = cmask;
    cmask = NULL;

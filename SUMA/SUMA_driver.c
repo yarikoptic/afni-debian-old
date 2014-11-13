@@ -66,6 +66,17 @@ static char uDS_surf_cont[]={
 "                      -view_surf_cont n -I_range -0.05 0.14\n"
 "       DriveSuma -com surf_cont -load_cmap bbr.1D.cmap\n"
 };
+
+static char uDS_tract_cont[]={
+"       #This uses one of the tract files output by FATCAT's demo.\n"
+"       #and some tracts mask called triplets.niml.do\n"
+"\n"
+"       suma -tract DTI/o.NETS_OR_000.niml.tract &\n"
+"       DriveSuma -com object_cont -view_object_cont y          \\\n"
+"                 -com object_cont -2xmasks                     \\\n"
+"                 -com object_cont -delete_all_masks            \\\n"
+"                 -com object_cont -load_masks triplets.niml.mo   \n"
+};
 static char uDS_kill_suma[]={
                "       DriveSuma -com kill_suma\n"
 };
@@ -324,7 +335,10 @@ if (detail > 1) {
 "       -------------------------------------\n"
 "%s"
 "\n"                            
+" o object_cont: Apply settings to object controller.\n"
 " o surf_cont: Apply settings to surface controller.\n"
+"     Note that for most cases, the use of object_cont and surf_cont is\n"
+"     interchangeable.\n"
 "     + Optional parameters for action surf_cont:\n"
 "       (Parameter names reflect GUI labels.)\n"  
 "       -surf_label S_LABEL: A label to identify the target surface\n"
@@ -345,6 +359,12 @@ if (detail > 1) {
 "                      r g b are thre flooat values between 0 and 1\n"
 "                      specifying the color of each node.\n"
 "       -view_surf_cont y/n: View surface controller\n"
+"       -view_object_cont y/n: View object controller\n"
+"       -masks: Equivalent of pressing 'Masks' in tract controller\n"
+"       -2xmasks: Equivalent of pressing 'Masks' twice in tract controller\n"
+"       -delete_all_masks: Well, delete all the masks.\n"
+"       -load_masks: Equivalent of pressing 'Load Masks' in masks controller\n"
+"       -save_masks: Equivalent of pressing 'Save Masks' in masks controller\n"
 "       -switch_surf S_LABEL: switch state to that of surface \n"
 "                           labeled S_LABEL and make that surface \n"
 "                           be in focus.\n"
@@ -391,15 +411,43 @@ if (detail > 1) {
 "                      use this command.\n"
 "       -write_surf_cont_sphinx_help FILE.rst: Same as -write_surf_cont_help,\n"
 "                      but write SPHINX formatted RST file.\n"
+"       -snap_surf_cont_widgets FROOT: Takes snapshots of various widget \n"
+"                                      groupings and save them under FROOT*\n"
+"       Also, in the same vein as -write_surf_cont_help, \n"
+"       -write_surf_cont_sphinx_help, and -snap_surf_cont_widgets you have:\n"
+"       -write_vol_cont_help\n"
+"       -write_vol_cont_sphinx_help \n"
+"       -snap_vol_cont_widgets\n"
+"       -write_tract_cont_help\n"
+"       -write_tract_cont_sphinx_help \n"
+"       -snap_tract_cont_widgets\n"
+"       -write_mask_cont_help\n"
+"       -write_mask_cont_sphinx_help \n"
+"       -snap_mask_cont_widgets\n"
+"       -write_graph_cont_help\n"
+"       -write_graph_cont_sphinx_help \n"
+"       -snap_graph_cont_widgets\n"
+"       -write_roi_cont_help\n"
+"       -write_roi_cont_sphinx_help \n"
+"       -snap_roi_cont_widgets\n"
 "       -write_mouse_keyb_help FILE.txt: Write help output for mouse and \n"
 "                      keyboard shortcuts.\n"
 "       -write_mouse_keyb_sphinx_help FILE.rst: Same as -write_mouse_keyb_help\n"
 "                      , but write SPHINX formatted RST file.\n"
+"       -write_mouse_cmap_keyb_help FILE.txt: Write help output for mouse and \n"
+"                      keyboard shortcuts.\n"
+"       -write_mouse_cmap_keyb_sphinx_help FILE.rst: Same\n"
+"                      as -write_mouse_cmap_keyb_help, but write SPHINX \n"
+"                      formatted RST file.\n"
 "\n"
 "     + Example surf_cont (assumes all previous examples have\n"
 "       been executed and suma is still running).\n"
 "       - Obvious chicaneries to follow:\n"
 "       --------------------------------\n"
+"%s"
+"\n"
+"     + Example for loading masks onto tracts\n"
+"       -------------------------------------\n"
 "%s"
 "\n"
 " o kill_suma: Close suma and quit.\n"
@@ -457,6 +505,7 @@ if (detail > 1) {
 "%s"
 "\n"
                , uDS_viewer_cont, uDS_recorder_cont, uDS_surf_cont, 
+                 uDS_tract_cont,
       (detail> 1) ? sio:"use -help for I/O detail\n",  
       (detail> 1) ? s:"use -help for misc. help basics\n");
       SUMA_free(s); s = NULL; SUMA_free(st); st = NULL; SUMA_free(sio); sio = NULL;       
@@ -525,11 +574,21 @@ int SUMA_ProcessCommand(char *com, SUMA_COMM_STRUCT *cs, char *EchoNel)
       }
       if (EchoNel) NEL_WRITE_TX(ngr, EchoNel, suc);
       NI_free_element(ngr); ngr = NULL;
-   }else if (strcmp((act), "surf_cont") == 0) {
+   } else if (strcmp((act), "surf_cont") == 0) {
       if (!(ngr = SUMA_ComToNgr(com, act))) {
          SUMA_S_Err("Failed to process command."); SUMA_RETURN(NOPE); 
       }
       SUMA_LH("Sending SetSurfCont to suma");
+      if (!SUMA_SendToSuma (SO, cs, (void *)ngr,SUMA_ENGINE_INSTRUCTION, 1)){
+         SUMA_SL_Warn("Failed in SUMA_SendToSuma\nCommunication halted.");
+      }
+      if (EchoNel) NEL_WRITE_TX(ngr, EchoNel, suc);
+      NI_free_element(ngr); ngr = NULL; 
+   } else if (strcmp((act), "object_cont") == 0) {
+      if (!(ngr = SUMA_ComToNgr(com, act))) {
+         SUMA_S_Err("Failed to process command."); SUMA_RETURN(NOPE); 
+      }
+      SUMA_LH("Sending SetObjectCont to suma");
       if (!SUMA_SendToSuma (SO, cs, (void *)ngr,SUMA_ENGINE_INSTRUCTION, 1)){
          SUMA_SL_Warn("Failed in SUMA_SendToSuma\nCommunication halted.");
       }
@@ -639,7 +698,7 @@ SUMA_GENERIC_PROG_OPTIONS_STRUCT *SUMA_DriveSuma_ParseInput(
    kar = 1;
    brk = NOPE;
 	while (kar < argc) { /* loop accross command ine options */
-		/*fprintf(stdout, "%s verbose: Parsing command line...\n", FuncName);*/
+		SUMA_LH("Parsing command line at %d/%d: %s...\n", kar, argc, argv[kar]);
 		if (ps) {
          if (strcmp(argv[kar], "-h") == 0 || strcmp(argv[kar], "-help") == 0) {
 			    usage_DriveSuma(ps, strlen(argv[kar]) > 3 ? 2:1);
@@ -714,7 +773,7 @@ SUMA_GENERIC_PROG_OPTIONS_STRUCT *SUMA_DriveSuma_ParseInput(
       {
          if (kar+1 >= argc)
          {
-            fprintf (SUMA_STDERR, "need a number after -debug \n");
+            fprintf (SUMA_STDERR, "need love after -com \n");
             exit (1);
          }
          
@@ -723,6 +782,7 @@ SUMA_GENERIC_PROG_OPTIONS_STRUCT *SUMA_DriveSuma_ParseInput(
          Opt->com[Opt->N_com] = NULL;
          ++kar;
          do { 
+            SUMA_LH("Now getting %d/%d: %s", kar, argc, argv[kar]);
             Opt->com[Opt->N_com] = 
                SUMA_append_replace_string (Opt->com[Opt->N_com], 
                                            argv[kar], " ", 1);
@@ -1557,7 +1617,57 @@ int SUMA_DriveSuma_ParseCommon(NI_group *ngr, int argtc, char ** argt)
          brk = YUP;
       }
       
-      if (!brk && (strcmp(argt[kar], "-view_surf_cont") == 0))
+      if (!brk && (strcmp(argt[kar], "-masks") == 0))
+      {
+         NI_set_attribute(ngr, "Masks", "Click!");
+         argt[kar][0] = '\0';
+         brk = YUP;
+      }
+      
+      if (!brk && (strcmp(argt[kar], "-2xmasks") == 0))
+      {
+         NI_set_attribute(ngr, "2xMasks", "Click!");
+         argt[kar][0] = '\0';
+         brk = YUP;
+      }
+      
+      if (!brk && (strcmp(argt[kar], "-delete_all_masks") == 0))
+      {
+         NI_set_attribute(ngr, "Delete_All_Masks", "Click!");
+         argt[kar][0] = '\0';
+         brk = YUP;
+      }
+      
+      if (!brk && (strcmp(argt[kar], "-load_masks") == 0))
+      {
+         if (kar+1 >= argtc)
+         {
+            fprintf (SUMA_STDERR,
+                     "need a tract masks filename with -Load_Masks \n");
+            SUMA_RETURN(0);
+         }
+         argt[kar][0] = '\0';
+         NI_set_attribute(ngr, "Load_Masks", argt[++kar]);
+         argt[kar][0] = '\0';
+         brk = YUP;
+      }
+      
+      if (!brk && (strcmp(argt[kar], "-save_masks") == 0))
+      {
+         if (kar+1 >= argtc)
+         {
+            fprintf (SUMA_STDERR,
+                     "need a tract masks filename with -Save_Masks \n");
+            SUMA_RETURN(0);
+         }
+         argt[kar][0] = '\0';
+         NI_set_attribute(ngr, "Save_Masks", argt[++kar]);
+         argt[kar][0] = '\0';
+         brk = YUP;
+      }
+      
+      if (!brk && ((strcmp(argt[kar], "-view_surf_cont") == 0) ||
+                   (strcmp(argt[kar], "-view_object_cont") == 0)) )
       {
          if (kar+1 >= argtc)
          {
@@ -1593,6 +1703,21 @@ int SUMA_DriveSuma_ParseCommon(NI_group *ngr, int argtc, char ** argt)
          brk = YUP;
       }
       
+      if (!brk && (strcmp(argt[kar], "-snap_surf_cont_widgets") == 0))
+      {
+         if (kar+1 >= argtc)
+         {
+            SUMA_S_Err("need a filename after -snap_surf_cont_widgets \n");
+            SUMA_RETURN(0);
+         }
+         argt[kar][0] = '\0';
+         ++kar;
+         NI_set_attribute(ngr, "Snap_Surf_Cont_Widgets", argt[kar]);
+         
+         argt[kar][0] = '\0';
+         brk = YUP;
+      }
+      
       if (!brk && (strcmp(argt[kar], "-write_surf_cont_sphinx_help") == 0))
       {
          if (kar+1 >= argtc)
@@ -1607,6 +1732,232 @@ int SUMA_DriveSuma_ParseCommon(NI_group *ngr, int argtc, char ** argt)
          argt[kar][0] = '\0';
          brk = YUP;
       }
+      
+      if (!brk && (strcmp(argt[kar], "-write_tract_cont_help") == 0))
+      {
+         if (kar+1 >= argtc)
+         {
+            SUMA_S_Err("need a filename after -write_tract_cont_help \n");
+            SUMA_RETURN(0);
+         }
+         argt[kar][0] = '\0';
+         ++kar;
+         NI_set_attribute(ngr, "Write_Tract_Cont_Help", argt[kar]);
+         
+         argt[kar][0] = '\0';
+         brk = YUP;
+      }
+      
+      if (!brk && (strcmp(argt[kar], "-snap_tract_cont_widgets") == 0))
+      {
+         if (kar+1 >= argtc)
+         {
+            SUMA_S_Err("need a filename after -snap_tract_cont_widgets \n");
+            SUMA_RETURN(0);
+         }
+         argt[kar][0] = '\0';
+         ++kar;
+         NI_set_attribute(ngr, "Snap_Tract_Cont_Widgets", argt[kar]);
+         
+         argt[kar][0] = '\0';
+         brk = YUP;
+      }
+      
+      if (!brk && (strcmp(argt[kar], "-write_tract_cont_sphinx_help") == 0))
+      {
+         if (kar+1 >= argtc)
+         {
+            SUMA_S_Err("need a filename after -write_tract_cont_sphinx_help \n");
+            SUMA_RETURN(0);
+         }
+         argt[kar][0] = '\0';
+         ++kar;
+         NI_set_attribute(ngr, "Write_Tract_Cont_Sphinx_Help", argt[kar]);
+         
+         argt[kar][0] = '\0';
+         brk = YUP;
+      }
+      
+      if (!brk && (strcmp(argt[kar], "-write_mask_cont_help") == 0))
+      {
+         if (kar+1 >= argtc)
+         {
+            SUMA_S_Err("need a filename after -write_mask_cont_help \n");
+            SUMA_RETURN(0);
+         }
+         argt[kar][0] = '\0';
+         ++kar;
+         NI_set_attribute(ngr, "Write_Mask_Cont_Help", argt[kar]);
+         
+         argt[kar][0] = '\0';
+         brk = YUP;
+      }
+      
+      if (!brk && (strcmp(argt[kar], "-snap_mask_cont_widgets") == 0))
+      {
+         if (kar+1 >= argtc)
+         {
+            SUMA_S_Err("need a filename after -snap_mask_cont_widgets \n");
+            SUMA_RETURN(0);
+         }
+         argt[kar][0] = '\0';
+         ++kar;
+         NI_set_attribute(ngr, "Snap_Mask_Cont_Widgets", argt[kar]);
+         
+         argt[kar][0] = '\0';
+         brk = YUP;
+      }
+      
+      if (!brk && (strcmp(argt[kar], "-write_mask_cont_sphinx_help") == 0))
+      {
+         if (kar+1 >= argtc)
+         {
+            SUMA_S_Err("need a filename after -write_mask_cont_sphinx_help \n");
+            SUMA_RETURN(0);
+         }
+         argt[kar][0] = '\0';
+         ++kar;
+         NI_set_attribute(ngr, "Write_Mask_Cont_Sphinx_Help", argt[kar]);
+         
+         argt[kar][0] = '\0';
+         brk = YUP;
+      }
+      
+      if (!brk && (strcmp(argt[kar], "-write_vol_cont_help") == 0))
+      {
+         if (kar+1 >= argtc)
+         {
+            SUMA_S_Err("need a filename after -write_vol_cont_help \n");
+            SUMA_RETURN(0);
+         }
+         argt[kar][0] = '\0';
+         ++kar;
+         NI_set_attribute(ngr, "Write_Vol_Cont_Help", argt[kar]);
+         
+         argt[kar][0] = '\0';
+         brk = YUP;
+      }
+      
+      if (!brk && (strcmp(argt[kar], "-snap_vol_cont_widgets") == 0))
+      {
+         if (kar+1 >= argtc)
+         {
+            SUMA_S_Err("need a filename after -snap_vol_cont_widgets \n");
+            SUMA_RETURN(0);
+         }
+         argt[kar][0] = '\0';
+         ++kar;
+         NI_set_attribute(ngr, "Snap_Vol_Cont_Widgets", argt[kar]);
+         
+         argt[kar][0] = '\0';
+         brk = YUP;
+      }
+      
+      if (!brk && (strcmp(argt[kar], "-write_vol_cont_sphinx_help") == 0))
+      {
+         if (kar+1 >= argtc)
+         {
+            SUMA_S_Err("need a filename after -write_vol_cont_sphinx_help \n");
+            SUMA_RETURN(0);
+         }
+         argt[kar][0] = '\0';
+         ++kar;
+         NI_set_attribute(ngr, "Write_Vol_Cont_Sphinx_Help", argt[kar]);
+         
+         argt[kar][0] = '\0';
+         brk = YUP;
+      }
+      
+      if (!brk && (strcmp(argt[kar], "-write_graph_cont_help") == 0))
+      {
+         if (kar+1 >= argtc)
+         {
+            SUMA_S_Err("need a filename after -write_graph_cont_help \n");
+            SUMA_RETURN(0);
+         }
+         argt[kar][0] = '\0';
+         ++kar;
+         NI_set_attribute(ngr, "Write_Graph_Cont_Help", argt[kar]);
+         
+         argt[kar][0] = '\0';
+         brk = YUP;
+      }
+      
+      if (!brk && (strcmp(argt[kar], "-snap_graph_cont_widgets") == 0))
+      {
+         if (kar+1 >= argtc)
+         {
+            SUMA_S_Err("need a filename after -snap_graph_cont_widgets \n");
+            SUMA_RETURN(0);
+         }
+         argt[kar][0] = '\0';
+         ++kar;
+         NI_set_attribute(ngr, "Snap_Graph_Cont_Widgets", argt[kar]);
+         
+         argt[kar][0] = '\0';
+         brk = YUP;
+      }
+      
+      if (!brk && (strcmp(argt[kar], "-write_graph_cont_sphinx_help") == 0))
+      {
+         if (kar+1 >= argtc)
+         {
+            SUMA_S_Err("need a filename after -write_graph_cont_sphinx_help \n");
+            SUMA_RETURN(0);
+         }
+         argt[kar][0] = '\0';
+         ++kar;
+         NI_set_attribute(ngr, "Write_Graph_Cont_Sphinx_Help", argt[kar]);
+         
+         argt[kar][0] = '\0';
+         brk = YUP;
+      }
+      
+      if (!brk && (strcmp(argt[kar], "-write_roi_cont_help") == 0))
+      {
+         if (kar+1 >= argtc)
+         {
+            SUMA_S_Err("need a filename after -write_roi_cont_help \n");
+            SUMA_RETURN(0);
+         }
+         argt[kar][0] = '\0';
+         ++kar;
+         NI_set_attribute(ngr, "Write_ROI_Cont_Help", argt[kar]);
+         
+         argt[kar][0] = '\0';
+         brk = YUP;
+      }
+      
+      if (!brk && (strcmp(argt[kar], "-snap_roi_cont_widgets") == 0))
+      {
+         if (kar+1 >= argtc)
+         {
+            SUMA_S_Err("need a filename after -snap_roi_cont_widgets \n");
+            SUMA_RETURN(0);
+         }
+         argt[kar][0] = '\0';
+         ++kar;
+         NI_set_attribute(ngr, "Snap_ROI_Cont_Widgets", argt[kar]);
+         
+         argt[kar][0] = '\0';
+         brk = YUP;
+      }
+      
+      if (!brk && (strcmp(argt[kar], "-write_roi_cont_sphinx_help") == 0))
+      {
+         if (kar+1 >= argtc)
+         {
+            SUMA_S_Err("need a filename after -write_roi_cont_sphinx_help \n");
+            SUMA_RETURN(0);
+         }
+         argt[kar][0] = '\0';
+         ++kar;
+         NI_set_attribute(ngr, "Write_ROI_Cont_Sphinx_Help", argt[kar]);
+         
+         argt[kar][0] = '\0';
+         brk = YUP;
+      }
+      
       
       if (!brk && (strcmp(argt[kar], "-write_mouse_keyb_help") == 0))
       {
@@ -1633,6 +1984,36 @@ int SUMA_DriveSuma_ParseCommon(NI_group *ngr, int argtc, char ** argt)
          argt[kar][0] = '\0';
          ++kar;
          NI_set_attribute(ngr, "Write_Mouse_Keyb_Sphinx_Help", argt[kar]);
+         
+         argt[kar][0] = '\0';
+         brk = YUP;
+      }
+      
+      if (!brk && (strcmp(argt[kar], "-write_mouse_cmap_keyb_help") == 0))
+      {
+         if (kar+1 >= argtc)
+         {
+            SUMA_S_Err("need a filename after -write_mouse_cmap_keyb_help \n");
+            SUMA_RETURN(0);
+         }
+         argt[kar][0] = '\0';
+         ++kar;
+         NI_set_attribute(ngr, "Write_Mouse_Cmap_Keyb_Help", argt[kar]);
+         
+         argt[kar][0] = '\0';
+         brk = YUP;
+      }
+      
+      if (!brk && (strcmp(argt[kar], "-write_mouse_cmap_keyb_sphinx_help") == 0))
+      {
+         if (kar+1 >= argtc)
+         {
+            SUMA_S_Err("need filename w/ -write_mouse_cmap_keyb_sphinx_help \n");
+            SUMA_RETURN(0);
+         }
+         argt[kar][0] = '\0';
+         ++kar;
+         NI_set_attribute(ngr, "Write_Mouse_Cmap_Keyb_Sphinx_Help", argt[kar]);
          
          argt[kar][0] = '\0';
          brk = YUP;
@@ -2157,9 +2538,11 @@ char ** SUMA_com2argv(char *com, int *argtcp)
       SUMA_GET_BETWEEN_BLANKS(com, NULL, pos);
       tp=NULL;SUMA_COPY_TO_STRING(com, pos, tp); com = pos;
       SUMA_LHv("Adding other >>>%s<<<\n", tp);
-      argt = (char **)SUMA_realloc(argt, sizeof(char *)*(argtc+1)); 
-      argt[argtc] = tp; tp = NULL; 
-      ++argtc;
+      if (tp) {
+         argt = (char **)SUMA_realloc(argt, sizeof(char *)*(argtc+1)); 
+         argt[argtc] = tp; tp = NULL; 
+         ++argtc;
+      }
    }
    
    *argtcp = argtc;

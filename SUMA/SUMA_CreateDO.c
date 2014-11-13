@@ -815,10 +815,16 @@ SUMA_DO_Types SUMA_Guess_DO_Type(char *s)
       dotp = NBSP_type;
    } else if (strstr(sbuf,"#segments")) {
       dotp = LS_type;
+   } else if (strstr(sbuf,"#directions")) {
+      dotp = DIR_type;
+   } else if (strstr(sbuf,"#oriented_directions")) {
+      dotp = ODIR_type;
    } else if (strstr(sbuf,"#oriented_segments")) {
       dotp = OLS_type;
    } else if (strstr(sbuf,"#node-based_segments")) {
       dotp = NBLS_type;
+   } else if (strstr(sbuf,"#points")) {
+      dotp = PNT_type;
    } else if (strstr(sbuf,"#node-based_oriented_segments")) {
       dotp = NBOLS_type;
    } else if (strstr(sbuf,"#node-based_vectors")) {
@@ -2229,6 +2235,260 @@ GLushort SUMA_int_to_stipplemask_cont(int i)
    return(0xFFFF);
 }
 
+SUMA_SegmentDO * SUMA_ReadDirDO (char *s, int oriented, char *parent_SO_id)
+{
+   static char FuncName[]={"SUMA_ReadDirDO"};
+   SUMA_SegmentDO *SDO = NULL;
+   MRI_IMAGE * im = NULL;
+   float *far=NULL, gn, or[3];
+   int itmp, itmp2, icol_thick = -1, icol_col=-1, icol_stip=-1, 
+         icol_orig = -1, icol_dir = -1, icol_amp = -1;
+   int nrow=-1, ncol=-1, same = 0;
+   char buf[30];
+   SUMA_DO_Types dotp;
+   
+   SUMA_ENTRY;
+   
+   if (!s) {
+      SUMA_SLP_Err("NULL s");
+      SUMA_RETURN(NULL);
+   }
+   
+   im = mri_read_1D (s);
+
+   if (!im) {
+      SUMA_SLP_Err("Failed to read 1D file");
+      SUMA_RETURN(NULL);
+   }
+   
+   if (oriented) {
+      dotp = OLS_type;
+      sprintf(buf,"Oriented direction");
+   } else {
+      dotp = LS_type;
+      sprintf(buf,"Direction");
+   }
+   far = MRI_FLOAT_PTR(im);
+   ncol = im->nx;
+   nrow = im->ny;
+
+   if (!ncol) {
+      SUMA_SLP_Err("Empty file");
+      SUMA_RETURN(NULL);
+   }
+   
+   icol_orig = -1;
+   icol_dir = -1;
+   icol_col = -1;
+   icol_amp = -1;
+   icol_thick = -1;
+   icol_stip = -1;
+   switch (nrow) {
+      case 3:
+         fprintf(SUMA_STDERR,"%s: %s file %s's format:\n"
+                              "dx dy dz\n", 
+                              FuncName, buf, s);
+         icol_dir = 0;
+         break;
+      case 4:
+         fprintf(SUMA_STDERR,"%s: %s file %s's format:\n"
+                              "dx dy dz mag\n", 
+                              FuncName, buf, s);
+         icol_dir = 0;
+         icol_amp = 3;
+         break;
+      case 5:
+         fprintf(SUMA_STDERR,"%s: %s file %s's format:\n"
+                              "dx dy dz mag th\n", 
+                              FuncName, buf, s);
+         icol_dir = 0;
+         icol_amp = 3;
+         icol_thick = 4;
+         break;
+      case 6:
+         fprintf(SUMA_STDERR,"%s: %s file %s's format:\n"
+                              "ox oy oz dx dy dz\n", 
+                              FuncName, buf, s);
+         icol_orig = 0;
+         icol_dir = 3;
+         break;
+      case 7:
+         fprintf(SUMA_STDERR,"%s: %s file %s's format:\n"
+                              "ox oy oz dx dy dz mag\n", 
+                              FuncName, buf, s);
+         icol_orig = 0;
+         icol_dir = 3;
+         icol_amp = 6;
+         break;
+      case 8:
+         fprintf(SUMA_STDERR,"%s: %s file %s's format:\n"
+                              "ox oy oz dx dy dz mag th\n", 
+                              FuncName, buf, s);
+         icol_orig = 0;
+         icol_dir = 3;
+         icol_amp = 6;
+         icol_thick = 7;
+         break;
+      case 9:
+         fprintf(SUMA_STDERR,"%s: %s file %s's format:\n"
+                              "dx dy dz mag th c0 c1 c2 c3\n", 
+                              FuncName, buf, s);
+         icol_dir = 0;
+         icol_amp = 3;
+         icol_thick = 4;
+         icol_col = 5;
+         break;
+      
+      case 11:
+         fprintf(SUMA_STDERR,"%s: %s file %s's format:\n"
+                              "ox oy oz dx dy dz mag c0 c1 c2 c3\n", 
+                              FuncName, buf, s);
+         icol_orig = 0;
+         icol_dir = 3;
+         icol_amp = 6;
+         icol_col = 7;
+         break;
+      case 12:
+         fprintf(SUMA_STDERR,"%s: %s file %s's format:\n"
+                              "ox oy oz dx dy dz mag th c0 c1 c2 c3\n", 
+                              FuncName, buf, s);
+         icol_orig = 0;
+         icol_dir = 3;
+         icol_amp = 6;
+         icol_thick = 7;
+         icol_col = 8;
+         break;
+      default:
+         SUMA_SLP_Err("File must have\n"
+                   "3, 4, 5, 6, 7, 8, 9, 11 or 12 columns.");
+         mri_free(im); im = NULL;   /* done with that baby */
+         SUMA_RETURN(NULL);
+   }
+
+   if (icol_dir < 0) {
+      SUMA_S_Err("No Directions found");
+      mri_free(im); im = NULL;   /* done with that baby */
+      SUMA_RETURN(NULL);
+   }
+   
+   /* allocate for segments DO */
+   SDO = SUMA_Alloc_SegmentDO (ncol, s, oriented, parent_SO_id, 0, 
+                     dotp, parent_SO_id ? SO_type:NOT_SET_type, NULL);
+   if (!SDO) {
+      fprintf(SUMA_STDERR,
+              "Error %s: Failed in SUMA_Allocate_SegmentDO.\n", FuncName);
+      SUMA_RETURN(NULL);
+   }
+
+   /* fill up SDO */
+   itmp = 0;
+   or[0] = or[1] = or[2] = 0.0;
+   while (itmp < SDO->N_n) {
+      if (icol_amp < 0) gn = 1.0;
+      else gn = far[itmp+(icol_amp  )*ncol];
+      itmp2 = 3*itmp;
+      if (icol_orig >= 0) {
+         or[0] = far[itmp+(icol_orig  )*ncol];
+         or[1] = far[itmp+(icol_orig+1)*ncol];
+         or[2] = far[itmp+(icol_orig+2)*ncol];
+      }   
+      SDO->n0[itmp2]   = or[0];
+      SDO->n0[itmp2+1] = or[1];
+      SDO->n0[itmp2+2] = or[2];
+      SDO->n1[itmp2]   = far[itmp+(icol_dir  )*ncol]*gn+or[0];
+      SDO->n1[itmp2+1] = far[itmp+(icol_dir+1)*ncol]*gn+or[1];
+      SDO->n1[itmp2+2] = far[itmp+(icol_dir+2)*ncol]*gn+or[2];               
+      ++itmp;
+   } 
+   
+   if (icol_col >= 0) {
+      SDO->colv = (GLfloat *)SUMA_malloc(4*sizeof(GLfloat)*SDO->N_n);
+      if (!SDO->colv) {
+         SUMA_SL_Crit("Failed in to allocate for colv.");
+         SUMA_RETURN(NULL);
+      }
+      /* fill up idividual colors */
+      itmp = 0;
+      while (itmp < SDO->N_n) {
+         itmp2 = 4*itmp;
+         SDO->colv[itmp2]     = far[itmp+(icol_col  )*ncol];
+         SDO->colv[itmp2+1]   = far[itmp+(icol_col+1)*ncol];
+         SDO->colv[itmp2+2]   = far[itmp+(icol_col+2)*ncol];
+         SDO->colv[itmp2+3]   = far[itmp+(icol_col+3)*ncol];
+         ++itmp;
+      } 
+   } else {
+      SDO->colv = (GLfloat *)SUMA_malloc(4*sizeof(GLfloat)*SDO->N_n);
+      if (!SDO->colv) {
+         SUMA_SL_Crit("Failed in to allocate for colv.");
+         SUMA_RETURN(NULL);
+      }
+      /* fill up idividual colors */
+      itmp = 0;
+      while (itmp < SDO->N_n) {
+         itmp2 = 4*itmp;
+         SDO->colv[itmp2]     = far[itmp+(icol_dir  )*ncol];
+         SDO->colv[itmp2+1]   = far[itmp+(icol_dir+1)*ncol];
+         SDO->colv[itmp2+2]   = far[itmp+(icol_dir+2)*ncol];
+         SDO->colv[itmp2+3]   = 1.0;
+         ++itmp;
+      } 
+   }
+   SDO->LineWidth = 1;
+   if (icol_thick > 0) {
+      SDO->thickv = (GLfloat *)SUMA_malloc(sizeof(GLfloat)*SDO->N_n);
+      if (!SDO->thickv) {
+         SUMA_SL_Crit("Failed in to allocate for colv.");
+         SUMA_RETURN(NULL);
+      }
+      /* fill up idividual thickness */
+      itmp = 0;
+      while (itmp < SDO->N_n) {
+         SDO->thickv[itmp]     = far[itmp+(icol_thick  )*ncol];
+         ++itmp;
+      }
+      /* One constant thickness?*/
+      itmp = 0;
+      while (itmp < SDO->N_n) {
+         if (SDO->thickv[itmp] != SDO->thickv[0]) break;
+         ++itmp;
+      }
+      if (itmp == SDO->N_n) { /* constant thickness, go for speed */
+         SDO->LineWidth = SDO->thickv[0];
+         SUMA_ifree(SDO->thickv);
+      }
+   }
+   
+   if (icol_stip > 0) {
+      SDO->stipv = (GLushort *)SUMA_malloc(sizeof(GLushort)*SDO->N_n);
+      if (!SDO->stipv) {
+         SUMA_SL_Crit("Failed in to allocate for colv.");
+         SUMA_RETURN(NULL);
+      }
+      /* fill up idividual stippliness */
+      itmp = 0; same =  1;
+      while (itmp < SDO->N_n) {
+         SDO->stipv[itmp]     = SUMA_int_to_stipplemask(
+                                 (int)far[itmp+(icol_stip  )*ncol]);
+         if (same && SDO->stipv[itmp] != SDO->stipv[0]) same = 0; 
+         ++itmp;
+      }
+      if (same) {
+         SDO->stip = (GLushort)SDO->stipv[0];
+         SUMA_free(SDO->stipv); SDO->stipv=NULL;
+      }
+      if (SDO->stipv || 
+          ( SDO->stip != 0 && SDO->stip != 0xFFFF)) {
+               SDO->Stipple = SUMA_DASHED_LINE;
+      } else {
+         SDO->Stipple = SUMA_SOLID_LINE;
+      }
+   }
+   mri_free(im); im = NULL; far = NULL;
+
+   SUMA_RETURN(SDO);
+}
+
 SUMA_SegmentDO * SUMA_ReadSegDO (char *s, int oriented, char *parent_SO_id)
 {
    static char FuncName[]={"SUMA_ReadSegDO"};
@@ -3087,6 +3347,152 @@ SUMA_SphereDO * SUMA_ReadSphDO (char *s)
          SDO->stylev[itmp] = SUMA_SphereStyleConvert(
                                  (int)far[itmp+(icol_style  )*ncol]);
          ++itmp;
+      } 
+   }
+   mri_free(im); im = NULL; far = NULL;
+
+   SUMA_RETURN(SDO);
+}
+
+SUMA_SphereDO * SUMA_ReadPntDO (char *s)
+{
+   static char FuncName[]={"SUMA_ReadPntDO"};
+   SUMA_SphereDO *SDO = NULL;
+   MRI_IMAGE * im = NULL;
+   float *far=NULL;
+   int itmp, itmp2, icol_rad=-1, icol_style = -1, icol_col = -1;
+   int nrow=-1, ncol=-1;
+   
+   SUMA_ENTRY;
+      
+   if (!s) {
+      SUMA_SLP_Err("NULL s");
+      SUMA_RETURN(NULL);
+   }
+   
+   im = mri_read_1D (s);
+
+   if (!im) {
+      SUMA_SLP_Err("Failed to read 1D file");
+      SUMA_RETURN(NULL);
+   }
+
+   far = MRI_FLOAT_PTR(im);
+   ncol = im->nx;
+   nrow = im->ny;
+
+   if (!ncol) {
+      SUMA_SLP_Err("Empty file");
+      SUMA_RETURN(NULL);
+   }
+   
+   icol_col = -1;
+   icol_rad = -1;
+   icol_style = -1;
+   switch (nrow) {
+      case 3:
+         fprintf(SUMA_STDERR,"%s: Point file %s's format:\n"
+                              "ox oy oz\n", FuncName, s);
+         break;
+      case 4:
+         fprintf(SUMA_STDERR,"%s: Point file %s's format:\n"
+                              "ox oy oz sz\n", FuncName, s);
+         icol_rad = 3;
+         break;
+      case 7:
+         fprintf(SUMA_STDERR,"%s: Point file %s's format:\n"
+                              "ox oy oz c0 c1 c2 c3\n", FuncName, s);
+         icol_col = 3;
+         break;
+      case 8:
+         fprintf(SUMA_STDERR,"%s: Point file %s's format:\n"
+                              "ox oy oz c0 c1 c2 c3 sz\n", FuncName, s);
+         icol_col = 3;
+         icol_rad = 7;
+         break;
+      default:
+         SUMA_SLP_Err("File must have\n"
+                   "3,4,7 or 8  columns.");
+         mri_free(im); im = NULL;   /* done with that baby */
+         SUMA_RETURN(NULL);
+   }
+
+   /* allocate for segments DO */
+   SDO = SUMA_Alloc_SphereDO (ncol, s, NULL, SP_type);
+   if (!SDO) {
+      fprintf(SUMA_STDERR,
+         "Error %s: Failed in SUMA_Allocate_SphereDO.\n", FuncName);
+      SUMA_RETURN(NULL);
+   }
+
+   /* fill up SDO */
+   itmp = 0;
+   while (itmp < SDO->N_n) {
+      itmp2 = 3*itmp;
+      SDO->cxyz[itmp2]   = far[itmp       ];
+      SDO->cxyz[itmp2+1] = far[itmp+  ncol];
+      SDO->cxyz[itmp2+2] = far[itmp+2*ncol];
+      ++itmp;
+   } 
+   
+   SDO->CommonCol[0] = SDO->CommonCol[1] = 
+   SDO->CommonCol[2] = SDO->CommonCol[3] = 1.0;
+   if (icol_col > 0) {
+      SDO->colv = (GLfloat *)SUMA_malloc(4*sizeof(GLfloat)*SDO->N_n);
+      if (!SDO->colv) {
+         SUMA_SL_Crit("Failed in to allocate for colv.");
+         SUMA_RETURN(NULL);
+      }
+      /* fill up idividual colors */
+      itmp = 0;
+      while (itmp < SDO->N_n) {
+         itmp2 = 4*itmp;
+         SDO->colv[itmp2]     = far[itmp+(icol_col  )*ncol];
+         SDO->colv[itmp2+1]   = far[itmp+(icol_col+1)*ncol];
+         SDO->colv[itmp2+2]   = far[itmp+(icol_col+2)*ncol];
+         SDO->colv[itmp2+3]   = far[itmp+(icol_col+3)*ncol];
+         ++itmp;
+      }
+      /* constant color? */itmp = 0;
+      while (itmp < SDO->N_n) {
+         itmp2 = 4*itmp;
+         if ( SDO->colv[itmp2  ] != SDO->colv[0] ||
+              SDO->colv[itmp2+1] != SDO->colv[1] ||
+              SDO->colv[itmp2+2] != SDO->colv[2] ||
+              SDO->colv[itmp2+3] != SDO->colv[3]) break;
+         ++itmp;
+      }
+      if (itmp == SDO->N_n) {
+         SDO->CommonCol[0] = SDO->colv[0];
+         SDO->CommonCol[1] = SDO->colv[1];
+         SDO->CommonCol[2] = SDO->colv[2];
+         SDO->CommonCol[3] = SDO->colv[3];
+         SUMA_ifree(SDO->colv);
+      }
+   }
+   
+   SDO->CommonRad = 1;
+   if (icol_rad > 0) {
+      SDO->radv = (GLfloat *)SUMA_malloc(sizeof(GLfloat)*SDO->N_n);
+      if (!SDO->radv) {
+         SUMA_SL_Crit("Failed in to allocate for radv.");
+         SUMA_RETURN(NULL);
+      }
+      /* fill up idividual radius */
+      itmp = 0;
+      while (itmp < SDO->N_n) {
+         SDO->radv[itmp]     = far[itmp+(icol_rad  )*ncol];
+         ++itmp;
+      }
+      /* One constant radius?*/
+      itmp = 0;
+      while (itmp < SDO->N_n) {
+         if (SDO->radv[itmp] != SDO->radv[0]) break;
+         ++itmp;
+      }
+      if (itmp == SDO->N_n) { /* constant radius, go for speed */
+         SDO->CommonRad = SDO->radv[0];
+         SUMA_ifree(SDO->radv);
       } 
    }
    mri_free(im); im = NULL; far = NULL;
@@ -4959,6 +5365,113 @@ SUMA_Boolean SUMA_DrawSphereDO (SUMA_SphereDO *SDO, SUMA_SurfaceViewer *sv)
    if (mask) SUMA_free(mask); mask=NULL;
    SUMA_RETURN (YUP);
    
+}
+
+SUMA_Boolean SUMA_DrawPointDO (SUMA_SphereDO *SDO, SUMA_SurfaceViewer *sv)
+{
+   static char FuncName[]={"SUMA_DrawPointDO"};
+   static GLfloat NoColor[] = {0.0, 0.0, 0.0, 0.0}, comcol[4], *cent=NULL;
+   int i, N_n3, i3, ndraw=0, ncross=-1, initPointsz;
+   GLfloat rad = 3;
+   SUMA_SurfaceObject *SO = NULL;
+   byte *mask=NULL;
+   byte AmbDiff = 0;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   
+   if (!SDO) {
+      fprintf(stderr,"Error %s: NULL pointer.\n", FuncName);
+      SUMA_RETURN (NOPE);
+   }
+   
+   if (sv && sv->DO_PickMode) {
+      SUMA_S_Warn("Function not ready for picking mode, should be fixed");
+      SUMA_RETURN(YUP);
+   }
+   
+   if (SDO->NodeBased) { /* Locate the surface in question */
+      SUMA_LH("Node-based points");
+      if (!SDO->Parent_idcode_str) {
+         SUMA_SL_Err("Object's parent idcode_str not specified.");
+         SUMA_RETURN (NOPE);
+      }
+      SO = SUMA_findSOp_inDOv(SDO->Parent_idcode_str, SUMAg_DOv, SUMAg_N_DOv); 
+      if (!SO) {
+         SUMA_SL_Err("Object's parent surface not found.");
+         SUMA_RETURN (NOPE);
+      }
+      /* masking? */
+      if ((ndraw = SUMA_ProcessDODrawMask(sv, SO, &mask, &ncross)) < 0) {
+         SUMA_RETURN (NOPE);
+      }  
+      if (!ndraw) SUMA_RETURN(YUP);/* nothing to draw, nothing wrong */
+      SUMA_LHv("ncross=%d\n", ncross);
+   } else {
+      SUMA_LH("Points ");
+   }
+   
+   
+   comcol[0] = SDO->CommonCol[0]; /* *SUMAg_SVv[0].dim_amb; Naahhhh */
+   comcol[1] = SDO->CommonCol[1]; /* *SUMAg_SVv[0].dim_amb;*/
+   comcol[2] = SDO->CommonCol[2]; /* *SUMAg_SVv[0].dim_amb;*/
+   comcol[3] = SDO->CommonCol[3]; /* *SUMAg_SVv[0].dim_amb;*/
+   
+   if (!SDO->colv) {
+      SUMA_LH("Color %f %f %f %f", comcol[0], comcol[1], comcol[2], comcol[3]);
+      if (AmbDiff) {
+         glMaterialfv(GL_FRONT, GL_AMBIENT_AND_DIFFUSE, comcol);
+      } else {
+         glMaterialfv(GL_FRONT, GL_AMBIENT_AND_DIFFUSE, NoColor);
+      }
+      glMaterialfv(GL_FRONT, GL_EMISSION, comcol);
+   }
+   
+   glGetIntegerv(GL_POINT_SIZE, &initPointsz);
+   if (!SDO->radv) {
+      SUMA_LH("Constant radius");
+      rad = SDO->CommonRad;
+      glPointSize(rad);
+      if (SDO->colv) {
+         glColorMaterial(GL_FRONT, GL_EMISSION); 
+         glEnable(GL_COLOR_MATERIAL);
+         glEnableClientState (GL_COLOR_ARRAY);
+         glColorPointer (4, GL_FLOAT, 0, SDO->colv);
+      }
+      glEnableClientState (GL_VERTEX_ARRAY);
+      glVertexPointer (3, GL_FLOAT, 0, SDO->cxyz);
+      glDrawArrays(GL_POINTS, 0, SDO->N_n);
+      if (SDO->colv) {
+         glDisable(GL_COLOR_MATERIAL);
+         glDisableClientState(GL_COLOR_ARRAY);
+      }
+      glDisableClientState(GL_VERTEX_ARRAY);
+   } else { /* slow, relatively! */
+      SUMA_LH("Variable radius");
+      if (AmbDiff) {
+         glMaterialfv(GL_FRONT, GL_AMBIENT_AND_DIFFUSE, comcol);
+      } else {
+         glMaterialfv(GL_FRONT, GL_AMBIENT_AND_DIFFUSE, NoColor);
+      }
+      for (i=0; i<SDO->N_n; ++i) {
+         i3 = 3*i;
+         if (SDO->colv) {
+            glMaterialfv(GL_FRONT, GL_EMISSION, (SDO->colv+4*i));
+         }
+         glPointSize(SUMA_ABS(SDO->radv[i]));
+         glBegin (GL_POINTS);
+         glVertex3fv(SDO->cxyz+i3);
+         glEnd();
+      }
+   }
+   if (AmbDiff) {
+      glMaterialfv(GL_FRONT, GL_AMBIENT_AND_DIFFUSE, NoColor);
+   }
+   glMaterialfv(GL_FRONT, GL_EMISSION, NoColor); 
+   
+   glPointSize(initPointsz);
+   if (mask) SUMA_free(mask); mask=NULL;
+   SUMA_RETURN (YUP);
 }
 
 SUMA_SphereDO * SUMA_Alloc_SphereDO (  int N_n, char *Label, 
@@ -7427,6 +7940,10 @@ SUMA_Boolean SUMA_DrawGraphDO_GMATRIX (SUMA_GraphLinkDO *gldo,
       SUMA_LH("In picking mode!");
    }
    
+   if (!(curcol = SUMA_ADO_CurColPlane((SUMA_ALL_DO *)dset))) {
+      SUMA_S_Err("Could not find current col plane!");
+      SUMA_RETURN (NOPE);
+   }
 
    #if USE_SER
    SUMA_RecordEnablingState(&(sv->SER)); /* Lazy, consider SUMA_GLStateTrack ,
@@ -7567,49 +8084,51 @@ SUMA_Boolean SUMA_DrawGraphDO_GMATRIX (SUMA_GraphLinkDO *gldo,
             }
             
             /* Fillup where you have segments */
-            SUMA_LHv("Filling up image for %d cells\n", N_seg);
-            for(iseg=0; iseg<N_seg; ++iseg) {
-               if (!SUMA_GDSET_SegRowToPoints(dset, iseg, 
-                                                &ii, 
-                                                &jj,
-                                                NULL)){
-                  SUMA_S_Errv("Failed for edge %d\n", iseg);
-               }
-               si = SUMA_GDSET_EdgeRow_To_Index(dset, iseg);
-               if (!ui) {
-                  iim = ii; jjm = jj;
-               } else {
-                  iim = SUMA_ibinFind(ui, N[0], ii);
-                  jjm = SUMA_ibinFind(uj, N[1], jj);
-               }
-               #if 0
-               SUMA_LHv(
-                  "Edge %d [%d %d] in %dx%d mat [%d %d], col [%d %d %d] (%d)\n",
-                     si, ii, jj, N[0], N[1], iim, jjm, (byte)(255*colv[4*si]),
-                           (byte)(255*colv[4*si+1]), (byte)(255*colv[4*si+2]),
-                           GSaux->isColored[si]);
-               #endif
-               if (GSaux->isColored[si]) {
-                  /* fill foreground */
-                  iipix = iim*(GB[0])+B[0]; iipixMax = iipix+G[0];
-                  while (iipix < iipixMax) {
-                     jjpix = jjm*(GB[1])+B[1]; jjpixMax = jjpix+G[1];
-                     while (jjpix < jjpixMax) {
-                        ii4 = (iipix*M[1]+jjpix)*4; 
-                           /* Texture image is filled in row major, so
-                              image in bb is transposed */
-                        is4 = 4*si;
-                        bb[ii4] = (byte)(255*colv[is4++]); ++ii4; 
-                        bb[ii4] = (byte)(255*colv[is4++]); ++ii4; 
-                        bb[ii4] = (byte)(255*colv[is4++]); ++ii4; 
-                        bb[ii4] = (byte)(255*colv[is4  ]); 
-                        ++jjpix;
+            if (curcol->ShowMode > 0) { 
+               SUMA_LHv("Filling up image for %d cells\n", N_seg);
+               for(iseg=0; iseg<N_seg; ++iseg) {
+                  if (!SUMA_GDSET_SegRowToPoints(dset, iseg, 
+                                                   &ii, 
+                                                   &jj,
+                                                   NULL)){
+                     SUMA_S_Errv("Failed for edge %d\n", iseg);
+                  }
+                  si = SUMA_GDSET_EdgeRow_To_Index(dset, iseg);
+                  if (!ui) {
+                     iim = ii; jjm = jj;
+                  } else {
+                     iim = SUMA_ibinFind(ui, N[0], ii);
+                     jjm = SUMA_ibinFind(uj, N[1], jj);
+                  }
+                  #if 0
+                  SUMA_LHv(
+                     "Edge %d [%d %d] in %dx%d mat [%d %d], "
+                     "col [%d %d %d] (%d)\n",
+                        si, ii, jj, N[0], N[1], iim, jjm, (byte)(255*colv[4*si]),
+                              (byte)(255*colv[4*si+1]), (byte)(255*colv[4*si+2]),
+                              GSaux->isColored[si]);
+                  #endif
+                  if (GSaux->isColored[si]) {
+                     /* fill foreground */
+                     iipix = iim*(GB[0])+B[0]; iipixMax = iipix+G[0];
+                     while (iipix < iipixMax) {
+                        jjpix = jjm*(GB[1])+B[1]; jjpixMax = jjpix+G[1];
+                        while (jjpix < jjpixMax) {
+                           ii4 = (iipix*M[1]+jjpix)*4; 
+                              /* Texture image is filled in row major, so
+                                 image in bb is transposed */
+                           is4 = 4*si;
+                           bb[ii4] = (byte)(255*colv[is4++]); ++ii4; 
+                           bb[ii4] = (byte)(255*colv[is4++]); ++ii4; 
+                           bb[ii4] = (byte)(255*colv[is4++]); ++ii4; 
+                           bb[ii4] = (byte)(255*colv[is4  ]); 
+                           ++jjpix;
+                        }
+                        ++iipix;
                      }
-                     ++iipix;
                   }
                }
             }
-            
             #if 0
             for (iipix=0; iipix<M[0]; ++iipix) {
                for (jjpix=0; jjpix<M[1]; ++jjpix) {
@@ -7799,10 +8318,6 @@ SUMA_Boolean SUMA_DrawGraphDO_GMATRIX (SUMA_GraphLinkDO *gldo,
    }
    
    /* Show the text ? */
-   if (!(curcol = SUMA_ADO_CurColPlane((SUMA_ALL_DO *)dset))) {
-      SUMA_S_Err("Could not find current col plane!");
-      SUMA_RETURN (NOPE);
-   }
    if ((fontGL = SUMA_Font2GLFont(curcol->Font))) {
       int nl, tw, th, bh, bw, skpv, skph,
           lh = SUMA_glutBitmapFontHeight(fontGL), kkk=0, SGN=-1;
@@ -8532,6 +9047,9 @@ SUMA_Boolean SUMA_AddDsetSaux(SUMA_DSET *dset)
          
          if (GSaux->DOCont) {
             SUMA_S_Warn("Have controller already. Keep it.");
+         } else {
+            GSaux->DOCont = SUMA_CreateSurfContStruct(SDSET_ID(dset), 
+                                                      GRAPH_LINK_type);
          }
          SUMA_ifree(GSaux->Center_G3D);
          SUMA_ifree(GSaux->Range_G3D);
@@ -8548,7 +9066,8 @@ SUMA_Boolean SUMA_AddDsetSaux(SUMA_DSET *dset)
          GSaux->SDO = NULL;
          GSaux->nido = NULL;
          GSaux->Overlay = NULL;
-         GSaux->DOCont = SUMA_CreateSurfContStruct(SDSET_ID(dset), SDSET_type);
+         GSaux->DOCont = SUMA_CreateSurfContStruct(SDSET_ID(dset), 
+                                                   GRAPH_LINK_type);
          GSaux->PR = SUMA_New_Pick_Result(NULL);
          GSaux->thd = NULL;
          GSaux->net = NULL;
@@ -9784,6 +10303,9 @@ GLubyte *SUMA_DO_get_pick_colid(SUMA_ALL_DO *DO, char *idcode_str,
       case NBOLS_type:
       case NBV_type:
       case ONBV_type:
+      case DIR_type:
+      case ODIR_type:
+      case PNT_type:
       case LS_type: {
          SUMA_SegmentDO *SDO = (SUMA_SegmentDO *)DO;
          SUMA_LHv("Creating ids for %d segments in %s\n",
@@ -10373,7 +10895,8 @@ SUMA_Boolean SUMA_DrawGSegmentDO (SUMA_GRAPH_SAUX *GSaux, SUMA_SurfaceViewer *sv
    float origwidth=0.0, radconst = 0.0, rad = 0.0, radgain = 0.0,
          gain = 1.0, constcol[4], edgeconst=1.0, group_col[4],
          vmin=1.0, vmax=1.0, Wfac=1.0, Sfac=1.0, cdim=1/3.0,
-         *GNr=NULL, *GNg=NULL, *GNb=NULL, dimmer = 1.0;
+         *GNr=NULL, *GNg=NULL, *GNb=NULL, dimmer = 1.0, radgaing = 0.0,
+         Rfac = 1.0, Rrange[2]={0.1, 10};
    GLboolean ble=FALSE, dmsk=TRUE, gl_dt=TRUE;
    byte *mask=NULL, *wmask=NULL, showword = 0;
    GLubyte *colid=NULL, *colidballs=NULL, *colballpick=NULL;
@@ -10410,6 +10933,7 @@ SUMA_Boolean SUMA_DrawGSegmentDO (SUMA_GRAPH_SAUX *GSaux, SUMA_SurfaceViewer *sv
       SUMA_S_Warn("This option is no good at this moment when segment stippling"
                   "\n is turned on for all segments. Easy to fix though ...");
    }
+   
    if (SDO->NodeBased == 2) { 
       SUMA_LH("Node-based vectors");
       if (!SDO->Parent_idcode_str) {
@@ -10442,7 +10966,9 @@ SUMA_Boolean SUMA_DrawGSegmentDO (SUMA_GRAPH_SAUX *GSaux, SUMA_SurfaceViewer *sv
       }
       
       if (curcol->EdgeThick == SW_SurfCont_DsetEdgeThickVal ||
-          curcol->EdgeStip == SW_SurfCont_DsetEdgeStipVal){
+          curcol->EdgeStip == SW_SurfCont_DsetEdgeStipVal   ||
+          curcol->Through == SW_SurfCont_DsetThroughRad ||
+          curcol->Through == SW_SurfCont_DsetThroughCaR) {
          /* compute width / stippling scaling params */
          if (SUMA_ABS(curcol->OptScl->IntRange[0]) < 
              SUMA_ABS(curcol->OptScl->IntRange[1])) {
@@ -10466,6 +10992,15 @@ SUMA_Boolean SUMA_DrawGSegmentDO (SUMA_GRAPH_SAUX *GSaux, SUMA_SurfaceViewer *sv
          } else {
             if ((Sfac = 15/(vmin)) <= 0.0) Sfac = 1.0;
          }
+         /* For dynamic radius */
+         Rrange[0] = 0.1;
+         Rrange[1] = 10;
+         if (vmax > vmin) {
+            if ((Rfac = (Rrange[1]-Rrange[0])/(vmax)) <= 0.0) Rfac = 1.0;
+         } else {
+            if ((Rfac = (Rrange[1]-Rrange[0])/(vmin)) <= 0.0) Rfac = 1.0;
+         }
+
       }
             
       DDO.err = 1; /* not set */
@@ -10557,6 +11092,13 @@ SUMA_Boolean SUMA_DrawGSegmentDO (SUMA_GRAPH_SAUX *GSaux, SUMA_SurfaceViewer *sv
       wbox = 1;
       cdim = 3.0;
    }
+   
+   if (curcol->ShowMode < 0) { /* No connectivity information to display */
+      /* Show all nodes, just no edges */
+      if (NodeMask) memset(NodeMask, 1, DDO.N_Node*sizeof(byte));
+      goto BOTTOM;
+   }
+   
    SUMA_LHv("Stippling %d (XXX=%d, Val=%d, 01=%d) wbox=%d\n",
                 curcol->EdgeStip, SW_SurfCont_DsetEdgeStipXXX, 
                 SW_SurfCont_DsetEdgeStipVal, SW_SurfCont_DsetEdgeStip1, wbox);
@@ -10983,6 +11525,8 @@ SUMA_Boolean SUMA_DrawGSegmentDO (SUMA_GRAPH_SAUX *GSaux, SUMA_SurfaceViewer *sv
       }
    }
    
+   
+   BOTTOM:
    /* draw the bottom object */
    if (SDO->botobj) {
       float *xyz=(float *)SUMA_malloc(3*SDO->N_AllNodes*sizeof(float));
@@ -11137,9 +11681,16 @@ SUMA_Boolean SUMA_DrawGSegmentDO (SUMA_GRAPH_SAUX *GSaux, SUMA_SurfaceViewer *sv
                                        /* get the n1-->n edge to get its value*/
 
                if (NoEdges_DynamicRadius) {
-                  if (r1>=0) rad = SUMA_ABS(curcol->V[r1]);
-                  else radgain = 2.0;
+                  if (r1>=0) {
+                     rad = (SUMA_ABS(curcol->V[r1]))*Rfac+Rrange[0];
+                  } else rad = 2.0;
                }
+               #if 0
+               SUMA_LH(
+                     "%d-->%d: row=%d, rad %f, V[%d]=%f, Rfac=%f, radgain %f",
+                           OnlyThroughNode, n, r1, rad, r1, 
+                           curcol->V[r1], Rfac, radgain);
+               #endif
             }
             if (OnlyThroughNode == n) {
                if (colidballs) {
@@ -11275,9 +11826,9 @@ SUMA_Boolean SUMA_DrawGSegmentDO (SUMA_GRAPH_SAUX *GSaux, SUMA_SurfaceViewer *sv
                   glMaterialfv(GL_FRONT, GL_EMISSION, NoColor);
                }
                /* Show ghosts, for clickability */
-               if (NoEdges_DynamicRadius) radgain = 0.25*radgain;
-               else radgain = 1.0*radgain;
-               gluSphere(SDO->botobj, SUMA_MAX_PAIR(rad*radgain, 0.005), 10, 10);
+               if (NoEdges_DynamicRadius) radgaing = 0.25*radgain;
+               else radgaing = 1.0*radgain;
+               gluSphere(SDO->botobj, SUMA_MAX_PAIR(rad*radgaing,0.005), 10, 10);
             }
             glTranslatef (-xyzr[i3]  ,  -xyzr[i3+1]  , -xyzr[i3+2]  );
          }
@@ -15747,15 +16298,29 @@ SUMA_Boolean SUMA_DrawCrossHair (SUMA_SurfaceViewer *sv)
    Ch->c[2] = Ch->c[2]+off[2];
    
    if (scl) {
-      fac = SUMA_MAX_PAIR(sv->ZoomCompensate, 0.03);
-      radsph = Ch->sphrad*fac*(SUMA_sv_auto_fov(sv)/FOV_INITIAL);
-      gapch = Ch->g*fac*(SUMA_sv_auto_fov(sv)/FOV_INITIAL);
-      radch = Ch->r*fac*(SUMA_sv_auto_fov(sv)/FOV_INITIAL);
+      if (SO && SO->EL && SO->EL->AvgLe > 0) {
+         fac = SO->EL->AvgLe/15.0;
+         radsph = fac;
+         gapch = fac;
+         radch = SO->EL->AvgLe/2.0;
+      } else {
+         fac = SUMA_MAX_PAIR(sv->ZoomCompensate, 0.03);
+         radsph = Ch->sphrad*fac*(SUMA_sv_auto_fov(sv)/FOV_INITIAL);
+         gapch = Ch->g*fac*(SUMA_sv_auto_fov(sv)/FOV_INITIAL);
+         radch = Ch->r*fac*(SUMA_sv_auto_fov(sv)/FOV_INITIAL);
+      }
    } else {
-      fac = (SUMA_sv_auto_fov(sv)/FOV_INITIAL);
-      radsph = Ch->sphrad*fac;
-      gapch = Ch->g*fac;
-      radch = Ch->r*fac;
+      if (SO && SO->EL && SO->EL->AvgLe > 0) {
+         fac = SO->EL->AvgLe/10.0;
+         radsph = fac;
+         gapch = fac;
+         radch = SO->EL->AvgLe;
+      } else {
+         fac = (SUMA_sv_auto_fov(sv)/FOV_INITIAL);
+         radsph = Ch->sphrad*fac;
+         gapch = Ch->g*fac;
+         radch = Ch->r*fac;
+      }
    }
    if (!(gl_dt = glIsEnabled(GL_DEPTH_TEST)))  
       glEnable(GL_DEPTH_TEST);   /* To hide cross hair as it gets hidden
@@ -15892,6 +16457,7 @@ SUMA_CrossHair* SUMA_Alloc_CrossHair (void)
    Ch->Stipple = SUMA_SOLID_LINE;
    Ch->c[0] = Ch->c[1] = Ch->c[2] = 0.0;
    
+   /* Ch->g, and Ch->r setting is currently overriden if SO->EL->AvgLe > 0.0) */
    Ch->g = SUMA_CROSS_HAIR_GAP/SUMA_DimSclFac(NULL, NULL); 
    Ch->r = SUMA_CROSS_HAIR_RADIUS/SUMA_DimSclFac(NULL, NULL); 
    
@@ -15910,6 +16476,7 @@ SUMA_CrossHair* SUMA_Alloc_CrossHair (void)
    
    Ch->sphcol[0] = 1.0; Ch->sphcol[1] = 1.0; 
    Ch->sphcol[2] = 0.0; Ch->sphcol[3] = 0.0;
+   /* Ch->sphrad setting is currently overriden if SO->EL->AvgLe > 0.0) */
    Ch->sphrad = SUMA_CROSS_HAIR_SPHERE_RADIUS/SUMA_DimSclFac(NULL, NULL);
    Ch->slices = 10;
    Ch->stacks = 10;
@@ -16522,12 +17089,19 @@ void SUMA_DrawMesh(SUMA_SurfaceObject *SurfObj, SUMA_SurfaceViewer *sv)
             glMaterialfv(Face, GL_AMBIENT_AND_DIFFUSE, NoColor);
             glTranslatef ( SurfObj->NodeList[id], 
                            SurfObj->NodeList[id+1],SurfObj->NodeList[id+2]);
-            gluSphere(  SurfObj->NodeMarker->sphobj,
-                        SurfObj->NodeMarker->sphrad *          
-                           (SUMA_sv_auto_fov(sv)/FOV_INITIAL) *  
-                           SUMA_MAX_PAIR(sv->ZoomCompensate, 0.06),
-                        SurfObj->NodeMarker->slices, 
-                        SurfObj->NodeMarker->stacks);
+            if (SurfObj->EL && SurfObj->EL->AvgLe > 0) {
+               gluSphere(  SurfObj->NodeMarker->sphobj,
+                           SurfObj->EL->AvgLe/15,
+                           SurfObj->NodeMarker->slices, 
+                           SurfObj->NodeMarker->stacks);
+            } else {
+               gluSphere(  SurfObj->NodeMarker->sphobj,
+                           SurfObj->NodeMarker->sphrad *          
+                              (SUMA_sv_auto_fov(sv)/FOV_INITIAL) *  
+                              SUMA_MAX_PAIR(sv->ZoomCompensate, 0.06),
+                           SurfObj->NodeMarker->slices, 
+                           SurfObj->NodeMarker->stacks);
+            }
             glTranslatef ( -SurfObj->NodeList[id], 
                            -SurfObj->NodeList[id+1],
                            -SurfObj->NodeList[id+2]);

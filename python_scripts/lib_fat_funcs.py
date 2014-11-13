@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 #
-# July, 2014
+# ver 1.0:  July, 2014
+# Update, ver 1.1: Sept 2014
+# Updated, ver 1.2: Sept 2014
 #
 # File of helper functions for fat_mvm_*.py.
 #
@@ -17,8 +19,20 @@ from glob import glob
 
 np.set_printoptions(linewidth=200)
 
-# DEFINITION
-NLinesGridHead = 3
+# Have to check 5 lines in
+NLinesGridHead = 5
+
+HEADER_Nroi = 'Number_of_network_ROIs'
+HEADER_Ngrid = 'Number_of_grid_matrices'
+HEADER_EleID = 'Special_element_ID'
+HEADER_Labels = 'WITH_ROI_LABELS'   
+
+HEADER_ALL = [HEADER_Nroi, HEADER_Ngrid, HEADER_EleID, HEADER_Labels]
+
+# This will be ROI name connector, in line with ZSS usage in SUMA,
+# etc.
+ConnNames = '__'
+
 HeaderRowTrue = 1
 FirstColLabels = 1    # first read in col is subj name-labels
 GridCheckVar = 'NT'
@@ -26,15 +40,17 @@ GridCheckVar = 'NT'
 # for writing file for MVM
 ColOne_SUB = 'Subj'
 ColEnding = ['ROI', 'matrPar', 'Ausgang_val']
-MVM_file_postfix = '_MVMtbl.txt'
 
+MVM_file_postfix = '_MVMtbl.txt'
 MVM_matchlog_postfix = '_MVMprep.log'
+
 LOG_LABEL_colmatr = 'Matrixfile_ID'
 LOG_LABEL_colsubj = 'CSV_Subj'
 LOG_LABEL_roilist = 'ROI_list'
 LOG_LABEL_parlist = 'Parameter_list'
 VAR_LABEL_roilistQ = 'Qvar_list'
 VAR_LABEL_roilistC = 'Cvar_list'
+VAR_LABEL_roilistI = 'Ivar_list'
 LOG_LABEL_command = 'Made_by_command'
 
 OldFash_parnames = ['NT', 'fNT', 'FA', 'sFA', 'MD',         \
@@ -43,6 +59,191 @@ OldFash_parnames = ['NT', 'fNT', 'FA', 'sFA', 'MD',         \
 
 
 
+###------------------------------------------------------------------
+###------------------------------------------------------------------
+###---------------- START: Subsets of categorical vars --------------
+###------------------------------------------------------------------
+###------------------------------------------------------------------
+
+def SplitVar_Sublist(L, idx):
+    '''Take in a list, and a 'which iteration is this' value called
+    idx. Return either the first or second list in a lone-comma
+    separated line.'''
+
+    N = L.count(',')
+
+    # only one list, can only go with first
+    if N==0:
+        if idx == 0 :
+            return set(L)
+        else:
+            return set([])
+    elif N==1:
+        mm = L.index(',')
+        if idx == 0 :
+            return set(L[:mm])
+        else:
+            return set(L[mm+1:])
+    else:
+        print "Error reading variable list: too many commas!"
+        print "\t There should only be a single comma, separating at most",
+        print "two lists."
+        sys.exit(18)
+
+
+
+
+
+def Pars_CatVars_in_Listfile( file_listvars, 
+                              par_list, 
+                              var_iscateg, 
+                              var_isinterac, 
+                              Ninter ):
+    '''User can specify subset of cat var for modelling. Might be
+    useful if there are a lot of subcategories, and we want some
+    pairwise tests.  Performed after we know where and what are the
+    categorical variables (both lone and/or interaction ones.
+    Returns: updated lists of categorical and interacting vars.'''
+
+    coldat = ReturnFirstUncommentedSection_ofReadlines(file_listvars)
+    for i in range(len(coldat)):
+        if len(coldat[i]) > 1:
+            print "Found a variable for subsetting"
+            
+            if var_iscateg[i]:
+                newsub_set = set(coldat[i][1:]) # all other vars in that row
+                oldvar_set = set(var_iscateg[i])
+                nomatch = list(oldvar_set.__ixor__(newsub_set))
+                print "Going to remove:", nomatch
+                for x in nomatch:
+                    var_iscateg[i].remove(x)
+
+            elif var_isinterac[i]:
+                ### with variable interaction terms, use a "lone"
+                ### comma to separate the sub-lists; if you only want
+                ### a subset of the second variable, then still use a
+                ### lone comma before it
+                for j in range(2):
+                    if var_isinterac[i][2][j]:
+                        newsub_set = SplitVar_Sublist(coldat[i][1:], j)
+                        oldvar_set = set(var_isinterac[i][2][j])
+                        nomatch = list(oldvar_set.__ixor__(newsub_set))
+                        print "Going to remove:", nomatch
+                        for x in nomatch:
+                            var_isinterac[i][2][j].remove(x)
+
+
+    return var_iscateg, var_isinterac
+
+
+
+###------------------------------------------------------------------
+###------------------------------------------------------------------
+###---------------- STOP: Subsets of categorical vars ---------------
+###------------------------------------------------------------------
+###------------------------------------------------------------------
+
+
+###------------------------------------------------------------------
+###------------------------------------------------------------------
+###--------------- START: Interaction modeling features -------------
+###------------------------------------------------------------------
+###------------------------------------------------------------------
+
+def CheckFor_Cats_and_Inters( tab_data,
+                              tab_colvars,
+                              tab_coltypes,
+                              var_list ):
+    '''Return 1 if there is an interaction, and  '''
+
+    simple_cat = []
+
+    interac_terms = []
+    count_interac = 0
+    
+    for x in var_list:
+        # return either an empty list (no interac) or a list of
+        # the interacting ones
+
+        cats = []          # default if not cat var or interac
+        inter_names = []    # default if no interacs
+        Ncats = 0
+
+        print "TEST1 for var:",x
+        check, inter_type = IsEntry_interaction(x)
+
+        print "\t->has check:", check,", and intertype:", inter_type
+
+        #interac_terms = [inter_type]
+
+        # if there is a non-empty list returned, check that both terms
+        # in it are ok to use
+        if check: 
+            # inter_names will be a list of: lists (of categorical vars)
+            # or empty lists (quant var)
+            inter_names = CheckVar_and_FindCategVar( tab_data,       \
+                                                       tab_colvars,  \
+                                                       tab_coltypes, \
+                                                       check )
+            count_interac+=1
+
+            # want to ensure categorical variable is first in list
+            if not( inter_names[0] ):
+                inter_names.reverse()
+                check.reverse()
+
+            for i in range(len(inter_names)):
+                if inter_names[i]:
+                    Ncats+=1
+
+
+            # when there is interaction, have:
+            # [0] type of interaction (or empty for none)
+            # [1] var names (cat first or both)
+            # [2] cat var names (or empty for quant)
+            #interac_terms.append(check)
+            #interac_terms.append(inter_names)
+        else:
+            # redefine cats if coming through here
+            cats = CheckVar_and_FindCategVar( tab_data,       \
+                                                  tab_colvars,  \
+                                                  tab_coltypes, \
+                                                  [x] )
+            cats = list(cats[0])
+        print "\t\> has cat:", cats
+        simple_cat.append(cats)
+        interac_terms.append( [ [inter_type, Ncats], check, inter_names] )
+    return simple_cat, interac_terms, count_interac
+
+
+
+def IsEntry_interaction(str_var):
+    '''Return an empty list if there is no interaction, or return a
+    list of the interacting terms if there be/were one.'''
+
+    type_col = ':'
+    type_ast = '*'
+
+    num_colon = str_var.count(type_col)
+    num_aster = str_var.count(type_ast)
+
+    if (num_colon + num_aster) > 1:
+        print "Error! At most 1 interaction per var is permitted currently!"
+        sys.exit(14)
+
+    if num_colon :
+        return str_var.split(type_col), type_col
+    elif num_aster :
+        return str_var.split(type_ast), type_ast
+    else:
+        return [], ''
+
+
+###------------------------------------------------------------------
+###------------------------------------------------------------------
+###---------------- STOP: Interaction modeling features -------------
+###------------------------------------------------------------------
+###------------------------------------------------------------------
 
 
 ###------------------------------------------------------------------
@@ -51,29 +252,37 @@ OldFash_parnames = ['NT', 'fNT', 'FA', 'sFA', 'MD',         \
 ###------------------------------------------------------------------
 ###------------------------------------------------------------------
 
-''' Input the grid file name, and return:
-    1)  a list of data [NMAT, NROI, NROI];
-    2)  a list of labels [NMAT];
-    3)  a supplementary dictionary for each calling use;
-    4)  and a list of (int) ROI labels (which may not be consecutive).'''
+#''' Input the grid file name, and return:
+#    1)  a list of data [NMAT, NROI, NROI];
+#    2)  a list of labels [NMAT];
+#    3)  a supplementary dictionary for each calling use;
+#    4)  and a list of (int) ROI labels (which may not be consecutive).'''
 
-def Select_Row_From_FATmat(X4, outname, ele):
+def Select_Row_From_FATmat(X4, outname, ele, ele_ind, UseL, ExternLabsOK):
 
     Ngrid = len( X4[1] )
-    ROI_LABS = list(X4[3])
+    ROI_LABS = list(X4[UseL])
     Nroi = len( ROI_LABS )
 
     # have tested previously to make sure that ROI_LABS contains ele
-    ele_ind = ROI_LABS.index(ele)
+    #ele_ind = ROI_LABS.index(ele)
 
     f = open(outname, 'w')
-    f.write('# %d # Number of network ROIs\n' % Nroi)
-    f.write('# %d # Number of grid matrices\n' % Ngrid)
-    f.write('# %s # Special element\n' % ele)
+    f.write('# %d # %s\n' % (Nroi, HEADER_Nroi))
+    f.write('# %d # %s\n' % (Ngrid, HEADER_Ngrid))
 
-    for roi in ROI_LABS:
+    if ExternLabsOK:
+        # everything should have labels now
+        f.write('# %s # %s\n' % (ele, HEADER_EleID))
+        for roi in X4[4]:
+            f.write("%12s\t" % roi)
+        f.write('\n')
+    
+    for roi in X4[3]:
         f.write("%12s\t" % roi)
     f.write('\n')
+
+
 
     for i in range(Ngrid):
         f.write('# %s\n' % X4[1][i])
@@ -93,28 +302,64 @@ def Select_Row_From_FATmat(X4, outname, ele):
 
 ###------------------------------------------------------------------
 
-def MakeRowFile_From_FATmat(fname, outname, ele):
+def MakeRowFile_From_FATmat(fname, outname, ele, ExternLabsOK):
 
     X4 = LoadInGridOrNetcc(fname)
-    if X4[3].__contains__(ele):
-        y = Select_Row_From_FATmat(X4, outname, ele)
+
+    UseL = 3
+    if (len(X4) >= 4) and ExternLabsOK:
+        if X4[4]:
+            UseL = 4
+    
+    # make labels for WITH_LABELS...
+    if not(X4[4]):
+        for x in X4[3]:
+            # take half of element id
+            name = ElementNameMaker(x, x, 0)
+            lele = (len(name)-len(ConnNames))/2
+            X4[4].extend( name[:lele] )
+
+    if X4[UseL].__contains__(ele):
+        ele_ind = X4[UseL].index(ele)
+        y = Select_Row_From_FATmat(X4, 
+                                   outname, 
+                                   ele, 
+                                   ele_ind, 
+                                   UseL, 
+                                   ExternLabsOK)
+    # extra check: even if LABELS are used, might still refer to ID
+    # number ok
+    elif (UseL == 4) and X4[3].__contains__(ele):
+        print "*+ Even though you have labels in the file, it looks like",
+        print "your 'roi' selection is just a digit."
+        print "\t-> Not a problem-- row selection will be done based on ROI",
+        print "number (and not on labeltable-info)."
+        ele_ind = X4[3].index(ele)
+        y = Select_Row_From_FATmat(X4, 
+                                   outname, 
+                                   ele, 
+                                   ele_ind,
+                                   3, 
+                                   ExternLabsOK)
     else:
         print "** Error: chosen element ",
         print "'%s' doesn't appear in file's ROI list!" % ele
-        print X4[3]
+        print "For reference, the list of ROIs is:"
+        for x in X4[UseL]:
+            print "\t",x
         sys.exit(55)
 
     return y
 
 ###------------------------------------------------------------------
 
-def DefaultNamingOutRowfile(list_all, ele):
+def DefaultNamingOutRowfile(list_all, ele, ExternLabsOK):
     
     out = []
 
     # take half of element id
-    name = ElementNameMaker(ele, ele)
-    lele = (len(name)-1)/2
+    name = ElementNameMaker(ele, ele, ExternLabsOK)
+    lele = (len(name)-len(ConnNames))/2
     roi = name[:lele] 
 
     for x in list_all:
@@ -327,12 +572,15 @@ def MakeGridTableau(DICT_CSV_grid, \
                     grid_data,     \
                     grid_ROIlist,  \
                     grid_VARlist,  \
-                    grid_subj):
+                    grid_subj,
+                    ExternLabsOK):
     '''Take a lot of matrix file info in, as well as the CSV file and
     conversion dictionary, and return a tableau of necessary
     variable&parameter values from all the subjects' matrix file data.
     Output is a list ordered by CSV subject, for ease in final
     writing.'''
+
+    # here, gridVARlist is actually a list of PARAMETERS.
 
     print '++ Starting to select and convert matrix data to usable',
     print 'form for output...'
@@ -349,14 +597,19 @@ def MakeGridTableau(DICT_CSV_grid, \
         grid_subb = DICT_CSV_grid[csv_subb]
         ii = Check_EleIn_ROIlist(grid_subj, grid_subb)
         #print "HI!", i, ii
-        if ii>=0: 
+        if ii>=0:
+            UseL = 3
+            if (len(grid_data[ii]) >= 4) and ExternLabsOK:
+                if grid_data[ii][4]:
+                    UseL = 4
+            Ntar = len(grid_data[ii][UseL])
             for j in range(Nroi):
-                Ntar = len(grid_data[ii][3])
                 for x in range(Ntar):
                     for y in range(x+1,Ntar):
                         # inefficient search...
-                        ele = ElementNameMaker(grid_data[ii][3][x], \
-                                                      grid_data[ii][3][y])
+                        ele = ElementNameMaker(grid_data[ii][UseL][x], 
+                                               grid_data[ii][UseL][y],
+                                               UseL-3)
                         if grid_ROIlist[j] == ele:
                             #print ii,j, ele
                             for k in range(Nvar):
@@ -392,10 +645,13 @@ def MakeDict_CSV_to_grid(grid_subj, csv_subj, file_match):
 #---------------------------------------------------------------------
 
 def IsFirstUncommentedSection_Multicol(fname):
+    '''Check all lines of input to see if there's more than one
+    column present.'''
     tt = ReturnFirstUncommentedSection_ofReadlines(fname)
     if tt:
-        if len(tt[0]) > 1:
-            return 1
+        for i in range(len(tt)):
+            if len(tt[i]) > 1:
+                return 1
     return 0
 
 #---------------------------------------------------------------------
@@ -638,7 +894,7 @@ def Check_Matr_type(LM):
 
     return
 
-def FindGroupwiseTargets(All_sub_grid, ftype):
+def FindGroupwiseTargets(All_sub_grid, ftype, ExternLabsOK):
     '''Take a list of 4-tuples representing subject data (and a string
     of what filetype it is), go through all, and find set of
     intersecting matrix elements based on labels.  When done, return
@@ -654,11 +910,13 @@ def FindGroupwiseTargets(All_sub_grid, ftype):
         print '\tFound %d subjects for finding ROI elements.' % Nsub
     
     ## For finding the set of ROI elements
-    a = GetSet(All_sub_grid[0], ftype)
+
+    # START EDITING HERE WITH USING LABELS
+    a = GetSet(All_sub_grid[0], ftype, ExternLabsOK)
     print '\tThe number of elements in the ROI matrix set is:\n\t  ',
     for i in range(1,Nsub):
         print '%d,' % len(a),
-        a.intersection_update(GetSet(All_sub_grid[i], ftype))
+        a.intersection_update(GetSet(All_sub_grid[i], ftype, ExternLabsOK))
     print '%d.' % len(a)
 
     temp = list(a)
@@ -667,7 +925,7 @@ def FindGroupwiseTargets(All_sub_grid, ftype):
     for t in temp:
         print '\t   %s' % t
 
-    ## For finding the set of variables
+    ## For finding the set of parameters
     b = set(All_sub_grid[0][1])
     print '\tThe (final) number of parameters in the ROI matrix set is:',
     for i in range(1,Nsub):
@@ -686,7 +944,7 @@ def FindGroupwiseTargets(All_sub_grid, ftype):
 
 ###------------------------------------------------------------------
 
-def GetSet(x, ftype):
+def GetSet(x, ftype, ExternLabsOK):
     '''Input one of the 4-tuples returned by LoadInGridOrNetcc.
     Output is a 'set' of nonempty target-connecting elements.
     FOR NOW: this is specifically for a GRID file, where there's
@@ -696,8 +954,18 @@ def GetSet(x, ftype):
         print "** ERROR: unrecognized matrix type. Don't know what to do."
         sys.exit(34)
 
+    # default: use the boring old numbers themselves as ROI labels,
+    # just zero-padding them.
+    # switch: if there's an externally input list of labels, such as
+    # from a labeltable, then use those.
+    UseL = 3
+    if (len(x) >= 4) and ExternLabsOK:
+        if x[4]:
+            UseL = 4
+
+
     #if ftype=='GRID': # later, grid vs netcc
-    Ntar = len(x[3])
+    Ntar = len(x[UseL])
     roi_set = set()  # empty set
     # should be UHT, nondiagonal selector
     for i in range(Ntar):
@@ -706,15 +974,18 @@ def GetSet(x, ftype):
             # GRID: UHT elements, with nonzero 'NT' values
             if ((ftype=='GRID') and x[0][x[2][GridCheckVar]][i,j]) \
                  or (ftype=='NETCC'):
-                roi_set.add(ElementNameMaker(x[3][i], x[3][j]))
+                roi_set.add(ElementNameMaker(x[UseL][i], x[UseL][j],UseL-3))
 
     return roi_set
 
 ###------------------------------------------------------------------
 
-def ElementNameMaker(A, B):
-    '''Current format for turning integer ROI labels into 
-    ROI element name.'''
+def ElementNameMaker(A, B, AS_IS):
+    '''Current format for turning integer ROI labels A and B into ROI
+    element name.  If AS_IS=0, then zero pad.  Else: use names as they
+    is.'''
+    # above, if UseL=3, then AS_IS=0 --> zero pad.
+
     # paranoia
     if (type(A) != str) or (type(B) != str):
         print "** ERROR: problem in element name-maker. Help!"
@@ -722,7 +993,7 @@ def ElementNameMaker(A, B):
         
     # first case is original style
     # second case is if data labels are used
-    if A.isdigit() and B.isdigit():
+    if not(AS_IS) and A.isdigit() and B.isdigit():
         aint = int(A)
         bint = int(B)
 
@@ -740,7 +1011,7 @@ def ElementNameMaker(A, B):
         x = str(A)
         y = str(B)
 
-    return x+'_'+y
+    return x+ConnNames+y
 
 #### Old version: used to treat ROI labels of elements as ints; 
 #### new possibility that they will be strings now-- so treat all as str
@@ -876,7 +1147,7 @@ def ConvertCSVfromStr(dat1, head1, NA_WARN):
                     if ty == float:
                         print "\tCSV col %s" % head1[j],
                         print "-> making all floats." , dat2[i][j]
-                        head2[i] = float
+                        head2[j] = float    # Oct, 2014 fix
                         for k in range(Lx):
                             if type(dat2[k][j]) == int:
                                 dat2[k][j] = float(dat2[k][j])
@@ -934,8 +1205,8 @@ def LoadInGridOrNetcc(fname):
     4)  and a list of (int) ROI labels (which may not be consecutive).'''
 
     x = ReadInGridOrNetcc(fname)
-    y1,y2,y3,y4 = SepHeaderFile(x, fname)
-    return y1,y2,y3,y4
+    y1,y2,y3,y4,y5 = SepHeaderFile(x, fname)
+    return y1,y2,y3,y4,y5
 
 ###------------------------------------------------------------------
 
@@ -955,8 +1226,10 @@ def SepHeaderFile(RawX, fname):
     3)  a supplementary dictionary for each calling use;
     4)  and a list of (int) ROI labels (which may not be consecutive).'''
 
-    Nroi,Nmat,ListLabels = HeaderInfo(RawX[:NLinesGridHead]) # header
-    y = RawX[NLinesGridHead:]  # info grids
+    Nroi,Nmat,ListLabels,ReadNext,ROI_str_labs = \
+     HeaderInfo(RawX[:NLinesGridHead]) # header
+
+    y = RawX[ReadNext:]  # info grids
 
     y = RemoveEmptyWhitespaceFromReadlines(y, fname)
 
@@ -987,7 +1260,7 @@ def SepHeaderFile(RawX, fname):
                 ctr+=1
   
         OUT_data.append(np.array(temp))
-    return OUT_data, OUT_labs, OUT_dlab,ListLabels
+    return OUT_data, OUT_labs, OUT_dlab,ListLabels,ROI_str_labs
 
 ###------------------------------------------------------------------
 
@@ -1027,7 +1300,27 @@ def HeaderInfo(RawX):
         print "ERROR reading header! Number of Matrices is: %d" % Nmat
         sys.exit(54)
 
-    ListLabels=RawX[2].split()
+    # Sept 2014: might have labels here.
+    # defaults
+    listreadline = 2
+    ReadNext = 3
+    ROI_str_labs = []
+    # check about changing if LABELS are input
+    temp = RawX[2].split()
+    if len(temp) > 1:
+        if temp[1] == HEADER_Labels:
+            print "++ Have ROI LABELS: reading."
+            listreadline = 4
+            ReadNext = 5
+            ROI_str_labs = RawX[3].split()
+            ll = len(ROI_str_labs)
+            if not( ll == Nroi ):
+                print "ERROR reading header!"
+                print "  Number of ROIs (%d) doesn't match stringnames (%d)" % \
+                 (Nroi,ll)
+                sys.exit(55)
+
+    ListLabels=RawX[listreadline].split()
     ll = len(ListLabels)
     if not( ll == Nroi ):
         print "ERROR reading header!"
@@ -1042,7 +1335,7 @@ def HeaderInfo(RawX):
 #            (i,ListLabels[i])
 #            sys.exit(56)
 
-    return Nroi, Nmat, ListLabels
+    return Nroi, Nmat, ListLabels, ReadNext, ROI_str_labs
 
 ###------------------------------------------------------------------
 ###------------------------------------------------------------------
@@ -1116,8 +1409,15 @@ def mod_func_write(Nroi, ROI_LABS, Y, fname, outname):
         print "\tmatrices in the *.grid file!"
 
     f = open(outname, 'w')
-    f.write('# %d # Number of network ROIs\n' % Nroi)
-    f.write('# %d # Number of grid matrices\n' % Ngrid)
+    f.write('# %d # %s\n' % (Nroi, HEADER_Nroi))
+    f.write('# %d # %s\n' % (Ngrid, HEADER_Ngrid))
+
+    #f.write('# %s \n' % HEADER_Labels)  
+    #for roi in ROI_LABS:
+    #    tt = "Funcky%dFresh" % int(roi)
+    #    f.write("%12s\t" % tt)
+    #f.write('\n')
+
     for roi in ROI_LABS:
         f.write("%12s\t" % roi)
     f.write('\n')

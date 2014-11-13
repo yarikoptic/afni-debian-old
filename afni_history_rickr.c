@@ -49,6 +49,131 @@
 
 afni_history_struct rickr_history[] = {
 
+ {  7,  Nov, 2014, RCR, "mri_nwarp.c", MICRO, TYPE_BUG_FIX,
+   "applied update to free temporary warp on behalf of RWC",
+   NULL
+ } ,
+
+ {  7,  Nov, 2014, RCR, "auto_warp.py", MICRO, TYPE_MODIFY,
+   "moved -affter warp to -warp in 3dNwarpApply",
+   NULL
+ } ,
+
+ {  7,  Nov, 2014, RCR, "afni_proc.py", MICRO, TYPE_MODIFY,
+   "moved -affter warp to -warp in 3dNwarpApply",
+   "This applies the 22 Oct, 2014 change to 3dNwarpApply."
+ } ,
+
+ {  7,  Nov, 2014, RCR, "model_conv_PRF_6", MINOR, TYPE_NEW_PROG,
+   "6 parameter population receptive field estimate model",
+   "Added sigrat (sigma ratio) and theta parameters.\n"
+   "For E Silson and C Baker."
+ } ,
+
+ {  4, Nov, 2014, RCR, "CA_EZ_atlas.csh", MICRO, TYPE_MODIFY,
+   "with unchecked -help this dumps TT_N27 in current directory",
+   "Updated so that 'apearch -update_all_afni_help' does not dump dataset.\n"
+   "Updated directly under pub/dist/bin.\n"
+   "Should this script even be distributed?"
+ } ,
+
+ { 28, Oct, 2014, RCR, "timing_tool.py", MICRO, TYPE_ENHANCE,
+   "expanded -help_basis",
+   NULL
+ } ,
+
+ { 27, Oct, 2014, RCR, "Dimon", MINOR, TYPE_BUG_FIX,
+   "fixed strcmp trap in -sbns; have -sb_num_suffix look for any last integer",
+   NULL
+ } ,
+
+ { 27, Oct, 2014, RCR, "afni-general", MINOR, TYPE_ENHANCE,
+   "added 107 face images for 20 years",
+   NULL
+ } ,
+
+ { 23, Oct, 2014, RCR, "afni_util.py", MINOR, TYPE_ENHANCE,
+   "enhanced read_text_file and added shuffle_blocks",
+   NULL
+ } ,
+
+ { 22, Oct, 2014, RCR, "3dmask_tool", MICRO, TYPE_BUG_FIX,
+   "if padding for dilate/erode steps, preserve ijk_to_dicom_real",
+   "Thanks to A Kurani for nothing the problem."
+ } ,
+
+ { 20, Oct, 2014, RCR, "imcat", MINOR, TYPE_BUG_FIX,
+   "z and r: fixed y-padding",
+   NULL
+ } ,
+
+ { 16, Oct, 2014, RCR, "Dimon", MINOR, TYPE_NEW_OPT,
+   "added sort_methods: none, acq_time, default, num_suffix, zposn",
+   NULL
+ } ,
+
+ {  8, Oct, 2014, RCR, "Dimon", MINOR, TYPE_BUG_FIX,
+   "added -save_errors and more recovery chances, fixed sb_num_suffix app",
+   "Stage 3 of sorting broke stage 2 of sorting.\n"
+   "Thanks to V Roopchansingh for noting the problem."
+ } ,
+
+ { 25, Sep, 2014, RCR, "Dimon", MICRO, TYPE_BUG_FIX,
+   "fixed use of altered add_to_string_list()",
+   "The changed usage broke options -drive_afni, -drive_wait and -rt_cmd.\n"
+   "Thanks to V Roopchansingh for noting the problem."
+ } ,
+
+ { 24, Sep, 2014, RCR, "afni_util.py", MICRO, TYPE_NEW_OPT,
+   "added -list2 case under -listfunc",
+   NULL
+ } ,
+
+ { 23, Sep, 2014, RCR, "afni-general", MINOR, TYPE_BUG_FIX,
+   "cat_strings was missing trailing byte",
+   "Thanks to Q Li for noting the problem."
+ } ,
+
+ { 23, Sep, 2014, RCR, "afni_util.py", MINOR, TYPE_NEW_OPT,
+   "added some explicit -help and improved the few existing options",
+   NULL
+ } ,
+
+ { 22, Sep, 2014, RCR, "3dexample1", MICRO, TYPE_ENHANCE,
+   "made mention of 3dToyProg.c",
+   NULL
+ } ,
+
+ { 22, Sep, 2014, RCR, "SUMA_Makefile_NoDev", MICRO, TYPE_MODIFY,
+   "removed ../suma_*.o from clean directive",
+   NULL
+ } ,
+
+ { 22, Sep, 2014, RCR, "thd_http.c", MICRO, TYPE_MODIFY,
+   "changed mktemp() to mkstemp() to get rid of those compile warnings",
+   NULL
+ } ,
+
+ { 22, Sep, 2014, RCR, "column_cat", MINOR, TYPE_BUG_FIX,
+   "fixed implementation of -line, which messed up default operation",
+   NULL
+ } ,
+
+ { 19, Sep, 2014, RCR, "3dexample1", MINOR, TYPE_NEW_PROG,
+   "sample program to multiply a dataset by 2",
+   "This is very basic example of reading/processing/writing AFNI datasets."
+ } ,
+
+ { 16, Sep, 2014, RCR, "3dmask_tool", MINOR, TYPE_NEW_OPT,
+   "added -fill_dirs option, to specify directions for hole filling",
+   "Added for D. Glen."
+ } ,
+
+ { 15, Sep, 2014, RCR, "file_tool", MINOR, TYPE_ENHANCE,
+   "apply -prefix for -show_file_type (a dos2unix conversion)",
+   NULL
+ } ,
+
  { 10, Sep, 2014, RCR, "Dimon", MICRO, TYPE_ENHANCE,
    "handle num_chan > 1 in GERT_Reco scripts",
    NULL

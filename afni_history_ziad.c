@@ -65,7 +65,106 @@
 
 afni_history_struct ziad_history[] = {
 /*=====BELOW THIS LINE=====*/
+
+ { 4, Nov, 2014, ZSS, "suma", MINOR, TYPE_MODIFY,
+   "Continued modifications for help generating functions, now with selfies",
+   "Now SUMA can take selfies of the varied widget frames, making the  \n"
+   "documentation easier to generate. This involved adding a new version\n"
+   "of ISQ_snapfile() called ISQ_snapfile2() and a rendering of a colormap\n"
+   "in X11. Search for Fake_Cmap for relevant locations in C code."
+ },
  
+ { 17, Oct, 2014, ZSS, "suma", MAJOR, TYPE_GENERAL,
+   "Modifications for help generating functions",
+   "New tools allow for automatic Sphinx formatted documentation straight \n"
+   "from BHelp buttons. Added scrolling to arrow fields."
+ },
+ 
+ { 17, Oct, 2014, ZSS, "DriveSuma", MINOR, TYPE_NEW_OPT,
+   "Added -load_masks, -save_masks, and -masks for driving tract controller",
+   "Options help in creating all GUI help and herald the automation of the \n"
+   "tract and tract masking controller."
+ },
+ 
+ { 17, Oct, 2014, ZSS, "afni-general", MAJOR, TYPE_GENERAL,
+   "Checked in first pass of SUMA sphinx documentation",
+   "GUI documentaiton is automatically generated from BHelp text."
+ },
+ 
+ { 15, Oct, 2014, ZSS, "imcat", MINOR, TYPE_NEW_OPT,
+   "Added -respad_in, -gscale, and -pad_val options",
+   "Proces involved modifications to mri_read_resamp_many_files(),\n"
+   "mri_zeropad_2D(), and a new mri_valpad_2D(). See imcat -help for details."
+ },
+ 
+ { 10, Oct, 2014, ZSS, "suma", MINOR, TYPE_NEW_OPT,
+   "Added directions and point clouds as DOs",
+   "See interactive help for #directions, #points"
+ },
+ 
+ { 7, Oct, 2014, ZSS, "AFNIio.R", MINOR, TYPE_NEW_OPT,
+   "Allowed specification and inheritance of TR in write functions",
+   NULL
+ },
+ 
+ { 30, Sep, 2014, ZSS, "suma", MAJOR, TYPE_BUG_FIX,
+   "Fixed bug with NUMLOCK keeping surfaces from rotating on linux!",
+   NULL
+ },
+ 
+ { 30, Sep, 2014, ZSS, "suma", MICRO, TYPE_NEW_OPT,
+   "Now show bundles labels recently added to FATCAT",
+   NULL
+ },
+ 
+ { 24, Sep, 2014, ZSS, "ConvertSurface", MICRO, TYPE_BUG_FIX,
+   "Fixed bug with line projection of coordinates.",
+   NULL
+ },
+ 
+ { 23, Sep, 2014, ZSS, "suma", MINOR, TYPE_NEW_OPT,
+   "Allowed interactive cluster thresholding by node number (-ve Area value)",
+   "Previously this was possible only via command line's -n option.\n"
+   "Command line now also supports negative -amm2 values if -n is not set.\n"
+ },
+ 
+ { 22, Sep, 2014, ZSS, "3dGenFeatureDist", MINOR, TYPE_NEW_OPT,
+   "Added -hspec to explicitly set histogram generation parameters",
+   NULL
+ },
+ 
+ { 17, Sep, 2014, ZSS, "ConvertSurface", MINOR, TYPE_NEW_OPT,
+   "Added -pc_proj and -node_depth options.",
+   "These options are meant to help localizing seeds along DBS electrodes.\n"
+   "Relevant C code functions: SUMA_NodeDepth(), SUMA_Project_Coords_PCA()\n"
+   "and SUMA_*_PC_XYZ_Proj()\n"
+ },
+  
+ { 17, Sep, 2014, ZSS, "suma", MINOR, TYPE_BUG_FIX,
+   "A few miscellaneous errors here and there",
+   "One was caused by extra space in driver command\n"
+   "Another was caused by loading multiple surfs on the command line\n"
+   "followed by a command line drive command.\n"
+   "Intersection parameters were not fully initialized under some conditions.\n"
+ },
+  
+ { 16, Sep, 2014, ZSS, "suma", MINOR, TYPE_BUG_FIX,
+   "Use of percentiles in range settings was broken. That is no more.",
+   "Problem was caused by reliance on colp->V without resetting it\n"
+   "when a new range was set. That is because colp->V gets clamped\n"
+   "by the range of values being set."
+ },
+  
+ { 12, Sep, 2014, ZSS, "suma", MINOR, TYPE_BUG_FIX,
+   "Crosshair mismatch when prying surfs in multiple linked viewers",
+   NULL
+ },
+  
+ { 12, Sep, 2014, ZSS, "suma", MINOR, TYPE_BUG_FIX,
+   "Fixed crash caused by toggling off 'I' selection for volumes",
+   NULL
+ },
+  
  { 03, Sep, 2014, ZSS, "3dSetupGroupInCorr", MINOR, TYPE_BUG_FIX,
    "Made -labels option work well with -LRpairs",
    NULL

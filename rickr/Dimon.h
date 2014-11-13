@@ -46,7 +46,17 @@
 #define IFM_FSTATE_TO_READ   4       /* ready to read image          */
 
 #define IFM_MAX_READ_ERRORS  2       /* after this, go to failed state */
-#define IFM_NUM_RETRIES      1       /* volume retries before failing  */
+#define IFM_NUM_RETRIES      2       /* volume retries before failing  */
+
+#define IFM_SORT_UNKNOWN    -1       /* -sort_method possibilities:    */
+#define IFM_SORT_UNSPEC      0       /*    not specified               */
+#define IFM_SORT_NONE        1       /*    no realtime sorting         */
+#define IFM_SORT_ACQ_TIME    2       /*    default RT sort             */
+#define IFM_SORT_DEFAULT     3       /*    default RT sort             */
+#define IFM_SORT_GEME        4       /*    GE multi-echo index         */
+#define IFM_SORT_NUM_SUFF    5       /*    numerical file suffix       */
+#define IFM_SORT_ZPOSN       6       /*    z-coordinate                */
+#define IFM_SORT_NUM_METHODS 6       /*    should match top index      */
 
 /* -- define copies -- */
 
@@ -101,6 +111,7 @@ typedef struct  /* user options */
     int              sort_acq_time; /* flag to sort by acq time         */
     int              rev_org_dir;   /* flag to reverse dicom_org dir    */
     int              rev_sort_dir;  /* flag to reverse glob sort dir    */
+    int              save_errors;   /* save details in cases of errors  */
     char           * flist_file;    /* filename to save file list to    */
     char           * flist_details; /* filename to save list details to */
     char           * sort_method;   /* method for realtime sorting      */

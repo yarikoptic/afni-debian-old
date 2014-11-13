@@ -9,7 +9,7 @@ void SUMA_cb_createSurfaceCont_MDO(Widget w, XtPointer data,
                                      XtPointer callData)
 {
    static char FuncName[] = {"SUMA_cb_createSurfaceCont_MDO"};
-   Widget tl, pb, form, DispFrame, SurfFrame, 
+   Widget tl, pb, form,  
           rc_left, rc_right, rc_mamma, rc_gmamma, tls=NULL;
    Display *dpy;
    SUMA_ALL_DO *ado;
@@ -191,11 +191,56 @@ void SUMA_cb_createSurfaceCont_MDO(Widget w, XtPointer data,
             NULL);
    
 
-   DispFrame = SUMA_CloseBhelp_Frame(rc_gmamma,
+   SurfCont->DispFrame = SUMA_CloseBhelp_Frame(rc_gmamma,
                      SUMA_cb_closeSurfaceCont, (XtPointer) ado,
                      "MaskCont", "Close Surface controller", 
                      SUMA_closeSurfaceCont_help,
                      NULL, NULL, NULL, NULL);
+   SUMA_Register_Widget_Help( NULL , 
+                              "MaskCont",
+                              "Network tracts mask controller",
+"The mask controller is used for manipulating masks for network tracts"
+":SPX:"
+"You can launch the :ref:`Mask Controller <MaskCont>` from the "
+":ref:`tract controller <TractCont>` by clicking on :ref:`Masks<TractCont->Coloring_Controls->Masks>` twice."
+"\n\n"
+".. figure:: media/MaskController.02.jpg\n"
+"   :align: center\n"
+"\n\n"
+"   ..\n\n"
+":DEF:"
+"You can launch the Mask Controller by clicking twice on the 'Masks' "
+"button of the tract controller.\n"
+":SPX:"
+"\n"  );
+   
+   /* Also stick in some help for fictitious widget of mask manipulation mode*/
+   SUMA_Register_Widget_Help( NULL , 
+                              "Mask_Manipulation_Mode",
+                              "Mask Manipulation Mode",
+"To move the mask interactively, right-double click on it to place SUMA "
+"in :term:`Mask Manipulation Mode` which is indicated by displaying the "
+"moveable mask in mesh mode (see help in SUMA, (:ref:`ctrl+h<LC_Ctrl+h>`),"
+" section :ref:`Button 3-DoubleClick<Button_3-DoubleClick>` for details.)."
+" Selecting a location on the tracts, the slices, or surfaces, will make the"
+" mask jump to that location. The mask should also be visibile in AFNI (if "
+"SUMA is launched with -dev option), and clicking in AFNI will make the mask "
+"move in SUMA also.\n\n"
+"To turn off 'Mask Manipulation Mode' right-double click in open air, or on the"
+" manipulated mask itself.\n"
+":SPX:\n"
+".. figure:: media/MaskManipulationMode_OFF.jpg\n"
+"   :align: left\n"
+"   :figwidth: 45%\n\n"
+"   Mask manipulation OFF.\n"
+"\n"
+".. figure:: media/MaskManipulationMode_ON.jpg\n"
+"   :align: right\n"
+"   :figwidth: 45%\n\n"
+"   Mask manipulation ON.\n\n"
+SUMA_SHPINX_BREAK
+":SPX:"
+   );
    
    XtVaCreateManagedWidget ("sep", xmSeparatorWidgetClass, rc_gmamma , NULL);
          
@@ -230,7 +275,7 @@ void SUMA_cb_createSurfaceCont_MDO(Widget w, XtPointer data,
       Widget rc, label, rc_SurfProp, pb;
      
       /* put a frame */
-      SurfFrame = XtVaCreateWidget ("dialog",
+      SurfCont->SurfFrame = XtVaCreateWidget ("dialog",
          xmFrameWidgetClass, rc_left,
          XmNshadowType , XmSHADOW_ETCHED_IN ,
          XmNshadowThickness , 5 ,
@@ -238,13 +283,21 @@ void SUMA_cb_createSurfaceCont_MDO(Widget w, XtPointer data,
          NULL); 
       
       XtVaCreateManagedWidget ("Masks",
-            xmLabelWidgetClass, SurfFrame, 
+            xmLabelWidgetClass, SurfCont->SurfFrame, 
             XmNchildType, XmFRAME_TITLE_CHILD,
             XmNchildHorizontalAlignment, XmALIGNMENT_BEGINNING,
             NULL);
-      
+      SUMA_Register_Widget_Help( NULL , 
+                                 "MaskCont->Masks",
+                          "Create/delete masks and setup masking expression",
+                  ":SPX:\n\n"
+                  ".. figure:: media/MaskCont.auto.Masks.jpg\n"
+                  "   :align: right\n\n"
+                  "   ..\n\n"
+                  ":SPX:") ;            
+
       rc_SurfProp = XtVaCreateWidget ("rowcolumn",
-            xmRowColumnWidgetClass, SurfFrame,
+            xmRowColumnWidgetClass, SurfCont->SurfFrame,
             XmNpacking, XmPACK_TIGHT, 
             XmNorientation , XmVERTICAL ,
             XmNmarginHeight, 0 ,
@@ -424,7 +477,7 @@ void SUMA_cb_createSurfaceCont_MDO(Widget w, XtPointer data,
       
       XtManageChild (rc_SurfProp);
       if (!XtIsManaged(SurfCont->rcswr)) XtManageChild (SurfCont->rcswr);
-      XtManageChild (SurfFrame);
+      XtManageChild (SurfCont->SurfFrame);
    }
    
    if (!SUMA_InitMasksTable(SurfCont)) {
@@ -435,7 +488,7 @@ void SUMA_cb_createSurfaceCont_MDO(Widget w, XtPointer data,
    if (SUMAg_CF->X->UseSameSurfCont) {
       Widget rc=NULL;
       /* put something to cycle through objects */
-      if ((rc = SUMA_FindChildWidgetNamed(DispFrame, "rowcolumnCBF"))) {
+      if ((rc = SUMA_FindChildWidgetNamed(SurfCont->DispFrame,"rowcolumnCBF"))) {
          XtVaCreateManagedWidget (  "sep", 
                               xmSeparatorWidgetClass, rc, 
                               XmNorientation, XmVERTICAL,NULL);
@@ -446,7 +499,7 @@ void SUMA_cb_createSurfaceCont_MDO(Widget w, XtPointer data,
                            SUMA_cb_SurfCont_SwitchPage, (void *)ado,
                            "MaskCont->Disp_Cont->Switch",
                            "Switch to other object controller", 
-                           "Switch to other object controller",
+                           SUMA_Switch_Cont_BHelp,
                            SurfCont->SurfContPage);
          xmstmp = XmStringCreateLtoR (SUMA_ADO_CropLabel(ado,
                                        SUMA_SURF_CONT_SWITCH_LABEL_LENGTH), 
@@ -709,6 +762,19 @@ void SUMA_MaskTableCell_EV ( Widget w , XtPointer cd ,
          break;
       case 4:
          SUMA_LH("Need to set center for mask %s", ADO_LABEL(ado));
+         if (incr) {
+         } else{
+            if (bev->button == Button3) {/* reset dim */
+               SUMA_MDO_New_Cen(mdo,mdo->init_cen);
+            }
+            SUMA_InitMasksTable_row(SurfCont,mdo, i);
+            SUMA_NEW_MASKSTATE();
+            /* redisplay */
+            if (!list) list = SUMA_CreateList ();
+            SUMA_REGISTER_TAIL_COMMAND_NO_DATA(list, SE_Redisplay_AllVisible, 
+                                               SES_Suma, NULL); 
+            if (!SUMA_Engine(&list)) SUMA_SLP_Err("Failed to redisplay.");
+         }
          break;
       case 5:
          if (incr) {
@@ -716,6 +782,10 @@ void SUMA_MaskTableCell_EV ( Widget w , XtPointer cd ,
             fv[1] = mdo->hdim[1]+(incr*0.2*mdo->init_hdim[1]); 
             fv[2] = mdo->hdim[2]+(incr*0.2*mdo->init_hdim[2]);
             SUMA_MDO_New_Dim(mdo, fv);
+         } else {
+            if (bev->button == Button3) {/* reset dim */
+               SUMA_MDO_New_Dim(mdo,mdo->init_hdim);
+            }
          }
          SUMA_InitMasksTable_row(SurfCont,mdo, i);
          
@@ -1927,12 +1997,9 @@ SUMA_Boolean SUMA_ModifyTable(SUMA_TABLE_FIELD *TF, int Nrows)
                            snprintf(wname, 63, "%s[%d]", TF->wname, n);
                         }
                         SUMA_Register_Widget_Help(TF->cells[n], wname,
-                                    "Hints and help messages "
-                                    "are attached to table's "
-                                    "column and row titles.",
-                                    "Hints and help messages "
-                                    "are attached to table's "
-                                    "column and row titles.") ;
+                                    NULL,
+                                    "Use BHelp on table's column and row titles"
+                                    "for usage information.") ;
                      }
                   } 
                   if (TF->cwidth[j] > 0) {  
@@ -2401,14 +2468,31 @@ void SUMA_cb_Mask (Widget w, XtPointer client_data, XtPointer callData)
    
    SUMA_ENTRY;
 
+   if (!client_data) {
+      SUMA_S_Err("Bad call, no clients.");
+      SUMA_RETURNe;
+   }
    ado = (SUMA_ALL_DO *)client_data;
    if (ado->do_type != TRACT_type) {
       SUMA_S_Err("Expect tracts only here");
       SUMA_RETURNe;
    }
    tdo = (SUMA_TractDO *)ado;
-   SurfCont = SUMA_ADO_Cont(ado);
+   if (!(SurfCont = SUMA_ADO_Cont(ado))) {
+      SUMA_S_Err("No surfcont? Work with me please!");
+      SUMA_RETURNe;
+   }
    TSaux = TDO_TSAUX(tdo);
+   if (!w || !callData) {
+      /* OK, callback used by driver too */
+      SUMA_LH("Driven? Make sure tracts controller already up");
+      if (!SUMA_isADO_Cont_Created(ado)) {
+         if (!SUMA_OpenCloseSurfaceCont(w, ado, NULL)) {
+            SUMA_S_Err("Could not open tract cont");
+            SUMA_RETURNe;
+         }
+      }
+   }
    
    /* How many masks do we have so far? */
    if (!SUMA_findanyMDOp_inDOv(SUMAg_DOv, SUMAg_N_DOv, &ido)) {
@@ -2630,6 +2714,35 @@ void SUMA_delete_mask_timeout_CB( XtPointer client_data , XtIntervalId * id )
    SUMA_RETURNe; 
 }
 
+SUMA_Boolean SUMA_DeleteAllMasks(char *labeled, SUMA_DO *dov, int N_dov)
+{
+   static char FuncName[]= {"SUMA_DeleteAllMask"};
+   int i = 0;
+   SUMA_MaskDO *MDO = NULL;
+   SUMA_ALL_DO *ado = NULL;
+   
+   SUMA_ENTRY;
+   
+   if (!dov) {
+      dov = SUMAg_DOv;
+      N_dov = SUMAg_N_DOv;
+   }
+   for (i=0; i< N_dov; ++i) {
+      if (dov[i].ObjectType != MASK_type) continue;
+      MDO = (SUMA_MaskDO *)dov[i].OP;
+      ado = (SUMA_ALL_DO *)MDO;
+      
+      if (!MDO_IS_SHADOW(MDO) && 
+          (!labeled || (!strcmp(labeled,ADO_LABEL(ado)))) ) {
+         if (!(SUMA_DeleteMask(ADO_ID(ado)))) {
+            SUMA_S_Err("Failed to delete MDO");
+         }
+      }
+   }
+   
+   SUMA_RETURN(YUP);
+}
+
 /* Delete a MaskDO from everything and everywhere.
    Make sure changes here, parallel those in function SUMA_cb_Mask_Delete()
    right where SUMA_DeleteMask() is mentioned.*/
@@ -2701,7 +2814,7 @@ SUMA_Boolean SUMA_DeleteMask(char *ado_id)
    /* delelte the current mask from DOv */
    if (!SUMA_RemoveDO(SUMAg_DOv, &SUMAg_N_DOv, (void *)ado, 1)){
       SUMA_S_Err("Failed to dump DO");
-      SUMA_RETURNe;
+      SUMA_RETURN(NOPE);
    }
    
    if (found >= 0 && SurfCont && SurfCont->MaskTable) {
@@ -3285,7 +3398,7 @@ void SUMA_CreateVrFields(  Widget parent,
                   SUMAg_CF->X->TableTextFontList, NULL);
 
    if (hint || help) {
-      snprintf(wname,63,"%s->text", VrF->wname);
+      snprintf(wname,63,"%s->Ns", VrF->wname);
       SUMA_Register_Widget_Help(VrF->text, wname, hint, help);
    }
    XtVaSetValues(VrF->text, XmNcolumns, 3, NULL); 
@@ -3311,7 +3424,7 @@ void SUMA_CreateVrFields(  Widget parent,
    XtAddCallback (VrF->tb, 
          XmNvalueChangedCallback, SUMA_cb_ShowVrF_toggled, ado);
    if (hint || help) {
-      snprintf(wname,63,"%s->tb", VrF->wname);
+      snprintf(wname,63,"%s->Ns->v", VrF->wname);
       SUMA_Register_Widget_Help(VrF->tb, wname, 
                                 "View (ON)/Hide VrF", 
                                 SUMA_SurfContHelp_ShowVrFTgl);
@@ -4096,7 +4209,7 @@ SUMA_Boolean SUMA_Register_Widget_Help(Widget w, char *name,
    if (w) {
       if (help) {
          s = SUMA_copy_string(help);
-         SUMA_Sphinx_String_Edit(s, 0);
+         s = SUMA_Sphinx_String_Edit(&s, 0, 0);
          st = s;
          s = SUMA_Break_String(st, 60); SUMA_ifree(st); 
          /* DO not free s, MCW_register_help uses the pointer as 
@@ -4134,7 +4247,7 @@ SUMA_Boolean SUMA_Register_Widget_Children_Help(Widget w, char *name,
    
    if (help) {
       s = SUMA_copy_string(help);
-      SUMA_Sphinx_String_Edit(s, 0);
+      s = SUMA_Sphinx_String_Edit(&s, 0, 0);
       st = s;
       s = SUMA_Break_String(st, 60); SUMA_ifree(st); 
          /* DO not free s, MCW_register_help uses the pointer as 
@@ -4149,4 +4262,40 @@ SUMA_Boolean SUMA_Register_Widget_Children_Help(Widget w, char *name,
       MCW_register_hint(w, s);
    }
    SUMA_RETURN(YUP);
+}
+
+SUMA_Boolean SUMA_wait_till_visible(Widget w, int maxms) 
+{
+   static char FuncName[]={"SUMA_wait_till_visible"};
+   int k, del=100, vis=0;
+   
+   SUMA_ENTRY;
+   
+   if (!w) SUMA_RETURN(NOPE);
+   
+   if (0 && !XtIsManaged(w)) {/* possible to return 0 because of asychrony */
+      SUMA_S_Err("Widget not managed");
+      SUMA_RETURN(NOPE);
+   }
+   if (!XtIsRealized(w)) {
+      SUMA_S_Err("Widget not realized");
+      SUMA_RETURN(NOPE);
+   }
+   
+   if (MCW_widget_visible(w)) SUMA_RETURN(YUP);
+   if (maxms < 0) maxms = 10000;
+   k = 0;
+   while ( !(vis=MCW_widget_visible(w)) && (k < maxms) ) {
+      fprintf(stderr,".");
+      if (k == 0) {
+         /* try to hurry things along */
+         XtPopup(w, XtGrabNone);
+         XmUpdateDisplay(w ) ;
+         XSync(XtDisplay(w), 0);
+      }
+      NI_sleep(del); k += del;     
+   }
+   if (k>0) fprintf(stderr,"\n");
+   
+   SUMA_RETURN((SUMA_Boolean)vis);
 }

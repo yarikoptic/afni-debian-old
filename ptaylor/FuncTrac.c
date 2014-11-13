@@ -61,19 +61,21 @@ TRACK_RUN_PARAMS SetInitialTrackingDefaults(void)
    defopt.MINI_PROB_NM=0;              //  "-mini_num"
    defopt.CHOOSE_SEED = 0;             //  "-choose_seed"
    defopt.OUTPUT_TRK = 1;              //  "-no_trk_out"
+   defopt.OUT_INDIPAIR = 1;            //  "-no_indipair_out"
 
    // minorly used control stuff, mostly default
    defopt.NAMEIN_outmode = NULL;       //  "-tract_out_mode"
    defopt.dump_opts=0;                 //  "-write_opts"
    defopt.ROIS_OUT = 0;                //  "-write_rois"
-   defopt.DUMP_ORIG_LABS=0;            //  "-lab_orig_rois"
+   defopt.DUMP_ORIG_LABS=1;            //  "-dump_lab_consec"
    // switch about having no min threshold,and dumping ROIs
    defopt.POST=0;                      //  "-posteriori"
    // switch about whether to dump ascii/afni/both
    defopt.DUMP_TYPE=-1;                //  "-dump_rois"
+   defopt.DUMP_with_LABELS=1;          //  "-dump_no_labtab"
    defopt.RECORD_ORIG=0;               //  "-rec_orig"
-   defopt.PAIRPOWER=1;                 //  "-pair_out_int"
-   defopt.EXTRA_TR_PAR=0;              //  "-pair_out_int"
+   defopt.PAIRPOWER=0;                 //  "-pair_out_power"
+   defopt.EXTRA_TR_PAR=0;              //  "extra_tr_par"
 
    // EXPIRED OPTIONS, just gives message/error:
    // "-cut_at_rois"

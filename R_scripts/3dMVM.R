@@ -32,7 +32,7 @@ help.MVM.opts <- function (params, alpha = TRUE, itspace='   ', adieu=FALSE) {
           ================== Welcome to 3dMVM ==================          
     AFNI Group Analysis Program with Multi-Variate Modeling Approach
 #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-Version 3.2.7, Sept 5, 2014
+Version 3.2.9, Oct 24, 2014
 Author: Gang Chen (gangchen@mail.nih.gov)
 Website - http://afni.nimh.nih.gov/sscc/gangc/MVM.html
 SSCC/NIMH, National Institutes of Health, Bethesda MD 20892
@@ -61,8 +61,8 @@ Usage:
  
  Chen, G., Adleman, N.E., Saad, Z.S., Leibenluft, E., Cox, R.W. (in press). 
  Applications of Multivariate Modeling to Neuroimaging Group Analysis: A
- Comprehensive Alternative to Univariate General Linear Model. NeuroImage.
- 10.1016/j.neuroimage.2014.06.027
+ Comprehensive Alternative to Univariate General Linear Model. NeuroImage 99,
+ 571-588. 10.1016/j.neuroimage.2014.06.027
  http://afni.nimh.nih.gov/pub/dist/HBM2014/Chen_in_press.pdf
 
  In addition to R installation, the following two R packages need to be acquired
@@ -412,19 +412,31 @@ read.MVM.opts.batch <- function (args=NULL, verb = 0) {
                      ) ),
 
      '-num_glt' = apl(n=1, d=0, h = paste(
-   "-num_glt NUMBER: Specify the number of general linear tests (GLTs). A glt",
+   "-num_glt NUMBER: Specify the number of general linear t-tests (GLTs). A glt",
    "         is a linear combination of a factor levels. See details in ",
-   "         -gltLabel.\n", sep = '\n'
+   "         -gltCode.\n", sep = '\n'
+             ) ),
+
+     '-num_glf' = apl(n=1, d=0, h = paste(
+   "-num_glf NUMBER: Specify the number of general linear F-tests (GLFs). A glf",
+   "         is a linear combination of a factor levels. See details in ",
+   "         -glfCode.\n", sep = '\n'
              ) ),
                      
      '-gltLabel' = apl(n=c(1,1000), d=NA, h = paste(
-   "-gltLabel k label: Specify the label for the k-th general linear test",
+   "-gltLabel k label: Specify the label for the k-th general linear t-test",
    "         (GLT). A symbolic coding for the GLT is assumed to follow with",
    "         each -gltLabel.\n", sep = '\n'
                      ) ),
 
+     '-glfLabel' = apl(n=c(1,1000), d=NA, h = paste(
+   "-glfLabel k label: Specify the label for the k-th general linear F-test",
+   "         (GLF). A symbolic coding for the GLF is assumed to follow with",
+   "         each -glfLabel.\n", sep = '\n'
+                     ) ),
+
      '-gltCode' = apl(n=c(1,1000), d=NA, h = paste(
-   "-gltCode k CODING: Specify the k-th general linear test (GLT) through a",
+   "-gltCode k CODING: Specify the k-th general linear t-test (GLT) through a",
    "         weighted combination among factor levels. The symbolic coding has",
    "         to be within (single or double) quotes. For example, the following",
    "         'Condition : 2*House -3*Face Emotion : 1*positive '",
@@ -442,7 +454,33 @@ read.MVM.opts.batch <- function (args=NULL, verb = 0) {
    "         levels of that factor are averaged (or collapsed) for the GLT.\n",
    "         5) The appearance of a categorical variable has to be followed",
    "         by the linear combination of its levels. Only a quantitative",
-   "         is allowed to have a dangling coding as seen in 'Age :'\n",         
+   "         is allowed to have a dangling coding as seen in 'Age :'\n",
+   "         6) Some special interaction effects can be tested under -gltCode",
+   "         when the numerical DF is 1. For example, 'Group : 1*Old - 1*Young",
+   "         Condition : 1*House -1*Face Emotion : 1*positive'. Even though",
+   "         this is typically an F-test that can be coded under -glfCode, it",
+   "         can be tested under -gltCode as well. An extra bonus is that the",
+   "         t-test shows the directionality while F-test does not.\n",
+             sep = '\n'
+             ) ),
+
+     '-gltfCode' = apl(n=c(1,1000), d=NA, h = paste(
+   "-glfCode k CODING: Specify the k-th general linear F-test (GLF) through a",
+   "         weighted combination among factor levels. The symbolic coding has",
+   "         to be within (single or double) quotes. For example, the coding",
+   "         'Condition : 1*A -1*B \\1*A -1*C Emotion : 1:pos' tests the main",
+   "         effect of Condition at the positive Emotion. Similarly the coding",
+   "         'Condition : 1*A -1*B \\1*A -1*C Emotion : 1*pos -1*neg' shows",
+   "         the interaction between the three levels of Condition and the two.",
+   "         levels of Emotion.\n",
+   "         NOTE:\n",
+   "         1) The weights for a variable do not have to add up to 0.\n",   
+   "         2) When a quantitative variable is present, other effects are",
+   "         tested at the center value of the covariate.\n",
+   "         3)  The absence of a categorical variable in a coding means the",
+   "         levels of that factor are averaged (or collapsed) for the GLT.\n",
+   "         4) The appearance of a categorical variable has to be followed",
+   "         by the linear combination of its levels.\n",
              sep = '\n'
              ) ),
 
@@ -506,6 +544,9 @@ read.MVM.opts.batch <- function (args=NULL, verb = 0) {
       lop$num_glt     <- 0
       lop$gltLabel    <- NULL
       lop$gltCode     <- NULL
+      lop$num_glf     <- 0
+      lop$glfLabel    <- NULL
+      lop$glfCode     <- NULL
       lop$dataTable   <- NULL
 
       lop$SC     <- FALSE
@@ -543,6 +584,9 @@ read.MVM.opts.batch <- function (args=NULL, verb = 0) {
              num_glt = lop$num_glt <- ops[[i]],
              gltLabel = lop$gltLabel <- ops[[i]],
              gltCode  = lop$gltCode <- ops[[i]],
+             num_glf = lop$num_glf <- ops[[i]],
+             glfLabel = lop$glfLabel <- ops[[i]],
+             glfCode  = lop$glfCode <- ops[[i]],
              dataTable  = lop$dataTable <- dataTable.AFNI.parse(ops[[i]]),
              parSubset  = lop$parSubset <- ops[[i]],
  
@@ -698,7 +742,7 @@ process.MVM.opts <- function (lop, verb = 0) {
 
    if(!is.na(lop$maskFN)) {
       if(verb) cat("Will read ", lop$maskFN,'\n')
-      if(is.null(mm <- read.AFNI(lop$maskFN, verb=lop$verb, meth=lop$iometh))) {
+      if(is.null(mm <- read.AFNI(lop$maskFN, verb=lop$verb, meth=lop$iometh, forcedset = TRUE))) {
          warning("Failed to read mask", immediate.=TRUE)
          return(NULL)
       }
@@ -800,7 +844,7 @@ runAOV <- function(inData, dataframe, ModelForm, pars) {
          #   dataframe[,pars[[10]][[1]]] <- scale(dataframe[,pars[[10]][[1]]], center=pars[[10]][[2]], scale=F)
       }
       fm <- NULL
-      try(fm <- aov.car(ModelForm, data=dataframe, factorize=FALSE, return='full'), silent=TRUE)
+      suppressMessages(try(fm <- aov.car(ModelForm, data=dataframe, factorize=FALSE, return='full'), silent=TRUE))
       if(!is.null(fm)) {
             uvfm <- tryCatch(univ(fm$Anova), error=function(e) NULL)   # univariate model 
             if(!is.null(uvfm)) {  
@@ -1005,9 +1049,10 @@ read.MVM.opts.from.file <- function (modFile='model.txt', verb = 0) {
 if(!is.na(lop$qVarCenters)) lop$qVarCenters <- as.numeric(strsplit(as.character(lop$qVarCenters), '\\,')[[1]])
 if(!is.na(lop$vVarCenters)) lop$vVarCenters <- as.numeric(strsplit(as.character(lop$vVarCenters), '\\,')[[1]])
                                                 
-library("afex")
-library("phia")
-
+#library("afex")
+#library("phia")
+pkgLoad(c('afex', 'phia'))
+                                               
 #comArgs <- commandArgs()
 
 #if(length(comArgs)<6) modFile <- "model.txt" else
@@ -1084,11 +1129,12 @@ NoFile <- dim(lop$dataStr[1])[1]
 #if (length(unique(lop$dataStr$Subj)) != length(lop$dataStr$Subj)) RM <- TRUE else RM <- FALSE
 
 cat('Reading input files now...\n\n')
+cat('Reading input files: Done!\n\n')
 
 if(any(is.na(suppressWarnings(as.numeric(lop$dataStr[, FileCol]))))) {  # not elegant because "NAs introduced by coercion"
                                                 
 # Read in the 1st input file so that we have the dimension information
-inData <- read.AFNI(lop$dataStr[1, FileCol], verb=lop$verb, meth=lop$iometh)
+inData <- read.AFNI(lop$dataStr[1, FileCol], verb=lop$verb, meth=lop$iometh, forcedset = TRUE)
 dimx <- inData$dim[1]
 dimy <- inData$dim[2]
 dimz <- inData$dim[3]
@@ -1098,7 +1144,7 @@ head <- inData
 # ww <- inData$NI_head
 #myHist <- inData$header$HISTORY_NOTE; myOrig <- inData$origin; myDelta <- inData$delta
 # Read in all input files
-inData <- unlist(lapply(lapply(lop$dataStr[,FileCol], read.AFNI, verb=lop$verb, meth=lop$iometh), '[[', 1))
+inData <- unlist(lapply(lapply(lop$dataStr[,FileCol], read.AFNI, verb=lop$verb, meth=lop$iometh, forcedset = TRUE), '[[', 1))
 dim(inData) <- c(dimx, dimy, dimz, NoFile)
 
 # voxel-wise covariate files
@@ -1108,7 +1154,7 @@ if(any(!is.na(lop$vVars))) {
       errex.AFNI(c("Error with voxel-wise covariate ", ii, ": Each subject is only\n",
                 "allowed to have one volume; that is, the covariate has to be at the\n",
                 "subject level.")) else {  # currently consider one voxel-wise covariate only: may generalize later?
-      vQV <- unlist(lapply(lapply(unique(lop$dataStr[,lop$vQV[1]]), read.AFNI, verb=lop$verb, meth=lop$iometh), '[[', 1))
+      vQV <- unlist(lapply(lapply(unique(lop$dataStr[,lop$vQV[1]]), read.AFNI, verb=lop$verb, meth=lop$iometh, forcedset = TRUE), '[[', 1))
       dim(vQV) <- c(dimx, dimy, dimz, length(unique(lop$dataStr[,lop$vQV[1]])))
       inData <- c(inData, vQV)
       dim(inData) <- c(dimx, dimy, dimz, NoFile+nSubj)
@@ -1116,7 +1162,7 @@ if(any(!is.na(lop$vVars))) {
 } else vQV <- NULL
 
 if (!is.na(lop$maskFN)) {
-   Mask <- read.AFNI(lop$maskFN, verb=lop$verb, meth=lop$iometh)$brk[,,,1]
+   Mask <- read.AFNI(lop$maskFN, verb=lop$verb, meth=lop$iometh, forcedset = TRUE)$brk[,,,1]
    inData <- array(apply(inData, 4, function(x) x*Mask),
       dim=c(dimx,dimy,dimz,NoFile+(!is.na(lop$vQV[1]))*nSubj))
 }
@@ -1182,7 +1228,7 @@ while(is.null(fm)) {
       #   lop$dataStr[,lop$QV] <- scale(lop$dataStr[,lop$QV], center=lop$vVarCenters, scale=F)
    }   
    #options(warn=-1)     
-   try(fm <- aov.car(ModelForm, data=lop$dataStr, factorize=FALSE, return='full'), silent=TRUE)
+   suppressMessages(try(fm <- aov.car(ModelForm, data=lop$dataStr, factorize=FALSE, return='full'), silent=TRUE))
 #   if(!is.null(fm)) if(!is.na(lop$mVar)) {
 #      if(is.na(lop$wsVars)) mvfm <- Anova(fm$lm, type=2, test='Pillai')
 #   } else {
@@ -1397,7 +1443,8 @@ if(dimy == 1 & dimz == 1) {
    }
    
    if (lop$nNodes>1) {
-   library(snow)
+   #library(snow)
+   pkgLoad('snow')
    cl <- makeCluster(lop$nNodes, type = "SOCK")
    clusterEvalQ(cl, library(afex)); clusterEvalQ(cl, library(phia))
    clusterExport(cl, c("mvCom4", "maov", "lop"), envir=environment())
@@ -1431,7 +1478,8 @@ if (lop$nNodes==1) for (kk in 1:dimz) {
 } 
 
 if (lop$nNodes>1) {
-   library(snow)
+   #library(snow)
+   pkgLoad('snow')
    cl <- makeCluster(lop$nNodes, type = "SOCK")
    clusterEvalQ(cl, library(afex)); clusterEvalQ(cl, library(phia))
    clusterExport(cl, c("mvCom4", "maov", "lop"), envir=environment())
@@ -1538,7 +1586,7 @@ cat("\nCongratulations! You have got an output ", lop$outFN, ".\n\n", sep='')
    if((levels(as.factor(lop$dataStr[[iterPar]]))[nn] %in% lop$parSubsetVector) | is.null(lop$parSubsetVector)) 
       inData <- lop$dataStr[lop$dataStr[[iterPar]] == levels(as.factor(lop$dataStr[[iterPar]]))[nn],] else
       inData <- NULL
-   if(!is.null(inData)) try(fm <- aov.car(ModelForm, data=inData, factorize=FALSE, return='full'), silent=TRUE) else
+   if(!is.null(inData)) suppressMessages(try(fm <- aov.car(ModelForm, data=inData, factorize=FALSE, return='full'), silent=TRUE)) else
    fm <-NULL
    #fm <- aov.car(ModelForm, data=inData, factorize=FALSE, return='full')
    if(!is.null(fm)) {
@@ -1582,6 +1630,7 @@ cat("\nCongratulations! You have got an output ", lop$outFN, ".\n\n", sep='')
          nC2 <- max(nchar(row.names(out_post)))
          term2 <- formatC(row.names(out_post), width=-nC2)
       } # if(lop$num_glt>=1)
+      options(width = 800)  # include the width so that each line has enough capacity
       if(nPar==1) cat('# RESULTS: ANOVA table\n')  else
          cat('# RESULTS: ANOVA table -', levels(as.factor(lop$dataStr[[iterPar]]))[nn], '\n')
       cat('-------------------------------------\n')

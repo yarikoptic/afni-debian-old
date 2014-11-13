@@ -60,9 +60,25 @@ Usage:
  Unfortunately at this stage, there is little help for the AFNI R API
  beyond this sample code. If you find yourself using this and need
  to ask questions about other dataset utility functions contact the author 
- for help.
- 
-
+ for help. The AFNIio.R file in the AFNI distribution contains most of the IO
+ functions. Below are some notable ones, grep for them in the .R files for 
+ usage examples.
+   
+   dset.attr() for getting and setting attributes, such as the TR in seconds
+               e.g. dset$NI_head <- dset.attr(dset$NI_head, "TR", val = 1.5)
+   read.AFNI()
+   write.AFNI()
+   show.dset.attr()
+   dset.index3Dto1D()
+   dset.index1Dto3D()
+   dset.dimBRKarray()
+   dset.3DBRKarrayto1D()
+   dset.1DBRKarrayto3D()
+   
+   parse.AFNI.name() for parsing a filename into AFNI relevant parameters
+   exists.AFNI.name()
+   note.AFNI(), err.AFNI(), warn.AFNI(), exit.AFNI()
+      
  Debugging Note:
  ===============
  When running the program from the shell prompt, you cannot use R\'s
@@ -128,7 +144,9 @@ read.RprogDemo.opts.batch <- function (args=NULL, verb = 0) {
    "-input DSET1                       \\\n",
    "     Specify the dataset to be scaled. Note that you can use\n",
    "     the various sub-brick selectors used by AFNI\n",
-   "     e.g: -input pb05.Regression+tlrc'[face#0_Beta]'  \\\n" 
+   "     e.g: -input pb05.Regression+tlrc'[face#0_Beta]'  \\\n",
+   "     You can use multiple instances of -input in one command line\n",
+   "     to process multiple datasets in the same manner.\n" 
                         ) ),
                         
       '-scale' = apl(n = 1, d = 5, h = paste(
@@ -176,7 +194,7 @@ read.RprogDemo.opts.batch <- function (args=NULL, verb = 0) {
       opname <- opname[length(opname)];
       switch(opname,
              prefix = lop$prefix  <- pprefix.AFNI.name(ops[[i]]),
-             input  = lop$input <- ops[[i]],
+             input  = lop$input <- c(lop$input, ops[[i]]),
              scale = lop$scale <- ops[[i]],
              mask = lop$mask <- ops[[i]],
              verb = lop$verb <- ops[[i]],
@@ -207,8 +225,18 @@ read.RprogDemo.opts.batch <- function (args=NULL, verb = 0) {
 
 
 # The big function
-RprogDemo.Scale <- function( yi, scale = 2) {
-	return(yi*scale);
+RprogDemo.Scale <- function( idset=NULL, mdset = NULL, scale = 2) {
+   #Create an output volume (you can also overwrite the input)
+   brk <- array(0, dim(idset$brk))
+
+   #Loop over each voxel and set the values
+   for (ivox in 1:dset.dimBRKarray(idset)[1]) {
+      if (is.null(mdset) || mdset$brk[ivox,1]) {
+         brk[ivox,] = idset$brk[ivox,] * scale;      
+      }
+   }      
+
+   return(brk);
 }
 
 
@@ -221,7 +249,7 @@ RprogDemo.Scale <- function( yi, scale = 2) {
 if (!exists('.DBG_args')) { 
    args = (commandArgs(TRUE))  
    rfile <- first.in.path(sprintf('%s.R',ExecName))  
-   save(args, rfile, file=".3dRprogDemo.dbg.AFNI.args", ascii = TRUE) 
+   save(args, rfile, file=sprintf(".%s.dbg.AFNI.args", ExecName), ascii = TRUE) 
 } else {
    note.AFNI("Using .DBG_args resident in workspace");
    args <- .DBG_args
@@ -246,46 +274,47 @@ if (lop$verb > 1) {
 
  
 #Load that input dataset
-if (lop$verb) {
-   note.AFNI(sprintf("Processing volume %s", lop$input[1]));
-}
-
-idset <- read.AFNI(lop$input[1], verb = max(0,lop$verb-1), meth=lop$iometh)
-
-#For convenience, change the dimensions so that the first 3 
-#dimensions are turned into 1
-ddi <- dset.dimBRKarray(idset)
-idset <- dset.3DBRKarrayto1D(idset);
-
-#Load mask and check dimensions
-mdset <- NULL
-if (!is.null(lop$mask)) {
+for (iin in 1:length(lop$input)) {
    if (lop$verb) {
-      note.AFNI(sprintf("Loading mask %s", lop$mask));
+      note.AFNI(sprintf("Processing volume %s", lop$input[iin]));
    }
-   mdset <- read.AFNI(lop$mask, verb = max(lop$verb-1), meth=lop$iometh)
-   mdset <-  dset.3DBRKarrayto1D(mdset);
-   if (!dset.gridmatch(mdset, idset)) {
-      errex.AFNI(sprintf("Mismatch between grids of mask %s and input %s",
-                         lop$mask, lop$input[1]));
+
+   idset <- read.AFNI(lop$input[iin], verb = max(0,lop$verb-1), meth=lop$iometh)
+
+   #For convenience, change the dimensions so that the first 3 
+   #dimensions are turned into 1
+   ddi <- dset.dimBRKarray(idset)
+   idset <- dset.3DBRKarrayto1D(idset);
+
+   #Load mask and check dimensions
+   mdset <- NULL
+   if (!is.null(lop$mask)) {
+      if (lop$verb) {
+         note.AFNI(sprintf("Loading mask %s", lop$mask));
+      }
+      mdset <- read.AFNI(lop$mask, verb = max(lop$verb-1), meth=lop$iometh)
+      mdset <-  dset.3DBRKarrayto1D(mdset);
+      if (!dset.gridmatch(mdset, idset)) {
+         errex.AFNI(sprintf("Mismatch between grids of mask %s and input %s",
+                            lop$mask, lop$input[iin]));
+      }
    }
+
+
+
+   #Scale entire volume
+   brk <- RprogDemo.Scale(idset, mdset, lop$scale);
+         
+   #Reshape brk back to 3D mode
+   dim(brk) <- ddi
+
+   if (length(lop$input) > 1) {
+      oname <- sprintf("%s.%02d", lop$prefix, iin);
+   } else {
+      oname <- lop$prefix
+   }
+   if (lop$verb) 
+      note.AFNI ( paste('Writing results to', oname, '\n'));
+   dout <- write.AFNI(oname, brk, defhead=idset, com_hist = lop$com_history, 
+              overwrite = lop$overwrite);
 }
-
-
-#Create an output volume (you can also overwrite the input)
-brk <- array(0, dim(idset$brk))
-
-#Loop over each voxel and set the values
-for (ivox in 1:dset.dimBRKarray(idset)[1]) {
-   if (is.null(mdset) || mdset$brk[ivox,1]) {
-      brk[ivox,] = RprogDemo.Scale(idset$brk[ivox,], lop$scale);      
-   }
-}      
-
-#Reshape brk back to 3D mode
-dim(brk) <- ddi
-
-if (lop$verb) 
-   note.AFNI ( paste('Writing results to', lop$prefix, '\n'));
-write.AFNI(lop$prefix, brk, defhead=idset, com_hist = lop$com_history, 
-           overwrite = lop$overwrite);

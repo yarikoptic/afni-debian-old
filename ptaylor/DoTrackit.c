@@ -13,7 +13,51 @@
 
 
 
+/* 
+   Order no longer matters here for 'U'HT.
+   We check for the order internally
+   Inputs: NxN square matr coor -> (ROW, COL, N)
+   Output: flat UHT index value PLUS 1
+   *This one goes along the diagonal first!*
+   Useful for unique enumeration of tracts, hence the plus one
+ */
+int MatrInd_to_FlatUHT_DIAG_P1(int i, int j, int N)
+{
+   int lll;
 
+   if( i<=j ) {
+      i = j-i;
+      lll = i*N+j; // sq matr coor
+      lll-= (i*(i+1))/2; // fix for tridiag.
+   }
+   else {
+      j = i-j;
+      lll = j*N+i; // sq matr coor
+      lll-= (j*(j+1))/2; // fix for tridiag.
+   }
+   lll+=1;
+
+   return lll;
+}
+
+/*
+  For when there are multiple connections-- take the unique UHT decomp
+  from P1, and then add N(N-1)/2 to it.  Specifically when the max num
+  of overlaps is 2, but we'll also have multi PLUS two of the overlaps
+  in the string label.
+  Max value to be output (even after the +1): N*N. 
+ */
+int MatrInd_to_FlatUHT_DIAG_M(int i, int j, int N)
+{
+   int lll;
+
+   lll = MatrInd_to_FlatUHT_DIAG_P1(i,j,N);
+   // add N(N-1)/2 to that value.
+   lll+= FlatUHT_Len(N);
+   lll-= N;
+
+   return lll;
+}
 
 /* 
    Order no longer matters here for 'U'HT.
@@ -44,7 +88,6 @@ int FlatUHT_Len(int N)
    out/= 2;
    return out;
 }
-
 
 
 // Some funniness to deal with possibility of having biggest label of
@@ -197,15 +240,27 @@ int WriteBasicProbFiles(int N_nets, int Ndata, int Nvox,
 								int *TV_switch,char *voxel_order,int *NROI,
 								int ***NETROI,int ***mskd,int ***INDEX2,int *Dim,
 								THD_3dim_dataset *dsetn,int argc, char *argv[],
+                        char ***ROI_STR_LABS, int NameLabelsOut,
+                        Dtable *roi_table,
                         int **roi_labs, int PAIR_POWERON)
 {
 
 	int i,j,k,bb,hh,kk,rr,idx;
 	char **prefix_netmap=NULL;
 	char **prefix_netmap2=NULL;
+	char **prefix_dtable=NULL;
+   char *Dtable_str=NULL;
+   Dtable *new_dt=NULL;
+   char mini[50];
 	THD_3dim_dataset *networkMAPS=NULL,*networkMAPS2=NULL;
    char bric_labs[300];
    int idx3;
+   FILE *fout1;
+   int MAXOVERLAP = 2;
+   int i1,i2;
+   char EleNameStr[128];
+   int maxROInum, MAXOVERLAP_VAL;
+   int MULTI_ROI = 0;
 
 	// ****** alloc'ing
 	prefix_netmap = calloc( N_nets,sizeof(prefix_netmap));  
@@ -214,8 +269,12 @@ int WriteBasicProbFiles(int N_nets, int Ndata, int Nvox,
 	prefix_netmap2 = calloc( N_nets,sizeof(prefix_netmap2));  
 	for(i=0 ; i<N_nets ; i++) 
 		prefix_netmap2[i] = calloc( 300,sizeof(char)); 
+	prefix_dtable = calloc( N_nets,sizeof(prefix_dtable));  
+	for(i=0 ; i<N_nets ; i++) 
+		prefix_dtable[i] = calloc( 300,sizeof(char)); 
 
-	if( ( prefix_netmap== NULL) || ( prefix_netmap2== NULL)) {
+	if( ( prefix_netmap== NULL) || ( prefix_netmap2== NULL)
+       || ( prefix_dtable== NULL) ) {
 		fprintf(stderr, "\n\n MemAlloc failure.\n\n");
 		exit(122);
 	}
@@ -223,11 +282,42 @@ int WriteBasicProbFiles(int N_nets, int Ndata, int Nvox,
 	// ****** calc/do
 	for( hh=0 ; hh<N_nets ; hh++) {
 
+      // Oct. 2014: if only 1 ROI in set, then just output 0th brick
+      // (because others add no information)
+      // MULTI_ROI acts as both a switch and a number
+      MULTI_ROI = ( NROI[hh] > 1 ) ? 1 : 0;
+
 		sprintf(prefix_netmap[hh],"%s_%03d_PAIRMAP",prefix,hh); 
+
+      // Sept 2014
+      sprintf(prefix_dtable[hh],"%s_%03d_PAIRMAP.niml.lt",prefix, hh); 
+      if( roi_table ) {
+         // copy dtable
+         Dtable_str = Dtable_to_nimlstring(roi_table, "VALUE_LABEL_DTABLE");
+         new_dt = Dtable_from_nimlstring(Dtable_str);
+         free(Dtable_str); Dtable_str=NULL;
+      }
+      else {
+         new_dt = new_Dtable( NROI[hh] );
+      }
+      // from either above cases, we have either a non-empty or empty
+      // starter; in either case, check through all our ROIs to add in
+      // more as necessary.
+      for( bb=1 ; bb<=NROI[hh] ; bb++) {
+         snprintf(mini, 50, "%d", roi_labs[hh][bb]);
+         if(!(findin_Dtable_a( mini, new_dt ))) {
+            addto_Dtable(mini, ROI_STR_LABS[hh][bb], new_dt );
+         }
+      }
+
+         
 		// just get one of right dimensions!
 		networkMAPS = EDIT_empty_copy( insetFA ) ; 
-		EDIT_add_bricklist(networkMAPS ,
-								 NROI[hh], NULL , NULL , NULL );
+      // Oct. 2014: if only 1 ROI in set, then just output 0th brick
+      // (because others add no information)
+      if( MULTI_ROI )
+         EDIT_add_bricklist(networkMAPS ,
+                            NROI[hh], NULL , NULL , NULL );
       if( PAIR_POWERON )
          EDIT_dset_items(networkMAPS,
                          ADN_datum_all , MRI_float , 
@@ -240,140 +330,237 @@ int WriteBasicProbFiles(int N_nets, int Ndata, int Nvox,
 		sprintf(prefix_netmap2[hh],"%s_%03d_INDIMAP",prefix,hh); 
 		// just get one of right dimensions!
 		networkMAPS2 = EDIT_empty_copy( insetFA ) ; 
-		EDIT_add_bricklist(networkMAPS2 ,
-								 NROI[hh], NULL , NULL , NULL );
+      // Oct. 2014: if only 1 ROI in set, then just output 0th brick
+      // (because others add no information)
+      if( MULTI_ROI )
+         EDIT_add_bricklist(networkMAPS2 ,
+                            NROI[hh], NULL , NULL , NULL );
 		EDIT_dset_items(networkMAPS2,
 							 ADN_datum_all , MRI_float , 
 							 ADN_none ) ;
 
       float **temp_arrFL=NULL;
       short int **temp_arrSH=NULL;
+      float **temp_arr2=NULL;
+
+      int **intersec=NULL;
 
 		// first array for all tracks, 2nd for paired ones.
 		// still just need one set of matrices output
-		if( PAIR_POWERON ) {
-         temp_arrFL = calloc( (NROI[hh]+1),sizeof(temp_arrFL)); // XYZ comps
-         for(i=0 ; i<(NROI[hh]+1) ; i++) 
-            temp_arrFL[i] = calloc( Nvox,sizeof(float)); 
-      }
-      else {
-         temp_arrSH = calloc( (NROI[hh]+1),sizeof(temp_arrSH)); // XYZ comps
-         for(i=0 ; i<(NROI[hh]+1) ; i++) 
-            temp_arrSH[i] = calloc( Nvox,sizeof(short int)); 
+      if( MULTI_ROI ) {
+         if( PAIR_POWERON ) {
+            temp_arrFL = calloc( (NROI[hh]+MULTI_ROI),sizeof(temp_arrFL));
+            for(i=0 ; i<(NROI[hh]+MULTI_ROI) ; i++) 
+               temp_arrFL[i] = calloc( Nvox,sizeof(float)); 
+         }
+         else {
+            temp_arrSH = calloc( (NROI[hh]+MULTI_ROI),sizeof(temp_arrSH)); 
+            for(i=0 ; i<(NROI[hh]+MULTI_ROI) ; i++) 
+               temp_arrSH[i] = calloc( Nvox,sizeof(short int)); 
+         }
       }
 
-      float **temp_arr2=NULL;
-		temp_arr2 = calloc( (NROI[hh]+1),sizeof(temp_arr2));
-		for(i=0 ; i<(NROI[hh]+1) ; i++) 
+		temp_arr2 = calloc( (NROI[hh]+MULTI_ROI),sizeof(temp_arr2));
+		for(i=0 ; i<(NROI[hh]+MULTI_ROI) ; i++) 
 			temp_arr2[i] = calloc( Nvox,sizeof(float)); 
-
-      if( PAIR_POWERON ) {      
-         if( temp_arrFL == NULL) {
-            fprintf(stderr, "\n\n MemAlloc failure.\n\n");
-            exit(122);
-         }
-		}
-      else {
-         if( temp_arrSH == NULL) {
-            fprintf(stderr, "\n\n MemAlloc failure.\n\n");
-            exit(122);
-         }
-		}
 
 		if( ( temp_arr2 == NULL) ) {
 			fprintf(stderr, "\n\n MemAlloc failure.\n\n");
 			exit(122);
 		}
 
-		for( bb=1 ; bb<=NROI[hh] ; bb++) {
-			idx=0;
-			for( k=0 ; k<Dim[2] ; k++ ) 
-				for( j=0 ; j<Dim[1] ; j++ ) 
-					for( i=0 ; i<Dim[0] ; i++ ) {
-						// allow for more than one `connector' tract
-						if(mskd[i][j][k]) 
-							for( rr=bb ; rr<=NROI[hh] ; rr++) {
-								idx3 = MatrInd_to_FlatUHT(bb-1,rr-1,NROI[hh]);
+      // use this per vox
+      if( MULTI_ROI ){
+         intersec = calloc( (NROI[hh]+MULTI_ROI),sizeof(intersec)); 
+         for(i=0 ; i<(NROI[hh]+MULTI_ROI) ; i++) 
+            intersec[i] = calloc(MAXOVERLAP+1,sizeof( int )); 
+         
+         if( PAIR_POWERON ) {      
+            if( temp_arrFL == NULL) {
+               fprintf(stderr, "\n\n MemAlloc failure.\n\n");
+               exit(122);
+            }
+         }
+         else {
+            if( temp_arrSH == NULL) {
+               fprintf(stderr, "\n\n MemAlloc failure.\n\n");
+               exit(122);
+            }
+         }
+         if(  ( intersec == NULL)) {
+            fprintf(stderr, "\n\n MemAlloc failure.\n\n");
+            exit(122);
+         }
+      }
+
+
+      // for string label outputs
+		maxROInum = roi_labs[hh][NROI[hh]];
+      // should never happen normally -- even with _M_<->A<->B
+      MAXOVERLAP_VAL = maxROInum*maxROInum + 1;
+
+      idx=0;
+      for( k=0 ; k<Dim[2] ; k++ ) 
+         for( j=0 ; j<Dim[1] ; j++ ) 
+            for( i=0 ; i<Dim[0] ; i++ ) {
+               // allow for more than one `connector' tract
+               if(mskd[i][j][k]) {
+                  for( bb=1 ; bb<=NROI[hh] ; bb++) 
+                     for( rr=bb ; rr<=NROI[hh] ; rr++) {
+                        idx3 = MatrInd_to_FlatUHT(bb-1,rr-1,NROI[hh]);
                         if(NETROI[INDEX2[i][j][k]][hh][idx3]>0) {
-									// store connectors
-									if(bb != rr){
-                              if(PAIR_POWERON)
-                                 temp_arrFL[0][idx] = 1.; 
-                              else
-                                 temp_arrSH[0][idx] = (short) 1; 
-									}
+                           // store connectors
+                           if( MULTI_ROI ){
+                              if(bb != rr){
+                                 if(PAIR_POWERON)
+                                    temp_arrFL[0][idx] = 1.; 
+                                 else
+                                    temp_arrSH[0][idx] = (short) 1; 
+                              }
+                           }
 									
 									// store tracks through any ROI
 									temp_arr2[0][idx] = (float)
 										NETROI[INDEX2[i][j][k]][hh][idx3]; 
 									
-									// then add value if overlap
-									if(bb != rr) {
-                              if( PAIR_POWERON) {// OLD
-                                 temp_arrFL[bb][idx]+=(float) pow(2,rr);// unique
-                                 temp_arrFL[rr][idx]+=(float) pow(2,bb);// unique
+									
+                           if( MULTI_ROI ) { 
+                              // then add value if overlap
+                              if(bb != rr) {
+                                 if( PAIR_POWERON ) {// OLD
+                                    // unique
+                                    temp_arrFL[bb][idx]+=(float) pow(2,rr);
+                                    temp_arrFL[rr][idx]+=(float) pow(2,bb);
+                                 }
+                                 else{ 
+                                    temp_arrSH[bb][idx]+= (short) roi_labs[hh][rr];
+                                    temp_arrSH[rr][idx]+= (short) roi_labs[hh][bb];
+                                    intersec[bb][0]+= 1;
+                                    intersec[rr][0]+= 1;
+                                    // keep track of which ones get hit,
+                                    // less than the value
+                                    if( intersec[bb][0]<=MAXOVERLAP )
+                                       intersec[bb][intersec[bb][0]] = rr;
+                                    if( intersec[rr][0]<=MAXOVERLAP )
+                                       intersec[rr][intersec[rr][0]] = bb;
+                                 }
                               }
-                              else{
-                                 temp_arrSH[bb][idx]+= (short) roi_labs[hh][rr];//rr+1;// unique
-                                 temp_arrSH[rr][idx]+= (short) roi_labs[hh][bb];//rr+1;// unique
+                              
+                              
+                              if(bb != rr) {
+                                 temp_arr2[bb][idx] = (float)
+                                    NETROI[INDEX2[i][j][k]][hh][idx3];
+                                 temp_arr2[rr][idx] = (float)
+                                    NETROI[INDEX2[i][j][k]][hh][idx3];
                               }
+                              else
+                                 temp_arr2[bb][idx] = (float)
+                                    NETROI[INDEX2[i][j][k]][hh][idx3];
                            }
-
-									if(bb != rr) {
-                              temp_arr2[bb][idx] = (float)
-                                 NETROI[INDEX2[i][j][k]][hh][idx3];
-                              temp_arr2[rr][idx] = (float)
-                                 NETROI[INDEX2[i][j][k]][hh][idx3];
-                           }
-                           else
-                              temp_arr2[bb][idx] = (float)
-                                 NETROI[INDEX2[i][j][k]][hh][idx3];
+                           
 								}
                      }
-						idx+=1;
-					}
-      }
-
+                  // continuation of labelling functions for this voxel
+                  if( MULTI_ROI )
+                     for( bb=1 ; bb<=NROI[hh] ; bb++) {
+                        
+                        if( intersec[bb][0] == 1 ) { // already tabled, ->erase
+                           intersec[bb][0] = intersec[bb][1] = 0;
+                        }
+                        else if ( intersec[bb][0] == 2 ){ // check labeltable
+                           
+                           i1 = roi_labs[hh][intersec[bb][1]];
+                           i2 = roi_labs[hh][intersec[bb][2]];
+                           temp_arrSH[bb][idx] = 
+                              MatrInd_to_FlatUHT_DIAG_P1( i1-1, 
+                                                          i2-1, 
+                                                          maxROInum);
+                           snprintf(mini, 50, "%d", (int) temp_arrSH[bb][idx]);
+                           
+                           if(!(findin_Dtable_a( mini, new_dt ))) {
+                              snprintf( EleNameStr, 128, "%s<->%s",
+                                        ROI_STR_LABS[hh][intersec[bb][1]], 
+                                        ROI_STR_LABS[hh][intersec[bb][2]]);
+                              addto_Dtable(mini, EleNameStr, new_dt );
+                           }
+                           intersec[bb][0]=intersec[bb][1]=intersec[bb][2]=0;
+                           
+                        }
+                        else if( intersec[bb][0] ) { // 'multi' + 2 label names
+                           
+                           i1 = roi_labs[hh][intersec[bb][1]];
+                           i2 = roi_labs[hh][intersec[bb][2]];
+                           // use the multi function now.
+                           temp_arrSH[bb][idx] = 
+                              MatrInd_to_FlatUHT_DIAG_M( i1-1, 
+                                                         i2-1, 
+                                                         maxROInum);
+                           snprintf(mini, 50, "%d", (int) temp_arrSH[bb][idx]);
+                           
+                           if(!(findin_Dtable_a( mini, new_dt ))) {
+                              snprintf( EleNameStr, 128, "%s<->%s<->%s",
+                                        "_M_",
+                                        ROI_STR_LABS[hh][intersec[bb][1]], 
+                                        ROI_STR_LABS[hh][intersec[bb][2]]);
+                              addto_Dtable(mini, EleNameStr, new_dt );
+                           }
+                           intersec[bb][0]=intersec[bb][1]=intersec[bb][2]=0;
+                           
+                        }
+                        
+                     }
+               }
+               idx+=1;
+            }
+      
+      
       // FIRST THE PAIR CONNECTORS
-      if( PAIR_POWERON ) {// OLD
-         EDIT_substitute_brick(networkMAPS, 0, MRI_float, temp_arrFL[0]);
-         temp_arrFL[0]=NULL;
-      }
-      else {
-         EDIT_substitute_brick(networkMAPS, 0, MRI_short, temp_arrSH[0]);
-         temp_arrSH[0]=NULL;
+      if ( MULTI_ROI ) {
+         if( PAIR_POWERON ) {// OLD
+            EDIT_substitute_brick(networkMAPS, 0, MRI_float, temp_arrFL[0]);
+            temp_arrFL[0]=NULL;
+         }
+         else {
+            EDIT_substitute_brick(networkMAPS, 0, MRI_short, temp_arrSH[0]);
+            temp_arrSH[0]=NULL;
+         }
       }
 
       // THEN THE INDIVID TRACKS
 		EDIT_substitute_brick(networkMAPS2, 0, MRI_float, temp_arr2[0]);
 		temp_arr2[0]=NULL;
 
-      for( bb=1 ; bb<=NROI[hh] ; bb++) {
-         if( PAIR_POWERON ) {// OLD
-            EDIT_substitute_brick(networkMAPS, bb, MRI_float, temp_arrFL[bb]);
-            temp_arrFL[bb]=NULL; // to not get into trouble...
-         }
-         else {
-            EDIT_substitute_brick(networkMAPS, bb, MRI_short, temp_arrSH[bb]);
-            temp_arrSH[bb]=NULL; // to not get into trouble...
-         }
-         sprintf(bric_labs,"AND_roi_%d",roi_labs[hh][bb]);
-         EDIT_BRICK_LABEL(networkMAPS, bb, bric_labs); // labels, PAIR
-			
-			EDIT_substitute_brick(networkMAPS2, bb, MRI_float, temp_arr2[bb]);
-         sprintf(bric_labs,"OR_roi_%d",roi_labs[hh][bb]);
-         EDIT_BRICK_LABEL(networkMAPS2, bb, bric_labs); // labels, INDI
-
-			temp_arr2[bb]=NULL; // to not get into trouble...
-		} 
+      if( MULTI_ROI )
+         for( bb=1 ; bb<=NROI[hh] ; bb++) {
+            if( PAIR_POWERON ) {// OLD
+               EDIT_substitute_brick(networkMAPS,bb,MRI_float,temp_arrFL[bb]);
+               temp_arrFL[bb]=NULL; // to not get into trouble...
+            }
+            else {
+               EDIT_substitute_brick(networkMAPS,bb,MRI_short,temp_arrSH[bb]);
+               temp_arrSH[bb]=NULL; // to not get into trouble...
+            }
+            
+            // Sept 2014: updating labelling
+            sprintf(bric_labs,"AND_%s",ROI_STR_LABS[hh][bb]);
+            EDIT_BRICK_LABEL(networkMAPS, bb, bric_labs); // labels, PAIR
+            
+            EDIT_substitute_brick(networkMAPS2, bb, MRI_float, temp_arr2[bb]);
+            sprintf(bric_labs,"OR_%s",ROI_STR_LABS[hh][bb]);
+            EDIT_BRICK_LABEL(networkMAPS2, bb, bric_labs); // labels, INDI
+            
+            temp_arr2[bb]=NULL; // to not get into trouble...
+         } 
       
 		if(TV_switch[0] || TV_switch[1] || TV_switch[2]) {
-			dsetn = r_new_resam_dset(networkMAPS, NULL, 0.0, 0.0, 0.0,
-											 voxel_order, RESAM_NN_TYPE, 
-											 NULL, 1, 0);
-			DSET_delete(networkMAPS); 
-			networkMAPS=dsetn;
-			dsetn=NULL;
+         if( MULTI_ROI ){
+            dsetn = r_new_resam_dset(networkMAPS, NULL, 0.0, 0.0, 0.0,
+                                     voxel_order, RESAM_NN_TYPE, 
+                                     NULL, 1, 0);
+            DSET_delete(networkMAPS); 
+            networkMAPS=dsetn;
+            dsetn=NULL;
+         }
 
          dsetn = r_new_resam_dset(networkMAPS2, NULL, 0.0, 0.0, 0.0,
                                   voxel_order, RESAM_NN_TYPE, 
@@ -383,38 +570,53 @@ int WriteBasicProbFiles(int N_nets, int Ndata, int Nvox,
          dsetn=NULL;
       }
 
-		EDIT_dset_items(networkMAPS,
-							 ADN_prefix    , prefix_netmap[hh] ,
-							 ADN_brick_label_one , "AND_all",
-							 ADN_none ) ;
-		THD_load_statistics(networkMAPS);
-		if( !THD_ok_overwrite() && THD_is_ondisk(DSET_HEADNAME(networkMAPS)) )
-			ERROR_exit("Can't overwrite existing dataset '%s'",
-						  DSET_HEADNAME(networkMAPS));
-		tross_Make_History("3dTrackID", argc, argv, networkMAPS);
-		THD_write_3dim_dataset(NULL, NULL, networkMAPS, True);
-		DSET_delete(networkMAPS); 
-
-      if(PAIR_POWERON){
-         for( i=0 ; i<NROI[hh]+1 ; i++) // free all
-            free(temp_arrFL[i]);
-         free(temp_arrFL);
+      if( MULTI_ROI ) {
+         EDIT_dset_items(networkMAPS,
+                         ADN_prefix    , prefix_netmap[hh] ,
+                         ADN_brick_label_one , "AND_all",
+                         ADN_none ) ;
+         
+         // Sept 2014
+         if( !PAIR_POWERON ) {
+            Dtable_str = Dtable_to_nimlstring(new_dt, "VALUE_LABEL_DTABLE");
+            destroy_Dtable(new_dt); new_dt = NULL;
+            THD_set_string_atr( networkMAPS->dblk , 
+                                "VALUE_LABEL_DTABLE" , Dtable_str);
+            
+            if( (fout1 = fopen(prefix_dtable[hh], "w")) == NULL) {
+               fprintf(stderr, "Error opening file %s.",prefix_dtable[hh]);
+               exit(19);
+            }
+            fprintf(fout1,"%s",Dtable_str);
+            fclose(fout1);
+            
+            free(Dtable_str); Dtable_str = NULL;
+         }
+         
+         THD_load_statistics(networkMAPS);
+         if( !THD_ok_overwrite() && THD_is_ondisk(DSET_HEADNAME(networkMAPS)) )
+            ERROR_exit("Can't overwrite existing dataset '%s'",
+                       DSET_HEADNAME(networkMAPS));
+         tross_Make_History("3dTrackID", argc, argv, networkMAPS);
+         THD_write_3dim_dataset(NULL, NULL, networkMAPS, True);
+         DSET_delete(networkMAPS); 
+      
+         if(PAIR_POWERON){
+            for( i=0 ; i<NROI[hh]+MULTI_ROI ; i++) // free all
+               free(temp_arrFL[i]);
+            free(temp_arrFL);
+         }
+         else{
+            for( i=0 ; i<NROI[hh]+MULTI_ROI ; i++) // free all
+               free(temp_arrSH[i]);
+            free(temp_arrSH);
+         }
+         for( i=0 ; i<NROI[hh]+MULTI_ROI ; i++) // free all
+            free(intersec[i]);
+         free(intersec);
+         intersec = NULL;
       }
-      else{
-         for( i=0 ; i<NROI[hh]+1 ; i++) // free all
-            free(temp_arrSH[i]);
-         free(temp_arrSH);
-      }
-
-      //		if(TV_switch[0] || TV_switch[1] || TV_switch[2]) {
-      //dsetn = r_new_resam_dset(networkMAPS2, NULL, 0.0, 0.0, 0.0,
-      //                         voxel_order, RESAM_NN_TYPE, 
-      //                         NULL, 1, 0);
-      //DSET_delete(networkMAPS2); 
-      //networkMAPS2=dsetn;
-      //dsetn=NULL;
-      //		}      
-
+      
 		EDIT_dset_items(networkMAPS2,
 							 ADN_prefix    , prefix_netmap2[hh] ,
 							 ADN_brick_label_one , "OR_all",
@@ -426,23 +628,29 @@ int WriteBasicProbFiles(int N_nets, int Ndata, int Nvox,
 		tross_Make_History("3dTrackID", argc, argv, networkMAPS2);
 		THD_write_3dim_dataset(NULL, NULL, networkMAPS2, True);
 		DSET_delete(networkMAPS2); 
-		for( i=0 ; i<NROI[hh]+1 ; i++) // free all
+		for( i=0 ; i<NROI[hh]+MULTI_ROI ; i++) // free all
 			free(temp_arr2[i]);
 		free(temp_arr2);
       
 	}
-  
+   
 	// ****** freeing  **********
 	
+   if(MULTI_ROI){
+      for( i=0 ; i<N_nets ; i++) {
+         free(prefix_netmap[i]); 
+      }
+      free(prefix_netmap);
+      free(networkMAPS);
+   }
 	for( i=0 ; i<N_nets ; i++) {
-		free(prefix_netmap[i]); 
+		free(prefix_dtable[i]);  // free in all cases because where initialized
 		free(prefix_netmap2[i]); 
 	}
-	free(prefix_netmap);
 	free(prefix_netmap2);
-	free(networkMAPS);
+   free(prefix_dtable); 
 	free(networkMAPS2);
-
+   
 	RETURN(1);
 }
 
@@ -455,7 +663,8 @@ int WriteIndivProbFiles(int N_nets, int Ndata, int Nvox, int **Prob_grid,
 								int ***NETROI,int ***mskd,int ***INDEX2,int *Dim,
 								THD_3dim_dataset *dsetn,int argc, char *argv[],
 								float ***Param_grid, int DUMP_TYPE,
-								int DUMP_ORIG_LABS, int **ROI_LABELS, int POST_IT)
+								int DUMP_ORIG_LABS, int **ROI_LABELS, int POST_IT,
+                        char ***ROI_STR_LAB, int NameLabelsOut)
 {
 
 	int i,j,k,bb,hh,rr,ii,jj,kk;
@@ -467,8 +676,12 @@ int WriteIndivProbFiles(int N_nets, int Ndata, int Nvox, int **Prob_grid,
 	int sum_pairs=0;
 	FILE *fout;
    int idx3;
+   //char str1[128]={""}, str2[128]={""};
+   //char *str_lab1=NULL, *str_lab2=NULL;
 
 	N_totpair = (int *)calloc(N_nets, sizeof(int)); 
+   //   str_lab1 = (char *)calloc(100, sizeof(char));
+   //str_lab2 = (char *)calloc(100, sizeof(char));
 
 	// find out how many networks we'll be outputting.
 	// this means going through UHT part of probgrid, looking for nonzeros
@@ -483,6 +696,9 @@ int WriteIndivProbFiles(int N_nets, int Ndata, int Nvox, int **Prob_grid,
 	if( sum_pairs==0 )
 		INFO_message("No pairs in any network to output.");
 	else {
+
+		INFO_message("Writing out individual files to: %s/NET_ ...",prefix);
+
 
 		// ****** alloc'ing
 		prefix_netmap = (char ***) calloc( N_nets, sizeof(char **) );
@@ -503,6 +719,7 @@ int WriteIndivProbFiles(int N_nets, int Ndata, int Nvox, int **Prob_grid,
 			exit(122);
 		}
 		
+
 		// ****** calc/do, loop through networks
 		for( hh=0 ; hh<N_nets ; hh++) {
 			count=0;
@@ -510,13 +727,18 @@ int WriteIndivProbFiles(int N_nets, int Ndata, int Nvox, int **Prob_grid,
 				for( j=i ; j<NROI[hh] ; j++ ) {// include diags
                idx3 = MatrInd_to_FlatUHT(i,j,NROI[hh]);
 					if(Prob_grid[hh][idx3]>0) {
-						if(DUMP_ORIG_LABS)
-							sprintf(prefix_netmap[hh][count],
+                  if( ROI_STR_LAB && NameLabelsOut ){
+                     snprintf(prefix_netmap[hh][count], 300,
+									  "%s/NET_%03d_ROI_%s_%s", prefix, hh,
+                             ROI_STR_LAB[hh][i+1], ROI_STR_LAB[hh][j+1]); 
+                  }
+						else if(!DUMP_ORIG_LABS)
+                     snprintf(prefix_netmap[hh][count], 300,
+									  "%s/NET_%03d_ROI_%03d_%03d",prefix,hh,i+1,j+1); 
+                  else
+                     snprintf(prefix_netmap[hh][count], 300,
 									  "%s/NET_%03d_ROI_%03d_%03d",prefix,hh,
 									  ROI_LABELS[hh][i+1],ROI_LABELS[hh][j+1]); 
-						else
-							sprintf(prefix_netmap[hh][count],
-									  "%s/NET_%03d_ROI_%03d_%03d",prefix,hh,i+1,j+1); 
 
 						// single brik, byte map
 						networkMAPS = EDIT_empty_copy( insetFA ) ; 
@@ -681,7 +903,15 @@ int WriteIndivProbFiles(int N_nets, int Ndata, int Nvox, int **Prob_grid,
 	}
 	
 	free(N_totpair);
-	
+   /*if(str_lab1) {
+      str_lab1 = NULL;
+      free(str_lab1);
+   }
+	   if(str_lab2) {
+      str_lab2 = NULL;
+      free(str_lab2);
+      }*/
+
 	RETURN(1);
 }
 

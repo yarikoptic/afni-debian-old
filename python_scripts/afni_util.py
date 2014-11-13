@@ -74,11 +74,11 @@ def wrap_file_text(infile='stdin', outfile='stdout'):
           afni_util.py -eval "wrap_file_text('$f1', '$f2')"
    """
 
-   tdata = read_text_file(fname=infile)
+   tdata = read_text_file(fname=infile, lines=0, strip=0)
    if tdata != '': write_text_to_file(outfile, tdata, wrap=1)
    
 
-def read_text_file(fname='stdin', lines=0, verb=1):
+def read_text_file(fname='stdin', lines=1, strip=1, verb=1):
    """return the text text from the given file as either one string
       or as an array of lines"""
 
@@ -90,8 +90,12 @@ def read_text_file(fname='stdin', lines=0, verb=1):
         if lines: return []
         else:     return ''
 
-   if lines: tdata = fp.readlines()
-   else:     tdata = fp.read()
+   if lines:
+      tdata = fp.readlines()
+      if strip: tdata = [td.strip() for td in tdata]
+   else:
+      tdata = fp.read()
+      if strip: tdata.strip()
 
    fp.close()
 
@@ -99,9 +103,8 @@ def read_text_file(fname='stdin', lines=0, verb=1):
 
 def read_top_lines(fname='stdin', nlines=1, strip=0, verb=1):
    """use read_text_file, but return only the first 'nlines' lines"""
-   tdata = read_text_file(fname, lines=1, verb=verb)
-   tdata = tdata[0:nlines]
-   if strip: tdata = [l.strip() for l in tdata]
+   tdata = read_text_file(fname, strip=strip, verb=verb)
+   if nlines != 0: tdata = tdata[0:nlines]
    return tdata
 
 def write_to_timing_file(data, fname='', nplaces=-1, verb=1):
@@ -300,7 +303,8 @@ def get_process_stack(pid=-1, verb=1):
          indtree.append(pind)
       return 0, indtree
 
-   cmd = 'ps -eo pid,ppid,user,comm'
+   if verb < 2: cmd = 'ps -eo pid,ppid,user,comm'
+   else:        cmd = 'ps -eo pid,ppid,user,args'
    ac = BASE.shell_com(cmd, capture=1)
    ac.run()
    if ac.status:
@@ -334,7 +338,8 @@ def get_process_stack_slow(pid=-1, verb=1):
 
         if pid >= 0, use as seed, else use os.getpid()
    """
-   base_cmd = 'ps h -o pid,ppid,user,comm -p'
+   if verb > 1: base_cmd = 'ps h -o pid,ppid,user,args -p'
+   else:        base_cmd = 'ps h -o pid,ppid,user,comm -p'
 
    def get_cmd_entries(cmd):
       ac = BASE.shell_com(cmd, capture=1)
@@ -381,9 +386,9 @@ def get_process_stack_slow(pid=-1, verb=1):
 
    return stack
 
-def show_process_stack(pid=-1,fast=1):
+def show_process_stack(pid=-1,fast=1,verb=1):
    """print stack of processes up to init"""
-   pstack = get_process_stack(pid=pid)
+   pstack = get_process_stack(pid=pid,verb=verb)
    if len(pstack) == 0:
       print '** empty process stack'
       return
@@ -398,7 +403,9 @@ def show_process_stack(pid=-1,fast=1):
    print '%-*s   %s' % (ilen, dashes, '-------')
    for row in pstack:
       ss = form % (row[0], row[1], row[2])
-      print '%-*s : %s' % (ilen, ss, row[3])
+      if len(row) > 3: rv = ' '.join(row[3:])
+      else:            rv = row[3]
+      print '%-*s : %s' % (ilen, ss, rv)
 
 def get_login_shell():
    """return the apparent login shell
@@ -2785,7 +2792,7 @@ def demean(vec, ibot=-1, itop=-1):
     for ind in range(ibot,itop+1):
        vec[ind] -= mm
 
-    return 0
+    return vec
 
 def lin_vec_sum(s1, vec1, s2, vec2):
    """return s1*[vec1] + s2*[vec2]
@@ -2846,13 +2853,20 @@ def min_mean_max_stdev(data):
     if not data: return 0,0,0,0
     length = len(data)
     if length <  1: return 0,0,0,0
-    if length == 1: return data[0], data[0], data[0], 0.0
 
-    minval  = min(data)
-    maxval  = max(data)
-    meanval = loc_sum(data)/float(length)
+    if type(data[0]) == str:
+       try: dd = [float(val) for val in data]
+       except:
+          print '** bad data for min_mean_max_stdev'
+          return 0, 0, 0, 0
+    else: dd = data
+    if length == 1: return dd[0], dd[0], dd[0], 0.0
 
-    return minval, meanval, maxval, stdev_ub(data)
+    minval  = min(dd)
+    maxval  = max(dd)
+    meanval = loc_sum(dd)/float(length)
+
+    return minval, meanval, maxval, stdev_ub(dd)
 
 def interval_offsets(times, dur):
     """given a list of times and an interval duration (e.g. TR), return
@@ -3205,30 +3219,66 @@ def argmin(vlist, absval=0):
 # random list routines: shuffle, merge, swap, extreme checking
 # ----------------------------------------------------------------------
 
-def shuffle(vlist):
+def swap_2(vlist, i1, i2):
+    if i1 != i2:
+       val = vlist[i2]
+       vlist[i2] = vlist[i1]
+       vlist[i1] = val
+
+def shuffle(vlist, start=0, end=-1):
     """randomize the order of list elements, where each permutation is
        equally likely
 
        - akin to RSFgen, but do it with equal probabilities
          (search for swap in [index,N-1], not in [0,N-1])
-       - random.shuffle() cannot produce all possibilities, don't use it"""
+       - random.shuffle() cannot produce all possibilities, don't use it
+       - start and end are indices to work with
+    """
 
     # if we need random elsewhere, maybe do it globally
     import random
 
-    size = len(vlist)
+    vlen = len(vlist)
 
-    for index in range(size):
-        # find random index in [index,n] = index+rand[0,n-index]
-        # note: random() is in [0,1)
-        i2 = index + int((size-index)*random.random())
+    # check bounds
+    if start < 0 or start >= vlen: return
+    if end >= 0 and end <= start:  return
 
-        if i2 != index:         # if we want a new location, swap
-            val = vlist[i2]
-            vlist[i2] = vlist[index]
-            vlist[index] = val
+    # so start is valid and end is either < 0 or big enough
+    if end < 0 or end >= vlen: end = vlen-1
 
-    return
+    nvals = end-start+1
+
+    # for each index, swap with random other towards end
+    for index in range(nvals-1):
+        rind = int((nvals-index)*random.random())
+        swap_2(vlist, start+index, start+index+rind)
+        continue
+
+    # return list reference, though usually ignored
+    return vlist
+
+def shuffle_blocks(vlist, bsize=-1):
+    """like shuffle, but in blocks of given size"""
+
+    vlen = len(vlist)
+
+    if bsize < 0 or bsize >= vlen:
+       shuffle(vlist)
+       return
+
+    if bsize < 2: return
+
+    nblocks = vlen // bsize
+    nrem    = vlen  % bsize
+
+    boff = 0
+    for ind in range(nblocks):
+       shuffle(vlist, boff, boff+bsize-1)
+       boff += bsize
+    shuffle(vlist, boff, boff+nrem-1)
+        
+    return vlist
 
 def random_merge(list1, list2):
     """randomly merge 2 lists (so each list stays in order)
@@ -3385,8 +3435,136 @@ def test_tent_vecs(val, freq, length):
 
     return correlation_p(a,b)
 
+_g_main_help = """
+afni_util.py: not really intended as a main program
+
+   However, there is some functionality for devious purposes...
+
+   options:
+
+      -help             : show this help
+
+      -eval STRING      : evaluate STRING in the context of afni_util.py
+                          (i.e. STRING can be function calls or other)
+
+         This option is used to simply execute the code in STRING.
+
+         Examples for eval:
+
+            afni_util.py -eval "show_process_stack()"
+            afni_util.py -eval "show_process_stack(verb=2)"
+            afni_util.py -eval "show_process_stack(pid=1000)"
+
+      -print STRING     : print the result of executing STRING
+
+         Akin to -eval, but print the results of evaluating/executing STRING.
+
+      -lprint STRING    : line print: print result list, one element per line
+
+         The 'l' stands for 'line' (or 'list').  This is akin to -print,
+         but prints a list with one element per line.
+
+      -listfunc [SUB_OPTS] FUNC LIST ... : execute FUNC(LIST)
+
+         With this option, LIST is a list of values to be passed to FUNC().
+
+         This is similar to eval, but instead of requiring:
+            -eval "FUNC([v1,v2,v3,...])"
+         the list values can be left as trailing arguments:
+            -listfunc FUNC v1 v2 v3 ...
+         (where LIST = v1 v2 v3 ...).
+
+         SUB_OPTS sub-options:
+
+                -float  : convert the list to floats before passing to FUNC()
+                -print  : print the result
+                -join   : print the results join()'d together
+
+         Examples for listfunc:
+
+            afni_util.py -listfunc min_mean_max_stdev 1 2 3 4 5
+            afni_util.py -listfunc -print min_mean_max_stdev 1 2 3 4 5
+            afni_util.py -listfunc -join min_mean_max_stdev 1 2 3 4 5
+            afni_util.py -listfunc -join -float demean  1 2 3 4 5
+
+         Also, if LIST contins -list2, then 2 lists can be input to do
+         something like:
+            -eval "FUNC([v1,v2,v3], [v4,v5,v6]
+
+         Examples with -list2:
+
+            afni_util.py -listfunc -print -float ttest 1 2 3 4 5 \\
+                                                -list2 2 2 4 6 8
+
+            afni_util.py -listfunc -print -float ttest_paired   \\
+                          1 2 3 4 5 -list2 2 4 5 6 8
+
+"""
+
+def process_listfunc(argv):
+   """see the -help description"""
+
+   if argv[1] != '-listfunc': return 1
+
+   if len(argv) <= 3 :
+      print '** -listfunc usage requires at least 3 args'
+      return 1
+
+   do_join = 0
+   do_float = 0
+   do_print = 0
+   argbase = 2
+
+   while argv[argbase] in ['-join', '-print', '-float']:
+      if argv[argbase] == '-join':
+         do_join = 1
+         argbase += 1
+      elif argv[argbase] == '-print':
+         do_print = 1
+         argbase += 1
+      elif argv[argbase] == '-float':
+         do_float = 1
+         argbase += 1
+      else: break # should not happen
+
+   # note function
+   func = eval(argv[argbase])
+
+   # get args, and check for -list2
+   args1 = argv[argbase+1:]
+   args2 = []
+   if '-list2' in args1:
+      l2ind = args1.index('-list2')
+      args2 = args1[l2ind+1:]
+      args1 = args1[0:l2ind]
+
+   if do_float:
+      try: vals1 = [float(v) for v in args1]
+      except:
+         print '** list1 is not all float'
+         return 1
+      try: vals2 = [float(v) for v in args2]
+      except:
+         print '** list2 is not all float'
+         return 1
+   else:
+      vals1 = args1
+      vals2 = args2
+
+   if len(vals2) > 0: ret = func(vals1, vals2)
+   else:              ret = func(vals1)
+   
+   if do_join: print ' '.join(str(v) for v in ret)
+   elif do_print: print  ret
+   # else do nothing special
+   return 0
+
+
 def main():
    argv = sys.argv
+   if '-help' in argv:
+      print _g_main_help
+      return 0
    if len(argv) > 2:
       if argv[1] == '-eval':
          eval(' '.join(argv[2:]))
@@ -3399,18 +3577,7 @@ def main():
          print eval(' '.join(argv[2:]))
          return 0
       elif argv[1] == '-listfunc':
-         do_join = 0
-         argbase = 3
-         if len(argv) <= argbase :
-            print '** -listfunc usage requires at least 3 args'
-            return 1
-         if argv[argbase] == '-join':
-            do_join = 1
-            argbase += 1
-         func = eval(argv[2])
-         if do_join: print ' '.join(func(argv[argbase:]))
-         else:       func(argv[argbase:])
-         return 0
+         return process_listfunc(argv)
 
    print 'afni_util.py: not intended as a main program'
    return 1

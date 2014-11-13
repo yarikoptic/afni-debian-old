@@ -66,6 +66,42 @@
 afni_history_struct ptaylor_history[] = {
 /*=====BELOW THIS LINE=====*/
 
+{ 5, Nov , 2014 , PT , "3dROIMaker" , MAJOR , TYPE_NEW_ENV,
+   "Default neighborhoods now AFNI standard; labeltable functionality in.",
+   "Default 'hoods more standard, can still do other; labels by default.\n"
+},
+
+{ 5, Nov , 2014 , PT , "3dTrackID" , MINOR , TYPE_NEW_OPT,
+   "Switch to not output INDI and PAIR map files.",
+   "In connectome examples, this might save a lot of space.\n"
+},
+
+{ 24, Oct , 2014 , PT , "3dTrackID" , MINOR , TYPE_BUG_FIX,
+   "Fixed offset in track to volume coordinates ",
+   "Effect of bug restricted to viewing of tracts rather than volume masks "
+   "and connectivity matrices.\n"
+   "Offset was by half a voxel in each of the three dims.\n"
+},
+
+{ 26, Sep , 2014 , PT , "3dNetCorr" , MAJOR , TYPE_NEW_OPT,
+   "Allow labeltable reading and writing.",
+   "This allows users to use labeltables, and output labelled values everywhere.\n"
+},
+
+{ 26, Sep , 2014 , PT , "3dTrackID" , MAJOR , TYPE_NEW_OPT,
+   "Allow labeltable reading and writing.",
+   "This allows users to use labeltables, and output labelled values everywhere.\n"
+},
+
+{ 18, Sep , 2014 , PT , "fat_mvm_prep.py" , MICRO , TYPE_GENERAL,
+   "Change internal var/par names, and how helpfile is thrown.",
+   "More consistent naming, easier helpfile usage.\n"
+},
+
+{ 18, Sep , 2014 , PT , "fat_mvm_scripter.py" , MINOR , TYPE_NEW_OPT,
+   "Allow interaction terms in the user-defined statistical model.",
+   "Allow cat+quant or cat+cat variable interactions, and posthoc testing.\n"
+},
 
 { 8, Sep , 2014 , PT , "fat_roi_row.py" , SUPER , TYPE_NEW_PROG,
    "Select out one row of a matrix file, at user request.",
