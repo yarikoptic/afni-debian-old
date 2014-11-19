@@ -1134,7 +1134,7 @@ char * genx_Atlas_Query_to_String (ATLAS_QUERY *wami,
    char *rbuf = NULL, *strptr=NULL;
    int max_spaces = 50;
    char  xlab[max_spaces][32], ylab[max_spaces][32] , zlab[max_spaces][32],
-         clab[max_spaces][128], lbuf[1024]  , tmps[1024], pf[10], 
+         clab[max_spaces][128], lbuf[1024], connbuf[1024]  , tmps[1024], pf[10], 
          x_fstr[10], y_fstr[10], z_fstr[10] ;
    THD_string_array *sar =NULL;
    ATLAS_COORD *acl=NULL;
@@ -1312,6 +1312,13 @@ char * genx_Atlas_Query_to_String (ATLAS_QUERY *wami,
                   newzone = 1;
                   /* for each label in a zone il */
                   for (il=0; il<wami->zone[iq]->N_label; ++il) { 
+                     if((wami->zone[iq]->connpage[il]) &&
+                        (strcmp(wami->zone[iq]->connpage[il],"")!=0))
+                        sprintf(connbuf, "<a href=\"%s\">connections</a>",
+                            wami->zone[iq]->connpage[il]);
+                     else
+                        sprintf(connbuf," ");
+
                      if (is_Atlas_Named(atlas, wami->zone[iq]->atname[il]))  {
                         if (!nfind_one) {
                            SS('r');
@@ -1328,10 +1335,11 @@ char * genx_Atlas_Query_to_String (ATLAS_QUERY *wami,
                                  (strcmp(wami->zone[iq]->webpage[il],"")!=0))
                               {
                                  sprintf(lbuf,
-                                 "%s      Focus point: <a href=\"%s\">%s</a>%s",
+                                 "%s      Focus point: <a href=\"%s\">%s</a>  %s%s",
                                     histart,
                                     wami->zone[iq]->webpage[il],
                                     Clean_Atlas_Label(wami->zone[iq]->label[il]),
+                                    connbuf,
                                     hiend);
                               }
                               else
@@ -1347,11 +1355,12 @@ char * genx_Atlas_Query_to_String (ATLAS_QUERY *wami,
                                  (strcmp(wami->zone[iq]->webpage[il],"")!=0))
                               {
                                  sprintf(lbuf,
-                                 "%s      Within %1d mm: <a href=\"%s\">%s</a>%s",
+                                 "%s      Within %1d mm: <a href=\"%s\">%s</a>  %s%s",
                                     histart,
                                     (int)wami->zone[iq]->radius[il], 
                                     wami->zone[iq]->webpage[il],
                                     Clean_Atlas_Label(wami->zone[iq]->label[il]),
+                                    connbuf,
                                     hiend);
                               }
                               else
@@ -1369,10 +1378,11 @@ char * genx_Atlas_Query_to_String (ATLAS_QUERY *wami,
                               (strcmp(wami->zone[iq]->webpage[il],"")!=0))
                            {
                               sprintf(lbuf,
-                              "%s      -AND-: <a href=\"%s\">%s</a>%s",
+                              "%s      -AND-: <a href=\"%s\">%s</a>  %s%s",
                                  histart,
                                  wami->zone[iq]->webpage[il],
                                  Clean_Atlas_Label(wami->zone[iq]->label[il]),
+                                 connbuf,
                                  hiend);
                            }
                            else
@@ -4783,36 +4793,6 @@ char **approx_str_sort_all_popts(char *prog, int *N_ws,
    RETURN(ws);
 }
 
-char *phelp(char *prog, int verb) 
-{
-   char cmd[512], uid[64], tout[128];
-   char *help=NULL;
-   
-   ENTRY("phelp");
-   
-   if (!prog ) RETURN(help);
-   
-   UNIQ_idcode_fill(uid);
-   sprintf(tout,"/tmp/%s.%s.txt", APSEARCH_TMP_PREF, uid); 
-   snprintf(cmd,500*sizeof(char),"\\echo '' 2>&1 | %s -help > %s 2>&1 ",
-             prog, tout);
-   if (system(cmd)) {
-      if (0) {/* many programs finish help and set status afterwards. Naughty. */
-         ERROR_message("Failed to get help for %s\nCommand: %s\n", prog, cmd);
-         return 0;
-      }
-   }
-   
-   if (!(help = AFNI_suck_file(tout))) {
-      if (verb) ERROR_message("File %s could not be read\n", tout);
-      RETURN(help);
-   }
-                                 
-   snprintf(cmd,500*sizeof(char),"\\rm -f %s", tout);
-   system(cmd);
-   
-   RETURN(help);
-}
 
 char **approx_str_sort_phelp(char *prog, int *N_ws, char *str, 
                             byte ci, float **sorted_score,
@@ -4979,286 +4959,6 @@ void suggest_best_prog_option(char *prog, char *str)
    if (logfout) fclose(logfout);
    if (ws_score) free(ws_score); ws_score=NULL;
    return;
-}
-
-char *form_complete_command_string(char *prog, char **ws, int N_ws, int shtp) {
-   char *sout=NULL, sbuf[128];
-   int maxch=0, i, jj;
-   NI_str_array *nisa=NULL;
-   
-   if (!prog || !ws || shtp < 0) {
-      return(NULL);
-   }
-   
-   maxch = 256;
-   for (i=0; i<N_ws; ++i) {
-      if (ws[i]) {
-         maxch+=strlen(ws[i])+10;
-         if (strlen(ws[i]) > 127) {
-            WARNING_message("Truncating atrocious option %s\n", ws[i]);
-            ws[127] = '\0';
-         }
-      }
-   }
-   if (!(sout = (char *)calloc((maxch+1), sizeof(char)))) {
-      ERROR_message("Failed to allocate for %d chars!", maxch+1);
-      return(NULL);
-   }
-   sout[0]='\0';
-   switch (shtp) {
-      default:
-      case 0: /* csh/tcsh */
-         strncat(sout,"set ARGS=(",maxch-1);
-         break;
-      case 1: /* bash */
-         strncat(sout,"ARGS=(",maxch-1);
-         break;
-   }
-   
-   for (i=0; i<N_ws; ++i) {
-      if (ws[i] && (nisa = NI_strict_decode_string_list(ws[i] ,"/"))) {
-         for (jj=0; jj<nisa->num; ++jj) {
-            if (ws[i][0]=='-' && nisa->str[jj][0] != '-') {
-               snprintf(sbuf,127,"'-%s' ", nisa->str[jj]);
-            } else { 
-               snprintf(sbuf,127,"'%s' ", nisa->str[jj]);
-            }
-            strncat(sout,sbuf, maxch-1);
-            NI_free(nisa->str[jj]);
-         }
-         if (nisa->str) NI_free(nisa->str); 
-         NI_free(nisa); nisa=NULL;
-      }
-   }
-   
-   switch (shtp) {
-      default:
-      case 0: /* csh/tcsh */
-         snprintf(sbuf,127,") ; "
-               "complete %s \"C/-/($ARGS)/\" \"p/*/f:/\" ; ##%s##\n",prog, prog);
-         break;
-      case 1: /* bash */
-         snprintf(sbuf,127,") ; "
-               "complete -W \"${ARGS[*]}\" -o bashdefault -o default %s ; "
-               "##%s##\n",prog, prog);
-         break;
-   }
-   if (strlen(sbuf) >= 127) {
-      ERROR_message("Too short a buffer for complete command %s\n");
-      free(sout); sout=NULL;
-      return(sout);
-   }
-   strncat(sout,sbuf, maxch-1);
-   if (strlen(sout)>=maxch) {
-      ERROR_message("Truncated complete string possible");
-      free(sout); sout=NULL;
-      return(sout);
-   }
-
-   return(sout);
-}
-
-/* 
-   Insert string 'ins' at pointer 'pos' inside of string '*s' which
-   has at most *nalloc characters.
-   Returns the string with the insertion, and reallocates and updates
-   *nalloc if needed.
-   Call with something like:
-   s = insert_in_string(&s, pos, ins, nalloc);
-*/
-char *insert_in_string(char **s, char *pos, char *ins, int *nalloc)
-{
-   char *sp=NULL;
-   int ns = -1, n_ins=-1, i_ins, i;
-   
-   if (!s || !*s || !pos || !nalloc) return(sp);
-   
-   sp = *s;
-   if (!ins || ins[0] == '\0') return(sp); /* nothing to do */
-   ns = strlen(sp);
-   n_ins = strlen(ins);
-   
-   if ((i_ins = pos - sp) < 0 || (i_ins > ns)) {
-      ERROR_message("Inserting outside of boundaries of string");
-      return(*s);
-   }
-   
-   /* fprintf(stderr,"i_ins=%d, ins=%s, ns=%d",i_ins, ins, ns); */
-   /* Check for enough allocation */
-   if (ns+n_ins >= *nalloc) {
-      *nalloc += 500;
-      *s = (char *)realloc(sp, (*nalloc+1)*sizeof(char));
-      sp = *s;
-   }
-   
-   /* Now move the second half ins steps */
-   for (i=ns; i>=i_ins; --i) {
-      sp[i+n_ins] = sp[i];
-   }
-   
-   /* And now put in the insertion string */
-   for (i=0; i<n_ins; ++i) {
-      sp[i_ins+i] = ins[i];
-   }
-
-   return(*s);
-}
-
-
-void write_string(char *s, char *prelude, char *postscript,
-                 int nmax, int multiline, FILE *fout)
-{
-   int k, ns;
-   
-   if (!fout) fout = stdout;
-   if (prelude) fprintf(fout, "%s", prelude);
-   if (s) {
-      ns = strlen(s);
-      if (nmax>ns) nmax = ns;
-      else if (nmax<0) nmax = ns;
-      k = 0;
-      if (multiline) {
-         while (k<nmax ) { 
-            fprintf(stderr,"%c",*(s+k)); 
-            ++k; 
-         }
-      } else {
-         while (k<nmax && s[k] !='\n') { 
-            fprintf(stderr,"%c",*(s+k)); 
-            ++k; 
-         }
-      }
-   }
-   if (postscript) fprintf(fout, "%s", postscript);
-   return;
-}
-
-/* 
-Find 1st location in cur that begins with string opt.
-Blanks are ignored.
-Function returns pointer to beginning of opt in the line, 
-and sets number of blanks preceding it */
-char *line_begins_with(char *cur, char *opt, int *nb)
-{
-   char *loc=NULL, *nl=NULL;
-   int bad = 1;
-   
-   if (!cur || !opt) {
-      ERROR_message("NULL option or null string");
-      return(loc);
-   } 
-   if (nb) *nb = -1;
-   do {
-      loc = strstr(cur, opt);
-      if (loc) {
-         bad = 0; /* Assume it is good */
-         if (loc == cur) {
-            if (nb) *nb = 0;
-            return(loc);
-         }
-         /* search back to new line */
-         nl = loc-1; 
-         while (nl != cur && *nl != '\n') {
-            if (*nl != ' ' && *nl != '\t') { /* No need to continue */
-               bad = 1;  
-            }
-            --nl;
-         }
-         if (!bad) { /* Good */
-            if (*nl == '\n') ++nl;
-            if (nb) *nb = loc -nl;
-            return(loc);
-         } else {
-            /* continue search past this find. */
-            cur = loc+1;
-         }
-      } else {
-         /* nothing found, get out */
-         return(NULL);
-      }
-      
-   } while (*cur != '\n');
-   
-   return(NULL);
-}
-
-char *find_popt(char *sh, char *opt, int *nb)
-{
-   char *loc=NULL, *other=NULL;
-   
-   ENTRY("find_popt");
-   
-   if (!sh || !opt) {
-      ERROR_message("NULL option or null string");
-      RETURN(loc);
-   } 
-   
-   loc = line_begins_with(sh, opt, nb);
-   
-   if (loc) { /* Check that we do not have more than one */
-      if ((other = line_begins_with(loc+*nb+1, opt, NULL))) { 
-         WARNING_message("More than one match for opt %s.\n"
-                         "Returning first hit\n", opt);
-      }
-   }
-   
-   RETURN(loc);
-}
-
-int prog_complete_command (char *prog, char *ofileu, int shtp) {
-   char **ws=NULL, *sout=NULL, *ofile=NULL;
-   float *ws_score=NULL;
-   int N_ws=0, ishtp=0, shtpmax = 0, i;
-   FILE *fout=NULL;
-   
-   if (!prog || !(ws = approx_str_sort_all_popts(prog, &N_ws,  
-                   1, &ws_score,
-                   NULL, NULL, 1, 0, '\\'))) {
-      return 0;
-   }
-
-   if (shtp < 0) { shtp=0; shtpmax = 2;}
-   else { shtpmax = shtp+1; }
-   
-   for (ishtp=shtp; ishtp<shtpmax; ++ishtp) {
-      if (ofileu) {
-          if (shtpmax != shtp+1) { /* autoname */
-            switch (ishtp) {
-               default:
-               case 0:
-                  ofile = strdup(ofileu);
-                  break;
-               case 1:
-                  ofile = (char*)calloc((strlen(ofileu)+20), sizeof(char));
-                  strcat(ofile, ofileu);
-                  strcat(ofile, ".bash");
-                  break;
-            }
-          } else {
-            ofile = strdup(ofileu);
-          }
-            
-          if (!(fout = fopen(ofile,"w"))) {
-            ERROR_message("Failed to open %s for writing\n", ofile);
-            return(0);
-          }
-
-      } else {
-         fout = stdout;
-      }
-
-      if ((sout = form_complete_command_string(prog, ws, N_ws, ishtp))){
-         fprintf(fout, "%s", sout);
-         free(sout); sout = NULL;
-      }
-      if (ofileu) fclose(fout); fout=NULL;
-      if (ofile) free(ofile); ofile=NULL;
-   }
-   
-   for (i=0; i<N_ws; ++i) if (ws[i]) free(ws[i]);
-   free(ws); ws = NULL;
-   if (ws_score) free(ws_score); ws_score=NULL;
-   return 0;
 }
 
 
@@ -6471,6 +6171,7 @@ ATLAS_ZONE *Get_Atlas_Zone(ATLAS_QUERY *aq, int level)
       zn->prob = NULL;
       zn->radius = NULL;
       zn->webpage = NULL;
+      zn->connpage = NULL;
    }
 
    RETURN(zn);
@@ -6495,7 +6196,7 @@ ATLAS_ZONE *Get_Atlas_Zone(ATLAS_QUERY *aq, int level)
 */
 ATLAS_ZONE *Atlas_Zone( ATLAS_ZONE *zn, int level, char *label, 
                         int code, float prob, float within, 
-                        char *aname, char *webpage)
+                        char *aname, char *webpage, char *connpage)
 {
    ATLAS_ZONE *zno = NULL;
 
@@ -6521,6 +6222,7 @@ ATLAS_ZONE *Atlas_Zone( ATLAS_ZONE *zn, int level, char *label,
       zno->prob = NULL;
       zno->radius = NULL;
       zno->webpage = NULL;
+      zno->connpage = NULL;
    } else {
       zno = zn;
       if (zno->level != level) {
@@ -6549,7 +6251,12 @@ ATLAS_ZONE *Atlas_Zone( ATLAS_ZONE *zn, int level, char *label,
       }
       else
          zno->webpage[zno->N_label-1] = NULL;
-
+      zno->connpage = (char **)realloc(zno->connpage, sizeof(char *)*zno->N_label);
+      if(connpage) {
+         zno->connpage[zno->N_label-1] = nifti_strdup(connpage);
+      }
+      else
+         zno->connpage[zno->N_label-1] = NULL;
    }
 
    RETURN(zno);
@@ -6574,6 +6281,10 @@ ATLAS_ZONE *Free_Atlas_Zone(ATLAS_ZONE *zn)
    if (zn->webpage) {
       for (k=0; k<zn->N_label; ++k) if (zn->webpage[k]) free(zn->webpage[k]);
       free(zn->webpage);
+   }
+   if (zn->connpage) {
+      for (k=0; k<zn->N_label; ++k) if (zn->connpage[k]) free(zn->connpage[k]);
+      free(zn->connpage);
    }
    free(zn->code);
    free(zn->prob);
@@ -6607,8 +6318,8 @@ void Show_Atlas_Zone(ATLAS_ZONE *zn, ATLAS_LIST *atlas_list)
       "     %d: label=%-32s, prob=%-3s, rad=%-3s, code=%-3s, atlas=%-10s\n",
                   k, Clean_Atlas_Label(zn->label[k]), probs, radiuss, codes, 
                   zn->atname[k]);
-         if(zn->webpage[k])
-            fprintf(stderr,"     Webpage: %s\n", zn->webpage[k]);
+         if(zn->connpage[k])
+            fprintf(stderr,"     Connection Webpage: %s\n", zn->connpage[k]);
 
       }
    } else {
@@ -7847,6 +7558,7 @@ int whereami_in_atlas(  char *aname,
    float fval = 0;
    static char find_warn = 0, nolabel_warn = 1;
    char *webpage = NULL;
+   char *connpage = NULL;
 
    ENTRY("whereami_in_atlas");
       if (wami_verb()){
@@ -8082,10 +7794,12 @@ int whereami_in_atlas(  char *aname,
                   /* zone levels are based on search radius */
 
          webpage = atlas_suppinfo_webpage(atlas,blab);
+         connpage = atlas_suppinfo_connpage(atlas,blab);
          zn = Atlas_Zone(  zn, zn->level,
                            blab, baf, atlas->adh->probkey, rr_find[ff], 
-                           Atlas_Name(atlas), webpage);
+                           Atlas_Name(atlas), webpage, connpage);
          if(webpage) free(webpage);
+         if(connpage) free(connpage);
 
          if (LocalHead) 
             INFO_message("Adding zone on %s to wami\n", 
@@ -8135,7 +7849,7 @@ int whereami_in_atlas(  char *aname,
                if (LocalHead)  fprintf(stderr,"  ++ No Label!\n");
                zn = Atlas_Zone(zn, 0, "No Label", -1, 
                               fval, 0, 
-                              Atlas_Name(atlas), NULL); /* null for no webpage here */
+                              Atlas_Name(atlas), NULL, NULL); /* null for no webpage here */
             } else {
                if( atlas->adh->adset->dblk->brick_lab[sb] && 
                    atlas->adh->adset->dblk->brick_lab[sb][0] != '\0' ){
@@ -8143,20 +7857,22 @@ int whereami_in_atlas(  char *aname,
                   if (blab) {
                      if (LocalHead) fprintf(stderr," blabing: %s\n", blab);
                      webpage = atlas_suppinfo_webpage(atlas,blab);
+                     connpage = atlas_suppinfo_connpage(atlas,blab);
                      zn = Atlas_Zone(zn, 0, blab, baf , 
                                     fval, 0, 
-                            Atlas_Name(atlas), webpage);
+                            Atlas_Name(atlas), webpage, connpage);
                      if(webpage) free(webpage);
+                     if(connpage) free(connpage);
                   } else {
                      if (LocalHead) fprintf(stderr," no blabing:\n");
                      zn = Atlas_Zone(  zn, 0, "Unexpected trouble.", 
                                        -1, -1.0, 0, 
-                            Atlas_Name(atlas), NULL); /* null for no webpage here */
+                            Atlas_Name(atlas), NULL,NULL); /* null for no webpage here */
                   }
                } else {
                   zn = Atlas_Zone(zn, 0, "Empty Label", -1, 
                                   fval, 0,
-                           Atlas_Name(atlas), NULL); /* null for no webpage here */
+                           Atlas_Name(atlas), NULL,NULL); /* null for no webpage here */
                }
             }
             *wamip = Add_To_Atlas_Query(*wamip, zn);
@@ -8326,6 +8042,7 @@ int whereami_9yards(  ATLAS_COORD aci, ATLAS_QUERY **wamip,
    int LocalHead = wami_lh();
    int dset_kind;
    char *webpage = NULL;
+   char *connpage = NULL;
    float fbaf;
    static int iwarn = 0;
    
@@ -8594,11 +8311,13 @@ int whereami_9yards(  ATLAS_COORD aci, ATLAS_QUERY **wamip,
                                  baf, STR_PRINT(blab), 
                                  is_atlas_key_labeled(atlas,baf));
                webpage = atlas_suppinfo_webpage(atlas,blab);
+               connpage = atlas_suppinfo_connpage(atlas,blab);
 
                zn = Atlas_Zone(  zn, zn->level,
                      blab, baf, (float) atlas->adh->probkey, 
-                     rr_find[ff], Atlas_Name(atlas), webpage);
+                     rr_find[ff], Atlas_Name(atlas), webpage, connpage);
                if(webpage) free(webpage);
+               if(connpage) free(connpage);
                wami = Add_To_Atlas_Query(wami, zn);
                rff = rr_find[ff] ;  /* save for next time around */
             }
@@ -8632,7 +8351,7 @@ int whereami_9yards(  ATLAS_COORD aci, ATLAS_QUERY **wamip,
                    atlas->adh->adset->dblk->brick_lab[ii] == NULL) {
                   if (LocalHead)  fprintf(stderr,"  ++ No Label!\n");
                   zn = Atlas_Zone(zn, 0, "No Label", -1, 
-                        fbaf, 0, Atlas_Name(atlas), NULL);
+                        fbaf, 0, Atlas_Name(atlas), NULL, NULL);
                } else {
                   if( atlas->adh->adset->dblk->brick_lab[ii] && 
                       atlas->adh->adset->dblk->brick_lab[ii][0] != '\0' ){
@@ -8643,19 +8362,21 @@ int whereami_9yards(  ATLAS_COORD aci, ATLAS_QUERY **wamip,
                      if (blab) {
                         if (LocalHead) fprintf(stderr," blabing: %s\n", blab);
                         webpage = atlas_suppinfo_webpage(atlas,blab);
+                        connpage = atlas_suppinfo_connpage(atlas,blab);
 
                         zn = Atlas_Zone(  zn, 0, blab, baf , 
                                           fbaf, 0, 
-                                          Atlas_Name(atlas), webpage);
+                                          Atlas_Name(atlas), webpage, connpage);
                         if(webpage) free(webpage);
+                        if(connpage) free(connpage);
                      } else {
                         if (LocalHead) fprintf(stderr," no blabing:\n");
                         zn = Atlas_Zone(zn, 0, "Unexpected trouble.",
-                              -1, -1.0, 0, Atlas_Name(atlas), NULL);
+                              -1, -1.0, 0, Atlas_Name(atlas), NULL, NULL);
                      }
                   } else {
                      zn = Atlas_Zone(zn, 0, "Empty Label", -1,
-                             fbaf, 0, Atlas_Name(atlas), NULL);
+                             fbaf, 0, Atlas_Name(atlas), NULL, NULL);
                   }
                }
                wami = Add_To_Atlas_Query(wami, zn);
@@ -9602,7 +9323,7 @@ wami_query_web(ATLAS *atlas, ATLAS_COORD ac, ATLAS_QUERY *wami)
    zn = Get_Atlas_Zone (wami, 0 ); /* new 0-level zone */
    zn = Atlas_Zone(  zn, zn->level, /* put label in zone finding */
                      blab, 1, -1, 0, 
-                     Atlas_Name(atlas), get_wami_webpage());
+                     Atlas_Name(atlas), get_wami_webpage(), NULL);
    if (LocalHead) 
       INFO_message("Adding zone on %s to wami\n", 
                       Atlas_Name(atlas)); 
@@ -9964,9 +9685,30 @@ char * atlas_suppinfo_webpage(ATLAS *atlas, char *blab)
     if(webpage==NULL) return(NULL);
 
     if(atlas->supp_web_type != NULL)
-       sprintf(webpage, "%s/%s%s", atlas->supp_web_info, blab, atlas->supp_web_type);
+       sprintf(webpage, "%s%s%s", atlas->supp_web_info, blab, atlas->supp_web_type);
     else
-       sprintf(webpage, "%s/%s.html", atlas->supp_web_info, blab);
+       sprintf(webpage, "%s%s.html", atlas->supp_web_info, blab);
+    return (webpage);
+}
+
+/* return webpage name with supplemental information for a particular label -
+   the name is based on label itself and the atlas supp_conn_info base site name and
+   an extension type (.pdf, .html, ...) */ 
+char * atlas_suppinfo_connpage(ATLAS *atlas, char *blab)
+{
+/*    static char webpage[256];*/
+
+   char *webpage;
+
+    if(ATL_SUPP_CONN_INFO(atlas) == 0) return(NULL);
+
+    webpage = calloc(256,sizeof(char));
+    if(webpage==NULL) return(NULL);
+
+    if(atlas->supp_conn_type != NULL)
+       sprintf(webpage, "%s%s%s", atlas->supp_conn_info, blab, atlas->supp_conn_type);
+    else
+       sprintf(webpage, "%s%s.html", atlas->supp_conn_info, blab);
     return (webpage);
 }
 
