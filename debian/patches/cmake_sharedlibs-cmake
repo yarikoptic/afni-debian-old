@@ -358,7 +358,7 @@
 +  3dNwarpCalc dicom_hinfo apsearch 3dNormalityTest 3dmask_tool FIRdesign
 +  2perm 3dClustCount 3dTransformGroupInCorr 3dExtractGroupInCorr 3dUnifize
 +  3dNwarpCat 3dQwarp 3dLocalHistog 3dNwarpAdjust 3dNwarpFuncs 3dTproject
-+  afni_open 3dConformist 3dNwarpXYZ ${EXTRAS})
++  afni_open 3dConformist 3dNwarpXYZ 3dTRfix ${EXTRAS})
 +
 +SET(SCRIPTS
 +  @4Daverage @CommandGlobb @GetAfniOrient @DTI_studio_reposition
@@ -623,7 +623,7 @@
 +  edt_geomcon.c edt_floatize.c)
 +
 +SET(SUMA_SRC
-+  suma_datasets.c suma_algorithms.c suma_utils.c)
++  suma_datasets.c suma_algorithms.c suma_string_manip.c suma_utils.c)
 +
 +SET(CS_SRC
 +  cs_sort_fi.c cs_sort_di.c cs_symeig.c cs_sort_ii.c cs_sort_ff.c
