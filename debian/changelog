@@ -1,3 +1,14 @@
+afni (0.20141118~dfsg.1-1) neurodebian; urgency=medium
+
+  * New upstream code
+  * debian/patches
+    - cmake_sharedlibs  was split into two (-noncmake and -cmake) with
+      cmake files being only in -cmake one while -noncmake containing sattelite
+      patches
+    - cmake_sharedlibs-cmake  updated for introduced few new files
+
+ -- Yaroslav Halchenko <debian@onerussian.com>  Fri, 21 Nov 2014 16:26:20 -0500
+
 afni (0.20141107~dfsg.1-1) neurodebian; urgency=medium
 
   * New upstream code
