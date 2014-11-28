@@ -292,10 +292,10 @@ void AFNI_syntax(void)
      "    recompile this program.\n"
      "\n"
      "Global Options (available to all AFNI/SUMA programs)\n"
-     "%s"
+     "%s\n%s"
      , get_np_help() ,
      THD_MAX_NUM_SESSION , THD_MAX_SESSION_SIZE ,
-     get_gopt_help()
+     SUMA_Offset_SLines(get_help_help(),3), get_gopt_help()
    ) ;
 
    printf(
@@ -1534,6 +1534,7 @@ void AFNI_sigfunc_alrm(int sig)
      "I'm sorry; if you were right, I'd agree with you"              ,
      "Like dreams, statistics are a form of wish fulfillment"        ,
      "I wish I were in Lobuche right now, eating momos"              ,
+     "A thermos of hot tea in Pangboche would be a nice pit stop"    ,
      "Next stop: Bora Bora and Rangiroa"                             ,
      "Do you still miss the NIH Bear? I do"                          ,
      "Advice from the NIH Bear -- honey goes good with brains"       ,
@@ -1545,7 +1546,9 @@ void AFNI_sigfunc_alrm(int sig)
      "If you can't bite, don't show your teeth"                      ,
      "Three statisticians ==> Four opinions on data analysis"        ,
      "A fool and his p-value are soon non-replicated"                ,
+     "What do you do all day? I do very little, and do it slowly"    ,
 
+     "Are you testing for the Dull Hypothesis? It's never significant"                ,
      "For every complex problem there is an answer that is clear, simple, and wrong"  ,
      "For every simple problem there is an answer that is murky, complex, and wrong"  ,
      "If something is 'New and Improved', was the last version 'Old and Decrepit'?"   ,
@@ -1765,7 +1768,9 @@ int main( int argc , char *argv[] )
    }
 
    if( check_string("-global_opts",argc,argv) ) {      /* list global */
-     fputs(get_gopt_help(), stdout);   /* opts used by all AFNI progs */
+     fputs(SUMA_Offset_SLines(get_help_help(),3), 
+                                    stdout);   /* opts used by all AFNI progs */
+     fputs(get_gopt_help(), stdout);   
      dienow++ ;
    }
 

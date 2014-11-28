@@ -49,6 +49,21 @@
 
 afni_history_struct rickr_history[] = {
 
+ { 25,  Nov, 2014, RCR, "afni_util.py", MICRO, TYPE_NEW_OPT,
+   "added get_process_depth()",
+   "sample use: afni_util.py -print 'get_process_depth()'"
+ } ,
+
+ { 21,  Nov, 2014, RCR, "meica.py", MICRO, TYPE_MODIFY,
+   "merged -affter into -nwarp in 5 3dNwarpApply calls",
+   NULL
+ } ,
+
+ { 21,  Nov, 2014, RCR, "afni_proc.py", MICRO, TYPE_ENHANCE,
+   "-anat_unifize_method none now means to skip, default means to do in AW",
+   "Basically, this adds the ability to skip 3dUnifize completely."
+ } ,
+
  { 19,  Nov, 2014, RCR, "Dimon", MICRO, TYPE_BUG_FIX,
    "do not allow num_suffix to be processed as octal",
    NULL

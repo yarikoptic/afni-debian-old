@@ -1099,8 +1099,49 @@ char *SUMA_Break_String(char *si, int mxln)
 }
 
 /* 
+
+A convenience version of SUMA_Offset_SLines which 
+absolves you of having to free the offset strings at all.
+
+Now, if you feel moved to clean, DO NOT FREE the strings 
+outside of this function. To clean the allocated space, just call:
+   SUMA_Offset_SLines(NULL, 0); 
+and you're good as new.
+
+*/   
+char *SUMA_Offset_SLines(char *si, int off)
+{
+   static char FuncName[]={"SUMA_Offset_SLines"};
+   static char **sov = NULL;
+   static int Nmax=10, cnt = 0;
+   int i;
+   
+   SUMA_ENTRY;
+   
+   if (!si) {
+      if (sov) {
+         for (i=0; i<Nmax; ++i) SUMA_ifree(sov[i]);
+         SUMA_ifree(sov);
+      }
+      cnt = 0;
+      SUMA_RETURN(NULL);
+   }
+   
+   ++cnt; if (cnt >= Nmax) cnt = 0;
+   if (!sov) sov = (char**)SUMA_calloc(Nmax, sizeof(char *));
+   
+   if (sov[cnt]) SUMA_ifree(sov[cnt]);
+   sov[cnt] = SUMA_Offset_Lines(si, off);
+   
+   SUMA_RETURN(sov[cnt]);
+}
+
+/* 
    Offset each line by off blanks
-   You must handle the freeing of the returned string 
+   
+   You must handle the freeing of the returned string.
+   
+   \sa SUMA_Offset_SLines()
 */
 char *SUMA_Offset_Lines(char *si, int off)
 {
@@ -1480,10 +1521,13 @@ void SUMA_Sphinx_String_Edit_Help(FILE *fout)
 "       needed to keep sphinx from considering words between vertical\n"
 "       bars to be substitution references.\n"
 "\n"
-" :NOF:When found right after a new line, don't let function \n"
+" :NOF: When found right after a new line, don't let function \n"
 "      SUMA_Offset_Lines() insert any spaces. :NOF: is otherwise cut\n"
 "      from all output\n"
-"\n" 
+"\n"
+" :=ABIN: Replace with afni bin directory\n"
+" :=AFACE: Replace with afni face directory\n"
+"\n"
 "See function SUMA_Sphinx_String_Edit_Help() for a code sample.\n"
 "\n"
                 };
@@ -1528,9 +1572,9 @@ void SUMA_Sphinx_String_Edit_Help(FILE *fout)
    s0 = strdup(s); s1 = strdup(s);
    fprintf(fout,"\n        Source Code Version:\n%s\n    -------\n", s);
    fprintf(fout,"\n        Edited   for   SUMA:\n%s\n    -------\n", 
-                  SUMA_Sphinx_String_Edit(&s0,0,0));
+                  SUMA_Sphinx_String_Edit(&s0,TXT,0));
    fprintf(fout,"\n        Edited  for  SPHINX:\n%s\n    -------\n", 
-                  SUMA_Sphinx_String_Edit(&s1,1, 0));
+                  SUMA_Sphinx_String_Edit(&s1,SPX, 0));
    free(s0); free(s1);
 
    return;
@@ -1617,6 +1661,7 @@ char *SUMA_Sphinx_String_Edit(char **suser, TFORM targ, int off)
          SUMA_LH(">so=>\n%s\n<", s);
          SUMA_RETURN(s);
          break;
+      case ASPX:
       case SPX: /* Sphinx */
          SUMA_Cut_String(
                SUMA_Cut_Between_String(s, ":DEF:", ":SPX:", NULL), ":SPX:");
@@ -1632,53 +1677,21 @@ char *SUMA_Sphinx_String_Edit(char **suser, TFORM targ, int off)
          SUMA_Cut_String(s,"(BHelp for more)");
          SUMA_Cut_String(s,"(much more with BHelp)");
          break;
+      case TFORM_NOT_SET:
+         SUMA_S_Warn("Targ not set, doing nothing.");
+         SUMA_RETURN(s);
+         break;
       default:
          SUMA_S_Err("What is TFORM of %d?", targ);
          SUMA_RETURN(s);
          break;
    }
    
+   s = SUMA_Sphinx_SetVars(&s, targ);
+   
    SUMA_RETURN(s); 
 }
 
-char * format_prog_help(char *prog, TFORM targ, int verb) 
-{
-   static char FuncName[]={"format_prog_help"};
-   char *oh=NULL;
-   
-   SUMA_ENTRY;
-   
-   if (!prog) {
-      SUMA_RETURN(NULL);
-   }
-   
-   
-   switch (targ) {
-      default:
-         ERROR_message("No format from adam!");
-         SUMA_RETURN(NULL);
-         break;
-      case NO_FORMAT:
-         if (!(oh = phelp(prog, targ, verb))) {
-            ERROR_message("Weird, dude");
-            SUMA_RETURN(NULL);
-         }
-         SUMA_RETURN(oh);
-         break;
-      case TXT:
-         if (!(oh = phelp(prog, targ, verb))) {
-            ERROR_message("Weird, dude");
-            SUMA_RETURN(NULL);
-         }
-         SUMA_RETURN(SUMA_Sphinx_String_Edit(&oh, TXT, 0));
-         break;
-      case SPX:
-         SUMA_RETURN(sphinxize_prog_help(prog, verb));
-         break;
-   }
-   
-   SUMA_RETURN(NULL);
-}
 
 /*
    Take the help output of program prog and
@@ -1687,16 +1700,12 @@ char * format_prog_help(char *prog, TFORM targ, int verb)
 char *sphinxize_prog_help (char *prog, int verb) 
 {
    static char FuncName[]={"sphinxize_prog_help"};
-   char **ws=NULL, *sout=NULL, *ofile=NULL, *bb=NULL;
-   char *sh=NULL, *oh=NULL, *l=NULL, sins[1024]={""};
-   int N_ws=0, ishtp=0, nb = 0, i, k, nalloc, offs;
-   SUMA_Boolean LocalHead=YUP;
+   char *oh=NULL;
+   SUMA_Boolean LocalHead=NOPE;
    
    SUMA_ENTRY;
    
-   if (!prog || !(ws = approx_str_sort_all_popts(prog, &N_ws,  
-                   1, NULL,
-                   NULL, NULL, 1, 0, '\\'))) {
+   if (!prog) {
       SUMA_RETURN(NULL);
    }
    /* Get the original help string */
@@ -1704,9 +1713,132 @@ char *sphinxize_prog_help (char *prog, int verb)
       SUMA_S_Err("Weird, dude");
       SUMA_RETURN(NULL);
    }
+   SUMA_RETURN(sphinxize_prog_shelp(prog, oh, verb));
+}
+
+                   
+int SUMA_is_underline(char *sh, char *ul, int *nread)
+{
+   char lnc, *ish=NULL;
+   int nunl;
    
-   SUMA_LH("Have %d opts total", N_ws);
+   if (!sh || *sh == '\0') return(0);
    
+   ish = sh;
+   SUMA_SKIP_PURE_BLANK(sh,NULL);
+   lnc = '\0'; nunl = 0;
+   while (*sh != '\n' && *sh != 0) {
+      if (SUMA_IS_UNDERLINE_CHAR(*sh)) {
+         if (!lnc ) {
+            /* 
+               fprintf(stderr,"1st underline");
+               write_string(sh,NULL, "\n", 10, 0, stderr);
+            */
+            lnc = *sh;
+            nunl = 1;
+         } else {
+            if (*sh == lnc) {
+               ++nunl;
+            } else {
+               SUMA_SKIP_PURE_BLANK(sh,NULL);
+               if (*sh == '\n') { /* Not a problem */
+                  --sh;
+               } else { /* not an underline */
+                  lnc = '\0'; nunl = 0;
+                  break;
+               }
+            }
+         }
+      } else {
+         SUMA_SKIP_PURE_BLANK(sh,NULL);
+         if (*sh == '\n') { /* Not a problem */
+            --sh;
+         } else { /* not an underline */
+            if (lnc) { lnc = '\0'; nunl = 0; }
+            break;
+         }
+      }      
+      ++sh;
+   }
+   
+   SUMA_SKIP_TO_EOL(sh, NULL);
+   
+   if (ul) *ul = lnc;
+   if (nread) *nread=(sh-ish);
+   /* write_string(ish ,"\nResult for:>>", "<<\n", 40, 0, stderr);
+      fprintf(stderr,"out, nunl=%d\n", nunl); */
+   return(nunl);
+}
+
+int SUMA_Demote_Underlining(char *sh)
+{
+   static char FuncName[]={"SUMA_Demote_Underlining"};
+   int ii = 0, jj = 0, nskip=0;
+   
+   SUMA_ENTRY;
+   
+   if (!sh || *sh == '\0') SUMA_RETURN(0);
+      
+   ii = 0;
+   while (sh[ii] != '\0') {
+      if (SUMA_is_underline(sh+ii, NULL, &nskip)) {
+         for (jj=0; jj<nskip; ++jj) {
+            if (!SUMA_IS_PURE_BLANK(sh[ii])) sh[ii] = '^';
+            ++ii;
+         }
+      } else {
+         while (sh[ii] != '\n' && sh[ii] != '\0') ++ii;
+      }
+      if (sh[ii] != '\0') ++ii;
+   }
+   
+   SUMA_RETURN(1);
+}
+
+char *sphinxize_prog_shelp (char *prog, char *oh, int verb) 
+{
+   static char FuncName[]={"sphinxize_prog_shelp"};
+   char **ws=NULL, *sout=NULL, *ofile=NULL, *bb=NULL;
+   char *sh=NULL, *l=NULL, sins[1024]={""}, *ohc=NULL, *uoh=NULL;
+   int N_ws=0, ishtp=0, nb = 0, i, k, nalloc, offs;
+   SUMA_Boolean LocalHead=NOPE;
+   
+   SUMA_ENTRY;
+   
+   if (LocalHead) verb = 1;
+   
+   if (!prog) {
+      SUMA_RETURN(NULL);
+   }
+   if (verb) {
+      if (oh) {
+         SUMA_S_Note("Using passed help string");
+      } else {
+         SUMA_S_Note("Generating help string");
+      }
+   }
+   /* Get the original help string */
+   uoh = oh;
+   if (!oh && !(oh = phelp(prog, SPX, verb))) {
+      SUMA_S_Err("Weird, dude");
+      SUMA_RETURN(NULL);
+   }
+   ohc = SUMA_copy_string(oh); /* make copy to avoid corrupting oh
+                                  in approx_str_sort_all_popts */
+   
+   /* Replace all underlining with something below level ----- */
+   SUMA_Demote_Underlining(oh);
+   
+   if (!(ws = approx_str_sort_all_popts(ohc, 1, &N_ws,  
+                   1, NULL,
+                   NULL, NULL, 1, 0, '\\'))) {
+                   
+      SUMA_S_Err("Failed to sort all options");
+      SUMA_ifree(oh); SUMA_ifree(ohc); SUMA_RETURN(NULL);               
+   }
+   SUMA_ifree(ohc);
+   
+   SUMA_LH("Have %d opts total.", N_ws);
    nalloc = 2*strlen(oh);
    sh = (char*)calloc(2*strlen(oh), sizeof(char));
    strcpy(sh, oh);
@@ -1715,7 +1847,11 @@ char *sphinxize_prog_help (char *prog, int verb)
    snprintf(sins, 1020, "%s\n", prog); bb = sins+strlen(sins);
    for (i=0; i<strlen(prog); ++i) {*bb='-'; ++bb;}
    *bb='\0';
-   strcat(sins,"\n\n");
+   strncat(sins,"\n\n", 1020);
+   strncat(sins, "`Link to classic view <", 1020);
+   strncat(sins, web_prog_help_link(prog,0), 1020);
+   strncat(sins, ">`_\n\n", 1020);
+   
    sh = insert_in_string(&sh, sh, sins, &nalloc); 
    for (i=0; i<N_ws; ++i) {
       if (ws[i]) {
@@ -1723,7 +1859,8 @@ char *sphinxize_prog_help (char *prog, int verb)
          if (l) {
             offs = l - sh -nb;
             if (verb) {
-               fprintf(stderr,"Found option %s at::", ws[i]);
+               fprintf(stderr,"Found option %s (nalloc=%d, len=%d) at::", 
+                           ws[i], nalloc, (int)strlen(sh));
                write_string(l-nb, "\n", "\n",50, 0, stderr);
             }
             snprintf(sins, 1020, "\n.. _%s-%s:\n\n", 
@@ -1742,8 +1879,10 @@ char *sphinxize_prog_help (char *prog, int verb)
       }
    }
    SUMA_free(ws); ws = NULL;
-   SUMA_free(oh); oh = NULL;
-   
+   if (!uoh) {
+      SUMA_free(oh); oh = NULL;
+   }
+
    SUMA_RETURN(SUMA_Sphinx_String_Edit(&sh, SPX, 0));
 }
 
@@ -1757,9 +1896,28 @@ SUMA_Boolean SUMA_Known_Sphinx_Dir(char *s)
    static char FuncName[]={"SUMA_Known_Sphinx_Dir"};
    if (!s) return(NOPE);
    if (!strncmp(s,":ref:",5)) return(YUP);
-   if (!strncmp(s,":term:",5)) return(YUP);
+   if (!strncmp(s,":term:",6)) return(YUP);
    return(NOPE);
 }
+
+/*
+   Check if string begins with AFNI  sphinx directives
+   used in SUMA's code 
+*/
+SUMA_Boolean SUMA_Known_Sphinx_ADir(char *s)
+{
+   static char FuncName[]={"SUMA_Known_Sphinx_ADir"};
+   if (!s) return(NOPE);
+   if (!strncmp(s,":LR:",4)) return(YUP);
+   if (!strncmp(s,":NOF:",5)) return(YUP);
+   if (!strncmp(s,":LIT:",5)) return(YUP);
+   if (!strncmp(s,":SPX:",5)) return(YUP);
+   if (!strncmp(s,":DEF:",5)) return(YUP);
+   if (!strncmp(s,":=ABIN:",7)) return(YUP);
+   if (!strncmp(s,":=AFACE:",8)) return(YUP);
+   return(NOPE);
+}
+
 
 /* 
    
@@ -1800,7 +1958,8 @@ char *SUMA_Sphinx_LineSpacer(char *s, TFORM targ)
          bln=0;
          while (s[ns+bln+1] && SUMA_IS_PURE_BLANK(s[ns+1+bln])) { ++bln; }
          if (bln > 0 && s[ns+1+bln] == ':' && 
-             !SUMA_Known_Sphinx_Dir(s+ns+1+bln)) {
+             !SUMA_Known_Sphinx_Dir(s+ns+1+bln) && 
+             !SUMA_Known_Sphinx_ADir(s+ns+1+bln)) {
             /* Have blank gap */
             switch(targ) {
                case TXT: /* just replace : with space */
@@ -1811,6 +1970,7 @@ char *SUMA_Sphinx_LineSpacer(char *s, TFORM targ)
                   while(s[ns] != ':') { so[nso++] = s[ns++]; }
                   so[nso++] = ' '; ++ns;
                   break;
+               case ASPX:
                case SPX: /* remove all spaces */
                   /* remove preceding new line just to keep superfluous 
                   new line characters that were there for the purpose of keeping
@@ -1839,6 +1999,123 @@ char *SUMA_Sphinx_LineSpacer(char *s, TFORM targ)
    }
    so[nso] = '\0';
    SUMA_RETURN(so);
+}
+
+typedef struct {
+   int where;
+   int norig;
+   char *what;
+} insertion;
+
+/*!
+   Replace strings like ":=ABIN:"
+   and ":=AFACE:" with their values.
+   
+   This function will reallocate for whatever
+   is in us and set *us accordingly.
+   
+   The function returns *us, whether or not *us
+   was changed.
+*/
+char *SUMA_Sphinx_SetVars(char **us, TFORM targ) 
+{
+   static char FuncName[]={"SUMA_Sphinx_SetVars"};
+   insertion *ins=NULL;
+   int N_ins=0, ntok=0, ns=0, nso=0, ii=0, jj=0, oo=0, N_ins_alloc, nextra=0;
+   char *s=NULL, *ss=NULL, *so=NULL, *tok=NULL, *rep=NULL;
+   
+   ENTRY("SUMA_Sphinx_SetVars");
+   
+   if (!us || !*us) RETURN(NULL);
+      
+   /* Maximum number of insertions */
+   N_ins_alloc = 0; N_ins = 0;
+   s = *us;
+   while((ss = strstr(s, ":="))) {
+      tok = ":=ABIN:"; ntok = strlen(tok);
+      if (strstr(ss,tok)) {
+         if (N_ins+1 > N_ins_alloc) {
+            N_ins_alloc +=100;
+            ins = (insertion*)realloc(ins, sizeof(insertion)*N_ins_alloc);
+         }
+         if (targ == SPX || targ == ASPX) {
+            /* Looks like sphinx likes // for absolute path references 
+               like .. image:: //Users/home/abin/...
+               otherwise, the first slash gets dropped */
+            ins[N_ins].what = 
+               SUMA_append_replace_string("/",THD_abindir(0),"",2);
+         } else {
+            ins[N_ins].what = THD_abindir(0);
+         }
+         ins[N_ins].where = ss-*us;
+         ins[N_ins].norig = ntok;
+         nextra += (strlen(ins[N_ins].what)-ntok);
+         ++N_ins; 
+         s = ss + ntok; continue;
+      }
+      tok = ":=AFACE:"; ntok = strlen(tok);
+      if (strstr(ss,tok)) {
+         if (N_ins+1 > N_ins_alloc) {
+            N_ins_alloc +=100;
+            ins = (insertion*)realloc(ins, sizeof(insertion)*N_ins_alloc);
+         }
+         if (targ == SPX || targ == ASPX) {
+            ins[N_ins].what = 
+               SUMA_append_replace_string("/",THD_facedir(0),"",2);
+         } else {
+            ins[N_ins].what = THD_facedir(0);
+         }
+         ins[N_ins].where = ss-*us;
+         ins[N_ins].norig = ntok;
+         nextra += (strlen(ins[N_ins].what)-ntok);
+         ++N_ins; 
+         s = ss + ntok; continue;
+      }
+      s += 2;
+   }
+   
+   if (!N_ins) {
+      RETURN(*us); /* nothing to be done */
+   }
+   
+   /* Allocate for output */
+   ns = strlen(*us);
+   nso = nextra+1+ns;
+   if (!(so = (char *)calloc(nso, sizeof(char)))) {
+      ERROR_message("Failed to allocate for %d chars, RETURNing original sin",
+                        nso);
+      for (ii=0; ii<N_ins; ++ii) {
+         if (ins[ii].what) free(ins[ii].what); ins[ii].what=NULL;
+      }
+      if (ins) free(ins); ins = NULL;
+      RETURN(*us);
+   }
+   
+   /* Copy and replace */
+   s = *us; oo = 0;
+   ii = 0; jj = 0;
+   while (ii<ns && jj < N_ins) {
+      if (ii<ins[jj].where) {
+         so[oo++] = s[ii++];
+      } else { /* insert jj */
+         rep = ins[jj].what;
+         while (*rep) {
+            so[oo++] = *rep; ++rep;
+         }
+         ii += ins[jj].norig; 
+         free(ins[jj].what); ins[jj].what=NULL;
+         ++jj;
+      }
+   }
+   free(ins); ins = NULL;
+   
+   /* finish last bit */
+   while (ii<ns) so[oo++] = s[ii++];
+   so[oo++] = '\0';
+   
+   free(*us); *us = so;  
+   
+   RETURN(so);
 }
 
 /*
@@ -1896,8 +2173,8 @@ int sphinx_offprintf(TFORM targ, int off, FILE *fout, char *str, ... )
       SUMA_LH("nout=%d", nout);
       if (nout < 0) {
          SUMA_SL_Err("Error reported by  vsnprintf");
-         strcat(s,"Error SUMA_StringAppend_va:"
-                  " ***Error reported by  vsnprintf");
+         strncat(s,"Error SUMA_StringAppend_va:"
+                   " ***Error reported by  vsnprintf", nalloc-1);
          SUMA_free(s);
          SUMA_RETURN(1);
       }

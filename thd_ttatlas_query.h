@@ -343,7 +343,7 @@ char **approx_str_sort_text(char *text, int *N_ws, char *str,
                             byte ci, float **sorted_score,
                             APPROX_STR_DIFF_WEIGHTS *Dwi,
                             APPROX_STR_DIFF **Dout, char join_breaks);      
-char **approx_str_sort_tfile(char *fname, int *N_ws, char *str, 
+char **approx_str_sort_tfile(char *fname, int textinname, int *N_ws, char *str, 
                             byte ci, float **sorted_score,
                             APPROX_STR_DIFF_WEIGHTS *Dwi,
                             APPROX_STR_DIFF **Dout, int verb, char join_breaks);
@@ -353,11 +353,11 @@ THD_string_array *approx_str_sort_Ntfile(
                       APPROX_STR_DIFF_WEIGHTS *Dwi,
                       APPROX_STR_DIFF **Doutp, int verb, char join_breaks);
 #define APSEARCH_TMP_PREF "__apsearch"
-char **approx_str_sort_phelp(char *prog, int *N_ws, char *str, 
+char **approx_str_sort_phelp(char *prog, int textinname, int *N_ws, char *str, 
                             byte ci, float **sorted_score,
                             APPROX_STR_DIFF_WEIGHTS *Dwi,
                             APPROX_STR_DIFF **Dout, int verb, char join_breaks);
-char **approx_str_sort_all_popts(char *prog, int *N_ws, 
+char **approx_str_sort_all_popts(char *prog, int textinname, int *N_ws, 
                             byte ci, float **sorted_score,
                             APPROX_STR_DIFF_WEIGHTS *Dwi,
                             APPROX_STR_DIFF **Dout,
@@ -367,12 +367,6 @@ char *get_updated_help_file(int force_recreate, byte verb, char *progname,
 char **approx_str_sort_readmes(char *str, int *N_r);
 char **unique_str(char **words, int N_words, byte ci, 
                   byte noae, int *N_unq, int **isort_out);
-char *find_readme_file(char *str);
-int view_text_file(char *progname);
-void view_prog_help(char *prog);
-void web_prog_help(char *prog);
-void web_class_docs(char *prog);
-int view_web_link(char *link, char *browser);
 char *approx_string_diff_info(APPROX_STR_DIFF *D,APPROX_STR_DIFF_WEIGHTS *Dwi); 
 ATLAS_SEARCH *Find_Atlas_Regions(AFNI_ATLAS *aa, AFNI_ATLAS_REGION *ur , 
                                  ATLAS_SEARCH *usethissearch);
