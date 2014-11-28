@@ -4598,7 +4598,7 @@ THD_string_array *approx_str_sort_Ntfile(
 
    for (inm=0; inm < N_names; ++inm) {
       fname = fnames[inm];
-      if (!(ws = approx_str_sort_tfile(fname, &N_ws, str, ci, 
+      if (!(ws = approx_str_sort_tfile(fname, 0, &N_ws, str, ci, 
                                 NULL, Dw, &Dout, verb, join_breaks))) {
          if (verb) WARNING_message("Failed to process %s\n", fname);
          continue;
@@ -4636,7 +4636,11 @@ THD_string_array *approx_str_sort_Ntfile(
 }
 
 
-char **approx_str_sort_tfile(char *fname, int *N_ws, char *str, 
+/*
+   See function approx_str_sort_all_popts() for warning about
+   setting textinname to 1
+*/ 
+char **approx_str_sort_tfile(char *fname, int textinname, int *N_ws, char *str, 
                             byte ci, float **sorted_score,
                             APPROX_STR_DIFF_WEIGHTS *Dwi,
                             APPROX_STR_DIFF **Dout, int verb, char join_breaks)
@@ -4657,10 +4661,15 @@ char **approx_str_sort_tfile(char *fname, int *N_ws, char *str,
       ERROR_message("If Dout then *Dout should be NULL\n");
       RETURN(ws);
    }
-   /* suck text and send it to approx_str_sort_text */
-   if (!(text = AFNI_suck_file(fname))) {
-      if (verb) ERROR_message("File %s could not be read\n", fname);
-      RETURN(ws);
+   
+   if (!textinname) {
+      /* suck text and send it to approx_str_sort_text */
+      if (!(text = AFNI_suck_file(fname))) {
+         if (verb) ERROR_message("File %s could not be read\n", fname);
+         RETURN(ws);
+      }
+   } else {
+      text = fname;
    }
    
    if (!Dw) Dw = init_str_diff_weights(Dw);
@@ -4669,17 +4678,32 @@ char **approx_str_sort_tfile(char *fname, int *N_ws, char *str,
    if (Dout && *Dout) {   
       ddout = *Dout;
       for (ii=0; ii<*N_ws; ++ii) {
-         snprintf(ddout[ii].srcfile,SRCFILE_MAX*sizeof(char),
+         if (!textinname) {
+            snprintf(ddout[ii].srcfile,SRCFILE_MAX*sizeof(char),
                             "%s", THD_trailname(fname,0));
+         } else {
+            snprintf(ddout[ii].srcfile,SRCFILE_MAX*sizeof(char),
+                            "%s", "NoFnameGiven");
+         }
       }
    }
-   free(text); text=NULL;
+   
+   if (text != fname) free(text); text=NULL;
+   
    if (Dw != Dwi) free(Dw); Dw=NULL;
    
    RETURN(ws);
 }
 
-char **approx_str_sort_all_popts(char *prog, int *N_ws,  
+/* 
+   Beware setting textinname to 1
+   ==============================
+   You can set textinname to 1 to indicate that the string prog
+   actually contains the text rather than a filename to that text.
+   However, realize that the string in prog will get modified by
+   this function and might be of little use to you upon returning.
+*/
+char **approx_str_sort_all_popts(char *prog, int textinname, int *N_ws,  
                             byte ci, float **sorted_score,
                             APPROX_STR_DIFF_WEIGHTS *Dwi,
                             APPROX_STR_DIFF **Dout,
@@ -4695,10 +4719,10 @@ char **approx_str_sort_all_popts(char *prog, int *N_ws,
    
    Dwi = init_str_diff_weights(NULL);
    Dwi->w[MWI]=1000; /* give a lot of weight to the order in the sentence */
-   if (!(ws = approx_str_sort_phelp(prog, N_ws, str, 
+   if (!(ws = approx_str_sort_phelp(prog, textinname, N_ws, str, 
                       ci, sorted_score,
                       Dwi, Dout, verb, join_breaks))) {
-      if (verb) {
+      if (verb && !textinname) {
          if (THD_filesize(prog)) {
             ERROR_message("Failed to get phelp for '%s', word '%s'", prog,str);
          } else {
@@ -4793,15 +4817,18 @@ char **approx_str_sort_all_popts(char *prog, int *N_ws,
    RETURN(ws);
 }
 
-
-char **approx_str_sort_phelp(char *prog, int *N_ws, char *str, 
+/*
+   See function approx_str_sort_all_popts() for warning about
+   setting textinname to 1
+*/ 
+char **approx_str_sort_phelp(char *prog, int textinname, int *N_ws, char *str, 
                             byte ci, float **sorted_score,
                             APPROX_STR_DIFF_WEIGHTS *Dwi,
                             APPROX_STR_DIFF **Dout, int verb, char join_breaks)
 {
    char **ws=NULL;
    APPROX_STR_DIFF_WEIGHTS *Dw = Dwi;
-   char cmd[512], uid[64], tout[128];
+   char cmd[512], tout[128], *stout=NULL;
    
    ENTRY("approx_str_sort_phelp");
    
@@ -4811,22 +4838,28 @@ char **approx_str_sort_phelp(char *prog, int *N_ws, char *str,
       RETURN(ws);
    }      
    
-   UNIQ_idcode_fill(uid);
-   sprintf(tout,"/tmp/%s.%s.txt", APSEARCH_TMP_PREF, uid); 
-   snprintf(cmd,500*sizeof(char),"\\echo '' 2>&1 | %s -help > %s 2>&1 ",
-             prog, tout);
-   if (system(cmd)) {
-      if (0) {/* many programs finish help and set status afterwards. Naughty. */
-         ERROR_message("Failed to get help for %s\nCommand: %s\n", prog, cmd);
-         return 0;
+   if (!textinname) {
+      if (!phelp_cmd(prog, SPX, cmd, tout, verb )) {
+         ERROR_message("Failed to get help command");
+         RETURN(ws);
       }
+      if (system(cmd)) {
+         if (0){/*many programs finish help and set status afterwards. Naughty.*/
+            ERROR_message("Failed to get help for %s\nCommand: %s\n", prog, cmd);
+            return 0;
+         }
+      }
+      stout = tout;
+   } else {
+      stout = prog;
    }
-   ws = approx_str_sort_tfile(tout, N_ws, str, ci, 
+   ws = approx_str_sort_tfile(stout, textinname, N_ws, str, ci, 
                               sorted_score, Dw, Dout, verb,  join_breaks);
                                  
-   snprintf(cmd,500*sizeof(char),"\\rm -f %s", tout);
-   system(cmd);
-   
+   if (!textinname) {
+      snprintf(cmd,500*sizeof(char),"\\rm -f %s", tout);
+      system(cmd);
+   }
    RETURN(ws);
 }
 
@@ -4854,25 +4887,6 @@ char **approx_str_sort_readmes(char *str, int *N_r)
    RETURN(ws);
 }
 
-char *find_readme_file(char *str)
-{
-   char **ws=NULL, *sout=NULL;
-   int N_ws=0, i;
-   
-   ENTRY("find_readme_file");
-   if (!(ws = approx_str_sort_readmes(str, &N_ws))) {
-      ERROR_message("Could not find README files.\n"
-                     "They should have been in directory %s on your machine\n",
-                     THD_abindir(0));
-      RETURN(NULL);
-   } 
-   
-   if (strcasestr(ws[0],str)) sout = strdup(ws[0]);
-   for (i=0; i<N_ws; ++i) if (ws[i]) free(ws[i]);
-   free(ws);
-   RETURN(sout);
-}
-
 void suggest_best_prog_option(char *prog, char *str)
 {
    char **ws=NULL;
@@ -4894,7 +4908,7 @@ void suggest_best_prog_option(char *prog, char *str)
          return;
       } 
    }
-   ws = approx_str_sort_phelp(prog, &N_ws, str, 
+   ws = approx_str_sort_phelp(prog, 0, &N_ws, str, 
                    1, &ws_score,
                    NULL, &D, 0, '\\');
    isug = 0; isuglog = 6;
@@ -5029,127 +5043,6 @@ char *get_updated_help_file(int force_recreate, byte verb, char *progname,
 }
 
 
-void view_prog_help(char *prog)
-{
-   char *viewer=NULL, *hname=NULL;
-   char *progname=NULL;
-   
-   if (!prog) return;
-   if (!(progname = THD_find_executable(prog))) {
-      ERROR_message("Could not find executable %s.\n",
-                     prog);
-      return;
-   }
-   if (!(viewer = GetAfniTextEditor())) {
-      ERROR_message("No GUI editor defined, and guessing game failed.\n"
-              "Set AFNI_GUI_EDITOR in your .afnirc for this option to work.\n"); 
-      return;
-   }
-   
-   hname = get_updated_help_file(0, 0, progname, -1);
-   if (hname[0]=='\0') { /* failed, no help file ... */
-      ERROR_message("No help file for %s\n", progname);
-      return;
-   }
-   
-   if (!(view_text_file(hname))) {
-      ERROR_message("Failed to view %s\n", hname);
-   }
-   return;
-}
-
-void web_prog_help(char *prog)
-{
-   char *progname=NULL;
-   char weblink[1024]={""};
-   
-   if (!prog) return;
-   
-   if (!strcmp(prog,"ALL")) {
-      snprintf(weblink,1020*sizeof(char),
-               "http://afni.nimh.nih.gov/pub/dist/doc/program_help/%s.html",
-               "all-of-them");
-   } else {
-      if (!(progname = THD_find_executable(prog))) {
-         ERROR_message("Could not find executable %s.\n",
-                        prog);
-         return;
-      }
-
-      snprintf(weblink,1020*sizeof(char),
-               "http://afni.nimh.nih.gov/pub/dist/doc/program_help/%s.html",
-               THD_trailname(progname,0));
-   }
-   
-   if (!(view_web_link(weblink,NULL))) {
-      ERROR_message("Failed to web view %s\n", weblink);
-      return;
-   } 
-     
-   return;
-}
-
-void web_class_docs(char *prog)
-{
-   char weblink[1024]={""};
-   
-   if (prog) {
-      ERROR_message("Not ready for prog input %s.\n",
-                     prog);
-      return;
-   } else {
-      snprintf(weblink,1020*sizeof(char),
-               "http://afni.nimh.nih.gov/pub/dist/edu/latest");
-   }
-   
-   if (!(view_web_link(weblink,NULL))) {
-      ERROR_message("Failed to web view %s\n", weblink);
-      return;
-   } 
-     
-   return;
-}
-
-int view_web_link(char *link, char *browser)
-{
-   char cmd[1024];
-   if (!link) return(0);
-   if (!browser) browser = GetAfniWebBrowser();
-   
-   if (!browser) {
-      ERROR_message("No Web browse defined.\n"
-              "Set AFNI_WEB_BROWSER in your .afnirc for this option to work.\n");
-      return(0);
-   }
-   
-   snprintf(cmd,1020*sizeof(char),"%s %s &", browser, link);
-   system(cmd);
-   return(1);
-}
-
-int view_text_file(char *progname) 
-{
-   char *viewer=NULL, cmd[256];
-   
-   if (!progname) {
-      ERROR_message("No input!");
-      return(0);
-   }  
-   if (!THD_is_ondisk(progname)) {
-      ERROR_message("file %s not on disk.\n", progname); 
-      return(0);
-   }
-   if (!(viewer = GetAfniTextEditor())) {
-      ERROR_message("No GUI editor defined, and guessing game failed.\n"
-              "Set AFNI_GUI_EDITOR in your .afnirc for this option to work.\n"); 
-      return(0);
-   }
-   /* open help file in editor*/
-   snprintf(cmd,250*sizeof(char),"%s %s &", viewer, progname);
-   system(cmd);
-   return(1);
-}
-
 /* Trim string lbl to a maximum of mxlen characters.
    If mxlen <= 0 mxlen = 20
    Do not free what you get back, it might be lbl if
@@ -5238,7 +5131,7 @@ void print_prog_options(char *prog)
    int N_ws=0, i;
    float *ws_score=NULL;
 
-   if (!(ws = approx_str_sort_all_popts(prog, &N_ws,  
+   if (!(ws = approx_str_sort_all_popts(prog, 0, &N_ws,  
                    1, &ws_score,
                    NULL, NULL, 0, 1, '\\'))) {
       return;
