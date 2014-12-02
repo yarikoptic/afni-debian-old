@@ -195,6 +195,9 @@ void TRfix_help(void)
      " -TRlist rrr   = 1D columnar file of time gaps between sub-bricks in 'iii';\n"
      "                 If the input dataset has N time points, this file must\n"
      "                 have at least N-1 (positive) values.\n"
+     "                * Please note that these time steps (or the time values in\n"
+     "                  '-TIMElist') should be in seconds, NOT in milliseconds!\n"
+     "                * AFNI time units are seconds!!!\n"
      "\n"
      " -TIMElist ttt = Alternative to '-TRlist', where you give the N values of\n"
      "                 the times at each sub-brick; these values must be monotonic\n"
@@ -292,7 +295,7 @@ int main( int argc , char *argv[] )
 
      /*-- read dtout --*/
 
-     if( strcasecmp(argv[iarg],"-TRout") == 0 ){
+     if( strcasecmp(argv[iarg],"-TRout") == 0 || strcasecmp(argv[iarg],"-dt") == 0 ){
        if( ++iarg >= argc ) ERROR_exit("no argument after '%s' :-(",argv[iarg-1]) ;
        dtout = (float)strtod(argv[iarg],NULL) ;
        if( dtout <= 0.0f )
@@ -333,7 +336,7 @@ int main( int argc , char *argv[] )
     for( ii=1 ; ii < ntin ; ii++ ){
       tgar[ii] = tgar[ii-1] + dtar[ii-1] ;  /* addition! */
       if( dtar[ii-1] <= 0.0f ){
-        ERROR_message("-TRlist #%d=%g -- but must be positive!",ii-1,dtar[ii-1]) ;
+        ERROR_message("-TRlist: #%d=%g -- but must be positive!",ii-1,dtar[ii-1]) ;
         nbad++ ;
       }
     }
@@ -341,7 +344,7 @@ int main( int argc , char *argv[] )
     tgar = MRI_FLOAT_PTR(TIMElist) ;
     for( ii=1 ; ii < ntin ; ii++ ){
       if( tgar[ii] <= tgar[ii-1] ){
-        ERROR_message("-TIMElist #%d=%g  #%d=%g -- these are out of order!" ,
+        ERROR_message("-TIMElist: #%d=%g  #%d=%g -- these are out of order!" ,
                       ii-1,tgar[ii-1] , ii,tgar[ii] ) ;
         nbad++ ;
       }
