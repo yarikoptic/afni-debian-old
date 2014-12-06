@@ -66,6 +66,23 @@
 afni_history_struct ziad_history[] = {
 /*=====BELOW THIS LINE=====*/
 
+ { 4, Dec, 2014, ZSS, "suma", MICRO, TYPE_BUG_FIX,
+   "Default coloring of directions was using negative values.",
+   "No so good for openGL colors. Negative values get clamped at 0.\n"
+   "Default coloring is now ABS(X|Y|Z) now."
+ },
+ 
+ { 4, Dec, 2014, ZSS, "3dinfo", MINOR, TYPE_NEW_OPT,
+   "Added -handedness option.",
+   NULL
+ },
+ 
+ { 26, Nov, 2014, ZSS, "3danisosmooth", MINOR, TYPE_NEW_OPT,
+   "Output of diffusion measures, along with adjustment of debug volumes",
+   "For details, see tersely named option  -save_temp_with_diff_measures, \n"
+   "along with modified help for -savetempdata"
+ },
+ 
  { 24, Nov, 2014, ZSS, "3dRetinoPhase", MINOR, TYPE_BUG_FIX,
    "Fixed floating point precision error that resulted in error message",
    NULL
