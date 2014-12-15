@@ -19,7 +19,7 @@ before_install:
     - git fetch gh-yarikoptic
 install:
     # merge packaging branch and testing branch which might have additional changes past last official package
-    - git merge gh-yarikoptic/master gh-yarikoptic/testing
+    - git merge -m "merging uptodate packaging + testing" gh-yarikoptic/master gh-yarikoptic/testing
     # apply all of our patches
     - QUILT_PATCHES=debian/patches quilt push -a
 script:
