@@ -13,6 +13,8 @@ before_install:
     # For some obnoxious reason it doesn't get installed
     - travis_retry sudo apt-get install libnifti-dev
     - travis_retry sudo apt-get install git quilt
+    - git config --global user.email "themightytravis@forafni.somewhere"
+    - git config --global user.name "The Mighty Travis"
     - git remote add gh-yarikoptic git://github.com/yarikoptic/afni
     - git fetch gh-yarikoptic
 install:
