@@ -112,7 +112,7 @@
 +fi
 +
 +cmd="$@"
-+errors_=`grep Error __*log.txt| grep -v -e SUMA_PositionWindowRelative_current | wc -l`
++errors_=`grep Error __*log.txt| grep -v -e "Out of Cheese Error" -e SUMA_PositionWindowRelative_current | wc -l`
 +if [ $errors -lt $errors_ ]; then
 +	echo "E: Testing '$cmd' failed due to presence of $errors_ Error messages when up to $errors were expected" >&2
 +	exit 1

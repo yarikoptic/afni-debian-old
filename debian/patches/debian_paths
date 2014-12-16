@@ -5,7 +5,7 @@ Author: Michael Hanke <michael.hanke@gmail.com>
 Last-Update: 2010-09-29
 --- a/afni_func.c
 +++ b/afni_func.c
-@@ -6128,7 +6128,7 @@ ENTRY("AFNI_tips_CB") ;
+@@ -6485,7 +6485,7 @@ ENTRY("AFNI_tips_CB") ;
       XMapRaised( XtDisplay(tips_hw->wshell) , XtWindow(tips_hw->wshell) ) ;
       EXRETURN ;
     } else if( !AFNI_noenv("AFNI_DONT_USE_HTMLWIN") ){
@@ -14,7 +14,7 @@ Last-Update: 2010-09-29
       if( fpt != NULL && *fpt != '\0' ){
         inf = (char *)malloc(sizeof(char)*(strlen(fpt)+16)) ;
         strcpy(inf,"file:") ; strcat(inf,fpt) ; free(fpt) ;
-@@ -7066,6 +7066,8 @@ ENTRY("AFNI_find_poem_files") ;
+@@ -7423,6 +7423,8 @@ ENTRY("AFNI_find_poem_files") ;
     /*----- get path to search -----*/
  
                         epath = getenv("AFNI_PLUGINPATH") ;
@@ -48,7 +48,7 @@ Last-Update: 2010-09-29
     if( epath == NULL ) epath = getenv("PATH") ;
 --- a/afni.c
 +++ b/afni.c
-@@ -5264,12 +5264,31 @@ ENTRY("AFNI_read_inputs") ;
+@@ -5304,12 +5304,31 @@ ENTRY("AFNI_read_inputs") ;
        /*-- 20 Dec 2001: Try to read a "global" session --*/
        /*-- 11 May 2002: Move read global session up here --*/
  
@@ -82,7 +82,7 @@ Last-Update: 2010-09-29
              gss->parent = NULL ;                          /* parentize them */
 --- a/SUMA/SUMA_CreateDO.c
 +++ b/SUMA/SUMA_CreateDO.c
-@@ -11680,6 +11680,9 @@ byte *SUMA_WordOverlapMask(int Nwidth, i
+@@ -12258,6 +12258,9 @@ byte *SUMA_WordOverlapMask(int Nwidth, i
  SUMA_Boolean SUMA_LoadImageNIDOnel(NI_element *nel)
  {
     static char FuncName[]={"SUMA_LoadImageNIDOnel"};
@@ -92,7 +92,7 @@ Last-Update: 2010-09-29
     MRI_IMAGE *im=NULL;
     int ir, ic, i1d, i1df, imx, i1d3, i1d4;
     byte *rgb = NULL, *imar=NULL;
-@@ -11700,7 +11703,10 @@ SUMA_Boolean SUMA_LoadImageNIDOnel(NI_el
+@@ -12278,7 +12281,10 @@ SUMA_Boolean SUMA_LoadImageNIDOnel(NI_el
     
     if (! (fname = SUMA_copy_string(NI_get_attribute(nel,"filename"))) )
        SUMA_RETURN(NOPE);
@@ -153,7 +153,7 @@ Last-Update: 2010-09-29
  />
 --- a/thd_getpathprogs.c
 +++ b/thd_getpathprogs.c
-@@ -488,7 +488,9 @@ THD_string_array * THD_get_all_afni_exec
+@@ -528,7 +528,9 @@ THD_string_array * THD_get_all_afni_exec
  THD_string_array * THD_get_all_afni_readmes(void )
  {
     THD_string_array *outar=NULL, *elist=NULL;
@@ -163,7 +163,7 @@ Last-Update: 2010-09-29
     int N_af, N_afni=strlen("afni"), iaf=0, ii=0, *isrt=NULL, N_key=0;
     char scomm[256]={""};
     
-@@ -501,9 +503,9 @@ THD_string_array * THD_get_all_afni_read
+@@ -541,9 +543,9 @@ THD_string_array * THD_get_all_afni_read
     }
     
     /* remove afni from the end to get the path */
@@ -175,7 +175,7 @@ Last-Update: 2010-09-29
     
     /* Now get all readmes under af */
     N_key = strlen(key);
-@@ -511,7 +513,7 @@ THD_string_array * THD_get_all_afni_read
+@@ -551,7 +553,7 @@ THD_string_array * THD_get_all_afni_read
     for (ii=0, iaf=0; ii<elist->num ; ii++ ){
        etr = THD_trailname( elist->ar[ii] , 0 ) ; 
        if (!THD_is_directory(elist->ar[ii]) &&

@@ -1,6 +1,6 @@
 --- a/ptaylor/3dNetCorr.c
 +++ b/ptaylor/3dNetCorr.c
-@@ -40,10 +40,6 @@
+@@ -44,10 +44,6 @@
  #include <omp.h>
  #endif
  
