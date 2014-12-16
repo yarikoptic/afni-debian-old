@@ -308,6 +308,53 @@ ENTRY("AFNI_func_thrsign_CB") ;
 }
 
 /*-----------------------------------------------------------------------*/
+/*! 08 Dec 2014 */
+
+void AFNI_func_alpha_CB( MCW_arrowval *av , XtPointer cd )
+{
+   Three_D_View *im3d = (Three_D_View *)cd ;
+
+ENTRY("AFNI_func_alpha_CB") ;
+
+   if( !IM3D_OPEN(im3d) ) EXRETURN ;
+
+   im3d->vinfo->thr_use_alpha = av->ival ;
+
+#if 0
+   STATUS_IM3D_TMASK(im3d) ;
+   STATUS("clear tmask") ;
+#endif
+   IM3D_CLEAR_TMASK(im3d) ;
+   IM3D_CLEAR_THRSTAT(im3d) ;
+   AFNI_redisplay_func( im3d ) ;
+   AFNI_set_window_titles( im3d ) ;
+   EXRETURN ;
+}
+
+/*-----------------------------------------------------------------------*/
+/*! 09 Dec 2014 */
+
+void AFNI_func_floor_CB( MCW_arrowval *av , XtPointer cd )
+{
+   Three_D_View *im3d = (Three_D_View *)cd ;
+
+ENTRY("AFNI_func_floor_CB") ;
+
+   if( !IM3D_OPEN(im3d) ) EXRETURN ;
+
+   im3d->vinfo->thr_alpha_floor = av->ival * 0.2f ;
+#if 0
+   STATUS_IM3D_TMASK(im3d) ;
+   STATUS("clear tmask") ;
+#endif
+   IM3D_CLEAR_TMASK(im3d) ;
+   IM3D_CLEAR_THRSTAT(im3d) ;
+   AFNI_redisplay_func( im3d ) ;
+   AFNI_set_window_titles( im3d ) ;
+   EXRETURN ;
+}
+
+/*-----------------------------------------------------------------------*/
 /*! Set the threshold and slider.  [05 Mar 2007]
 -------------------------------------------------------------------------*/
 
@@ -1403,7 +1450,7 @@ if(aset >= 0 && PRINT_TRACING)
 /*-----------------------------------------------------------------------*/
 /* Hollow out the the overlay in place -- 21 Mar 2005 - RWCox.
    An interior pixel is defined as one whose 4 nearest neighbors are
-   all nonzero.
+   all nonzero.  This editing is done in-place (in the input image).
 -------------------------------------------------------------------------*/
 
 static void mri_edgize( MRI_IMAGE *im )
@@ -1416,6 +1463,26 @@ static void mri_edgize( MRI_IMAGE *im )
    if( nx < 3 || ny < 3 ) return ;  /* no interior pixels at all?! */
 
    switch( im->kind ){
+
+     case MRI_byte:{                             /* 09 Dec 2014 */
+       byte *ajj , *ajm , *ajp , *atemp , *ar ;
+       ar    = MRI_BYTE_PTR(im) ;
+       atemp = (byte *)malloc(sizeof(byte)*nxy); if( atemp == NULL ) return;
+       memcpy(atemp,ar,sizeof(byte)*nxy) ;
+       for( jj=1 ; jj < ny-1 ; jj++ ){
+         joff = jj * nx ;      /* offset into this row */
+         ajj  = atemp + joff ; /* pointer to this row */
+         ajm  = ajj-nx ;       /* pointer to last row */
+         ajp  = ajj+nx ;       /* pointer to next row */
+         for( ii=1 ; ii < nx-1 ; ii++ ){
+           if( ajj[ii]   != 0 &&
+               ajm[ii]   != 0 && ajp[ii]   != 0 &&
+               ajj[ii+1] != 0 && ajj[ii-1] != 0   ) ar[ii+joff] = 0 ;
+         }
+       }
+       free((void *)atemp) ;
+     }
+     return ;
 
      case MRI_short:{
        short *ajj , *ajm , *ajp , *atemp , *ar ;
@@ -1458,6 +1525,125 @@ static void mri_edgize( MRI_IMAGE *im )
      return ;
 
    }
+
+   return ; /* default im->kind case ==> do nothing */
+}
+
+/*-----------------------------------------------------------------------*/
+
+static void mri_edgize_outer( MRI_IMAGE *im )
+{
+   int ii , jj , nx,ny,nxy , joff ;
+
+   if( im == NULL ) return ;
+
+   nx = im->nx ; ny = im->ny ; nxy = nx * ny ;
+   if( nx < 3 || ny < 3 ) return ;  /* no interior pixels at all?! */
+
+   switch( im->kind ){
+
+     case MRI_byte:{                             /* 09 Dec 2014 */
+       byte *ajj , *ajm , *ajp , *atemp , *ar ;
+       ar    = MRI_BYTE_PTR(im) ;
+       atemp = (byte *)calloc(sizeof(byte),nxy); if( atemp == NULL ) return;
+       for( jj=1 ; jj < ny-1 ; jj++ ){
+         joff = jj * nx ;      /* offset into this row */
+         ajj  = ar    + joff ; /* pointer to this row */
+         ajm  = ajj-nx ;       /* pointer to last row */
+         ajp  = ajj+nx ;       /* pointer to next row */
+         for( ii=1 ; ii < nx-1 ; ii++ ){
+           if( ajj[ii] != 0 ){
+             ajj[ii] = 1 ;
+             if( ajm[ii]   == 0 || ajp[ii]   == 0 ||
+                 ajj[ii+1] == 0 || ajj[ii-1] == 0   ) atemp[ii+joff] = 1 ;
+           }
+         }
+         if( ajj[0] != 0 ){  /* deal with left edge of row */
+           ajj[0] = 1 ;
+           if( ajm[0] == 0 || ajp[0] == 0 || ajj[1] == 0 ) atemp[joff] = 1 ;
+         }
+         if( ajj[nx-1] != 0 ){  /* and right edge */
+           ajj[nx-1] = 1 ;
+           if( ajm[nx-1] == 0 || ajp[nx-1] == 0 || ajj[nx-2] == 0 ) atemp[nx-1+joff] = 1 ;
+         }
+       }
+       /* deal with the top row */
+       joff = 0 ; ajj  = ar + joff ; ajp = ajj+nx ;
+       for( ii=1 ; ii < nx-1 ; ii++ ){
+         if( ajj[ii] != 0 ){
+           ajj[ii] = 1 ;
+           if( ajp[ii]   == 0 || ajj[ii+1] == 0 || ajj[ii-1] == 0 ) atemp[ii+joff] = 1 ;
+         }
+       }
+       /* deal with the bottom row */
+       joff = (ny-1) * nx ; ajj  = ar + joff ; ajm  = ajj-nx ;
+       for( ii=1 ; ii < nx-1 ; ii++ ){
+         if( ajj[ii] != 0 ){
+           ajj[ii] = 1 ;
+           if( ajm[ii]   == 0 || ajj[ii+1] == 0 || ajj[ii-1] == 0 ) atemp[ii+joff] = 1 ;
+         }
+       }
+       /* we do not deal with the 4 corner points -- let them eat cake */
+
+       /* at this point, atemp = 1 only at edge points of clusters */
+       /* now modify atemp so that only points that are zero AND are
+          next to an edge point get a nonzero value == 'outer' edge */
+
+       for( jj=1 ; jj < ny-1 ; jj++ ){
+         joff = jj * nx ;      /* offset into this row */
+         ajj  = atemp + joff ; /* pointer to this row */
+         ajm  = ajj-nx ;       /* pointer to last row */
+         ajp  = ajj+nx ;       /* pointer to next row */
+         for( ii=1 ; ii < nx-1 ; ii++ ){
+           if( ar[ii+joff] == 0 ){  /* not inside a blob */
+             if( ajm[ii-1] != 0 || ajm[ii] != 0 || ajm[ii+1] != 0 ||
+                 ajj[ii-1] != 0 || ajj[ii] != 0 || ajj[ii+1] != 0 ||
+                 ajp[ii-1] != 0 || ajp[ii] != 0 || ajp[ii+1] != 0   ) ar[ii+joff] = 2 ;
+           } else {
+             ar[ii+joff] = 0 ;  /* inside a blob ==> zero out */
+           }
+         }
+         if( ar[joff] == 0 ){   /* left edge of row */
+           if( ajm[0] != 0 || ajm[0+1] != 0 ||
+               ajj[0] != 0 || ajj[0+1] != 0 ||
+               ajp[0] != 0 || ajp[0+1] != 0   ) ar[joff] = 2 ;
+         } else {
+           ar[joff] = 0 ;
+         }
+         if( ar[nx-1+joff] == 0 ){  /* right edge of row */
+           if( ajm[nx-2] != 0 || ajm[nx-1] != 0 ||
+               ajj[nx-2] != 0 || ajj[nx-1] != 0 ||
+               ajp[nx-2] != 0 || ajp[nx-1] != 0   ) ar[nx-1+joff] = 2 ;
+         } else {
+           ar[nx-1+joff] = 0 ;
+         }
+       }
+       /* deal with the bottom row */
+       joff = 0 ; ajj = atemp + joff ; ajp = ajj+nx ;
+       for( ii=1 ; ii < nx-1 ; ii++ ){
+         if( ar[ii+joff] == 0 ){  /* not inside a blob */
+           if( ajj[ii-1] != 0 || ajj[ii] != 0 || ajj[ii+1] != 0 ||
+               ajp[ii-1] != 0 || ajp[ii] != 0 || ajp[ii+1] != 0   ) ar[ii+joff] = 2 ;
+         } else {
+           ar[ii+joff] = 0 ;  /* inside a blob ==> zero out */
+         }
+       }
+       /* deal with the top row */
+       joff = (ny-1) * nx ; ajj = atemp + joff ; ajm = ajj-nx ;
+       for( ii=1 ; ii < nx-1 ; ii++ ){
+         if( ar[ii+joff] == 0 ){  /* not inside a blob */
+           if( ajm[ii-1] != 0 || ajm[ii] != 0 || ajm[ii+1] != 0 ||
+               ajj[ii-1] != 0 || ajj[ii] != 0 || ajj[ii+1] != 0   ) ar[ii+joff] = 2 ;
+         } else {
+           ar[ii+joff] = 0 ;  /* inside a blob ==> zero out */
+         }
+       }
+
+       free(atemp) ;
+     }
+     return ; /* end of MRI_byte */
+
+   } /* end of switching */
 
    return ; /* default im->kind case ==> do nothing */
 }
@@ -1512,7 +1698,8 @@ ENTRY("AFNI_func_overlay") ;
      AFNI_SEE_FUNC_OFF(im3d) ; RETURN(NULL) ;
    }
 
-   reject_zero = !AFNI_yesenv("AFNI_OVERLAY_ZERO") ; /* 20 Apr 2005 */
+   reject_zero = VEDIT_good(im3d->vedset) ||         /* 09 Dec 2014 */
+                 !AFNI_yesenv("AFNI_OVERLAY_ZERO") ; /* 20 Apr 2005 */
 
    ival = im3d->vinfo->thr_index ;  /* threshold sub-brick index */
 
@@ -1655,6 +1842,8 @@ ENTRY("AFNI_func_overlay") ;
 #undef  NFO_ZABOVE_MASK
 #define NFO_ZBELOW_MASK  1
 #define NFO_ZABOVE_MASK  2
+#define NFO_ALIN_MASK    4
+#define NFO_AQUA_MASK    8
 
    if( pbar->bigmode ){
      float thresh = get_3Dview_func_thresh(im3d,1) / scale_thr ;
@@ -1674,7 +1863,7 @@ if( PRINT_TRACING && im_thr != NULL )
   STATUS(str);
 }
 
-     if( pbar->big30 ) reject_zero = 0 ;
+     if( pbar->big30 ) reject_zero = VEDIT_good(im3d->vedset) ;
      if( pbar->big31 ){                              /* Feb 2012 */
        zbelow = !pbar->big32 ; zabove = !pbar->big30 ;
      } else {
@@ -1682,11 +1871,22 @@ if( PRINT_TRACING && im_thr != NULL )
      }
      flags = zbelow * NFO_ZBELOW_MASK + zabove * NFO_ZABOVE_MASK ;
 
-     im_ov = AFNI_newfunc_overlay( im_thr , thb,tht ,
-                                   im_fim ,
-                                   scale_factor*pbar->bigbot ,
-                                   scale_factor*pbar->bigtop ,
-                                   pbar->bigcolor , flags      ) ;
+     if( im3d->vinfo->thr_use_alpha == 1 ) flags |= NFO_ALIN_MASK ;
+     if( im3d->vinfo->thr_use_alpha == 2 ) flags |= NFO_AQUA_MASK ;
+
+     if( ! im3d->vinfo->thr_use_alpha || VEDIT_good(im3d->vedset) )
+       im_ov = AFNI_newfunc_overlay( im_thr , thb,tht ,
+                                     im_fim ,
+                                     scale_factor*pbar->bigbot ,
+                                     scale_factor*pbar->bigtop ,
+                                     pbar->bigcolor , flags      ) ;
+     else
+       im_ov = AFNI_newnewfunc_overlay( im_thr , thb,tht ,
+                                     im_fim ,
+                                     scale_factor*pbar->bigbot ,
+                                     scale_factor*pbar->bigtop ,
+                                     pbar->bigcolor , flags ,
+                                     im3d->vinfo->thr_alpha_floor , im3d->dc ) ;
      goto CLEANUP ;
    }
 
@@ -1968,6 +2168,163 @@ STATUS("thresholdization") ;
              ovar[3*ii] = ovar[3*ii+1] = ovar[3*ii+2] = 0 ;
        }
        break ;
+     }
+   }
+
+   RETURN(im_ov) ;
+}
+
+/*-----------------------------------------------------------------------*/
+/*! Make a functional overlay the new new way (08 Dec 2014):
+    - im_thr = threshold image (may be NULL)
+    - thbot  = pixels with values in im_thr in range (thbot..thtop)
+    - thtop  =  get translucent overlay values
+    - im_fim = image to make overlay from (may not be NULL)
+    - fimbot = pixel value to map to fimcolor[0]
+    - fimtop = pixel value to map to fimcolor[NPANE_BIG-1]
+-------------------------------------------------------------------------*/
+
+MRI_IMAGE * AFNI_newnewfunc_overlay( MRI_IMAGE *im_thr , float thbot,float thtop,
+                                     MRI_IMAGE *im_fim ,
+                                     float fimbot, float fimtop, rgbyte *fimcolor,
+                                     int flags , float alpha_floor , MCW_DC *dc )
+{
+   MRI_IMAGE *im_ov ;
+   rgba *ovar ;
+   int ii , npix , jj ;
+   float fac , val ;
+   int dothr = (thbot < thtop) && (im_thr != NULL);  /* 08 Aug 2007 */
+   int do_alin ;                                     /* 09 Dec 2014 */
+
+   int zbelow = (flags & NFO_ZBELOW_MASK) != 0 ;  /* Feb 2012 */
+   int zabove = (flags & NFO_ZABOVE_MASK) != 0 ;
+   byte *bfim=NULL ; short *sfim=NULL ; float *ffim=NULL ; int kk ;
+
+ENTRY("AFNI_newnewfunc_overlay") ;
+
+   if( im_fim == NULL || fimbot >= fimtop || fimcolor == NULL ) RETURN(NULL) ;
+
+   /* create output image */
+
+STATUS("create output image") ;
+   im_ov = mri_new_conforming( im_fim , MRI_rgba ) ; /* zero filled */
+   ovar  = MRI_RGBA_PTR(im_ov) ;
+   npix  = im_ov->nvox ;
+   fac   = NPANE_BIG / (fimtop-fimbot) ; /* scale from data value to color index */
+
+   if( dothr ){
+   }
+
+   kk = (int)im_fim->kind ;
+   switch( kk ){
+     default: mri_free(im_ov) ; RETURN(NULL) ;   /* should never happen! */
+     case MRI_short: sfim = MRI_SHORT_PTR(im_fim) ; break ;
+     case MRI_byte : bfim = MRI_BYTE_PTR (im_fim) ; break ;
+     case MRI_float: ffim = MRI_FLOAT_PTR(im_fim) ; break ;
+   }
+
+STATUS("colorization") ;
+   for( ii=0 ; ii < npix ; ii++ ){
+          if( kk == MRI_byte  ) val = (float)bfim[ii] ;
+     else if( kk == MRI_short ) val = (float)sfim[ii] ;
+     else                       val =        ffim[ii] ;
+     if( ZREJ(val) || (zabove && val > fimtop) || (zbelow && val < fimbot) ) continue ;
+     jj = (int)( fac*(fimtop-val) ) ;
+     if( jj < 0 ) jj = 0 ; else if( jj > NPANE_BIG1 ) jj = NPANE_BIG1 ;
+     ovar[ii].r   = fimcolor[jj].r ;
+     ovar[ii].g   = fimcolor[jj].g ;
+     ovar[ii].b   = fimcolor[jj].b ;
+     ovar[ii].a   = 255 ;
+   }
+
+   /** now apply threshold, if any **/
+
+   do_alin = (flags & NFO_ALIN_MASK) != 0 ;
+
+   if( dothr ){
+     MRI_IMAGE *eim=NULL ; byte *ear=NULL ;
+     int do_edge = !AFNI_noenv("AFNI_EDGIZE_OVERLAY") ;
+     float ft,fb,af ;
+     ft = (thtop > 0.0f) ? (1.0f-alpha_floor)/thtop : 0.0f ;  /* for positive thr */
+     fb = (thbot < 0.0f) ? (1.0f-alpha_floor)/thbot : 0.0f ;  /* for negative thr */
+     af = 255.0f*alpha_floor ;
+     if( do_edge ){  /* for mri_edgize */
+       eim = mri_new_conforming( im_fim , MRI_byte ) ; ear = MRI_BYTE_PTR(eim) ;
+     }
+
+#define ALIN(th,fac) (th*fac)
+#define AQUA(th,fac) (ALIN(th,fac)*ALIN(th,fac))
+#define ALFA(th,fac) (do_alin) ? 255.0f*ALIN(th,fac)+af : 255.0f*AQUA(th,fac)+af
+
+STATUS("threshold-ization and alpha-ization") ;
+     switch( im_thr->kind ){
+
+       case MRI_short:{
+         register float thb=thbot , tht=thtop , aa ;
+         register short *ar_thr = MRI_SHORT_PTR(im_thr) ;
+         for( ii=0 ; ii < npix ; ii++ ){
+           if( ar_thr[ii] == 0 ){
+                                        ovar[ii].a = 0 ;   /* exact zero ==> transparent */
+           } else if( ar_thr[ii] > 0 && ar_thr[ii] < tht ){
+             aa = ALFA(ar_thr[ii],ft) ; ovar[ii].a = BYTEIZE(aa) ;
+           } else if( ar_thr[ii] < 0 && ar_thr[ii] > thb ){
+             aa = ALFA(ar_thr[ii],fb) ; ovar[ii].a = BYTEIZE(aa) ;
+           } else if( do_edge ){
+             ear[ii] = 1 ;  /* is not faded */
+           }
+         }
+       }
+       break ;
+
+       case MRI_byte:{
+         register float thb=thbot , tht=thtop , aa ;
+         register byte *ar_thr = MRI_BYTE_PTR(im_thr) ;
+         for( ii=0 ; ii < npix ; ii++ )  /* assuming thb <= 0 always */
+           if( ar_thr[ii] == 0 ){
+                                        ovar[ii].a = 0 ;
+           } else if( ar_thr[ii] < tht ){
+             aa = ALFA(ar_thr[ii],ft) ; ovar[ii].a = BYTEIZE(aa) ;
+           } else if( do_edge ){
+             ear[ii] = 1 ;  /* is not faded */
+           }
+       }
+       break ;
+
+       case MRI_float:{
+         register float thb=thbot , tht=thtop , aa ;
+         register float *ar_thr = MRI_FLOAT_PTR(im_thr) ;
+         for( ii=0 ; ii < npix ; ii++ )
+           if( ar_thr[ii] == 0 ){
+                                        ovar[ii].a = 0 ;
+           } else if( ar_thr[ii] > 0 && ar_thr[ii] < tht ){
+             aa = ALFA(ar_thr[ii],ft) ; ovar[ii].a = BYTEIZE(aa) ;
+           } else if( ar_thr[ii] < 0 && ar_thr[ii] > thb ){
+             aa = ALFA(ar_thr[ii],fb) ; ovar[ii].a = BYTEIZE(aa) ;
+           } else if( do_edge ){
+             ear[ii] = 1 ;  /* is not faded */
+           }
+       }
+       break ;
+     }
+#undef ALIN
+#undef AQUA
+#undef ALFA
+
+     /* process the edges of the above-threshold regions? */
+
+     if( do_edge ){
+       char *cpt ; byte rb=1,gb=1,bb=1 ; float rf,gf,bf ;
+       mri_edgize_outer(eim) ;
+       cpt = getenv("AFNI_EDGIZE_COLOR") ;
+       if( cpt != NULL ){
+         rf = gf = bf = 0.005f ;
+         DC_parse_color( dc , cpt , &rf,&gf,&bf ) ;
+         rb = BYTEIZE(255.0f*rf); gb = BYTEIZE(255.0f*gf); bb = BYTEIZE(255.0f*bf);
+       }
+       for( ii=0 ; ii < npix ; ii++ ){
+        if( ear[ii] ){ ovar[ii].r=rb; ovar[ii].g=gb; ovar[ii].b=bb; ovar[ii].a=255; }
+       }
+       mri_free(eim) ;
      }
    }
 

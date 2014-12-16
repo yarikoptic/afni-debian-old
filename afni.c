@@ -292,10 +292,10 @@ void AFNI_syntax(void)
      "    recompile this program.\n"
      "\n"
      "Global Options (available to all AFNI/SUMA programs)\n"
-     "%s"
+     "%s\n%s"
      , get_np_help() ,
      THD_MAX_NUM_SESSION , THD_MAX_SESSION_SIZE ,
-     get_gopt_help()
+     SUMA_Offset_SLines(get_help_help(),3), get_gopt_help()
    ) ;
 
    printf(
@@ -1458,13 +1458,15 @@ void AFNI_sigfunc_alrm(int sig)
      "Let's blow this place and grab some brewskis"                  ,
      "Are you ready for a coffee break? I am"                        ,
      "Make mine a tall skinny vanilla latte, if you please"          ,
-     "I'd like a strong cup of lapsang souchong about now"           ,
+     "I'd like a strong cup of Lapsang Souchong about now"           ,
      "What's your favorite kind of bagel? I like pumpernickel"       ,
      "What's your favorite kind of cookie? I like white chocolate"   ,
      "Step slowly away from the keyboard, and remain calm"           ,
+     "Put your computer's mouse down slowly, and breathe deeply"     ,
      "Time for a nice walk, don't you think?"                        ,
      "Meet me at the Leshan Dafo in Sichuan at 3pm next Wednesday"   ,
-     "Meet me in Namche Bazaar next Thursday"                        ,
+     "Let's meet at the Xuankong Si in Shanxi on Thursday week"      ,
+     "Meet me the Namche Bazaar gompa next Thursday"                 ,
      "Meet me at Dashashwamedh Ghat in Varanasi for Agni Puja"       ,
      "Meet me at the top of Renjo La in the next snowstorm"          ,
      "See you in Dingboche next Christmas"                           ,
@@ -1513,6 +1515,7 @@ void AFNI_sigfunc_alrm(int sig)
      "Facts are stubborn, but statistics are pliable"                ,
      "I can prove anything with statistics, except the truth"        ,
      "The chief function of the body is to carry the brain around"   ,
+     "The chief function of the brain is to hold the ears apart"     ,
      "Humor is the most significant activity of the human brain"     ,
      "Tears are not a sign of weakness, but a sign of a pure heart"  ,
      "Eventually, everything goes away"                              ,
@@ -1534,6 +1537,7 @@ void AFNI_sigfunc_alrm(int sig)
      "I'm sorry; if you were right, I'd agree with you"              ,
      "Like dreams, statistics are a form of wish fulfillment"        ,
      "I wish I were in Lobuche right now, eating momos"              ,
+     "A thermos of hot tea in Pangboche would be a nice pit stop"    ,
      "Next stop: Bora Bora and Rangiroa"                             ,
      "Do you still miss the NIH Bear? I do"                          ,
      "Advice from the NIH Bear -- honey goes good with brains"       ,
@@ -1545,7 +1549,11 @@ void AFNI_sigfunc_alrm(int sig)
      "If you can't bite, don't show your teeth"                      ,
      "Three statisticians ==> Four opinions on data analysis"        ,
      "A fool and his p-value are soon non-replicated"                ,
+     "What do you do all day? I do very little, and do it slowly"    ,
 
+     "It's not true my youth was wild and crazy -- only half of that is true"         ,
+     "Not yet quite as powerful as the totalized and integrated mind of Arisia"       ,
+     "Are you testing for the Dull Hypothesis? It's never significant"                ,
      "For every complex problem there is an answer that is clear, simple, and wrong"  ,
      "For every simple problem there is an answer that is murky, complex, and wrong"  ,
      "If something is 'New and Improved', was the last version 'Old and Decrepit'?"   ,
@@ -1765,7 +1773,9 @@ int main( int argc , char *argv[] )
    }
 
    if( check_string("-global_opts",argc,argv) ) {      /* list global */
-     fputs(get_gopt_help(), stdout);   /* opts used by all AFNI progs */
+     fputs(SUMA_Offset_SLines(get_help_help(),3), 
+                                    stdout);   /* opts used by all AFNI progs */
+     fputs(get_gopt_help(), stdout);   
      dienow++ ;
    }
 

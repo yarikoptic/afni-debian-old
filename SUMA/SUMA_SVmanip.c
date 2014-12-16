@@ -5219,7 +5219,7 @@ char * SUMA_CommonFieldsInfo (SUMA_CommonFields *cf, int detail)
   
    SS = SUMA_StringAppend_va( SS,
                               "SUMA's list of environment variables:\n");
-   s = SUMA_env_list_help(0, 0);
+   s = SUMA_env_list_help(0, TXT);
    SS = SUMA_StringAppend( SS, s); SUMA_free(s); s = NULL;
    SS = SUMA_StringAppend( SS, "\n");
 
@@ -5798,7 +5798,7 @@ void SUMA_UpdateViewerTitle_old(SUMA_SurfaceViewer *sv)
    if (N_SOlist >= 0) {   
       SUMA_LH("title surfaces found");
       sv->X->Title = 
-         (char *)SUMA_calloc(nalloc + strlen(slabel)+ 13, sizeof(char));      
+         (char *)SUMA_calloc(nalloc + strlen(slabel)+ 130, sizeof(char));      
       sv->X->Title[0] = '\0';
       while (i < N_SOlist) {   
          SO = (SUMA_SurfaceObject *)(SUMAg_DOv[SOlist[i]].OP);   

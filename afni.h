@@ -270,6 +270,8 @@ typedef struct {
       int        thr_onoff ;                    /* 28 Jun 2007 */
       int        thr_olayx ;                    /* 13 Aug 2010 */
       int        thr_sign ;                     /* 08 Aug 2007 */
+      int        thr_use_alpha ;                /* 08 Dec 2014 */
+      float      thr_alpha_floor ;              /* 09 Dec 2014 */
 
       /* 3/24/95: range data for conversion of pbar
                   values to thresholding values in the data */
@@ -594,7 +596,8 @@ extern void reset_mnito(struct Three_D_View *im3d);
          (iq)->vwid->func->inten_pbar->update_me = 2 ;                     \
          update_MCW_pbar((iq)->vwid->func->inten_pbar) ; }                 \
       XMapRaised( XtDisplay( (iq)->vwid->  panel  ->frame ) ,              \
-                   XtWindow( (iq)->vwid->  panel  ->frame )  ) ; }
+                   XtWindow( (iq)->vwid->  panel  ->frame )  ) ;           \
+      FIX_SCALE_SIZE(iq) ; }
 
 #define CLOSE_PANEL(iq,panel)                                           \
    {  XtUnmanageChild( (iq)->vwid->  panel  ->frame ) ;                  \
@@ -680,6 +683,8 @@ typedef struct {
       Widget thr_setpval_pb ;      /* 03 Dec 2013 */
       Widget thr_setqval_pb ;      /* 26 Feb 2014 */
       MCW_arrowval *thr_sign_av ;  /* 08 Aug 2007 */
+      MCW_arrowval *thr_alpha_av;  /* 08 Dec 2014 */
+      MCW_arrowval *thr_floor_av;  /* 09 Dec 2014 */
       Widget thr_fdr_pb ;          /* 29 Jan 2008 */
       Widget thr_pvalue_pb ;       /* 06 Mar 2014 */
 
@@ -754,6 +759,8 @@ extern void AFNI_func_autothresh_CB(Widget,XtPointer,XtPointer) ; /* 25 Jul 2007
 extern void AFNI_func_setpval_CB   (Widget,XtPointer,XtPointer) ; /* 03 Dec 2013 */
 extern void AFNI_func_setqval_CB   (Widget,XtPointer,XtPointer) ; /* 03 Dec 2013 */
 extern void AFNI_func_thrsign_CB( MCW_arrowval * , XtPointer ) ;  /* 08 Aug 2007 */
+extern void AFNI_func_alpha_CB  ( MCW_arrowval * , XtPointer ) ;  /* 08 Dec 2014 */
+extern void AFNI_func_floor_CB  ( MCW_arrowval * , XtPointer ) ;  /* 09 Dec 2014 */
 extern void AFNI_func_fdr_CB    (Widget,XtPointer,XtPointer) ;    /* 29 Jan 2008 */
 
 extern void AFNI_set_pval( struct Three_D_View * , float ) ;      /* 27 Feb 2014 */
@@ -2061,6 +2068,10 @@ extern MRI_IMAGE * AFNI_func_overlay( int , FD_brick * ) ;
 extern MRI_IMAGE * AFNI_newfunc_overlay( MRI_IMAGE *, float,float ,  /* 30 Jan 2003 */
                                          MRI_IMAGE *,
                                          float,float, rgbyte *, int ) ;
+
+extern MRI_IMAGE * AFNI_newnewfunc_overlay( MRI_IMAGE *, float,float ,  /* 08 Dec 2014 */
+                                         MRI_IMAGE *,
+                                         float,float, rgbyte *, int ,float,MCW_DC * ) ;
 
 extern void AFNI_syntax(void) ;
 

@@ -91,9 +91,10 @@ static int AFNI_open_panel             ( char *cmd ) ; /* 05 Feb 2003 */
 static int AFNI_drive_purge_memory     ( char *cmd ) ; /* 09 Dec 2004 */
 static int AFNI_redisplay              ( char *cmd ) ;
 static int AFNI_read_niml_file         ( char *cmd ) ; /* 01 Feb 2008 */
-static int AFNI_drive_quiet_plugouts   ( char *cmd);   /* 15 Oct 2008 */
-static int AFNI_drive_noisy_plugouts   ( char *cmd);   /* 15 Oct 2008 */
+static int AFNI_drive_quiet_plugouts   ( char *cmd ) ; /* 15 Oct 2008 */
+static int AFNI_drive_noisy_plugouts   ( char *cmd ) ; /* 15 Oct 2008 */
 static int AFNI_set_func_percentile    ( char *cmd ) ; /* 27 Apr 2012 */
+static int AFNI_set_func_alpha         ( char *cmd ) ; /* 10 Dec 2014 */
 
 static int AFNI_trace                  ( char *cmd ) ; /* 04 Oct 2005 */
 
@@ -186,6 +187,7 @@ static AFNI_driver_pair dpair[] = {
  { "SET_FUNC_AUTORANGE" , AFNI_set_func_autorange      } ,
  { "SET_FUNC_RANGE"     , AFNI_set_func_range          } ,
  { "SET_FUNC_VISIBLE"   , AFNI_set_func_visible        } ,
+ { "SET_FUNC_ALPHA"     , AFNI_set_func_alpha          } ,
  { "SEE_OVERLAY"        , AFNI_set_func_visible        } ,
  { "SET_FUNC_RESAM"     , AFNI_set_func_resam          } ,
  { "SLEEP"              , AFNI_sleeper                 } ,
@@ -1877,9 +1879,9 @@ ENTRY("AFNI_drive_set_threshold") ;
 
 static int AFNI_drive_set_threshnew( char *cmd )
 {
-   int ic,dadd , olddec,newdec , ival,smax,id,stop , dopval,dostar;
+   int ic,dadd , olddec,newdec , ival,smax,id,stop , dopval, doqval, dostar;
    Three_D_View *im3d ;
-   float val , pval ;
+   float val , pval , qval;
    char *cpt ;
    static float tval[9] = { 1.0 , 10.0 , 100.0 , 1000.0 , 10000.0 ,
                             100000.0 , 1000000.0 , 10000000.0 , 100000000.0 } ;
@@ -1916,6 +1918,8 @@ ENTRY("AFNI_drive_set_threshnew") ;
 
    dopval = (val >= 0.0) && (val <= 1.0) && (strchr(cpt,'p') != NULL) &&
             (DSET_BRICK_STATCODE(im3d->fim_now,im3d->vinfo->thr_index) > 0) ;
+   doqval = (val >= 0.0) && (val <= 1.0) && (strchr(cpt,'q') != NULL) &&
+            (DSET_BRICK_STATCODE(im3d->fim_now,im3d->vinfo->thr_index) > 0) ;
 
    dostar = (val > 0.0) && (strchr(cpt,'*') != NULL) ;
 
@@ -1925,7 +1929,13 @@ ENTRY("AFNI_drive_set_threshnew") ;
               DSET_BRICK_STATAUX (im3d->fim_now,im3d->vinfo->thr_index)  ) ;
      if( pval >= 0.0 ) val = pval ;
    }
-
+   
+   if (doqval) {
+      qval   = qginv(0.5*val) ;
+      qval = THD_fdrcurve_zqtot( im3d->fim_now,im3d->vinfo->thr_index,qval) ;
+      if( qval >= 0.0 ) val = qval; 
+   }
+   
    if( val >= im3d->vinfo->func_thresh_top || dostar ){ /* reset scale range */
 
      newdec = (int)( log10(val) + 1.0 ) ;
@@ -2388,6 +2398,55 @@ ENTRY("AFNI_set_func_resam") ;
    }
 
    AFNI_resam_av_CB( NULL , im3d ) ;
+   RETURN(0) ;
+}
+
+/*-------------------------------------------------------------------------*/
+/*! SET_FUNC_ALPHA [c.]mode [floor]
+   "SET_FUNC_RESAM A.Linear 0.2"
+---------------------------------------------------------------------------*/
+
+static int AFNI_set_func_alpha( char *cmd )  /* 10 Dec 2014 */
+{
+   int ic , dadd=2 , mode=0 ; float floor=0.0f ; char *cpt ;
+   Three_D_View *im3d ;
+
+ENTRY("AFNI_set_func_alpha") ;
+
+   if( cmd == NULL || strlen(cmd) < 2 ) RETURN(-1) ;
+
+   ic = AFNI_controller_code_to_index( cmd ) ;
+   if( ic < 0 ){ ic = 0 ; dadd = 0 ; }
+
+   im3d = GLOBAL_library.controllers[ic] ;
+   if( !IM3D_OPEN(im3d) ) RETURN(-1) ;
+
+   cpt = strcasestr(cmd+dadd,"Linear") ;
+   if( cpt != NULL ){
+     mode = 1 ; cpt += 6 ;
+   } else {
+     cpt = strcasestr(cmd+dadd,"Quadratic") ;
+     if( cpt != NULL ){
+       mode = 2 ; cpt += 9 ;
+     } else {
+       cpt = strcasestr(cmd+dadd,"Off") ;
+       mode = 0 ; if( cpt != NULL ) cpt += 3 ;
+     }
+   }
+
+   if( isspace(*cpt) ){
+     int kf ;
+     floor = (float)strtod(cpt+1,NULL) ;
+          if( floor < 0.0f ) floor = 0.0f ;
+     else if( floor > 0.8f ) floor = 0.8f ;
+     im3d->vinfo->thr_alpha_floor = floor ;
+     kf = (int)rintf(floor/0.2f) ;
+     if( kf >= 0 && kf <= 4 ) AV_assign_ival( im3d->vwid->func->thr_floor_av , kf) ;
+   }
+
+   AV_assign_ival    ( im3d->vwid->func->thr_alpha_av , mode ) ;
+   AFNI_func_alpha_CB( im3d->vwid->func->thr_alpha_av , im3d ) ;
+
    RETURN(0) ;
 }
 

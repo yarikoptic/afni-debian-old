@@ -77,6 +77,41 @@ char * THD_abindir (byte withslash)
    return(afr);
 }
 
+char *find_readme_file(char *str)
+{
+   char **ws=NULL, *sout=NULL;
+   int N_ws=0, i;
+   
+   ENTRY("find_readme_file");
+   if (!(ws = approx_str_sort_readmes(str, &N_ws))) {
+      ERROR_message("Could not find README files.\n"
+                     "They should have been in directory %s on your machine\n",
+                     THD_abindir(0));
+      RETURN(NULL);
+   } 
+   
+   if (strcasestr(ws[0],str)) sout = strdup(ws[0]);
+   for (i=0; i<N_ws; ++i) if (ws[i]) free(ws[i]);
+   free(ws);
+   RETURN(sout);
+}
+
+char * THD_facedir(byte withslash)
+{
+   char *ss=NULL, *so=NULL;
+   
+   if (!(ss = THD_abindir(1))) return(NULL);
+   so = (char *)calloc(strlen(ss)+50, sizeof(char));
+   strcat(so,ss);
+   strcat(so,"funstuff/");
+   free(ss); ss = NULL;
+   if( !THD_is_directory(so) ) {
+      free(so); free(ss); return(NULL);
+   }
+   if (!withslash) so[strlen(so)-1]='\0';
+   return(so);
+}
+
 /*----------------------------------------------------------------------------*/
 /*! Find a regular file in the PATH by its name, if it exists.
     Does not include directories.
@@ -438,6 +473,8 @@ THD_string_array * THD_get_all_afni_executables(void )
       if (
           !THD_is_directory(elist->ar[ii]) &&
           !strncmp(af, elist->ar[ii], N_af) &&
+          !STRING_HAS_SUFFIX_CASE(elist->ar[ii], ".xml") &&
+          !STRING_HAS_SUFFIX_CASE(elist->ar[ii], ".html") &&
           !STRING_HAS_SUFFIX_CASE(elist->ar[ii], ".jpg") &&
           !STRING_HAS_SUFFIX_CASE(elist->ar[ii], ".a") &&
           !STRING_HAS_SUFFIX_CASE(elist->ar[ii], ".c") &&
@@ -446,6 +483,7 @@ THD_string_array * THD_get_all_afni_executables(void )
           !STRING_HAS_SUFFIX_CASE(elist->ar[ii], ".xbm") &&
           !STRING_HAS_SUFFIX_CASE(elist->ar[ii], ".tex") &&
           !STRING_HAS_SUFFIX_CASE(elist->ar[ii], ".lib") &&
+          !STRING_HAS_SUFFIX_CASE(elist->ar[ii], ".dylib") &&
           !STRING_HAS_SUFFIX_CASE(elist->ar[ii], ".o") &&
           !STRING_HAS_SUFFIX_CASE(elist->ar[ii], ".so") &&
           !STRING_HAS_SUFFIX_CASE(elist->ar[ii], ".la") &&
@@ -453,8 +491,8 @@ THD_string_array * THD_get_all_afni_executables(void )
           !STRING_HAS_SUFFIX_CASE(elist->ar[ii], ".R") &&
           !(STRING_HAS_SUFFIX_CASE(elist->ar[ii], ".py") &&
              /* add a couple of python types to skip  20 Jul 2012 [rickr] */
-             !strncmp(etr,"lib_",4) && !strncmp(etr,"gui_",4) &&
-             !strncmp(etr,"ui_",4) ) &&
+             (!strncmp(etr,"lib_",4) || !strncmp(etr,"gui_",4) ||
+              !strncmp(etr,"ui_",3)) ) &&
           (smode <= STORAGE_UNDEFINED || smode >= LAST_STORAGE_MODE)  &&
           !STRING_HAS_SUFFIX_CASE(elist->ar[ii], ".sumarc") &&
           !STRING_HAS_SUFFIX_CASE(elist->ar[ii], ".afnirc")&&
@@ -650,7 +688,44 @@ int list_afni_dsets(int withpath, int withnum) {
 }
 
 /* Include file that has C struct containing programs and all their options */
+typedef struct {
+  char *program;
+  char *options;
+  int N_options;
+} PROG_OPTS;
+
 #include "prog_opts.c"
+
+char *form_C_progopt_string_from_struct(PROG_OPTS po)
+{
+   char *sout=NULL, sbuf[128];
+   int maxch=0, i, jj, N_opts=0;
+   
+   if (!po.program) return(NULL);
+   
+   maxch = strlen(po.program)+strlen(po.options)+100;
+   if (!(sout = (char *)calloc((maxch+1), sizeof(char)))) {
+      ERROR_message("Failed to allocate for %d chars!", maxch+1);
+      return(NULL);
+   }
+
+   sout[0]='\0';
+   strncat(sout,"{ \"", maxch-1);
+   strncat(sout,po.program, maxch-1);
+   strncat(sout,"\", \"", maxch-1);
+   strncat(sout,po.options, maxch-1);
+   sprintf(sbuf,"\", %d", N_opts); strncat(sout,sbuf, maxch-1);
+
+   strncat(sout,"}", maxch-1);
+   if (strlen(sout)>=maxch) {
+      ERROR_message("Truncated complete string possible");
+      free(sout); sout=NULL;
+      return(sout);
+   }
+
+   return(sout);
+   
+}
 
 char *form_C_progopt_string(char *prog, char **ws, int N_ws) 
 {
@@ -720,22 +795,44 @@ char *form_C_progopt_string(char *prog, char **ws, int N_ws)
    This function is for internal machinations having to do with
    automatic generation of help web pages. It is not for mass
    consumption.
+   
+   \param fout (FILE *): Pointer to output stream
+   \param verb (int): verbosity
+   \param thisprog (char *): If not NULL, then update the list of options for
+                             program thisprog. Existing other programs option 
+                             are preserved (appendmode is forced to 1)
+                             If NULL, then do this for all programs recognized
+                             by THD_get_all_afni_executables()
+   \param appendmode (int): 1 --> Keep existing information about programs not
+                                  in  THD_get_all_afni_executables() or other 
+                                  than  thisprog
+                            0 --> Just output information on programs from
+                                  THD_get_all_afni_executables(). This is only
+                                  allowed when thisprog == 0
 */
-int progopt_C_array(FILE *fout, int verb) 
+int progopt_C_array(FILE *fout, int verb, char *thisprog, int appendmode) 
 {
    char **ws=NULL, *sout=NULL;
    float *ws_score=NULL;
-   int N_ws=0, ii = 0, jj = 0;
+   int N_ws=0, ii = 0, jj = 0, found=0;
    THD_string_array *progs=NULL;
    
    ENTRY("progopt_C_array");
    
    if (!fout) fout = stdout;
    
-   
-   if (!(progs = THD_get_all_afni_executables()) || progs->num < 1) {
-      ERROR_message("Could not get list of executables");
-      RETURN(1);
+   if (thisprog) {
+      if (!appendmode) {
+         WARNING_message("Forcing append mode for one program");
+         appendmode = 1;
+      }
+      INIT_SARR( progs );
+      ADDTO_SARR( progs, thisprog );
+   } else {
+      if (!(progs = THD_get_all_afni_executables()) || progs->num < 1) {
+         ERROR_message("Could not get list of executables");
+         RETURN(1);
+      }
    }
 
    fprintf(fout, 
@@ -743,33 +840,47 @@ int progopt_C_array(FILE *fout, int verb)
       "#define PROG_OPTS_INCLUDED\n"
       "\n"
       "/* \n"
-      "   ***********           DO NOT EDIT!                ***********\n"
+      "   ***********    Manual Edits Can Get CLOBBERED!    ***********\n"
       "   *************** File created automatically ******************\n"
       "\n"
-      "   This file is created by function progopt_C_array(), probably \n"
+      "   This file was initially created by function progopt_C_array(), \n"
       "   via program apsearch with:\n"
-      "        apsearch -C_prog_opt_array > prog_opts.c\n\n"
+      "        apsearch -C_all_prog_opt_array > prog_opts.c\n\n"
+      "   To update entry for just one program (PROG) best use:\n"
+      "        apsearch -C_all_prog_opt_array PROG > prog_opts.c\n\n"
       "\n"
-      "If you want to freshen the one in the distribution, rerun the \n"
-      "same command. You'll need to also touch thd_getpathprogs.c\n"
-      "before rebuilding libmri.a, etc.\n"
+      "You'll need to also touch thd_getpathprogs.c before rebuilding \n"
+      "libmri.a, etc.\n"
       "*/\n\n"
-      "typedef struct {\n"
-      "  char *program;\n"
-      "  char *options;\n"
-      "  int N_options;\n"
-      "} PROG_OPTS;\n\n"
       "#if 0\n"
       "static PROG_OPTS poptslist[] = {\n"
       "   {NULL, NULL, 0}\n"
       "}\n"
       "#else\n"
       "static PROG_OPTS poptslist[] = {\n");
+   
+   if (appendmode) { /* Keep programs not in list being sent*/
+      while (poptslist[jj].program != NULL) {
+         found = 0;
+         for (ii=0; ii<progs->num && !found; ++ii) {
+            if (!strcmp(THD_trailname(progs->ar[ii],0), poptslist[jj].program)) {
+               found = 1;
+            }
+         }
+         if (!found) { /* add it */
+            if ((sout = form_C_progopt_string_from_struct(poptslist[jj]))){
+               fprintf(fout, "%s,\n", sout);
+               free(sout); sout = NULL;
+            }
+         }
+         ++jj;
+      }
+   }
       
    for (ii=0; ii<progs->num; ++ii) {
       if (verb) fprintf(stderr,"Prog %d/%d: %s ", ii+1, progs->num,
                      THD_trailname(progs->ar[ii],0) );
-      if ((ws = approx_str_sort_all_popts(progs->ar[ii], &N_ws,  
+      if ((ws = approx_str_sort_all_popts(progs->ar[ii], 0, &N_ws,  
                    1, &ws_score,
                    NULL, NULL, 1, 0, '\\'))) {
          if (verb) fprintf(stderr,"%d opts\t ", N_ws);
@@ -792,35 +903,59 @@ int progopt_C_array(FILE *fout, int verb)
    RETURN(0);
 }
 
-char *phelp(char *prog, TFORM targ, int verb) 
+int phelp_cmd(char *prog, TFORM targ, char cmd[512], char fout[128], int verb ) 
 {
-   char cmd[512], uid[64], tout[128];
-   char *help=NULL;
+   char uid[64];
    char *hopt;
    
-   ENTRY("phelp");
+   ENTRY("phelp_cmd");
    
-   if (!prog ) RETURN(help);
+   if (!prog ) RETURN(0);
+   fout[0] = '\0';
+   cmd[0] = '\0';
    
    switch(targ){
       case NO_FORMAT:
          hopt = "-h_raw";
+         if (!program_supports(prog, hopt, NULL, verb)) hopt = "-HELP";
+         if (!program_supports(prog, hopt, NULL, verb)) hopt = "-help";
          break;
+      case ASPX:
       case SPX:
          hopt = "-h_spx";
-         break;
+         if (!program_supports(prog, hopt, NULL, verb)) hopt = "-HELP";
+         if (!program_supports(prog, hopt, NULL, verb)) hopt = "-help";
+        break;
       case TXT:
          hopt = "-help";
          break;
       default:
          ERROR_message("I hate myself for failing you with %d", targ);
-         RETURN(help);
+         RETURN(0);
    }
    
    UNIQ_idcode_fill(uid);
-   sprintf(tout,"/tmp/%s.%s.txt", APSEARCH_TMP_PREF, uid); 
+   sprintf(fout,"/tmp/%s.%s.txt", APSEARCH_TMP_PREF, uid); 
    snprintf(cmd,500*sizeof(char),"\\echo '' 2>&1 | %s %s > %s 2>&1 ",
-            prog, hopt, tout);
+            prog, hopt, fout);
+   
+   RETURN(1);
+}
+
+char *phelp(char *prog, TFORM targ, int verb) 
+{
+   char cmd[512], tout[128];
+   char *help=NULL;
+   
+   ENTRY("phelp");
+   
+   if (!prog ) RETURN(help);
+   
+   if (!phelp_cmd(prog, targ, cmd, tout, verb)) {
+      ERROR_message("Failed to get help command");
+      RETURN(0);
+   }
+
    if (system(cmd)) {
       if (0) {/* many programs finish help and set status afterwards. Naughty. */
          ERROR_message("Failed to get help for %s\nCommand: %s\n", prog, cmd);
@@ -836,6 +971,38 @@ char *phelp(char *prog, TFORM targ, int verb)
    snprintf(cmd,500*sizeof(char),"\\rm -f %s", tout);
    system(cmd);
    
+   help = sphelp(prog, &help, targ, verb);
+   
+   RETURN(help);
+}
+
+char *sphelp(char *prog, char **str, TFORM targ, int verb) 
+{
+   char cmd[512], tout[128];
+   char *help=NULL;
+   
+   ENTRY("sphelp");
+   
+   if (!prog || !str || !*str) RETURN(help);
+   
+   switch(targ){
+      case NO_FORMAT:
+      case SPX:
+      case TXT:
+         /* This might be a repeated call in some instances */
+         help = SUMA_Sphinx_String_Edit(str, targ, 0);
+         break;
+      case ASPX:
+         if (!(help = sphinxize_prog_shelp(prog, *str, verb))) {
+            if (verb) ERROR_message("Failed to autosphinxize string.");
+            RETURN(*str);
+         }
+         free(*str); *str = help;
+         break;
+      default:
+         ERROR_message("Sorry no formatting for you with %d", targ);
+         help = *str;
+   }
    RETURN(help);
 }
 
@@ -932,6 +1099,11 @@ int program_supports(char *uprog, char *opt, char *oval, int verb)
             }
             break;
          case -1:
+            /* DO NOT attempt to query program itself to find whether or
+            not it supports an option. For scripts, that ask apsearch
+            for help when they don't recognize an option, this will
+            cause an ugly recursion. */
+            #if 0
             UNIQ_idcode_fill(uid);
             sprintf(tout,"/tmp/%s.%s.ps.txt", APSEARCH_TMP_PREF, uid); 
             snprintf(cmd,500*sizeof(char),"\\echo '' 2>&1 | %s %s %s > %s 2>&1 ",
@@ -950,6 +1122,13 @@ int program_supports(char *uprog, char *opt, char *oval, int verb)
             }
             snprintf(cmd,500*sizeof(char),"\\rm -f %s", tout);
             system(cmd);
+            #else
+            sup += 0;
+            if (verb) {
+               fprintf(stderr,"** No entry for %s in prog_opts.c \n", 
+                                 prog);
+            }
+            #endif
             break;
           case -2:
             ERROR_message("Nonesense here?");
@@ -971,6 +1150,7 @@ int program_supports(char *uprog, char *opt, char *oval, int verb)
 char *find_popt(char *sh, char *opt, int *nb)
 {
    char *loc=NULL, *other=NULL;
+   int ne = 0;
    
    ENTRY("find_popt");
    
@@ -978,13 +1158,19 @@ char *find_popt(char *sh, char *opt, int *nb)
       ERROR_message("NULL option or null string");
       RETURN(loc);
    } 
-   
-   loc = line_begins_with(sh, opt, nb);
+
+   loc = line_begins_with(sh, opt, nb, "\t :]", "[]<>()", 5);
    
    if (loc) { /* Check that we do not have more than one */
-      if ((other = line_begins_with(loc+*nb+1, opt, NULL))) { 
-         WARNING_message("More than one match for opt %s.\n"
-                         "Returning first hit\n", opt);
+      if ((other = line_begins_with(loc+*nb+1, opt, NULL, "\t :]", "[]<>()", 5))) { 
+         char sbuf[128]={""}, *strt;
+         snprintf(sbuf,127,
+                  "*+ WARNING: More than one match for 'opt' %s in \n>>",
+                      opt);
+         strt = MAX(other-60,loc+*nb+1);
+         write_string(strt, sbuf,
+                     "<<  Returning first hit\n", 
+                     (other-strt)+10,1,stderr);
       }
    }
    
@@ -1074,7 +1260,7 @@ int prog_complete_command (char *prog, char *ofileu, int shtp) {
    int N_ws=0, ishtp=0, shtpmax = 0, i;
    FILE *fout=NULL;
    
-   if (!prog || !(ws = approx_str_sort_all_popts(prog, &N_ws,  
+   if (!prog || !(ws = approx_str_sort_all_popts(prog, 0, &N_ws,  
                    1, &ws_score,
                    NULL, NULL, 1, 0, '\\'))) {
       return 0;
@@ -1125,3 +1311,155 @@ int prog_complete_command (char *prog, char *ofileu, int shtp) {
 }
 
 
+
+void view_prog_help(char *prog)
+{
+   char *viewer=NULL, *hname=NULL;
+   char *progname=NULL;
+   
+   if (!prog) return;
+   if (!(progname = THD_find_executable(prog))) {
+      ERROR_message("Could not find executable %s.\n",
+                     prog);
+      return;
+   }
+   if (!(viewer = GetAfniTextEditor())) {
+      ERROR_message("No GUI editor defined, and guessing game failed.\n"
+              "Set AFNI_GUI_EDITOR in your .afnirc for this option to work.\n"); 
+      return;
+   }
+   
+   hname = get_updated_help_file(0, 0, progname, -1);
+   if (hname[0]=='\0') { /* failed, no help file ... */
+      ERROR_message("No help file for %s\n", progname);
+      return;
+   }
+   
+   if (!(view_text_file(hname))) {
+      ERROR_message("Failed to view %s\n", hname);
+   }
+   return;
+}
+
+char *web_prog_help_link(char *prog, int style)
+{
+   char *progname=NULL;
+   static char weblinka[10][1024]={""}, *weblink;
+   static int n;
+   
+   ++n; if (n>9) n = 0;
+   weblink = (char *)weblinka[n]; weblink[0]='\0';
+   
+   if (!prog) return(weblink);
+   
+   if (!strcmp(prog,"ALL")) {
+      if (style == 0) {
+         snprintf(weblink,1020*sizeof(char),
+               "http://afni.nimh.nih.gov/pub/dist/doc/program_help/%s.html",
+               "all-of-them");
+      } else {
+         /* Nothing yet, return old */
+         snprintf(weblink,1020*sizeof(char),
+               "http://afni.nimh.nih.gov/pub/dist/doc/program_help/%s.html",
+               "all-of-them");
+      }
+   } else {
+      if (!(progname = THD_find_executable(prog))) {
+         ERROR_message("Could not find executable %s.\n",
+                        prog);
+         return(weblink);
+      }
+
+      if (style == 0) {
+         snprintf(weblink,1020*sizeof(char),
+               "http://afni.nimh.nih.gov/pub/dist/doc/program_help/%s.html",
+               THD_trailname(progname,0));
+      } else {
+         /* Nothing yet, return old */
+         snprintf(weblink,1020*sizeof(char),
+               "http://afni.nimh.nih.gov/pub/dist/doc/program_help/%s.html",
+               THD_trailname(progname,0));
+      }
+   }
+        
+   return(weblink);
+}
+
+void web_prog_help(char *prog, int style)
+{
+   char *progname=NULL;
+   char *weblink;
+      
+   if (!prog) return;
+   
+   weblink = web_prog_help_link(prog, style);
+   if (weblink[0] == '\0') return;
+   
+   if (!(view_web_link(weblink,NULL))) {
+      ERROR_message("Failed to web view %s\n", weblink);
+      return;
+   } 
+     
+   return;
+}
+
+void web_class_docs(char *prog)
+{
+   char weblink[1024]={""};
+   
+   if (prog) {
+      ERROR_message("Not ready for prog input %s.\n",
+                     prog);
+      return;
+   } else {
+      snprintf(weblink,1020*sizeof(char),
+               "http://afni.nimh.nih.gov/pub/dist/edu/latest");
+   }
+   
+   if (!(view_web_link(weblink,NULL))) {
+      ERROR_message("Failed to web view %s\n", weblink);
+      return;
+   } 
+     
+   return;
+}
+
+int view_web_link(char *link, char *browser)
+{
+   char cmd[1024];
+   if (!link) return(0);
+   if (!browser) browser = GetAfniWebBrowser();
+   
+   if (!browser) {
+      ERROR_message("No Web browse defined.\n"
+              "Set AFNI_WEB_BROWSER in your .afnirc for this option to work.\n");
+      return(0);
+   }
+   
+   snprintf(cmd,1020*sizeof(char),"%s %s &", browser, link);
+   system(cmd);
+   return(1);
+}
+
+int view_text_file(char *progname) 
+{
+   char *viewer=NULL, cmd[256];
+   
+   if (!progname) {
+      ERROR_message("No input!");
+      return(0);
+   }  
+   if (!THD_is_ondisk(progname)) {
+      ERROR_message("file %s not on disk.\n", progname); 
+      return(0);
+   }
+   if (!(viewer = GetAfniTextEditor())) {
+      ERROR_message("No GUI editor defined, and guessing game failed.\n"
+              "Set AFNI_GUI_EDITOR in your .afnirc for this option to work.\n"); 
+      return(0);
+   }
+   /* open help file in editor*/
+   snprintf(cmd,250*sizeof(char),"%s %s &", viewer, progname);
+   system(cmd);
+   return(1);
+}

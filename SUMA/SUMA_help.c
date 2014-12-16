@@ -1086,7 +1086,7 @@ char * SUMA_sources_Info(void)
    SUMA_RETURN (s);
 }
 
-char * SUMA_help_Cmap_message_Info(SUMA_COLOR_MAP * ColMap, int targ)
+char * SUMA_help_Cmap_message_Info(SUMA_COLOR_MAP * ColMap, TFORM targ)
 {
    static char FuncName[]={"SUMA_help_Cmap_message_Info"};
    char stmp[1000], *s = NULL;
@@ -1094,14 +1094,14 @@ char * SUMA_help_Cmap_message_Info(SUMA_COLOR_MAP * ColMap, int targ)
    
    SUMA_ENTRY;
    
-   if (targ != 0 && targ != 1) targ = 0;
+   if (targ != TXT && targ != SPX) targ = TXT;
 
    SS = SUMA_StringAppend (NULL, NULL);
    
-   if (targ == 0) {
+   if (targ == TXT) {
       SS = SUMA_StringAppend (SS,
             "\nColormap Keyboard Controls:\n");
-   } else if (targ == 1) {
+   } else if (targ == SPX) {
       SS = SUMA_StringAppend (SS,
             ".. _Colormap_Keyboard_Controls:\n\n"
             "Colormap Keyboard Controls\n"
@@ -1164,7 +1164,7 @@ char * SUMA_help_Cmap_message_Info(SUMA_COLOR_MAP * ColMap, int targ)
       SS = SUMA_StringAppend (SS, s); SUMA_free(s); s = NULL;
 
       /* Add help for all controller options */
-      s = SUMA_Help_AllSurfCont(1);
+      s = SUMA_Help_AllSurfCont(targ);
       SS = SUMA_StringAppend (SS, s); SUMA_free(s); s = NULL;
    }
    /* clean SS */
@@ -1279,7 +1279,7 @@ char * SUMA_help_Plot_message_Info(void)
 }
 
 /* Format help key string */
-char * SUMA_hkf_eng(char *keyi, int target, char *cm)
+char * SUMA_hkf_eng(char *keyi, TFORM target, char *cm)
 {
    static char FuncName[]={"SUMA_hkf_eng"};
    static char ss[20][256];
@@ -1296,7 +1296,7 @@ char * SUMA_hkf_eng(char *keyi, int target, char *cm)
    if (!keyi) return(s);
    switch (target) {
       default:
-      case 0: /* SUMA */
+      case TXT: /* SUMA */
          /* Actually COMMA, PERIOD, STAR mods are not needed, leave 
          for posterity.*/
          if (strstr(keyi,"COMMA")) {
@@ -1311,19 +1311,18 @@ char * SUMA_hkf_eng(char *keyi, int target, char *cm)
             snprintf(s, 255, "  %s", key1);
          return(s);
          break;
-      case 1: /* Sphinx */
-      case 2:
+      case SPX: /* Sphinx */
          if (strstr(keyi,"->") == keyi) {
             /* Won't work if you pass key with blanks before '->'
                But why do such a thing? */ 
             snprintf(key1, 255, "%s", keyi+2);
             snprintf(key2, 255, "%s", keyi+2);
+            direc = "menuselection";
          } else {
             snprintf(key1, 255, "%s", keyi);
             snprintf(key2, 255, "%s", keyi);
+            direc = "kbd";
          }
-         if (target == 1) direc = "kbd";
-         else direc = "menuselection";
          
          if (key1[1] == '\0') {
             ichar = 0;
@@ -1349,19 +1348,19 @@ char * SUMA_hkf_eng(char *keyi, int target, char *cm)
    return(s);
 }
 
-char * SUMA_hkf(char *keyi, int target) {
+char * SUMA_hkf(char *keyi, TFORM target) {
    /* for main suma area keys */
    return(SUMA_hkf_eng(keyi,target,""));
 }
 
-char * SUMA_hkcf(char *keyi, int target) {
+char * SUMA_hkcf(char *keyi, TFORM target) {
    /* for colormap area keys */
    return(SUMA_hkf_eng(keyi,target,"CM_"));
 }
 
 
 /* Format GUI section */
-char * SUMA_gsf(char *wname, int target, char **hintout, char **helpout)
+char * SUMA_gsf(char *wname, TFORM target, char **hintout, char **helpout)
 {
    static char FuncName[]={"SUMA_gsf"};
    static char ss[20][256], wnameclp[256];
@@ -1385,12 +1384,11 @@ char * SUMA_gsf(char *wname, int target, char **hintout, char **helpout)
    
    switch (target) {
       default:
-      case 0: /* SUMA */
+      case TXT: /* SUMA */
          snprintf(s, 255, "  %s", wname);
          return(s);
          break;
-      case 1: /* Sphinx */
-      case 2:
+      case SPX: /* Sphinx */
          if (!(gwh = SUMA_Get_GUI_Help(wname, target, &shh, &sii,3))) {
             SUMA_S_Err("No help for %s\n", wname);
             SUMA_suggest_GUI_Name_Match(wname, 8, NULL);
@@ -1479,7 +1477,7 @@ char * SUMA_gsf(char *wname, int target, char **hintout, char **helpout)
    return(s);
 }
 
-char * SUMA_help_message_Info(int targ)
+char * SUMA_help_message_Info(TFORM targ)
 {
    static char FuncName[]={"SUMA_help_message_Info"};
    char stmp[1000], *s = NULL;
@@ -1488,7 +1486,7 @@ char * SUMA_help_message_Info(int targ)
    
    SUMA_ENTRY;
    
-   if (targ != 0 && targ != 1) targ = 0;
+   if (targ != TXT && targ != SPX) targ = TXT;
    
    SS = SUMA_StringAppend (NULL, NULL);
 
@@ -1496,10 +1494,10 @@ char * SUMA_help_message_Info(int targ)
    s = SUMA_New_Additions (0, 1);
    SS = SUMA_StringAppend (SS, s); SUMA_free(s); s = NULL;
    #endif
-   if (targ == 0) {
+   if (targ == TXT) {
       SS = SUMA_StringAppend (SS,
             "Keyboard Controls:\n");
-   } else if (targ == 1) {
+   } else if (targ == SPX) {
       SS = SUMA_StringAppend (SS,
             ".. _KeyboardControls:\n\n"
             "Keyboard Controls\n"
@@ -2048,10 +2046,10 @@ char * SUMA_help_message_Info(int targ)
       "   %s: close all surface viewer windows.\n\n"
       , SUMA_hkf("Shift+ESCAPE", targ));
    
-   if (targ == 0) {
+   if (targ == TXT) {
       SS = SUMA_StringAppend (SS,
             "Mouse Controls:\n");
-   } else if (targ == 1) {
+   } else if (targ == SPX) {
       SS = SUMA_StringAppend (SS,
             ".. _MouseControls:\n\n"
             "Mouse Controls\n"
@@ -2083,6 +2081,9 @@ char * SUMA_help_message_Info(int targ)
       "   %s: Rotate surfaces about the Z\n"
       "       axis. This is useful at times for reorienting flat\n"
       "       maps.\n", SUMA_hkf("Shift+Button 1-Motion", targ));
+   SS = SUMA_StringAppend_va (SS,    
+      "   %s: Undo Z rotation\n", 
+      SUMA_hkf("Shift+Button 1-DoubleClick", targ));
    SS = SUMA_StringAppend_va (SS,       
       "   %s: Pry open two hemispheres\n"
       "       so that you can see medial or lateral walls better\n"
@@ -2100,14 +2101,14 @@ char * SUMA_help_message_Info(int targ)
       "       to draw, the surfaces are put back together.\n"
       "       To make best use of this option, you want to have env. variable\n"
       "       SUMA_LHunify = YES (see your ~/.sumarc for help)\n",
-         SUMA_hkf("Control+Button 1-Motion", targ)); 
+         SUMA_hkf("Ctrl+Button 1-Motion", targ)); 
    SS = SUMA_StringAppend_va (SS,        
       "  %s: Reset to Home vieweing angle, zooming is\n"
       "       left unchanged. See also 'HOME' key\n",
          SUMA_hkf("Button 1-DoubleClick", targ));
    SS = SUMA_StringAppend_va (SS,       
       "  %s: Undo surface prying.\n",
-         SUMA_hkf("Control+Button 1-DoubleClick", targ));
+         SUMA_hkf("Ctrl+Button 1-DoubleClick", targ));
    SS = SUMA_StringAppend_va (SS, 
       "  %s: Translation for 3D scenes. Rotation for\n"
       "                      matrix displays.\n",
@@ -2214,15 +2215,14 @@ char * SUMA_help_message_Info(int targ)
    SS = SUMA_StringAppend (SS, 
       "    \n");
    
-   if (targ == 0) {
+   if (targ == TXT) {
       SS = SUMA_StringAppend (SS,
             "Selecting Objects:\n");
-   } else if (targ) {
+   } else if (targ == SPX) {
       SS = SUMA_StringAppend (SS,
                   "\n\n.. _Selecting_Objects:\n\n"
                   "Selecting Objects\n"
                   "-----------------\n\n");
-      targ = 2;
    }
    
    SS = SUMA_StringAppend (SS,
@@ -2303,26 +2303,24 @@ char * SUMA_help_message_Info(int targ)
 "surface and drag, then the selections during the sweep are restricted to "
 "surfaces only.\n\n");
    
-   if (targ == 0) {
+   if (targ == TXT) {
       SS = SUMA_StringAppend (SS,
             "Viewer Menus:\n");
-   } else if (targ) {
+   } else if (targ == SPX) {
       SS = SUMA_StringAppend (SS,
             ".. _Viewer_Menus:\n\n"
             "Viewer Menus\n"
             "------------\n\n");
-      targ = 2;
    }
    
-   if (targ == 0) {
+   if (targ == TXT) {
       SS = SUMA_StringAppend (SS,
             "File:\n");
-   } else if (targ) {
+   } else if (targ == SPX) {
       SS = SUMA_StringAppend (SS,
             ".. _File_Menu:\n\n"
             "File\n"
             "^^^^\n\n");
-      targ = 2;
    }
    
    SS = SUMA_StringAppend_va (SS, 
@@ -2334,15 +2332,14 @@ char * SUMA_help_message_Info(int targ)
          SUMA_hkf("->Load View", targ),
          SUMA_hkf("->Close", targ));
    
-   if (targ == 0) {
+   if (targ == TXT) {
       SS = SUMA_StringAppend (SS,
             "View:\n");
-   } else if (targ) {
+   } else if (targ == SPX) {
       SS = SUMA_StringAppend (SS,
             ".. _View_Menu:\n\n"
             "View\n"
             "^^^^\n\n");
-      targ = 2;
    }
 
    SS = SUMA_StringAppend_va (SS, 
@@ -2361,29 +2358,27 @@ char * SUMA_help_message_Info(int targ)
          SUMA_hkf("->Node in Focus", targ),
          SUMA_hkf("->Selected Faceset", targ));
    
-   if (targ == 0) {
+   if (targ == TXT) {
       SS = SUMA_StringAppend (SS,
             "Tools:\n");
-   } else if (targ) {
+   } else if (targ == SPX) {
       SS = SUMA_StringAppend (SS,
             ".. _Tools_Menu:\n\n"
             "Tools\n"
             "^^^^^\n\n");
-      targ = 2;
    }      
    SS = SUMA_StringAppend_va (SS, 
       "  %s: Open :ref:`Draw ROI controller<drawing_rois>`, also with :ref:`Ctrl+d<LC_Ctrl+d>`.\n\n",
       SUMA_hkf("->Draw ROI", targ));
    
-   if (targ == 0) {
+   if (targ == TXT) {
       SS = SUMA_StringAppend (SS,
             "Help:\n");
-   } else if (targ) {
+   } else if (targ == SPX) {
       SS = SUMA_StringAppend (SS,
             ".. _Help_Menu:\n\n"
             "Help\n"
             "^^^^\n\n");
-      targ = 2;
    }     
    SS = SUMA_StringAppend_va (SS, 
       "   %s: Opens window with this message.\n"
@@ -2413,10 +2408,10 @@ char * SUMA_help_message_Info(int targ)
    
       
    /* Environment variables */
-   if (targ == 0) {
+   if (targ == TXT) {
       SS = SUMA_StringAppend (SS,
             "SUMA's environment vars:\n");
-   } else if (targ) {
+   } else if (targ == SPX) {
       SS = SUMA_StringAppend (SS,
             ".. _ENV_List:\n\n"
             "SUMA's env.\n"
@@ -2431,13 +2426,12 @@ char * SUMA_help_message_Info(int targ)
             "     :command:`suma -update_env`\n\n"
             "List of Variables\n"
             "^^^^^^^^^^^^^^^^^\n"  );
-      targ = 1;
    }  
    s = SUMA_env_list_help(0, targ);
    SS = SUMA_StringAppend( SS, s); SUMA_free(s); s = NULL;
    SS = SUMA_StringAppend( SS, "\n");
    
-   if (targ == 0) {
+   if (targ == TXT) {
       SS = SUMA_StringAppend (SS, 
          "    More help at \n"
          "    http://afni.nimh.nih.gov/pub/dist/edu/latest/suma/suma.pdf\n");
@@ -2553,7 +2547,7 @@ char * SUMA_help_xform_dot_message_Info(void)
 /*!
 Controls help message
 */
-void SUMA_help_message(FILE *Out, int targ)
+void SUMA_help_message(FILE *Out, TFORM targ)
 {
 	char *s=NULL;
    static char FuncName[]={"SUMA_help_message"};
@@ -2575,7 +2569,7 @@ void SUMA_help_message(FILE *Out, int targ)
    SUMA_RETURNe;
 }
 
-void SUMA_cmap_help_message(FILE *Out, int targ)
+void SUMA_cmap_help_message(FILE *Out, TFORM targ)
 {
 	char *s=NULL;
    static char FuncName[]={"SUMA_cmap_help_message"};
@@ -3044,8 +3038,8 @@ char *SUMA_Name_GUI_Help(GUI_WIDGET_HELP *gwh)
    if (!gwh) SUMA_RETURN(s);
    
    for (k=0; k<gwh->name_lvl; ++k) {
-      strcat(s,gwh->name[k]);
-      if (k<gwh->name_lvl-1) strcat(s,"->");
+      strncat(s,gwh->name[k], 640);
+      if (k<gwh->name_lvl-1) strncat(s,"->", 640);
    }
    
    SUMA_RETURN(s);
@@ -3082,13 +3076,13 @@ char *SUMA_All_GUI_Help_Info(DList *dl, int detail, int format)
                s = SUMA_copy_string(gwh->help);
                switch (format) {
                   case 0:
-                     SUMA_Sphinx_String_Edit(&s, 0, 0);
+                     SUMA_Sphinx_String_Edit(&s, TXT, 0);
                      SUMA_StringAppend_va(SS,"  help: %s\n", s);
                      SUMA_ifree(s);
                      break;
                   default:
                   case 1:
-                     SUMA_Sphinx_String_Edit(&s, 1, 0);
+                     SUMA_Sphinx_String_Edit(&s, SPX, 0);
                      SUMA_StringAppend_va(SS,"  help: %s\n", s);
                      SUMA_ifree(s);
                      break;
@@ -3131,7 +3125,7 @@ char *SUMA_All_GUI_Help_Info(DList *dl, int detail, int format)
                                     the widget help. 
                                     NULL if nothing was found.
 */ 
-GUI_WIDGET_HELP *SUMA_Get_GUI_Help( char *gname, int format, 
+GUI_WIDGET_HELP *SUMA_Get_GUI_Help( char *gname, TFORM format, 
                                     char **helpout, char **hintout,
                                     int whelp_off)
 {
@@ -3299,7 +3293,7 @@ void SUMA_suggest_GUI_Name_Match(char *wname, int nmx, DList *dl)
    SUMA_RETURNe;
 }
 
-char * SUMA_Help_AllSurfCont (int targ)
+char * SUMA_Help_AllSurfCont (TFORM targ)
 {
    static char FuncName[]={"SUMA_Help_AllSurfCont"};
    char *s = NULL, *shh=NULL, *sii=NULL;
@@ -3427,7 +3421,7 @@ void SUMA_Snap_AllSurfCont (char *froot)
    SUMA_RETURNe;
 }
 
-char * SUMA_Help_AllGraphCont (int targ)
+char * SUMA_Help_AllGraphCont (TFORM targ)
 {
    static char FuncName[]={"SUMA_Help_AllGraphCont"};
    char *s = NULL, *shh=NULL, *sii=NULL;
@@ -3550,7 +3544,7 @@ void SUMA_Snap_AllGraphCont (char *froot)
    SUMA_RETURNe;
 }
 
-char * SUMA_Help_AllROICont (int targ)
+char * SUMA_Help_AllROICont (TFORM targ)
 {
    static char FuncName[]={"SUMA_Help_AllROICont"};
    char *s = NULL, *shh=NULL, *sii=NULL;
@@ -3626,7 +3620,7 @@ void SUMA_Snap_AllROICont (char *froot)
 }
 
 
-char * SUMA_Help_AllVolCont (int targ)
+char * SUMA_Help_AllVolCont (TFORM targ)
 {
    static char FuncName[]={"SUMA_Help_AllVolCont"};
    char *s = NULL, *shh=NULL, *sii=NULL;
@@ -3756,7 +3750,7 @@ void SUMA_Snap_AllVolCont (char *froot)
 }
 
 
-char * SUMA_Help_AllMaskCont (int targ)
+char * SUMA_Help_AllMaskCont (TFORM targ)
 {
    static char FuncName[]={"SUMA_Help_AllMaskCont"};
    char *s = NULL, *shh=NULL, *sii=NULL;
@@ -3835,7 +3829,7 @@ void SUMA_Snap_AllMaskCont (char *froot)
    SUMA_RETURNe;
 }
 
-char * SUMA_Help_AllTractCont (int targ)
+char * SUMA_Help_AllTractCont (TFORM targ)
 {
    static char FuncName[]={"SUMA_Help_AllTractCont"};
    char *s = NULL, *shh=NULL, *sii=NULL;

@@ -6,7 +6,7 @@
 
 #include "mrilib.h"
 
-void Syntax(TFORM targ)
+int Syntax(TFORM targ, int detail)
 {
    sphinx_printf(targ,"\n"
 "Prints out sort-of-useful information from a 3D dataset's header\n"
@@ -14,6 +14,7 @@ void Syntax(TFORM targ)
 "  -verb means to print out lots of stuff\n"
 "  -VERB means even more stuff\n"
 "  -short means to print out less stuff [now the default]\n"
+"%s"
 "\n"
 ":SPX:"
 "\n.. note::\n\n   This could be anything. Just for the demo.\n\n"
@@ -23,10 +24,10 @@ void Syntax(TFORM targ)
 "  * Prints to stdout the index corresponding to the sub-brick with\n"
 "    the name label, or a blank line if label not found.\n"
 "  * If this option is used, then the ONLY output is this sub-brick index.\n"
-"    This is intended to be used in a script, as in this tcsh fragment:\n"
+"    This is intended to be used in a script, as in this tcsh fragment:LIT:\n"
 "      set face = `3dinfo -label2index Face#0 AA_Decon+orig`\n"
 "      set hous = `3dinfo -label2index House#0 AA_Decon+orig`\n"
-"      3dcalc -a AA_Decon+orig\"[$face]\" -b AA_Decon+orig\"[$hous]\" ...\n"
+"      3dcalc -a AA_Decon+orig\"[$face]\" -b AA_Decon+orig\"[$hous]\" ...:LR:\n"
 "  * Added per the request and efforts of Colm Connolly.\n"
 "\n"
 "Alternate Alternative Usage:\n"
@@ -42,6 +43,7 @@ void Syntax(TFORM targ)
 "   -gen_space: datasets generic space\n"
 "   -av_space: AFNI format's view extension for the space\n"
 "   -is_oblique: 1 if dset is oblique\n"
+"   -handedness: L if orientation is Left handed, R if it is right handed\n"
 "   -obliquity: Angle from plumb direction.\n"
 "               Angles of 0 (or close) are for cardinal orientations\n"
 "   -prefix: Return the prefix\n"
@@ -161,9 +163,9 @@ void Syntax(TFORM targ)
 "  3- Use some of the options that operate on pairs, mix with other options\n"
 "     3dinfo -echo_edu -header_line -prefix -n4 -same_grid $dsets[1-4]\n"
 "\n"
-"\n"
-   ) ;
-   PRINT_COMPILE_DATE ; exit(0) ;
+"\n",
+   SUMA_Offset_SLines(get_help_help(),2)) ;
+   PRINT_COMPILE_DATE ; return(0) ;
 }
 
 THD_3dim_dataset *load_3dinfo_dataset(char *name) 
@@ -208,7 +210,7 @@ typedef enum {
    HISTORY, ORIENT,
    SAME_GRID, SAME_DIM, SAME_DELTA, SAME_ORIENT, SAME_CENTER, 
    SAME_OBL, SVAL_DIFF, VAL_DIFF, SAME_ALL_GRID, ID, SMODE,
-   VOXVOL, INAME,
+   VOXVOL, INAME, HANDEDNESS, 
    N_FIELDS } INFO_FIELDS; /* Keep synchronized with Field_Names  
                               Leave N_FIELDS at the end */
 
@@ -231,7 +233,7 @@ char Field_Names[][32]={
    {"=grid?"}, {"=dim?"}, {"=delt?"}, {"=ornt?"}, {"=cent?"},
    {"=obl?"}, {"sDval"}, {"Dval"}, {"=dim_delta_orient_center_obl"}, 
    {"id"}, {"smode"}, 
-   {"voxvol"}, {"iname"},
+   {"voxvol"}, {"iname"}, {"hand"},
    {"\0"} }; /* Keep synchronized with INFO_FIELDS */
 
 char *PrintForm(INFO_FIELDS sing , int namelen, byte ForHead)
@@ -261,7 +263,7 @@ char *PrintForm(INFO_FIELDS sing , int namelen, byte ForHead)
    else fprintf(stdout,"\n"); \
 }
 
-   
+            
 int main( int argc , char *argv[] )
 {
    THD_3dim_dataset *dset=NULL;
@@ -277,23 +279,20 @@ int main( int argc , char *argv[] )
    THD_3dim_dataset *tttdset=NULL, *dsetp=NULL;
    char *tempstr = NULL;
 
-   if( argc < 2 || strncmp(argv[1],"-help",4) == 0 
-                || strcmp(argv[1],"-h") == 0) Syntax(TXT) ;
 
    mainENTRY("3dinfo main") ; machdep() ; 
 
+   if( argc < 2) { Syntax(TXT,1) ; RETURN(0); } 
+   
    iarg = 1 ;
    while (iarg < argc && argv[iarg][0] == '-') {
+      CHECK_HELP(argv[iarg],Syntax);
            if( strncmp(argv[iarg],"-verb" ,5) == 0 ){ 
             verbose =  0; iarg++; continue; }
       else if( strncmp(argv[iarg],"-VERB" ,5) == 0 ){ 
             verbose =  1; iarg++; continue; }
       else if( strncmp(argv[iarg],"-short",5) == 0 ){ 
             verbose = -1; iarg++; continue; }
-      else if( strncmp(argv[iarg],"-h_spx",6) == 0 ){ 
-            Syntax(SPX); }
-      else if( strncmp(argv[iarg],"-h_raw",6) == 0 ){ 
-            Syntax(NO_FORMAT); }
       else if( strcasecmp(argv[iarg],"-header_line") == 0 ||
                strcasecmp(argv[iarg],"-hdr") == 0 ){ 
             withhead = 1; iarg++; continue; }
@@ -345,6 +344,8 @@ int main( int argc , char *argv[] )
          sing[N_sing++] = IS_OBLIQUE; iarg++; continue;
       } else if( strcasecmp(argv[iarg],"-obliquity") == 0) { 
          sing[N_sing++] = OBLIQUITY; iarg++; continue;
+      } else if( strcasecmp(argv[iarg],"-handedness") == 0) { 
+         sing[N_sing++] = HANDEDNESS; iarg++; continue;
       } else if( strcasecmp(argv[iarg],"-prefix") == 0) {
          sing[N_sing++] = PREFIX; iarg++; continue;
       } else if( strcasecmp(argv[iarg],"-prefix_noext") == 0) {
@@ -690,6 +691,13 @@ int main( int argc , char *argv[] )
                fprintf(stdout,"1");
             } else {
                fprintf(stdout,"0");
+            }
+            break;
+         case HANDEDNESS:
+            if (THD_handedness(dset) > 0) {
+               fprintf(stdout,"R");
+            } else {
+               fprintf(stdout,"L");
             }
             break;
          case OBLIQUITY:

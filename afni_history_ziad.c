@@ -65,7 +65,60 @@
 
 afni_history_struct ziad_history[] = {
 /*=====BELOW THIS LINE=====*/
+ { 10, Dec, 2014, ZSS, "imcat", MINOR, TYPE_NEW_OPT,
+   "Added -autocrop* options",
+   NULL 
+ },
 
+ { 4, Dec, 2014, ZSS, "suma", MICRO, TYPE_BUG_FIX,
+   "Default coloring of directions was using negative values.",
+   "No so good for openGL colors. Negative values get clamped at 0.\n"
+   "Default coloring is now ABS(X|Y|Z) now."
+ },
+ 
+ { 4, Dec, 2014, ZSS, "3dinfo", MINOR, TYPE_NEW_OPT,
+   "Added -handedness option.",
+   NULL
+ },
+ 
+ { 26, Nov, 2014, ZSS, "3danisosmooth", MINOR, TYPE_NEW_OPT,
+   "Output of diffusion measures, along with adjustment of debug volumes",
+   "For details, see tersely named option  -save_temp_with_diff_measures, \n"
+   "along with modified help for -savetempdata"
+ },
+ 
+ { 24, Nov, 2014, ZSS, "3dRetinoPhase", MINOR, TYPE_BUG_FIX,
+   "Fixed floating point precision error that resulted in error message",
+   NULL
+ },
+ 
+ { 24, Nov, 2014, ZSS, "afni-general", MINOR, TYPE_MODIFY,
+   "Fixed clash between matrix.h and matrix_f.h",
+   "Clash was my own doing, I had introduced it by including matrix.h\n"
+   "via suma_string_utils.h into 3ddata.h. The conflict has been resolved\n"
+   "now. Care must be taken to include matrix_f.h early in a .c file and\n"
+   "that would stop the inclusion of matrix.h from suma_*.h files."
+ },
+ 
+ { 21, Nov, 2014, ZSS, "afni-general", MAJOR, TYPE_MODIFY,
+   "More and more and more changes to the -help",
+   "Devised system to simplify, so to speak, the generation of \n"
+   "sphinxized help. Changes span multiple functions, most visible \n"
+   "are the sphinx_printf() and its siblings, and new options in apsearch.\n"
+  "See program 3dToyProg.c for an example on how to write help for C programs.\n"
+   "See also Writing_Help.rst for more details."
+ },
+ 
+ { 11, Nov, 2014, ZSS, "suma", MINOR, TYPE_MODIFY,
+   "GraphCont->CN->Col now abide by the 'u' selection for unconnected nodes",
+   NULL
+ },
+ 
+ { 11, Nov, 2014, ZSS, "suma", MINOR, TYPE_MODIFY,
+   "Made matrix display labels track selection",
+   NULL
+ },
+ 
  { 4, Nov, 2014, ZSS, "suma", MINOR, TYPE_MODIFY,
    "Continued modifications for help generating functions, now with selfies",
    "Now SUMA can take selfies of the varied widget frames, making the  \n"

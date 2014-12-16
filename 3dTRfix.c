@@ -1,14 +1,16 @@
 #include "mrilib.h"
 
-/*** This program is really just a quick hack for the Spanish Inquisition! ***/
-/*** [They need to torture some data, according to Chief Inquisitor Javier] **/
+/*---------------------------------------------------------------------------*/
+/** This program is really just a quick hack for the Spanish Inquisition!!  **/
+/** [They need to torture some data, according to Chief Inquisitor Javier]  **/
+/*---------------------------------------------------------------------------*/
 
 /*---------------------------------------------------------------------------*/
 /* Inputs:
      ntin  = number of time points in input array tsar
      tsar  = input array to be interpolated
      tgar  = time grid of input array -- monotonic increasing, length = ntin
-     toff  = additional time offset for input array
+     toff  = additional time offset for input array (allows for slice timing)
      ntout = number of time points in output array
      dtout = time step of output array
      tzout = time offset of output array -- i-th point is at i*dtout+tzout
@@ -29,11 +31,11 @@ void THD_resample_timeseries_linear(
    for( iin=0,iout=0 ; iout < ntout ; iout++ ){
      tout = tzout + iout*dtout ;  /* time of this output point */
 
-     /* find iin such that tout lies in the input interval iin .. iin+1 */
+     /* find next iin such that tout lies in the input interval iin .. iin+1 */
 
      for( ; iin < ntin2 && tout > tgar[iin+1]+toff ; iin++ ) ; /*nada */
 
-     /* f0 = linearly interpolation factor for tsar[iin] */
+     /* f0 = linear interpolation factor for tsar[iin] */
 
      f0 = (tgar[iin+1]+toff-tout) / (tgar[iin+1]-tgar[iin]) ;
 
@@ -117,7 +119,7 @@ ENTRY("THD_resample_irregular_dataset") ;
                       ADN_prefix    , prefix    ,
                       ADN_nvals     , ntout     ,
                       ADN_ntt       , ntout     ,
-                      ADN_ttdel     , dtout     ,
+                      ADN_ttdel     , dtout     ,  /* set TR */
                       ADN_nsl       , 0         ,  /* time shifting is done */
                       ADN_datum_all , MRI_float ,
                       ADN_brick_fac , NULL      ,
@@ -128,20 +130,24 @@ ENTRY("THD_resample_irregular_dataset") ;
    /* loop over input voxels */
 
    nvox = DSET_NVOX(inset) ;
-   otar = (float *)malloc(sizeof(float)*ntout) ;
-   itar = (float *)malloc(sizeof(float)*ntin ) ;
+   otar = (float *)malloc(sizeof(float)*ntout) ;  /* output array */
+   itar = (float *)malloc(sizeof(float)*ntin ) ;  /* input array */
 
    ININFO_message("Computing output dataset") ;
 
    for( ii=0 ; ii < nvox ; ii++ ){
-     toff = THD_timeof_vox( 0 , ii , inset ) ;  /* allow for time shifting */
+       /* allow for time shifting */
+     toff = THD_timeof_vox( 0 , ii , inset ) ;
+       /* get input array */
      (void)THD_extract_array( ii , inset , 0 , itar ) ;
+       /* compute output array */
      THD_resample_timeseries_linear( ntin , itar , tgar , toff ,
                                      ntout, dtout, tzout, otar  ) ;
+       /* put it into the output dataset */
      THD_insert_series( ii , outset , ntout , MRI_float , otar , 1 ) ;
    }
 
-   free(itar); free(otar);
+   free(itar); free(otar);  /* take out the trash */
    RETURN(outset);
 }
 
@@ -155,6 +161,8 @@ void TRfix_help(void)
      "This program will read in a dataset that was sampled on an irregular time\n"
      "grid and re-sample it via linear interpolation to a regular time grid.\n"
      "\n"
+     "NOTES:\n"
+     "------\n"
      "The re-sampling will include the effects of slice time offsets (similarly\n"
      "to program 3dTshift), if these time offsets are encoded in the input dataset's\n"
      "header.\n"
@@ -162,29 +170,34 @@ void TRfix_help(void)
      "No other processing is performed -- in particular, there is no allowance\n"
      "(at present) for T1 artifacts resulting from variable TR.\n"
      "\n"
-     "Note that if the first 1 or 2 time points are abnormally bright due to\n"
-     "the NMR pre-steady-state effect, then their influence might be spread\n"
-     "farther into the output dataset by the interpolation process.  You can\n"
-     "avoid this by excising these values from the input using the '[2..$]'\n"
-     "notation in the input dataset syntax.\n"
+     "If the first 1 or 2 time points are abnormally bright due to the NMR\n"
+     "pre-steady-state effect, then their influence might be spread farther\n"
+     "into the output dataset by the interpolation process.  You can avoid this\n"
+     "effect by excising these values from the input using the '[2..$]' notation\n"
+     "in the input dataset syntax.\n"
      "\n"
-     "Also note that if the input dataset is catenated from multiple non-contiguous\n"
-     "imaging runs, the program will happily interpolate across the time breaks\n"
-     "between the runs.  For this reason, you should not give such a file (e.g.,\n"
-     "from 3dTcat) to this program -- you should use 3dTRfix on each run separately,\n"
-     "and only later catenate the runs.\n"
+     "If the input dataset is catenated from multiple non-contiguous imaging runs,\n"
+     "the program will happily interpolate across the time breaks between the runs.\n"
+     "For this reason, you should not give such a file (e.g., from 3dTcat) to this\n"
+     "program -- you should use 3dTRfix on each run separately, and only later\n"
+     "catenate the runs.\n"
      "\n"
-     "Basically, this program is a quick-ish hack for the Mad Spaniard; when\n"
-     "are we going out for tapas y cerveza?\n"
+     "The output dataset is stored in float format, regardless of the input format.\n"
+     "\n"
+     "** Basically, this program is a hack for the Mad Spaniard.\n"
+     "** When are we going out for tapas y cerveza (sangria es bueno, tambien)?\n"
      "\n"
      "OPTIONS:\n"
-     "========\n"
+     "--------\n"
      "\n"
      " -input iii    = Input dataset 'iii'. [MANDATORY]\n"
      "\n"
      " -TRlist rrr   = 1D columnar file of time gaps between sub-bricks in 'iii';\n"
      "                 If the input dataset has N time points, this file must\n"
      "                 have at least N-1 (positive) values.\n"
+     "                * Please note that these time steps (or the time values in\n"
+     "                  '-TIMElist') should be in seconds, NOT in milliseconds!\n"
+     "                * AFNI time units are seconds!!!\n"
      "\n"
      " -TIMElist ttt = Alternative to '-TRlist', where you give the N values of\n"
      "                 the times at each sub-brick; these values must be monotonic\n"
@@ -218,7 +231,7 @@ int main( int argc , char *argv[] )
 
    if( argc < 2 || strcasecmp(argv[1],"-help") == 0 ) TRfix_help() ;
 
-   /*-- the formalities --*/
+   /*-- the legal formalities --*/
 
    mainENTRY("3dTRfix"); machdep();
    AFNI_logger("3dTRfix",argc,argv);
@@ -282,7 +295,7 @@ int main( int argc , char *argv[] )
 
      /*-- read dtout --*/
 
-     if( strcasecmp(argv[iarg],"-TRout") == 0 ){
+     if( strcasecmp(argv[iarg],"-TRout") == 0 || strcasecmp(argv[iarg],"-dt") == 0 ){
        if( ++iarg >= argc ) ERROR_exit("no argument after '%s' :-(",argv[iarg-1]) ;
        dtout = (float)strtod(argv[iarg],NULL) ;
        if( dtout <= 0.0f )
@@ -323,15 +336,15 @@ int main( int argc , char *argv[] )
     for( ii=1 ; ii < ntin ; ii++ ){
       tgar[ii] = tgar[ii-1] + dtar[ii-1] ;  /* addition! */
       if( dtar[ii-1] <= 0.0f ){
-        ERROR_message("-TRlist #%d=%g -- but must be positive!",ii-1,dtar[ii-1]) ;
+        ERROR_message("-TRlist: #%d=%g -- but must be positive!",ii-1,dtar[ii-1]) ;
         nbad++ ;
       }
     }
-  } else {  /* check TIMElist for monotonicity */
+  } else if( TIMElist != NULL ){  /* check TIMElist for monotonicity */
     tgar = MRI_FLOAT_PTR(TIMElist) ;
     for( ii=1 ; ii < ntin ; ii++ ){
       if( tgar[ii] <= tgar[ii-1] ){
-        ERROR_message("-TIMElist #%d=%g  #%d=%g -- these are out of order!" ,
+        ERROR_message("-TIMElist: #%d=%g  #%d=%g -- these are out of order!" ,
                       ii-1,tgar[ii-1] , ii,tgar[ii] ) ;
         nbad++ ;
       }
@@ -339,7 +352,7 @@ int main( int argc , char *argv[] )
   }
 
   if( nbad > 0 )
-    ERROR_exit(" !!! )-: 3dTRfix can't continue after such silliness :-( !!!") ;
+    ERROR_exit(" !!! )-: 3dTRfix can't continue after such bad-ness :-( !!!") ;
 
   /*-- compute something that might be useful (or might not be) --*/
 

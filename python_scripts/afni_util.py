@@ -272,6 +272,16 @@ def write_afni_com_history(fname, length=0, wrap=1):
    script = '\n'.join(hist)+'\n'
    write_text_to_file(fname, script, wrap=wrap)
 
+def get_process_depth(pid=-1, prog=None):
+   """print stack of processes up to init"""
+
+   pstack = get_process_stack(pid=pid)
+
+   if prog == None: return len(pstack)
+
+   pids = [pp[0] for pp in pstack if pp[3] == prog]
+   return len(pids)
+
 # get/show_process_stack(), get/show_login_shell()   28 Jun 2013 [rickr]
 def get_process_stack(pid=-1, verb=1):
    """the stack of processes up to init
@@ -3486,6 +3496,7 @@ afni_util.py: not really intended as a main program
             afni_util.py -listfunc -print min_mean_max_stdev 1 2 3 4 5
             afni_util.py -listfunc -join min_mean_max_stdev 1 2 3 4 5
             afni_util.py -listfunc -join -float demean  1 2 3 4 5
+            afni_util.py -listfunc -join shuffle `count -digits 4 1 124`
 
          Also, if LIST contins -list2, then 2 lists can be input to do
          something like:

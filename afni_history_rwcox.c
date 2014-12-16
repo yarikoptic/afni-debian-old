@@ -43,7 +43,56 @@
 
 afni_history_struct rwcox_history[] = {
 /*=====BELOW THIS LINE=====*/
-  { 28 , OCT , 2014 , RWC , "afni GUI" , MICRO , TYPE_GENERAL ,
+  { 11 , DEC , 2014 , RWC , "afni GUI" , MICRO , TYPE_MODIFY ,
+   "Change way opacity fades down to Floor value" ,
+   NULL } ,
+
+ { 10 , DEC , 2014 , RWC , "afni GUI" , MICRO , TYPE_MODIFY ,
+   "Driver for Alpha settings; fix outline of supra-threshold regions" ,
+   "driver command SET_FUNC_ALPHA now works.\n"
+   "Outline of supra-threshold regions is now the next set of pixels outside\n"
+   "each region, rather than the border pixels inside the region (as\n"
+   "before)." } ,
+
+ { 9 , DEC , 2014 , RWC , "afni GUI" , MICRO , TYPE_BUG_FIX ,
+   "Make 'Alpha' mode with with Montages -- oops" ,
+   "There's probably other stuff that doesn't work with RGBA overlays, but\n"
+   "we'll have to see what happens." } ,
+
+ { 9 , DEC , 2014 , RWC , "afni GUI" , MINOR , TYPE_MODIFY ,
+   "Add 'Alpha' fading to overlay" ,
+   "In this mode, the outlines of the supra-threshold regions are outlined\n"
+   "(unless AFNI_EDGIZE_OVERLAY is NO).  Alpha fading is turned off in\n"
+   "Clusterize at this time, since it would be complicated to make the 2\n"
+   "things work together." } ,
+
+ { 5 , DEC , 2014 , RWC , "3dNwarpApply" , MAJOR , TYPE_BUG_FIX ,
+   "Forgot to index-ize the matrix warps before applying them!" ,
+   "In the revised way of catenating time-dependent warps, the matrix warps\n"
+   "are kept in xyz coords until they are actually used, when they should be\n"
+   "transformed to ijk coords.  In the 'old' way, they were transformed\n"
+   "directly on input.  But in the 'new' way, I forgot to transform them\n"
+   "before applying them in the catenation loop, and the results were not\n"
+   "pretty.  I'm still searching for someone to blame for this, since it\n"
+   "clearly can't be MY fault.  Any volunteers?" } ,
+
+ { 1 , DEC , 2014 , RWC , "3dNwarpApply" , MAJOR , TYPE_GENERAL ,
+   "Extensive changes to make operations more general" ,
+   "(1) Allow catenation of warps with different grid spacings -- the new\n"
+   "Nwarp_catlist struct and functions will re-grid to make them match.\n"
+   "(2) Allow input of affine warps with multiple time points, so that\n"
+   "3D+time datasets can be warped with a time dependent Nwarp_catlist.\n"
+   "(3) Allow input of multiple source datasets, so that several datasets\n"
+   "can be warped the same way at once.  This is more efficient, since the\n"
+   "auto-catenation in the Nwarp_catlist will only have to be done once.\n"
+   "(3a) Specification of the output dataset names can be done via multiple\n"
+   "arguments to the '-prefix' option, or via the new '-suffix' option." } ,
+
+ { 18 , NOV , 2014 , RWC , "3dTRfix" , MINOR , TYPE_NEW_PROG ,
+   "Interpolate from a variable TR grid to a fixed TR grid" ,
+   "For Javier et alii.  No T1 artifact correction, just interpolation." } ,
+
+ { 28 , OCT , 2014 , RWC , "afni GUI" , MICRO , TYPE_GENERAL ,
    "Add 2D Sharpness function to transformations.  For fun." ,
    NULL } ,
 

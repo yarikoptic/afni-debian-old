@@ -250,6 +250,7 @@ typedef struct { float a,b ; } float_pair ;
 #define TYPEDEF_float_triple
 typedef struct { float a,b,c ; } float_triple ;
 #define float_trip float_triple
+#define ASSIGN_FLOAT_TRIPLE(ft,x,y,z) ( ft.a=(x),ft.b=(y),ft.c=(z) )
 #endif
 
 #ifndef TYPEDEF_float_quad
@@ -732,6 +733,8 @@ extern void binarize_mask( int , byte * ) ;
 #define NSTAT_mmMP2s1     29
 #define NSTAT_mmMP2s2     30
 #define NSTAT_mmMP2s3     31
+#define NSTAT_NZNUM       32
+#define NSTAT_FNZNUM      33
 
 #define NSTAT_FWHMx      63   /*these should be after all other NSTAT_* values */
 #define NSTAT_FWHMy      64
@@ -2215,6 +2218,11 @@ typedef struct { /* 17 Oct 2014 */
   int ncat , nvar , flags ;
   THD_3dim_dataset **nwarp ;
   mat44_vec        **awarp ;
+  char              *actual_geomstring ;
+  char              *master_geomstring ;
+  mat44              actual_cmat , actual_imat ;
+  int              xpad  ,ypad  ,zpad ;
+  float            xshift,yshift,zshift ;
 } Nwarp_catlist ;
 
 #define NWC_INVERT_MASK 1  /* for flags field */
@@ -2271,6 +2279,16 @@ extern THD_3dim_dataset * THD_nwarp_dataset_NEW( Nwarp_catlist    *nwc       ,
                                                  THD_3dim_dataset *dset_mast ,
                                                  char *prefix, int wincode, int dincode,
                                                  float dxyz_mast, float wfac, int nvlim ) ;
+
+extern int THD_nwarp_forward_xyz( THD_3dim_dataset *dset_nwarp ,
+                                  float dfac , int npt ,
+                                  float *xin , float *yin , float *zin ,
+                                  float *xut , float *yut , float *zut  ) ;
+
+extern int THD_nwarp_inverse_xyz( THD_3dim_dataset *dset_nwarp ,
+                                  float dfac , int npt ,
+                                  float *xin , float *yin , float *zin ,
+                                  float *xut , float *yut , float *zut  ) ;
 
 /*----------------------------------------------------------------------------*/
 
