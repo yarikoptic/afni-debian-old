@@ -1,6 +1,6 @@
 --- a/ptaylor/3dNetCorr.c
 +++ b/ptaylor/3dNetCorr.c
-@@ -44,10 +44,6 @@
+@@ -49,10 +49,6 @@
  #include <omp.h>
  #endif
  
@@ -8,6 +8,6 @@
 -#include "3dNetCorr.c"
 -#endif
 -
- void usage_NetCorr(int detail) 
- {
-    printf(
+ #define MAX_PARAMS (4) // CC, FZ, PC, PCB right now
+ 
+ 
