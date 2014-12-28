@@ -7,12 +7,97 @@ static int verb = 1 ;
 #endif
 
 /*---------------------------------------------------------------------------*/
+
+void mri_invertcontrast_inplace( MRI_IMAGE *im , float uperc , byte *mask )
+{
+   byte *mmm=NULL ;
+   int nvox , nhist , ii ; float *hist=NULL , *imar , ucut ;
+
+   if( im == NULL || im->kind != MRI_float ) return ;
+        if( uperc <  90.0f ) uperc =  90.0f ;
+   else if( uperc > 100.0f ) uperc = 100.0f ;
+
+   mmm = mask ;
+   if( mmm == NULL ) mmm = mri_automask_image(im) ;
+
+   nvox = im->nvox ;
+   hist = (float *)malloc(sizeof(float)*nvox) ;
+   imar = MRI_FLOAT_PTR(im) ;
+   for( nhist=ii=0 ; ii < nvox ; ii++ ){ if( mmm[ii] ) hist[nhist++] = imar[ii]; }
+   if( nhist < 100 ){
+     if( mmm != mask ) free(mmm) ;
+     free(hist) ; return ;
+   }
+   qsort_float(nhist,hist) ;
+   ii = (int)rintf(nhist*uperc*0.01f) ; ucut = hist[ii] ; free(hist) ;
+   for( ii=0 ; ii < nvox ; ii++ ){
+     if(  mmm[ii]                    ) imar[ii] = ucut - imar[ii] ;
+     if( !mmm[ii] || imar[ii] < 0.0f ) imar[ii] = 0.0f ;
+   }
+   if( mmm != mask ) free(mmm) ;
+   return ;
+}
+
+/*---------------------------------------------------------------------------*/
+
+void mri_clipedges_inplace( MRI_IMAGE *qm , float uclip , float vclip )
+{
+   int ii,jj,kk , ip,jp,kp , im,jm,km , nx,ny,nz,nxy,nxyz , pp,qq , nclip ;
+   float *imar , *qmar ;
+
+   if( qm == NULL || qm->kind != MRI_float ) return ;
+
+   nx = qm->nx ; ny = qm->ny ; nz = qm->nz ; nxy = nx*ny ; nxyz = nxy*nz ;
+   qmar = MRI_FLOAT_PTR(qm) ;
+   imar = malloc(sizeof(float)*nxyz) ;
+
+#define ISEDGE(i,j,k) (imar[(i)+(j)*nx+(k)*nxy]==0.0f)
+
+   if( verb ) fprintf(stderr,"e") ;
+   do{
+     memcpy(imar,qmar,sizeof(float)*nxyz) ;
+     for( nclip=pp=0 ; pp < nxyz ; pp++ ){
+       if( imar[pp] < uclip ) continue ;
+       kk = pp / nxy ; ii = pp % nx ; jj = (pp-kk*nxy)/nx ;
+       kp = kk+1 ; if( kp >= nz ) kp = nz-1 ;
+       km = kk-1 ; if( km <  0  ) km = 0 ;
+       jp = jj+1 ; if( jp >= ny ) jp = ny-1 ;
+       jm = jj-1 ; if( jm <  0  ) jm = 0 ;
+       ip = ii+1 ; if( ip >= nx ) ip = nx-1 ;
+       im = ii-1 ; if( im <  0  ) im = 0 ;
+       if( ISEDGE(ip,jj,kk) + ISEDGE(im,jj,kk) +
+           ISEDGE(ii,jp,kk) + ISEDGE(ii,jm,kk) +
+           ISEDGE(ii,jj,kp) + ISEDGE(ii,jj,km)  > 2 ){
+         qmar[pp] = 0.0f ; nclip++ ;
+       }
+     }
+     for( pp=0 ; pp < nxyz ; pp++ ){
+       if( imar[pp] < vclip ) continue ;
+       kk = pp / nxy ; ii = pp % nx ; jj = (pp-kk*nxy)/nx ;
+       kp = kk+1 ; if( kp >= nz ) kp = nz-1 ;
+       km = kk-1 ; if( km <  0  ) km = 0 ;
+       jp = jj+1 ; if( jp >= ny ) jp = ny-1 ;
+       jm = jj-1 ; if( jm <  0  ) jm = 0 ;
+       ip = ii+1 ; if( ip >= nx ) ip = nx-1 ;
+       im = ii-1 ; if( im <  0  ) im = 0 ;
+       if( ISEDGE(ip,jj,kk) + ISEDGE(im,jj,kk) +
+           ISEDGE(ii,jp,kk) + ISEDGE(ii,jm,kk) +
+           ISEDGE(ii,jj,kp) + ISEDGE(ii,jj,km)  > 4 ){
+         qmar[pp] = 0.0f ; nclip++ ;
+       }
+     }
+   } while(nclip > 0) ;
+
+   free(imar) ; return ;
+}
+
+/*---------------------------------------------------------------------------*/
 #undef  SWAP
 #define SWAP(x,y) (temp=x,x=y,y=temp)
 #undef  SORT2
 #define SORT2(a,b) if(a>b) SWAP(a,b)
 
-/*----- fast median-of-7 -----*/
+/*----- fast median-of-7 [mangles input array] -----*/
 
 static INLINE float median7(float *p)
 {
@@ -474,6 +559,7 @@ ENTRY("mri_GMunifize") ;
 int main( int argc , char *argv[] )
 {
    int iarg , ct , do_GM=0 ;
+   int do_T2=0 ; float T2_uperc=98.5f ; byte *T2_mask=NULL ;
    char *prefix = "Unifized" ;
    char *sspref = NULL ;
    THD_3dim_dataset *inset=NULL , *outset=NULL ;
@@ -507,6 +593,19 @@ int main( int argc , char *argv[] )
             "--------\n"
             "  -prefix pp = Use 'pp' for prefix of output dataset.\n"
             "  -input dd  = Alternative way to specify input dataset.\n"
+            "  -T2        = Treat the input as if it were T2-weighted, rather than\n"
+            "               T1-weighted. This processing is done simply by inverting\n"
+            "               the image contrast, processing it as if that result were\n"
+            "               T1-weighted, and then re-inverting the results.\n"
+            "              ++ This option is NOT guaranteed to be useful for anything!\n"
+            "              ++ Of course, nothing in AFNI comes with a guarantee :-)\n"
+            "              ++ If you want to be REALLY sneaky, giving this option twice\n"
+            "                 will skip the second inversion step, so the result will\n"
+            "                 look like a T1-weighted volume (except at the edges and\n"
+            "                 near blood vessels).\n"
+            "              ++ Might be useful for skull-stripping T2-weighted datasets.\n"
+            "              ++ Don't try the '-T2 -T2' trick on FLAIR-T2-weighted datasets.\n"
+            "                 The results aren't pretty!\n"
             "  -GM        = Also scale to unifize 'gray matter' = lower intensity voxels\n"
             "               (to aid in registering images from different scanners).\n"
             "              ++ This option is recommended for use with 3dQwarp when\n"
@@ -521,6 +620,12 @@ int main( int argc , char *argv[] )
             "               ++ Default value is %.1f, and should be changed proportionally\n"
             "                  if the dataset voxel size differs significantly from 1 mm.\n"
             "  -ssave ss  = Save the scale factor used at each voxel into a dataset 'ss'.\n"
+            "               ++ This is the white matter scale factor, and does not include\n"
+            "                  the factor from the '-GM' option (if that was included).\n"
+            "               ++ The input dataset is multiplied by the '-ssave' image\n"
+            "                  (voxel-wise) to get the WM-unifized image.\n"
+            "               ++ Another volume (with the same grid dimensions) could be\n"
+            "                  scaled the same way using 3dcalc, if that is needed.\n"
             "  -quiet     = Don't print the fun fun fun progress messages (but whyyyy?).\n"
             "               ++ For the curious, the codes used are:\n"
             "                   A = Automask\n"
@@ -528,7 +633,12 @@ int main( int argc , char *argv[] )
             "                   V = Voxel-wise histograms to get local scale factors\n"
             "                   U = duplo Up (convert local scale factors to full-size volume)\n"
             "                   W = multiply by White matter factors\n"
-            "                   G = multiply by Gray matter factors [optional]\n"
+            "                   G = multiply by Gray matter factors [cf the -GM option]\n"
+            "                   I = contrast inversion              [cf the -T2 option]\n"
+            "               ++ 'Duplo down' means to scale the input volume to be half the\n"
+            "                  grid size in each direction for speed when computing the\n"
+            "                  voxel-wise histograms.  The sub-sampling is done using the\n"
+            "                  median of the central voxel value and its 6 nearest neighbors.\n"
             "\n"
             "------------------------------------------\n"
             "Special options for Jedi AFNI Masters ONLY:\n"
@@ -538,6 +648,13 @@ int main( int argc , char *argv[] )
             "                 R = radius; same as given by option '-Urad'     [default=%.1f]\n"
             "                 b = bottom percentile of normalizing data range [default=%.1f]\n"
             "                 r = top percentile of normalizing data range    [default=%.1f]\n"
+            "\n"
+            "  -T2up uu   = Set the upper percentile point used for T2-T1 inversion.\n"
+            "               The default value is 98.5 (for no good reason), and 'uu' is\n"
+            "               allowed to be anything between 90 and 100 (inclusive).\n"
+            "               ++ The histogram of the data is built, and the uu-th percentile\n"
+            "                  point value is called 'U'. The contrast inversion is simply\n"
+            "                  given by output_value = max( 0 , U - input_value ).\n"
             "\n"
             "  -clfrac cc = Set the automask 'clip level fraction' to 'cc', which\n"
             "               must be a number between 0.1 and 0.9.\n"
@@ -631,6 +748,7 @@ int main( int argc , char *argv[] )
    /*-- scan command line --*/
 
    THD_automask_set_clipfrac(0.1f) ;  /* 22 May 2013 */
+   THD_automask_extclip(1) ;          /* 19 Dec 2014 */
 
    iarg = 1 ;
    while( iarg < argc && argv[iarg][0] == '-' ){
@@ -690,6 +808,17 @@ int main( int argc , char *argv[] )
        do_GM++ ; iarg++ ; continue ;
      }
 
+     if( strcasecmp(argv[iarg],"-T2") == 0 ){  /* 18 Dec 2014 */
+       do_T2++ ; iarg++ ; continue ;
+     }
+
+     if( strcasecmp(argv[iarg],"-T2up") == 0 ){  /* 18 Dec 2014 */
+       T2_uperc = (float)strtod( argv[++iarg] , NULL ) ;
+       if( T2_uperc < 90.0f || T2_uperc > 100.0f )
+         ERROR_exit("-T2up value is out of range 90..100 :-(") ;
+       iarg++ ; continue ;
+     }
+
      if( strcasecmp(argv[iarg],"-quiet") == 0 ){
        verb = 0 ; iarg++ ; continue ;
      }
@@ -721,6 +850,14 @@ int main( int argc , char *argv[] )
    imin = mri_to_float( DSET_BRICK(inset,0) ) ; DSET_unload(inset) ;
    if( imin == NULL ) ERROR_exit("Can't copy input dataset brick?!") ;
 
+   /* invert T2? */
+
+   if( do_T2 ){
+     if( verb ) fprintf(stderr,"I") ;
+     T2_mask = mri_automask_image(imin) ;
+     mri_invertcontrast_inplace( imin , T2_uperc , T2_mask ) ;
+   }
+
    /* do the actual work */
 
    imout = mri_WMunifize(imin) ;          /* local WM scaling */
@@ -746,6 +883,13 @@ int main( int argc , char *argv[] )
    }
 
    if( do_GM ) mri_GMunifize(imout) ;     /* global GM scaling */
+
+   if( do_T2 == 1 ){          /* re-invert T2? */
+     if( verb ) fprintf(stderr,"I") ;
+     mri_invertcontrast_inplace( imout , T2_uperc , T2_mask ) ;
+   } else if( do_T2 == 2 ){   /* don't re-invert, but clip off bright edges */
+     mri_clipedges_inplace( imout , PKVAL*1.111f , PKVAL*1.055f ) ;
+   }
 
    if( verb ) fprintf(stderr,"\n") ;
 
