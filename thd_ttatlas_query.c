@@ -1638,11 +1638,12 @@ show_neurosynth_link()
 {
   if(neurosynth_link >=0)
      return(neurosynth_link);
-     
-  if (AFNI_yesenv("AFNI_NEUROSYNTH"))
-     neurosynth_link = 1;
-  else
+  /* default now shows AFNI_NEUROSYNTH on (YES) 
+     with WEBBY_WAMI also now yes, drg 01/23/2015 */   
+  if (AFNI_noenv("AFNI_NEUROSYNTH"))
      neurosynth_link = 0;
+  else
+     neurosynth_link = 1;
   return(neurosynth_link);
 }
 
@@ -1666,10 +1667,10 @@ show_sumsdb_link()
   if(sumsdb_link >=0)
      return(sumsdb_link);
      
-  if (AFNI_yesenv("AFNI_SUMSDB"))
-     sumsdb_link = 1;
-  else
+  if (AFNI_noenv("AFNI_SUMSDB"))
      sumsdb_link = 0;
+  else
+     sumsdb_link = 1;
   return(sumsdb_link);
 }
 
@@ -9597,8 +9598,10 @@ int AFNI_wami_output_mode(void)
       return(0);
    }
 
-   if ( AFNI_yesenv("AFNI_WEBBY_WAMI") ) { return (1); }
-   else {   return(0);  }
+   /* changed default of AFNI_WEBBY_WAMI to be YES */
+   /* now show whereami html GUI by default  - drg 01/23/2015 */
+   if ( AFNI_noenv("AFNI_WEBBY_WAMI") ) { return (0); }
+   else {   return(1);  }
    
    return(1);
 }
