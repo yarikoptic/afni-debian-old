@@ -2841,10 +2841,13 @@ int SUMA_mri_volume_infill_zoom(MRI_IMAGE *imin, byte linfill,
              with nhits < minhits remain. Not a very useful thing to do 
              unless made iterative also. Keeping it here for the record
              but best not use it.
+   mask: If not null, only consider voxels to fill if they fall within
+         this mask
 */
                     
 int SUMA_mri_volume_infill_solid(MRI_IMAGE *imin, int minhits, 
-                                 int Nitermax, int unholize) 
+                                 int Nitermax, int unholize,
+                                 byte *mask) 
 {
    static char FuncName[]={"SUMA_mri_volume_infill_solid"};
    int Ni, Nj, Nk, Nij, Nijk, v, niter=0, N_filled=0;
@@ -2879,6 +2882,7 @@ int SUMA_mri_volume_infill_solid(MRI_IMAGE *imin, int minhits,
       if (unholize) memset(lesserhole, 0, Nijk*sizeof(byte));
       for (v=0; v<Nijk; ++v) {
          if (ba[v]) continue; /* not a hole */
+         if (mask && !mask[v]) continue; /* do not consider */
          hitcode = 0; nhits=0.0;
          hitsum=0; sI=0.0; sJ=0.0; sK=0.0;
          if ( (hitcode = SUMA_ray_i(v, Ni, Nij, fa, ba, ta, da)) == 
@@ -2956,7 +2960,8 @@ int SUMA_VolumeInFill(THD_3dim_dataset *aset,
                       THD_3dim_dataset **filledp,
                       int method, int integ,
                       int MxIter, int minhits,
-                      int erode, int dilate, float val) 
+                      int erode, int dilate, float val,
+                      byte *mask) 
 {
    static char FuncName[]={"SUMA_VolumeInFill"};
    float *fa=NULL;
@@ -2991,7 +2996,8 @@ int SUMA_VolumeInFill(THD_3dim_dataset *aset,
    } else if (method == 2 || method == 3){ /* solid */
       SUMA_LH("method is %d\n", method);
       if (!SUMA_mri_volume_infill_solid(imin, minhits, 
-                                        MxIter, method == 3 ? 1:0)) {
+                                        MxIter, method == 3 ? 1:0,
+                                        mask)) {
          SUMA_S_Err("Failed to fill volume");
          SUMA_RETURN(0);
       }
@@ -8399,13 +8405,13 @@ SUMA_Boolean SUMA_ShrinkSkullHull2Mask(SUMA_SurfaceObject *SO,
    byte *mask=NULL;
    int   in=0, vxi_bot[30], vxi_top[30], iter, N_movers, 
          ndbg=SUMA_getBrainWrap_NodeDbg(), nn,N_um,
-         itermax1 = 50, itermax2 = 10;
+         itermax1 = 50;
    float *fvec=NULL, *xyz, *dir, P2[2][3], travstep, shs_bot[30], shs_top[30];
    float rng_bot[2], rng_top[2], rdist_bot[2], rdist_top[2], avg[3], nodeval,
          area=0.0, larea=0.0, ftr=0.0, darea=0.0;
    float  *fnz=NULL, *alt=NULL;
    float maxtop, maxbot;
-   int   nmaxtop, nmaxbot;
+   int   nmaxtop, nmaxbot, Max_nn;
    float dirZ[3], *dots=NULL, U3[3], Un;
    THD_3dim_dataset *inset=NULL;
    SUMA_Boolean stop = NOPE;
@@ -8440,7 +8446,7 @@ SUMA_Boolean SUMA_ShrinkSkullHull2Mask(SUMA_SurfaceObject *SO,
    
    
    stop = NOPE;
-   N_movers = 0; iter=0;
+   N_movers = 0; iter=0; Max_nn = 3;
    while (!stop) {
       N_movers = 0;
       memset(mask, 1, sizeof(byte)*SO->N_Node);
@@ -8513,7 +8519,7 @@ SUMA_Boolean SUMA_ShrinkSkullHull2Mask(SUMA_SurfaceObject *SO,
                         if (in == ndbg|| LocalHead){ 
                            SUMA_S_Notev("Going down %d steps to edge+anchor\n", 
                                        nn);}
-                        nn = SUMA_MIN_PAIR(nn,3);/* slowly to avoid folding */
+                        nn = SUMA_MIN_PAIR(nn,Max_nn);/* slowly, avoid folding */
                         ftr = travstep*nn;
                         xyz[0] -= ftr*dir[0];
                         xyz[1] -= ftr*dir[1];
@@ -8527,7 +8533,8 @@ SUMA_Boolean SUMA_ShrinkSkullHull2Mask(SUMA_SurfaceObject *SO,
                               if (!nn) nn = 1; /* If too far in space and nothing
                                                   is found nmaxbot can be 0, so 
                                                   keep going */
-                              nn = SUMA_MIN_PAIR(nn,3);/* slowly, avoid folding*/
+                                               /* slowly, avoid folding*/
+                              nn = SUMA_MIN_PAIR(nn,Max_nn);
                               ftr = travstep*nn;
                               if (in == ndbg){ 
                                  SUMA_S_Note("Going down max from %f %f %f to\n"
@@ -10124,7 +10131,7 @@ SUMA_SurfaceObject *SUMA_ExtractHead_RS(THD_3dim_dataset *iset,
 }
 
 SUMA_SurfaceObject *SUMA_Mask_Skin(THD_3dim_dataset *iset, int ld,
-                                    int smooth_final, int HullOnly,
+                                    int smooth_final, int shrink_mode,
                                     SUMA_COMM_STRUCT *cs)
 {
    static char FuncName[]={"SUMA_Mask_Skin"};
@@ -10186,7 +10193,7 @@ SUMA_SurfaceObject *SUMA_Mask_Skin(THD_3dim_dataset *iset, int ld,
                                  SUMA_GIFTI, SUMA_ASCII, NULL);
    }
 
-   if (!HullOnly) {
+   if (shrink_mode) {
       /* Shrink */
       SUMA_LH("hull shrinkage");
       SUMA_ShrinkSkullHull2Mask(SOi, iset, 0.0, smooth_final, cs);
