@@ -41,6 +41,9 @@ http://www-sop.inria.fr/prisme/personnel/Thomas.Lewiner/JGT.pdf
              are available in in_volu. For instance, a label of :
                "key::276label::Left  Thalamus" means this is the surface
              for voxel key 276 and corresponding label: "Left  Thalamus".
+   
+         Note: Unless explicitly included in valmask, 0 is not considered
+         as a valid ROI key.
 */
 SUMA_SurfaceObject **SUMA_THD_ROI_IsoSurfaces(THD_3dim_dataset *in_volu, int isb,
                                               int *valmask, int *N_valmask,
@@ -50,7 +53,7 @@ SUMA_SurfaceObject **SUMA_THD_ROI_IsoSurfaces(THD_3dim_dataset *in_volu, int isb
    SUMA_SurfaceObject **SOV= NULL;
    char label[128]={""}, stmp[32]={""};
    int i, k, N_SO, nproc=0, n_unq, *unq=NULL;
-   SUMA_Boolean LocalHead = YUP;
+   SUMA_Boolean LocalHead = NOPE;
    
    SUMA_ENTRY;
    
@@ -87,6 +90,13 @@ SUMA_SurfaceObject **SUMA_THD_ROI_IsoSurfaces(THD_3dim_dataset *in_volu, int isb
                break;
             }
          }   
+      }
+      n_unq = nproc;
+   } else { /* get rid of 0 */
+      for (i=0; i<n_unq; ++i) {
+         if (unq[i] != 0) {
+            unq[nproc] = unq[i]; ++nproc;
+         }
       }
       n_unq = nproc;
    }
