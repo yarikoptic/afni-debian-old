@@ -11641,10 +11641,35 @@ SUMA_Boolean SUMA_UpdateNodeNodeField(SUMA_ALL_DO *ado)
    SUMA_RETURN(YUP);
 }
 
+/* A lazy wrapper for SUMA_FormNodeValFieldStrings to return
+   values but not the strings.
+   This function is not very efficient, since all the strings
+   are formed and then discarded.
+*/
+SUMA_Boolean SUMA_GetNodeValsAtSelection(SUMA_ALL_DO *ado, 
+               SUMA_DSET *dset, int Node,
+               int find, int tind, int bind,
+               double *I, double *T, double *B) 
+{
+   static char FuncName[] = {"SUMA_GetNodeValsAtSelection"};
+   char **sar=NULL;
+   int i;
+   
+   SUMA_ENTRY;
+   
+   sar = SUMA_FormNodeValFieldStrings(ado, dset, Node, find, tind, bind,
+                                      1, I, T, B);
+   if (!sar) SUMA_RETURN(NOPE);
+   for (i=0; i<3; ++i) SUMA_ifree(sar[i]);
+   SUMA_ifree(sar);
+   
+   SUMA_RETURN(YUP);                  
+}
+
 char **SUMA_FormNodeValFieldStrings(SUMA_ALL_DO *ado, 
                                  SUMA_DSET *dset, int Node,
                                  int find, int tind, int bind,
-                                 int dec) 
+                                 int dec, double *I, double *T, double *B) 
 {
    static char FuncName[]={"SUMA_FormNodeValFieldStrings"};
    char **sar=NULL;
@@ -11657,7 +11682,9 @@ char **SUMA_FormNodeValFieldStrings(SUMA_ALL_DO *ado,
    SUMA_ENTRY;
    
    if (!ado || !dset) SUMA_RETURN(sar);
-   
+   if (I) *I=-1.0;
+   if (T) *T=-1.0;
+   if (B) *B=-1.0;
    Max_Node_Index = SUMA_ADO_Max_Datum_Index(ado);
    
    /* What datum level do we have here ? */
@@ -11702,6 +11729,7 @@ char **SUMA_FormNodeValFieldStrings(SUMA_ALL_DO *ado,
             sar[0] = SUMA_copy_string(MV_format_fval2(dval, dec));
          } 
          SUMA_LHv("str_int=%s, dval = %f\n",sar[0], dval);
+         if (I) *I = dval;
       } else {
          sar[0] = SUMA_copy_string("X");
          SUMA_SL_Err("Failed to get str_int");
@@ -11712,6 +11740,7 @@ char **SUMA_FormNodeValFieldStrings(SUMA_ALL_DO *ado,
             sar[1] = SUMA_copy_string(MV_format_fval2(dval, dec));
          }
          SUMA_LHv("str_thr=%s, dval = %f\n",sar[1], dval);
+         if (T) *T = dval;
       } else {
          sar[1] = SUMA_copy_string("X");
          SUMA_SL_Err("Failed to get str_thr");
@@ -11722,6 +11751,7 @@ char **SUMA_FormNodeValFieldStrings(SUMA_ALL_DO *ado,
             sar[2] = SUMA_copy_string(MV_format_fval2(dval, dec));
          }
          SUMA_LHv("str_brt=%s, dval = %f\n",sar[2], dval);
+         if (B) *B = dval;
       } else {
          SUMA_SL_Err("Failed to get str_brt");
          sar[2] = SUMA_copy_string("X");
@@ -11782,6 +11812,7 @@ SUMA_Boolean SUMA_UpdateNodeValField(SUMA_ALL_DO *ado)
 {
    static char FuncName[]={"SUMA_UpdateNodeValField"};
    char **sar=NULL;
+   double I, T, B;
    SUMA_OVERLAYS *Sover=NULL;
    SUMA_X_SurfCont *SurfCont=NULL;
    int SelectedNode = -1;
@@ -11808,7 +11839,7 @@ SUMA_Boolean SUMA_UpdateNodeValField(SUMA_ALL_DO *ado)
                            SelectedNode, 
                            Sover->OptScl->find, 
                            Sover->OptScl->tind,
-                           Sover->OptScl->bind, 0))) {
+                           Sover->OptScl->bind, 0, &I, &T, &B))) {
        SUMA_LH("Failed to get strings");
    } else {
       SUMA_LH("Got strings");
@@ -11819,20 +11850,99 @@ SUMA_Boolean SUMA_UpdateNodeValField(SUMA_ALL_DO *ado)
    } else {
       SUMA_INSERT_CELL_STRING(SurfCont->DataTable, 1, 1, "Err");
    }
+   /* Set the table num values too, otherwise you can't read out
+      the numerical values if you wish and that's just a shame 
+      for numerical tables such as this one. */
+   SUMA_SET_CELL_VALUE(SurfCont->DataTable, 1, 1, I);
    if (sar && sar[1]) {
       SUMA_INSERT_CELL_STRING(SurfCont->DataTable, 1, 2, sar[1]);
       SUMA_free(sar[1]); 
    } else {
       SUMA_INSERT_CELL_STRING(SurfCont->DataTable, 1, 2, "Err");
    }
+   SUMA_SET_CELL_VALUE(SurfCont->DataTable, 1, 1, T);
    if (sar && sar[2]) {
       SUMA_INSERT_CELL_STRING(SurfCont->DataTable, 1, 3, sar[2]);
       SUMA_free(sar[2]); 
    } else {
       SUMA_INSERT_CELL_STRING(SurfCont->DataTable, 1, 3, "Err");
    }
+   SUMA_SET_CELL_VALUE(SurfCont->DataTable, 1, 1, B);
    if (sar) SUMA_free(sar); sar = NULL;
 
+   SUMA_RETURN(YUP);
+}
+
+/*!< Get values at current selection on current plane
+     if (fromtable) then read the values from the 
+     displayed table structure.
+*/
+SUMA_Boolean SUMA_GetValuesAtSelection(SUMA_ALL_DO *ado, int fromtable,
+                                       float *I, float *T, float *B)
+{
+   static char FuncName[]={"SUMA_GetValuesAtSelection"};
+   SUMA_OVERLAYS *Sover=NULL;
+   SUMA_X_SurfCont *SurfCont=NULL;
+   int SelectedNode = -1;
+   double II=0.0, TT=0.0, BB=0.0;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   
+   if (!ado) {
+      SUMA_LH("Null ado");
+      SUMA_RETURN(NOPE);
+   }
+
+   Sover = SUMA_ADO_CurColPlane(ado);
+   if (!Sover) {
+      SUMA_LH("Null Sover");
+      SUMA_RETURN(NOPE);
+   }
+   SurfCont = SUMA_ADO_Cont(ado);
+   if (!SurfCont) SUMA_RETURN(NOPE);
+   
+   SelectedNode = SUMA_ADO_ColPlane_SelectedDatum(ado, Sover);
+   
+   if (fromtable && (!SurfCont->DataTable || 
+          !SurfCont->DataTable->cells)) {
+          SUMA_LH("Controller not initialized, "
+                  "cannot retrieve values from table, trying without");
+      fromtable = 0;
+   }
+   if (fromtable) {
+      if (!SurfCont->DataTable || 
+          !SurfCont->DataTable->cells) {
+            SUMA_S_Err("Controller not initialized, "
+                       "cannot retrieve values from table");
+            SUMA_RETURN(NOPE);
+      }
+      /* Check that SelectedNode matches that in the node index table too */
+      if (SelectedNode != SurfCont->NodeTable->num_value[1]) { 
+         /* table not updated yet perhaps  */
+         SUMA_S_Note("Forced update of value fields (%d) (%f)to be safe", 
+                     SelectedNode, SurfCont->NodeTable->num_value[1]);
+         SUMA_UpdateNodeValField(ado);
+      }
+      SUMA_LH("Fetching from table");
+      if (I) SUMA_GET_CELL_VALUE(SurfCont->DataTable, 1, 1, *I);
+      if (T) SUMA_GET_CELL_VALUE(SurfCont->DataTable, 1, 2, *T);
+      if (B) SUMA_GET_CELL_VALUE(SurfCont->DataTable, 1, 3, *B);
+   } else {
+      if (!SUMA_GetNodeValsAtSelection(ado, Sover->dset_link, 
+                           SelectedNode, 
+                           Sover->OptScl->find, 
+                           Sover->OptScl->tind,
+                           Sover->OptScl->bind,
+                           &II, &TT, &BB)) {
+             
+         SUMA_S_Err("Failed to get sel values");
+         SUMA_RETURN(NOPE);
+      }
+      if (I) *I = II;
+      if (T) *T = TT;
+      if (B) *B = BB;
+   }
    SUMA_RETURN(YUP);
 }
 
@@ -11941,7 +12051,8 @@ char *SUMA_GetLabelsAtSelection_ADO(SUMA_ALL_DO *ado, int node, int sec)
                                  node, 
                                  Sover->OptScl->find, 
                                  Sover->OptScl->tind,
-                                 Sover->OptScl->bind, 5))) {
+                                 Sover->OptScl->bind, 5,
+                                 NULL, NULL, NULL))) {
             SUMA_LH("No Sar");
          } else if (1) { /* include sub-brick labels */
             SUMA_LH("Sar: %s %s %s", 
