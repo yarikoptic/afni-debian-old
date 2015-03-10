@@ -1979,9 +1979,9 @@ int SUMA_search_file(char **fnamep, char *epath)
              ename[ii]  = '/' ; ename[ii+1] = '\0' ;
          }
          strcpy(dname,ename) ;
-         strncat(dname,*fnamep, THD_MAX_NAME-1) ;       /* add dataset name */
+         SUMA_strncat(dname,*fnamep, THD_MAX_NAME-1) ;     /* add dataset name */
          if (imode == 2) {
-            strncat(dname,".gz", THD_MAX_NAME-1);    /* add compression flag */
+            SUMA_strncat(dname,".gz", THD_MAX_NAME-1); /* add compression flag */
          }
          if ( SUMA_filexists(dname) ) {
             SUMA_free(*fnamep); *fnamep = SUMA_copy_string(dname);
@@ -3546,10 +3546,10 @@ char * SUMA_env_list_help(int DEFAULT_values, TFORM targ){
             sli = SUMA_Sphinx_String_Edit(&sli, targ, 0);
             SS = SUMA_StringAppend_va(SS,
                            ".. _%s:\n\n"
-                           ":envvar:`%s`: %s\n\n"
+                           ":ref:`%s (env)<%s>`: %s\n\n"
                            "  default value:   %s = %s\n\n",
                            se.envname,
-                           se.envname, sli,
+                           se.envname, se.envname, sli,
                            se.envname, se.envval);
             SUMA_free(sli); sli = NULL;
             break;

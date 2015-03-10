@@ -121,7 +121,7 @@ char *SUMA_hist_fname(char *proot, char *variable, char *conditional,
                proot, variable);
    }  
    if (withext) {
-      strncat(cls[ii],".niml.hist", 255);
+      SUMA_strncat(cls[ii],".niml.hist", 255);
    }            
    return(cls[ii]);
 }
@@ -138,7 +138,7 @@ char *SUMA_corrmat_fname(char *proot, char *conditional, int withext)
    snprintf(cls[ii], 255, "%s/C.%s",
                proot, conditional);
    if (withext) {
-      strncat(cls[ii],".niml.cormat", 255);
+      SUMA_strncat(cls[ii],".niml.cormat", 255);
    }             
    return(cls[ii]);
 }
@@ -2068,7 +2068,7 @@ int  group_mean (SEG_OPTS *Opt, THD_3dim_dataset *aset,
          else sprintf(sbuf,"%d -- %f , (%f)  ", 
                            g+1, M_v[g]*bf, M_v[g]);
          
-         strncat(srep, sbuf, 510);
+         SUMA_strncat(srep, sbuf, 510);
       }
       INFO_message("%s group means brick scaled , (unscaled): %s\n", 
                   p ? "p-weighted" : "uniform-weight", 
@@ -5259,7 +5259,7 @@ int SUMA_Class_stats(THD_3dim_dataset *aset,
                      SUMA_CLASS_STAT *cs) 
 {
    static char FuncName[]={"SUMA_Class_stats"};
-   int i=0, j = 0, sb=0, l;   
+   int i=0, j = 0, sb=0, l, bad=0;   
    short *a=NULL, *c=NULL, *w=NULL;
    float af=1.0, wf=1.0, fpriCgALL;
    double n, Asum2, Asum, Amean, Astd, wsum, ff, *nv=NULL, ww=0.0,
@@ -5276,7 +5276,6 @@ int SUMA_Class_stats(THD_3dim_dataset *aset,
          SUMA_RETURN(0);
       }
    }
-   
    if (!pstCgALL) {
       if (!c) {
          SUMA_S_Err("No classes, and no weighting set");
@@ -5294,18 +5293,46 @@ int SUMA_Class_stats(THD_3dim_dataset *aset,
                ++n; 
             }   
          }
-         Astd = sqrt((Asum2-Asum*Asum/n)/(n-1))*af;
-         Amean = Asum/n*af;
-         AstdL = sqrt((Asum2L-AsumL*AsumL/n)/(n-1));
-         AmeanL = AsumL/n;
+         if (n>1 && af != 0.0) {
+            Astd = sqrt((Asum2-Asum*Asum/n)/(n-1))*af;
+         } else {
+            Astd = 0.0;
+         }
+         if (n*af != 0.0) Amean = Asum/n*af;
+         else Amean = 0.0;
+         if (n>1) {
+            AstdL = sqrt((Asum2L-AsumL*AsumL/n)/(n-1));
+         } else {
+            AstdL = 0.0;
+         }
+         if (n) AmeanL = AsumL/n;
+         else AmeanL = 0.0;
+         
          SUMA_set_Stat(cs, cs->label[j], "num", n);
          SUMA_set_Stat(cs, cs->label[j], "mean", Amean);
          SUMA_set_Stat(cs, cs->label[j], "stdv", Astd);
          SUMA_set_Stat(cs, cs->label[j], "meanL", AmeanL);
          SUMA_set_Stat(cs, cs->label[j], "stdvL", AstdL);
-         SUMA_set_Stat(cs, cs->label[j], "mix", n/cmask_count);
+         if (cmask_count) SUMA_set_Stat(cs, cs->label[j], "mix", n/cmask_count);
+         else SUMA_set_Stat(cs, cs->label[j], "mix", 0);
       }
    } else {
+      /* Check classes at input */
+      bad = 0;
+      for (j=0; j<cs->N_label; ++j) {
+         if (isnan(SUMA_get_Stat(cs, cs->label[j], "meanL")) ||
+             isnan(SUMA_get_Stat(cs, cs->label[j], "stdvL")) ||
+             isnan(SUMA_get_Stat(cs, cs->label[j], "mean")) ||
+             isnan(SUMA_get_Stat(cs, cs->label[j], "stdv")) ) {
+            SUMA_S_Err("Bad parameters for class %s", cs->label[j]);
+            ++bad;
+         }
+      }
+      if (bad) {
+          SUMA_show_Class_Stat(cs, 
+                        "Bad Stats At SUMA_Class_stats() entry:\n", NULL);
+          SUMA_RETURN(0);   
+      }
       if (DSET_NVALS(pstCgALL) != cs->N_label &&
           DSET_NVALS(pstCgALL) != 1) {
          SUMA_S_Errv("Weight set must be 1 or %d sub-bricks. Have %d\n",
@@ -5382,16 +5409,36 @@ int SUMA_Class_stats(THD_3dim_dataset *aset,
          Astd = sqrt(Asum2/wsum)*af;
          Amean = Amean*af;
          AstdL = sqrt(Asum2L/wsum);
+         if (isnan(Astd) || isnan(AstdL)) {
+            Astd = AstdL = 0; 
+         } 
          SUMA_set_Stat(cs, cs->label[j], "num", n);
          SUMA_set_Stat(cs, cs->label[j], "mean", Amean);
          SUMA_set_Stat(cs, cs->label[j], "stdv", Astd);
          SUMA_set_Stat(cs, cs->label[j], "meanL", AmeanL);
          SUMA_set_Stat(cs, cs->label[j], "stdvL", AstdL);
-         SUMA_set_Stat(cs, cs->label[j], "mix", wsum/mixden[j]);
+         if (mixden[j]) SUMA_set_Stat(cs, cs->label[j], "mix", wsum/mixden[j]);
+         else SUMA_set_Stat(cs, cs->label[j], "mix", 0);
       }
       SUMA_ifree(mixden);
    }
    
+   /* Check classes at input */
+   bad = 0;
+   for (j=0; j<cs->N_label; ++j) {
+      if (isnan(SUMA_get_Stat(cs, cs->label[j], "meanL")) ||
+          isnan(SUMA_get_Stat(cs, cs->label[j], "stdvL")) ||
+          isnan(SUMA_get_Stat(cs, cs->label[j], "mean")) ||
+          isnan(SUMA_get_Stat(cs, cs->label[j], "stdv")) ) {
+         SUMA_S_Err("Bad parameters for class %s", cs->label[j]);
+         ++bad;
+      }
+   }
+   if (bad) {
+       SUMA_show_Class_Stat(cs, 
+                     "Bad Stats At SUMA_Class_stats() exit:\n", NULL);
+       SUMA_RETURN(0);   
+   }
       
    /* and the dice */
    if (gold && cset) {
