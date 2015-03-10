@@ -1560,6 +1560,8 @@ SUMA_Boolean SUMA_AutoLoad_SO_Dsets(SUMA_SurfaceObject *SO)
    char *ddd=NULL, *ddde=NULL, *soname=NULL;
    SUMA_Boolean LocalHead = NOPE;
 
+   SUMA_ENTRY;
+   
    soname = SUMA_SurfaceFileName(SO, 1);
    ddd = SUMA_RemoveSurfNameExtension (soname, SO->FileType);
    SUMA_LH("Checking for %s dsets on root %s", soname, ddd);
@@ -4727,7 +4729,8 @@ SUMA_Boolean SUMA_SurfaceMetrics_eng (
          SO->DW->do_type = not_DO_type;
          SO->DW->LinkedPtrType = SUMA_LINKED_DRAW_MASKS_TYPE;
          SO->DW->N_links = 0;
-         sprintf(SO->DW->owner_id, "%s", SO->idcode_str);
+         if (SO->idcode_str) sprintf(SO->DW->owner_id, "%s", SO->idcode_str);
+         else SO->DW->owner_id[0] = '\0';
          SUMA_EmptyDrawMasks(SO->DW);
       } else {
          if (LocalHead) 
