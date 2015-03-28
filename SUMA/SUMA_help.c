@@ -681,8 +681,8 @@ char * SUMA_NIDO_Info(void)
 "\n");
    }
    SS = SUMA_StringAppend(SS,
-"  Try the script '@DO.examples' for concrete examples on displayable \n"
-"  objects.\n"  
+"  Try the script :ref:`@DO.examples<@DO.examples>` for concrete examples on  \n"
+"  displayable objects.\n"  
 "\n"
 ); 
 
@@ -1762,7 +1762,7 @@ char * SUMA_help_message_Info(TFORM targ)
       "*On MACs*, Alt is the Apple/Command key.\n"
       "   If it is commandeered by the OS, and you can't get it back, then\n"
       "   try the alt/option key instead.\n\n"
-      "*On Linux*, Turn NumLock OFF, otherwise certainly mouse or \n"
+      "*On Linux*, Turn NumLock OFF, otherwise certain mouse or \n"
       "   keyboard combinations do not work as intended.\n\n");
    SS = SUMA_StringAppend_va (SS, 
       "   %s: attenuation by background, toggle. "
@@ -1924,8 +1924,8 @@ char * SUMA_help_message_Info(TFORM targ)
 "           n1Crosshair: Crosshair node only\n"
 "           None: Show nothing.\n\n"
 "              See also -do_draw_mask option in DriveSuma\n\n"
-"        ** DO stands for displayable objects, see 'Ctrl+Alt+s'\n"
-"           below.\n"
+"        ** DO stands for displayable objects, see also\n"
+"           :ref:`Ctrl+Alt+s<LC_Ctrl+Alt+s>` below.\n"
 "        ** For the moment, 'Alt+p' only applies to segment \n"
 "           and sphere DOs  that are node based. \n"
 "           If you need it applied to other DOs, let me know.\n"
@@ -2145,8 +2145,8 @@ char * SUMA_help_message_Info(TFORM targ)
 "                 They are a little inefficient to reproduce with\n"
 "                 each redraw. Complain if you need them.\n\n"
 "         Type 8: Another class of displayble objects is described in\n"
-"                 the output of suma -help_nido and the demonstration\n"
-"                 script @DO.examples. This new class allows for displaying \n"
+"                 the output of :ref:`suma -help_nido<suma--help_nido>` and the demonstration\n"
+"                 script :ref:`@DO.examples<@DO.examples>`. This new class allows for displaying \n"
 "                 text and figures in both screen and world space.\n"
       , SUMA_hkf("Ctrl+Alt+s", targ));
    SS = SUMA_StringAppend_va (SS, 
@@ -2323,7 +2323,7 @@ char * SUMA_help_message_Info(TFORM targ)
       "*On MACs*, Alt is the Apple/Command key.\n"
       "   If it is commandeered by the OS, and you can't get it back, then\n"
       "   try the alt/option key instead.\n\n"
-      "*On Linux*, Turn NumLock OFF, otherwise certainly mouse or \n"
+      "*On Linux*, Turn NumLock OFF, otherwise certain mouse or \n"
       "   keyboard combinations do not work as intended.\n\n");
       
    SS = SUMA_StringAppend_va (SS, 
@@ -2530,13 +2530,15 @@ char * SUMA_help_message_Info(TFORM targ)
 "    :align: center\n"
 "    :name: media/surface_selection.jpg\n"
 "\n"
-"    :ref:`(link)<media/surface_selection.jpg>`\n"
+"    :ref:`(link)<media/surface_selection.jpg>`\n\n"
 ":SPX:"
 "2- Voxel picking in volumes: You can select voxels on rendered slices as "
 "long as the voxels are not thresholded out of view. They maybe too dark to "
 "see but still be selectable if their value exceeds that of the threshold.\n\n"
 "Selecting a voxel also highlights the slice. You can turn off the highlight "
 "rectangle with :ref:`F5 <F5>`.\n\n"
+"Note that you can also select from the 3D rendered volume and when 3D rendering"
+" is turned on. In that case, no slice highlighting is done.\n\n" 
 "3- Edge/cell selection in graphs: Right click on an edge, matrix cell, "
 "or bundle reprenting the edge and the connection is rendered white. Because "
 "the graphs can be bidirectional, clicking on an edge between [n1, n2] with the "
