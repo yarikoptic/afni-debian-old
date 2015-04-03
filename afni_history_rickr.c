@@ -49,6 +49,16 @@
 
 afni_history_struct rickr_history[] = {
 
+ {  2,  Apr, 2015, RCR, "afni_proc.py", MINOR, TYPE_NEW_OPT,
+   "added -tlrc_NL_warped_dsets to import 3dQwarp result",
+   NULL
+ } ,
+
+ {  2,  Apr, 2015, RCR, "rickr/Makefile", MICRO, TYPE_BUG_FIX,
+   "Imon and serial_helper should not use LLIBS",
+   NULL
+ } ,
+
  {  1,  Apr, 2015, RCR, "afni_proc.py", MAJOR, TYPE_NEW_OPT,
    "anat followers and ROI_PC",
    "Datasets can follow the anatomical warps\n"
