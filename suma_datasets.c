@@ -1452,6 +1452,7 @@ NI_element * SUMA_GetAtlasLabelTable(SUMA_DSET *dset)
    static char FuncName[]={"SUMA_GetAtlasLabelTable"};
    NI_element *nel=NULL;
    SUMA_Boolean LocalHead = NOPE;
+   SUMA_ENTRY;
    /* This is for volumes only */
    nel = SUMA_FindDsetAttributeElement (dset, "ATLAS_LABEL_TABLE");
    SUMA_LH("ATLAS_LABEL_TABLE  nel:%p", nel);
@@ -1463,6 +1464,7 @@ NI_element * SUMA_GetValueLabelTable(SUMA_DSET *dset)
    static char FuncName[]={"SUMA_GetValueLabelTable"};
    NI_element *nel=NULL;
    SUMA_Boolean LocalHead = NOPE;
+   SUMA_ENTRY;
    /* This is for volumes only */
    nel = SUMA_FindDsetAttributeElement (dset, "VALUE_LABEL_DTABLE");
    SUMA_LH("VALUE_LABEL_DTABLE  nel:%p", nel);
@@ -6263,6 +6265,7 @@ int SUMA_InsertDsetPointer (SUMA_DSET **dsetp, DList *DsetList, int replace)
 
    SUMA_ENTRY;
    
+   SUMA_LH("About to insert dset pointer %p", dsetp ? *dsetp:NULL);
    if (!DsetList)  { SUMA_SL_Err("Need Dset List"); SUMA_RETURN(0); }
    if (!dsetp) { SUMA_SL_Err("dsetp is NULL"); SUMA_RETURN(0); }
    else dset = *dsetp;  /* dset is the new pointer */
@@ -6289,22 +6292,23 @@ int SUMA_InsertDsetPointer (SUMA_DSET **dsetp, DList *DsetList, int replace)
          won't occur but it is a start until I figure out
          the problem with hashcode */
       char *name=NULL, *mname=NULL;
+      SUMA_LH("Hash code collision of (%s) with dset %p (%s)", 
+               SDSET_LABEL(dset), dprev, SDSET_LABEL(dprev));
       if (!(mname = SDSET_FILENAME(dprev))) mname = "NULLITY";
       if (!(name = SDSET_FILENAME(dset))) name = "NULLITY";
       if (name && mname && strcmp(name, mname)) {
-         char *stmp;
+         char *stimpy;
          /* give dset a new ID */
-         stmp = SUMA_append_replace_string(name, SDSET_ID(dset),"_",0);
-         SUMA_NewDsetID2(dset, stmp);
-         SUMA_ifree(stmp);
+         stimpy = SUMA_append_replace_string(name, SDSET_ID(dset),"_",0);
+         SUMA_NewDsetID2(dset, stimpy);
+         SUMA_ifree(stimpy);
          s= SDSET_ID(dset);
       }
       dprev=NULL;
    }
 
-   
    if ((dprev = SUMA_FindDset_ns (s,  DsetList))) {
-      sprintf(stmp,  "Dset %s has similar idcode (%s) in list as \n"
+      snprintf(stmp, 198, "Dset %s has similar idcode (%s) in list as \n"
                      "dset %s. Trying replacement.\n", 
                      SUMA_sdset_filename(dset), s, SUMA_sdset_filename(dprev));
    } else if (!dprev && replace) { /* try a looser search */
@@ -6321,7 +6325,7 @@ int SUMA_InsertDsetPointer (SUMA_DSET **dsetp, DList *DsetList, int replace)
                         "in your ~/.sumarc or ~/.afnirc files.\n");
              SUMA_RETURN(0);
          } else {
-            sprintf(stmp,  
+            snprintf(stmp, 198,  
                   "Dset match based on filename, although IDs did not match.\n"
                   "Allowing replacement per SUMA_AllowFilenameDsetMatch\n"
                   "environment variable setting.\n");
@@ -6360,7 +6364,7 @@ int SUMA_InsertDsetPointer (SUMA_DSET **dsetp, DList *DsetList, int replace)
          *dsetp = dprev;
       } else {
          SUMA_LH("Not Replacing");
-         sprintf(stmp,  "Dset with similar idcode (%s)\n"
+         snprintf(stmp, 198, "Dset with similar idcode (%s)\n"
                         "found in list. \n"
                         "Replacement option is turned off.\n"
                         "Set 'SUMA_AllowDsetReplacement = YES'\n"
@@ -6830,7 +6834,7 @@ char *SUMA_Taylor_Bundle_Info(TAYLOR_BUNDLE *tb, int show_maxu)
 
       s = NULL;
       for (ii=0; ii<show_max; ++ii) {
-         sprintf(stmp, "      Bun.Trc %d ++> ", ii);
+         snprintf(stmp, 62,"      Bun.Trc %d ++> ", ii);
          s = SUMA_append_replace_string(s,
                SUMA_Taylor_Tract_Info(tb->tracts+ii, show_maxu),stmp,2);
       }
@@ -6874,7 +6878,7 @@ char * SUMA_Taylor_Network_Info(TAYLOR_NETWORK *net,
 
       s = NULL;
       for (ii=0; ii<show_max; ++ii) {
-         sprintf(stmp, "   Net.Bun. %d --> ", ii);
+         snprintf(stmp, 62, "   Net.Bun. %d --> ", ii);
          s = SUMA_append_replace_string(s,
                SUMA_Taylor_Bundle_Info(net->tbv[ii], show_maxub),stmp,2);
       }
@@ -8378,7 +8382,7 @@ char * SUMA_GetDsetValInCol(SUMA_DSET *dset, int ind, int ival, double *dval)
    vtp = SUMA_ColType2TypeCast (ctp) ;
    if (LocalHead) {
       char stmp[1000]={""};
-      sprintf(stmp,
+      snprintf(stmp, 998,
             "%s:\n"
             "dset %p, label %s, filen %s\n"
             "ind %d, ival %d\n"
