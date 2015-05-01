@@ -464,9 +464,11 @@ g_history = """
         -  verify erode list use
         - added -todo to show current list
     4.39 Apr 22, 2015: add missed cat_matvec to create warp.all.anat.aff12.1D
+    4.40 Apr 30, 2015: allow AM2 centering param via basis backdoor
+        - e.g. use basis "BLOCK(2) :x:0.176"
 """
 
-g_version = "version 4.38, April 22, 2015"
+g_version = "version 4.40, April 22, 2015"
 
 # version of AFNI required for script execution
 g_requires_afni = "1 Apr 2015" # 1d_tool.py uncensor from 1D
@@ -477,6 +479,9 @@ g_todo_str = """todo:
   - add option to block anat from anat followers?
   - add/modify AP tests for some cases
   - add AP test for varying remove_first_trs
+  - add -4095_check and -4095_ok options?
+     - maybe check means the 3dToutcount would fail, and ok would continue
+     - or have 3dToc just report, maybe write a volume?
 
   -compute_corr_volumes LABEL ... ?
   - warn of missing input dsets?  (-dsets, -copy_anat, any 3dcopy)
@@ -491,6 +496,8 @@ g_todo_str = """todo:
 
   - motsim regression: per voxel; PCs; combined with mot params?
      - is this extra useful in the case of no censoring?  e.g. PPI
+  - add -regress_basis_AM2_offsets or _basis_multi_params (now hidden in basis)
+     for something like -stim_times_AM2 'BLOCK(2)' :x:0.176
 """
 
 # ----------------------------------------------------------------------
