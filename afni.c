@@ -1891,7 +1891,7 @@ int main( int argc , char *argv[] )
                      "            fink install netpbm\n" ) ;
 #endif
 
-   /** Start the debug traceback stuff **/
+   /** Start the debug traceback stuff (also resets signal handler) **/
 
    mainENTRY("AFNI:main") ; /* 26 Jan 2001: replace ENTRY w/ mainENTRY */
 
@@ -2008,6 +2008,18 @@ int main( int argc , char *argv[] )
      AFNI_process_environ(NULL) ;                         /* 07 Jun 1999 */
    } else {
      AFNI_mark_environ_done() ;                           /* 16 Apr 2000 */
+   }
+
+   /*-- 30 Apr 2015: some messages about obsolete environment variables --*/
+
+   if( getenv("AFNI_SLAVE_THRTIME") != NULL ){
+     WARNING_message("environment variable AFNI_SLAVE_THRTIME is no longer used!") ;
+     WARNING_message(" -- see AFNI_SLAVE_FUNCTIME and AFNI_SLAVE_THROLAY instead") ;
+   }
+
+   if( getenv("AFNI_SLAVE_BUCKETS_TOO") != NULL ){  /* 30 May 2015 */
+     WARNING_message("environment variable AFNI_SLAVE_BUCKETS_TOO is no longer used!") ;
+     WARNING_message(" -- see AFNI_SLAVE_FUNCTIME and AFNI_SLAVE_THROLAY instead") ;
    }
 
    /* set top exponent for threshold slider [04 Nov 2010] -- for Allison */
