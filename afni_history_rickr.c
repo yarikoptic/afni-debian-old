@@ -49,6 +49,21 @@
 
 afni_history_struct rickr_history[] = {
 
+ {  2,  Jun, 2015, RCR, "NIFTI", MICRO, TYPE_GENERAL,
+   "NIFTI-1,2: added NIFTI_ECODE_CIFTI/VARIABLE_FRAME_TIMING/EVAL/MATLAB",
+   NULL
+ } ,
+
+ {  1,  Jun, 2015, RCR, "nifti_tool", MINOR, TYPE_ENHANCE,
+   "diff/disp_hdr detects type; diff_hdr1/2",
+   NULL
+ } ,
+
+ {  1,  Jun, 2015, RCR, "3dttest++", MICRO, TYPE_NEW_OPT,
+   "added -dupe_ok and more warnings when dataset labels match",
+   NULL
+ } ,
+
  { 27,  May, 2015, RCR, "@Install_TSrestMovieDemo", MICRO, TYPE_BUG_FIX,
    "set and applied $demo as Suma_TSrestMovieDemo",
    NULL
@@ -72,7 +87,7 @@ afni_history_struct rickr_history[] = {
  { 22,  May, 2015, RCR, "afni-general", MINOR, TYPE_MODIFY,
    "allow for small differences when comparing oblique angles",
    "Define OBLIQ_ANGLE_THRESH=0.01 as a tolerance for the difference.\n"
-   "This was done to fix registration to external dset in realtime.\n" 
+   "This was done to fix registration to external dset in realtime.\n"
    "Thanks to V Roopchansingh for bringing up the problem."
  } ,
 
@@ -88,6 +103,11 @@ afni_history_struct rickr_history[] = {
    "Also changed -regress_ROI_erode to -anat_follower_erode and\n"
    "removed option -regress_ROI_maskave (use -regress_ROI)\n"
    "Done for R W Cox."
+ } ,
+
+ { 18,  May, 2015, RCR, "gen_ss_review_table.py", MICRO, TYPE_NEW_OPT,
+   "mention gen_ss_review_scripts.py -help_fields in help",
+   NULL
  } ,
 
  {  8,  May, 2015, RCR, "afni_proc.py", MINOR, TYPE_NEW_OPT,
