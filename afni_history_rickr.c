@@ -49,6 +49,34 @@
 
 afni_history_struct rickr_history[] = {
 
+ { 17,  Jul, 2015, RCR, "plug_realtime", MINOR, TYPE_ENHANCE,
+   "Dimon->afni: systems with small TCP buffers can be very slow passing a volume",
+   "In iochan_recvall, only increase nap time when packets < 4 KB are recived."
+ } ,
+
+ { 13,  Jul, 2015, RCR, "nifti_tool", MAJOR, TYPE_ENHANCE,
+   "nifti_tool is now based on NIFTI-2, with many corresponding new options",
+   "The old nifti_tool (based on NIFTI-1) is now nifti1_tool."
+ } ,
+
+ { 13,  Jul, 2015, RCR, "nifti1_tool", MINOR, TYPE_NEW_PROG,
+   "nifti1_tool is the NIFTI-1 version of nifti_tool",
+   NULL
+ } ,
+
+ { 13,  Jul, 2015, RCR, "NIFTI-2", MAJOR, TYPE_ENHANCE,
+   "added NIFTI-2 support into AFNI",
+   "Main source update: nifti/nifti2 tree, then applied it in mostly\n"
+   "   thd_niftiread/write.c (plus gifti_io.h, 3ddata.h, mrilib.h).\n"
+   "To compile into all of AFNI edit: Makefile.INCLUDE, SUMA_Makefile_NoDev,\n"
+   "   Makefile.avovk.INCLUDE and Makefile.ptaylor.INCLUDE."
+ } ,
+
+ {  11,  Jul, 2015, RCR, "@diff.files", MICRO, TYPE_NEW_OPT,
+   "added -longlist",
+   NULL
+ } ,
+
  {  1,  Jul, 2015, RCR, "cifti_tool", MINOR, TYPE_NEW_OPT,
    "reorg and more recur functions",
    NULL
