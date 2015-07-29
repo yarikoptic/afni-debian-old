@@ -1529,6 +1529,7 @@ void AFNI_sigfunc_alrm(int sig)
      "Remember -- He who laughs, lasts"                              ,
      "Remember -- The innocent have everything to fear"              ,
      "Remember -- Memory is long but time is tricky"                 ,
+     "'It remains to be seen' == 'When pigs fly'"                    ,
      "Do not scorn pity that is the gift of a gentle heart"          ,
      "The best laid statistics of mice and men gang aft agley"       ,
      "A thousand farewells pass in one moment"                       ,
@@ -2554,9 +2555,11 @@ static char * random_goodbye(void)
 void AFNI_quit_CB( Widget wcall , XtPointer cd , XtPointer cbs )
 {
    Three_D_View *im3d = (Three_D_View *)cd ;
-   XmPushButtonCallbackStruct *pbcbs = (XmPushButtonCallbackStruct *) cbs ;
+   XmPushButtonCallbackStruct *pbcbs = (XmPushButtonCallbackStruct *)cbs ;
 
 ENTRY("AFNI_quit_CB") ;
+
+   if( cd == NULL ) AFexit(0) ;  /* 27 Jul 2015 */
 
    if( ! IM3D_OPEN(im3d) ) EXRETURN ;
 
@@ -2581,7 +2584,9 @@ ENTRY("AFNI_quit_CB") ;
        (ShiftMask|ControlMask|Button2Mask|Button3Mask) ){
 
       XtCloseDisplay( XtDisplay(im3d->vwid->top_shell) ) ;
+#if 0
       AFNI_speak(random_goodbye(),0) ;
+#endif
       AFexit(0) ;
    }
 
