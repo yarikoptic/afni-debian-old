@@ -49,6 +49,33 @@
 
 afni_history_struct rickr_history[] = {
 
+ {  3,  Aug, 2015, RCR, "Dimon1", MICRO, TYPE_BUG_FIX,
+   "fixed -drive_afni, -drive_wait and -rt_cmd command lists",
+   NULL
+ } ,
+
+ {  3,  Aug, 2015, RCR, "Dimon", MICRO, TYPE_BUG_FIX,
+   "applied ACQUSITION_TYPE as 3d+timing",
+   "Slice timing was lost (by the plugin) in the change to 3d+t ACQ TYPE.\n"
+   "Thanks to H Mandelkow for bringing this up."
+ } ,
+
+ {  3,  Aug, 2015, RCR, "plug_realtime", MINOR, TYPE_ENHANCE,
+   "added DTYPE_3DTM (3D+timing) ACQUSITION_TYPE",
+   "Treats data as per volume, but with slice timing.  This is needed for\n"
+   "num_chan>0, but when data does not come in num_chan slices at a time."
+ } ,
+
+ { 31,  Jul, 2015, RCR, "@FindAfniDsetPath", MICRO, TYPE_ENHANCE,
+   "allow full paths to succeeed ; no args gives help",
+   NULL
+ } ,
+
+ { 30,  Jul, 2015, RCR, "@auto_tlrc", MICRO, TYPE_BUG_FIX,
+   "check for template existence even given path",
+   "Was failing with -init_xform."
+ } ,
+
  { 29,  Jul, 2015, RCR, "gen_ss_reivew_scripts.py", MICRO, TYPE_MODIFY,
    "block any _REMLvar stats dset (was _REMLvar+)",
    "Might get stats*_REMLvar_nods, for example, via 3dREMLfit -dsort_nods."
