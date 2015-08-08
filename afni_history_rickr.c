@@ -49,9 +49,29 @@
 
 afni_history_struct rickr_history[] = {
 
- {  3,  Aug, 2015, RCR, "Dimon1", MICRO, TYPE_BUG_FIX,
-   "fixed -drive_afni, -drive_wait and -rt_cmd command lists",
+ {  7,  Aug, 2015, RCR, "model_conv_PRF", MICRO, TYPE_MODIFY,
+   "make everything static, to avoid confusion",
    NULL
+ } ,
+
+ {  7,  Aug, 2015, RCR, "model_conv_PRF_6", MICRO, TYPE_BUG_FIX,
+   "make everything static, to avoid confusion; proto for conv_set_ref",
+   NULL
+ } ,
+
+ {  5,  Aug, 2015, RCR, "nifti_tool", MICRO, TYPE_ENHANCE,
+   "apply library updates for potentially writing NIFTI-2",
+   NULL
+ } ,
+
+ {  5,  Aug, 2015, RCR, "NIFTI", MINOR, TYPE_ENHANCE,
+   "if conversion to NIFTI-1 header fails on write, try NIFTI-2",
+   NULL
+ } ,
+
+ {  5,  Aug, 2015, RCR, "afni-general", MICRO, TYPE_ENHANCE,
+   "add some support for reading Voxel_Bucket datasets into AFNI",
+   "That is a type that is currently specific to SUMA."
  } ,
 
  {  3,  Aug, 2015, RCR, "Dimon", MICRO, TYPE_BUG_FIX,
