@@ -2782,8 +2782,11 @@ SUMA_Boolean SUMA_Engine (DList **listp)
                   SUMA_VisX_Pointers4Display(SO, 0);/* revert to surf cooords. */
                   SUMA_UpdateTriField(SO);
                   break; }
-               case SDSET_type:
+               case GDSET_type:
                   SUMA_S_Err("ambigous display method without variant");
+                  break;
+               case CDOM_type:
+                  SUMA_S_Err("Help me please");
                   break;
                case GRAPH_LINK_type: {
                   SUMA_DSET *dset = SUMA_find_GLDO_Dset((SUMA_GraphLinkDO*)ado);
@@ -5517,6 +5520,13 @@ int SUMA_VisibleSOs (SUMA_SurfaceViewer *sv, SUMA_DO *dov, int *SO_IDs,
                ++k;
             }
          }
+      } else {
+      	 switch (dov[sv->RegistDO[i].dov_ind].ObjectType) {
+	    case CDOM_type:
+	       SUMA_LH("So how do we handle the visibility of surfaces "
+	               "within a CIFTI object? Is this the place for it?");
+	       break;
+	 }
       }
    }
    
@@ -5571,6 +5581,7 @@ int SUMA_is_iDO_Selectable(int dov_id)
       case GRAPH_LINK_type:
       case MASK_type:
       case VO_type:
+      case CDOM_type:
          return(1);
       default:
          return(0);
@@ -5624,13 +5635,14 @@ int SUMA_Selectable_ADOs (SUMA_SurfaceViewer *sv, SUMA_DO *dov, int *SO_IDs)
                break;
             case TRACT_type:
             case MASK_type:
+            case CDOM_type:
             case VO_type:
                if (SO_IDs) {
                   SO_IDs[k] = sv->RegistDO[i].dov_ind;
                }
                ++k;
                break;
-            default:
+	    default:
                SUMA_LHv("Ignoring %s\n", iDO_label(sv->RegistDO[i].dov_ind));
                break;
          }
@@ -5697,10 +5709,11 @@ SUMA_Boolean SUMA_isVisibleDO (SUMA_SurfaceViewer *sv,
             }
          }
          break;
-      case SDSET_type:
+      case GDSET_type:
          SUMA_S_Err("Can't judge this without variant");
          SUMA_RETURN(NOPE);
          break;
+      case CDOM_type:
       case VO_type:
       case MASK_type:
       case TRACT_type:

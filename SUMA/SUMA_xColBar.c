@@ -1046,6 +1046,28 @@ int SUMA_set_threshold(SUMA_ALL_DO *ado, SUMA_OVERLAYS *colp,
          }
       } 
    }
+   
+   /* CIFTI yoking outline 
+   
+   if (colp->dset_link) is CIFTI subdomain (see a. below)
+      Look up the parent cifti dset (cdset) by using MD_parent_ID 
+      
+      Look up also the CIFTI DO (CO) that goes with cdset using
+      SUMA_Fetch_OverlayPointerByDset()
+      
+      For each subdomain in CO and each corresponding dset and color plane
+      	 
+	 If the subdomain and the colorplane are different from ado , adoC (that
+	 would be (SUMA_ALL_DO *)SOC above), colp and colpC  
+	 
+	    call  SUMA_SetScaleThr_one() as per above 
+   
+   
+   
+   a. One way to find out if a dset is a subdomain would be to look for one of the MD_* attribute of dset->ngr that are created in SUMA_CIFTI_2_edset()
+   
+   */
+   
    SUMA_RETURN(1);  
 }
 
@@ -2421,7 +2443,10 @@ void SUMA_cb_SetCoordBias(Widget widget, XtPointer client_data,
          x0 = SUMA_Fetch_VisX_Datum ("CoordBias", SO->VisX.Xchain, 
                                               ADD_BEFORE, "Prying");
          break; }
-      case SDSET_type: {
+      case GDSET_type: {
+         SUMA_S_Warn("Not sure what to do here");
+         break; }
+      case CDOM_type: {
          SUMA_S_Warn("Not sure what to do here");
          break; }
       default:
@@ -2550,7 +2575,8 @@ SUMA_Boolean SUMA_RedisplayAllShowing(char *SO_idcode_str,
          }       
          break;
       case MASK_type:
-      case SDSET_type:
+      case GDSET_type:
+      case CDOM_type:
       case VO_type:
       case TRACT_type:
       case GRAPH_LINK_type:
@@ -6478,9 +6504,12 @@ void SUMA_set_cmap_options(SUMA_ALL_DO *ado, SUMA_Boolean NewDset,
          SUMA_set_cmap_options_SO(ado, NewDset,  NewMap);
          SUMA_RETURNe;
          break;
-      case SDSET_type:
+      case GDSET_type:
          SUMA_S_Err("No init for a DO that cannot be dispalyed\n"
                     "without variant");
+         SUMA_RETURNe;
+      case CDOM_type:
+         SUMA_set_cmap_options_CO(ado, NewDset,  NewMap);
          SUMA_RETURNe;
       case GRAPH_LINK_type:
          SUMA_set_cmap_options_GLDO(ado, NewDset, NewMap);
@@ -7128,6 +7157,34 @@ void SUMA_set_cmap_options_SO(SUMA_ALL_DO *ado, SUMA_Boolean NewDset,
    if (!XtIsManaged(SurfCont->rcvo)) XtManageChild (SurfCont->rcvo);
    SUMA_FORCE_SCALE_HEIGHT(SUMA_ADO_Cont(ado)); 
 
+   SUMA_RETURNe;
+}
+
+void SUMA_set_cmap_options_CO(SUMA_ALL_DO *ado, SUMA_Boolean NewDset,
+                           SUMA_Boolean NewMap)
+{
+   static char FuncName[]={"SUMA_set_cmap_options_CO"};
+   SUMA_MenuItem  *SwitchInt_Menu = NULL, *SwitchThr_Menu = NULL, 
+                  *SwitchBrt_Menu = NULL;
+   int N_items, FirstTime;
+   SUMA_X_SurfCont *SurfCont=NULL;
+   SUMA_OVERLAYS *curColPlane=NULL;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   
+   if (!ado) SUMA_RETURNe;
+   if (ado->do_type != CDOM_type) {
+      SUMA_S_Err("Should not be here");
+      SUMA_RETURNe;
+   }
+   SurfCont = SUMA_ADO_Cont(ado);
+   curColPlane = SUMA_ADO_CurColPlane(ado);
+
+   if (!SurfCont) SUMA_RETURNe;
+   
+   SUMA_S_Err("Nothing here still");
+     
    SUMA_RETURNe;
 }
 
@@ -9684,10 +9741,14 @@ void SUMA_CreateXhairWidgets(Widget parent, SUMA_ALL_DO *ado)
       case SO_type:
          SUMA_CreateXhairWidgets_SO(parent, ado);
          break;
-      case SDSET_type:
+      case GDSET_type:
          SUMA_S_Err("Should not create widgets for a DO that "
                     "can't be displayed without variant");
          SUMA_RETURNe;
+      case CDOM_type:
+         SUMA_CreateXhairWidgets_CO(parent, ado);
+         SUMA_RETURNe;
+         break;
       case GRAPH_LINK_type:
          SUMA_CreateXhairWidgets_GLDO(parent, ado);
          break;
@@ -10442,6 +10503,54 @@ void SUMA_CreateXhairWidgets_VO(Widget parent, SUMA_ALL_DO *ado)
    
 }
 
+/* I suspect this will be a mixture of _VO and _SO */
+void SUMA_CreateXhairWidgets_CO(Widget parent, SUMA_ALL_DO *ado)
+{
+   static char FuncName[]={"SUMA_CreateXhairWidgets_CO"};
+   char *Xhair_tit[]=   {  "Xhr ", NULL};
+   char *Xhair_hint[]=  {  "Crosshair coordinates.", NULL};
+   char *Xhair_help[]=  {  SUMA_SurfContHelp_Xhr , NULL};
+   char *I_tit[]=      { "Ind ", NULL };
+   char *I_hint[] =    { "Voxel 1D index in volume", NULL };
+   char *I_help[] =    { SUMA_VolContHelp_I, NULL };
+   char *BTP_tit[]=    {  "IJK"   , NULL};
+   char *BTP_hint[]=   {  "Voxel 3D indices in volume",
+                           NULL};
+   char *BTP_help[]=   {  SUMA_SurfContHelp_IJK , NULL};
+   char *Data_tit[]=    {  "    ", "Intens", "Thresh", "Bright" , NULL};
+   char *Data_colhint[]=      {  "Data Values at voxel in focus", 
+                                 "Intensity (I) value", 
+                                 "Threshold (T) value", 
+                                 "Brightness modulation (B) value" , NULL};
+   char *Data_colhelp[]=      {  SUMA_VolContHelp_NodeValTblc0, 
+                                 SUMA_SurfContHelp_NodeValTblc1, 
+                                 SUMA_SurfContHelp_NodeValTblc2, 
+                                 SUMA_SurfContHelp_NodeValTblc3 , NULL}; 
+   
+   char *Data_rtit[]=      {  "    ", "Val " , NULL};
+   char *Data_rowhint[]=   {  "Data values at voxel in focus", 
+                              "Data values at voxel in focus" , NULL};
+   char *Data_rowhelp[]=   {  SUMA_SurfContHelp_NodeValTblr0, 
+                              SUMA_SurfContHelp_NodeValTblr0 , NULL};
+   
+   char *Label_tit[]=   {  "Lbl ", NULL};
+   char *Label_hint[]=  {  "Label at voxel in focus", NULL};
+   char *Label_help[]=  {  SUMA_SurfContHelp_NodeLabelTblr0 , NULL};
+   SUMA_X_SurfCont *SurfCont=NULL;
+   Widget rcc, rcch;
+   
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   
+   if (!ado || ado->do_type != CDOM_type || !(SurfCont = SUMA_ADO_Cont(ado))) {
+      SUMA_RETURNe;
+   }
+   
+   SUMA_S_Err("Fill me up scotty, premium dude, premium");
+
+   SUMA_RETURNe;
+}
 
 void SUMA_CreateCmapWidgets(Widget parent, SUMA_ALL_DO *ado)
 {
@@ -11440,12 +11549,12 @@ SUMA_Boolean SUMA_UpdateNodeField(SUMA_ALL_DO *ado)
                }
          }
          break; }
-      case SDSET_type: {
+      case GDSET_type: {
          SUMA_S_Err("Should not call with this type DO because without\n"
                     "a variant it cannot be displayed");
          SUMA_RETURN(NOPE);
          break; }
-      
+      case CDOM_type:
       case VO_type:
       case TRACT_type:
       case GRAPH_LINK_type:
@@ -11572,12 +11681,11 @@ SUMA_Boolean SUMA_UpdatePointField(SUMA_ALL_DO*ado)
          SUMA_S_Err("Not for SOs this!");
          break; }
       
-      case SDSET_type: {
+      case GDSET_type: {
          SUMA_S_Err("Should not call with this type DO because without\n"
                     "a variant it cannot be displayed");
          SUMA_RETURN(NOPE);
          break; }
-      
       case GRAPH_LINK_type:
          {
          SUMA_GraphLinkDO *gldo=(SUMA_GraphLinkDO *)ado;
@@ -12032,9 +12140,10 @@ char *SUMA_GetLabelsAtSelection(SUMA_ALL_DO *ado, int node, int sec)
       case SO_type:
          SUMA_RETURN(SUMA_GetLabelsAtSelection_ADO(ado,node, sec));
          break;
-      case SDSET_type:
+      case GDSET_type:
          SUMA_S_Warn("Not ready to return labels for dsets, and should I be?");
          break;
+      case CDOM_type:
       case VO_type:
       case MASK_type:
       case TRACT_type:
@@ -12472,10 +12581,11 @@ SUMA_Boolean SUMA_UpdateNodeLblField(SUMA_ALL_DO *ado)
       case SO_type: {
          return(SUMA_UpdateNodeLblField_ADO(ado));
          break; }
-      case SDSET_type: {
+      case GDSET_type: {
          SUMA_S_Warn("Should I be updating this guy and not it GLDO?");
          return(YUP);
          break; }
+      case CDOM_type:
       case VO_type:
       case TRACT_type:
       case MASK_type:
@@ -12512,6 +12622,7 @@ SUMA_Boolean SUMA_UpdateNodeLblField_ADO(SUMA_ALL_DO *ado)
    } 
    
    switch(ado->do_type) {
+      case CDOM_type:
       case VO_type:
       case GRAPH_LINK_type:
       case MASK_type:
@@ -12524,7 +12635,7 @@ SUMA_Boolean SUMA_UpdateNodeLblField_ADO(SUMA_ALL_DO *ado)
                                               SUMA_ADO_SelectedSecondary(ado));
          SUMA_LHv("Label Dsets: %s\n", lbls);
          break;
-      case SDSET_type:
+      case GDSET_type:
          SUMA_S_Warn("Should be using GRAPH_LINK_type instead");
          break;
       default:
@@ -12731,9 +12842,14 @@ SUMA_Boolean SUMA_Init_SurfCont_CrossHair(SUMA_ALL_DO *ado)
          SUMA_UpdateTriField((SUMA_SurfaceObject *)ado);
          SUMA_UpdateNodeField(ado);
          break;
-      case SDSET_type:
+      case GDSET_type:
          SUMA_S_Err("No init for a DO that cannot be dispalyed\n"
                     "without variant");
+         SUMA_RETURN(NOPE);
+         break;
+      case CDOM_type:
+         SUMA_S_Err("So much to do, so little time"
+                    "Probably something like SUMA_UpdateNodeField");
          SUMA_RETURN(NOPE);
          break;
       case GRAPH_LINK_type: {
@@ -13032,7 +13148,12 @@ SUMA_OVERLAYS * SUMA_ADO_CurColPlane(SUMA_ALL_DO *ado)
          if (!SO->SurfCont) return(NULL);
          return(SO->SurfCont->curColPlane);
          break; }
-      case SDSET_type: {
+      case CDOM_type: {
+         SUMA_CIFTI_SAUX *CSaux = SUMA_ADO_CSaux(ado);
+         if (!CSaux || !CSaux->DOCont) return(NULL);
+         return(CSaux->DOCont->curColPlane);
+         break; }
+      case GDSET_type: {
          SUMA_DSET *dset=(SUMA_DSET *)ado;
          SUMA_GRAPH_SAUX *GSaux = SDSET_GSAUX(dset);
          if (!GSaux) return(NULL);
@@ -13140,7 +13261,13 @@ SUMA_Boolean SUMA_ADO_Append_Overlay(SUMA_ALL_DO *ado, SUMA_OVERLAYS **over)
          *over = NULL;
          ++VSaux->N_Overlays;
          break; }
-      case SDSET_type: {
+      case CDOM_type: {
+         SUMA_CIFTI_SAUX *CSaux = SUMA_ADO_CSaux(ado);
+         overlays[N_over] = *over;
+         *over = NULL;
+         ++CSaux->N_Overlays;
+         break; }
+      case GDSET_type: {
          SUMA_DSET *dset=(SUMA_DSET *)ado;
          SUMA_GRAPH_SAUX *GSaux = SDSET_GSAUX(dset);
          SUMA_S_Warn("Case not tested yet");
@@ -13193,7 +13320,13 @@ SUMA_OVERLAYS **  SUMA_ADO_Overlays(SUMA_ALL_DO *ado, int *N_over)
          if (N_over) *N_over = SO->N_Overlays;
          return(SO->Overlays);
          break; }
-      case SDSET_type: {
+      case CDOM_type: {
+         SUMA_CIFTI_SAUX *CSaux = SUMA_ADO_CSaux(ado);
+         if (!CSaux) return(NULL);
+         if (N_over) *N_over = CSaux->N_Overlays;
+         return(CSaux->Overlays);
+         break; }
+      case GDSET_type: {
          SUMA_DSET *dset=(SUMA_DSET *)ado;
          SUMA_GRAPH_SAUX *GSaux = SDSET_GSAUX(dset);
          if (!GSaux || !GSaux->Overlay) return(NULL);
@@ -13249,7 +13382,12 @@ int SUMA_ADO_N_Overlays(SUMA_ALL_DO *ado)
          SUMA_SurfaceObject *SO=(SUMA_SurfaceObject *)ado;
          return(SO->N_Overlays);
          break; }
-      case SDSET_type: {
+      case CDOM_type: {
+         SUMA_CIFTI_SAUX *CSaux = SUMA_ADO_CSaux(ado);
+         if (!CSaux) return(-1);
+         return(CSaux->N_Overlays);
+         break; }
+      case GDSET_type: {
          SUMA_DSET *dset=(SUMA_DSET *)ado;
          SUMA_GRAPH_SAUX *GSaux = SDSET_GSAUX(dset);
          if (!GSaux) return(-1);
@@ -13305,8 +13443,16 @@ int SUMA_ADO_SelectedDatum(SUMA_ALL_DO *ado, void *extra, void *extra2)
          SUMA_SurfaceObject *SO=(SUMA_SurfaceObject *)ado;
          return(SO->SelectedNode);
          break; }
-         
-      case SDSET_type: {
+      case CDOM_type: {
+         SUMA_CIFTI_SAUX *CSaux = SUMA_ADO_CSaux(ado);
+         if (!CSaux) return(-1);
+         /* Plenty of room to return extras, once we figure those out.
+            Selections could be on surfaces or volumes so what needs 
+            to be filled out in the extras will depend on the type of
+            domain over which the selection was made. */
+         return(CSaux->PR->datum_index);
+         break; }   
+      case GDSET_type: {
          SUMA_DSET *dset=(SUMA_DSET *)ado;
          SUMA_GRAPH_SAUX *GSaux = SDSET_GSAUX(dset);
          if (!GSaux) return(-1);
@@ -13385,7 +13531,12 @@ int SUMA_ADO_SelectedSecondary(SUMA_ALL_DO *ado)
          SUMA_SurfaceObject *SO=(SUMA_SurfaceObject *)ado;
          return(SO->SelectedFaceSet);
          break; }
-      case SDSET_type: {
+      case CDOM_type: {
+         SUMA_S_Err("What gets set will depend on  PR->primitive. \n"
+                    "Consider SUMA_ADO_SelectedSecondary() and ponder away.");
+         return(-1);
+         break; }
+      case GDSET_type: {
          SUMA_DSET *dset=(SUMA_DSET *)ado;
          SUMA_GRAPH_SAUX *GSaux = SDSET_GSAUX(dset);
          if (!GSaux) return(-1);
@@ -13433,11 +13584,12 @@ SUMA_Boolean SUMA_is_ADO_Datum_Primitive(SUMA_ALL_DO *ado,
    
    switch (ado->do_type) {
       case VO_type:
+      case CDOM_type:
       case SO_type:
          SUMA_S_Err("Function not ready to handle colid selection modes"
                     "on surfaces or volumes");
          break;
-      case SDSET_type: 
+      case GDSET_type: 
       case GRAPH_LINK_type:
          if (codf->primitive && !strcmp(codf->primitive,"segments"))
             return(YUP);
@@ -13463,7 +13615,18 @@ SUMA_Boolean SUMA_ADO_Set_SelectedDatum(SUMA_ALL_DO *ado, int sel,
          SO->SelectedNode = sel;
          return(1);
          break; }
-      case SDSET_type: {
+      case CDOM_type: {
+         SUMA_CIFTI_DO *co = (SUMA_CIFTI_DO *)ado;
+         SUMA_CIFTI_SAUX *CSaux = SUMA_ADO_CSaux(ado);
+         int it, ip, ib, l1, *iv = (int *)extra;
+         CSaux->PR->datum_index = sel;
+         if (extra) {
+            SUMA_S_Err("Not ready for extra");
+         } else {
+            /* Will need to setup other PR fields once we decide on extras */
+         }   
+         break; }
+      case GDSET_type: {
          SUMA_DSET *dset=(SUMA_DSET *)ado;
          SUMA_GRAPH_SAUX *GSaux = SDSET_GSAUX(dset);
          if (!GSaux) return(0);
@@ -13610,7 +13773,28 @@ int SUMA_ADO_N_Datum_Lev(SUMA_ALL_DO *ado, SUMA_DATUM_LEVEL dtlvl)
          }
          return(-1);
          break; }
-      case SDSET_type: {
+      case CDOM_type: {
+         SUMA_CIFTI_DO *CO=(SUMA_CIFTI_DO *)ado;
+	 switch(dtlvl) {
+	    int i, nn;
+	    case SUMA_ELEM_DAT: /* The maximum possible number of data
+	             	      	   assuming all domains are filled to 
+				   the max */
+	       nn = 0;
+	       for (i=0; i<CO->N_subdoms; ++i) {
+	          nn += SUMA_ADO_N_Datum(SUMA_CIFTI_subdom_ado(CO,i));
+	       }
+	       return(nn);
+	       break;
+	    default:
+	       SUMA_S_Err("Should not be here, not yet at least (dtlvl = %d)", 
+	             	  dtlvl);
+	       return(-1);
+	       break;
+	 }
+         return(-1);
+         break; }
+      case GDSET_type: {
          SUMA_DSET *dset=(SUMA_DSET *)ado;
          return(SDSET_VECLEN(dset));
          break; }
@@ -13669,7 +13853,7 @@ int SUMA_ADO_Max_Datum_Index_Lev(SUMA_ALL_DO *ado, SUMA_DATUM_LEVEL dtlvl)
          SUMA_SurfaceObject *SO=(SUMA_SurfaceObject *)ado;
          return(SO->N_Node-1);
          break; }
-      case SDSET_type: {
+      case GDSET_type: {
          SUMA_DSET *dset=(SUMA_DSET *)ado;
          if (SUMA_isGraphDset(dset)) {
             int mm;
@@ -13678,6 +13862,10 @@ int SUMA_ADO_Max_Datum_Index_Lev(SUMA_ALL_DO *ado, SUMA_DATUM_LEVEL dtlvl)
          } else {
             return(SDSET_VECLEN(dset)-1);
          }
+         break; }
+      case CDOM_type: {
+         SUMA_S_Err("Riddle me this");
+         return(-1);
          break; }
       case GRAPH_LINK_type: {
          SUMA_GraphLinkDO *gldo=(SUMA_GraphLinkDO *)ado;
@@ -13759,7 +13947,9 @@ char * SUMA_ADO_Label(SUMA_ALL_DO *ado)
       default: {
          return(ado->private_Label);
          break; }
-      case SDSET_type: {
+      case GDSET_type:
+      case MD_DSET_type:
+      case ANY_DSET_type: {
          SUMA_DSET *dset=(SUMA_DSET *)ado;
          return(SDSET_LABEL(dset));
          break; }
@@ -13829,7 +14019,9 @@ char * SUMA_ADO_idcode(SUMA_ALL_DO *ado)
       default: {
          return(ado->private_idcode_str);
          break; }
-      case SDSET_type: {/* The special beast */
+      case ANY_DSET_type:
+      case MD_DSET_type:
+      case GDSET_type: {/* The special beast */
          SUMA_DSET *dset=(SUMA_DSET *)ado;
          return(SDSET_ID(dset));
          break; }
@@ -13842,7 +14034,9 @@ char * SUMA_ADO_Parent_idcode(SUMA_ALL_DO *ado)
    static char FuncName[]={"SUMA_ADO_Parent_idcode"};
    if (!ado) return(NULL);
    switch(ado->do_type) {
-      case SDSET_type: {/* The special beast, as a DO, it is its own parent*/
+      case ANY_DSET_type:
+      case MD_DSET_type:
+      case GDSET_type: {/* The special beast, as a DO, it is its own parent*/
          SUMA_DSET *dset=(SUMA_DSET *)ado;
          return(SDSET_ID(dset));
          break; }
@@ -13880,6 +14074,7 @@ char * SUMA_ADO_Parent_idcode(SUMA_ALL_DO *ado)
          break;
       case AO_type: /* those are their own parents */
       case PL_type: 
+      case CDOM_type:
       case VO_type:
          return(ado->private_idcode_str);
          break;
@@ -13910,7 +14105,12 @@ SUMA_X_SurfCont *SUMA_ADO_Cont(SUMA_ALL_DO *ado)
          SUMA_SurfaceObject *SO=(SUMA_SurfaceObject *)ado;
          return(SO->SurfCont);
          break; }
-      case SDSET_type: {
+      case CDOM_type: {
+         SUMA_CIFTI_SAUX * CSaux = (SUMA_CIFTI_SAUX *)SUMA_ADO_Saux(ado);
+         if (CSaux) return(CSaux->DOCont);
+         else return(NULL);
+         break; }
+      case GDSET_type: {
          SUMA_DSET *dset=(SUMA_DSET *)ado;
          SUMA_GRAPH_SAUX *GSaux = SDSET_GSAUX(dset);
          if (!GSaux) return(NULL);
@@ -13927,17 +14127,17 @@ SUMA_X_SurfCont *SUMA_ADO_Cont(SUMA_ALL_DO *ado)
          return(SUMA_ADO_Cont((SUMA_ALL_DO *)dset));
          break; }
       case TRACT_type: {
-         SUMA_TRACT_SAUX * TSaux = SUMA_ADO_Saux(ado);
+         SUMA_TRACT_SAUX * TSaux = (SUMA_TRACT_SAUX *)SUMA_ADO_Saux(ado);
          if (TSaux) return(TSaux->DOCont);
          else return(NULL);
          break; }
       case MASK_type: {
-         SUMA_MASK_SAUX * MSaux = SUMA_ADO_Saux(ado);
+         SUMA_MASK_SAUX * MSaux = (SUMA_MASK_SAUX *)SUMA_ADO_Saux(ado);
          if (MSaux) return(MSaux->DOCont);
          else return(NULL);
          break; }
       case VO_type: {
-         SUMA_VOL_SAUX * VSaux = SUMA_ADO_Saux(ado);
+         SUMA_VOL_SAUX * VSaux = (SUMA_VOL_SAUX *)SUMA_ADO_Saux(ado);
          SUMA_LH("Have %p", VSaux);
          if (VSaux) return(VSaux->DOCont);
          else return(NULL);
@@ -14744,7 +14944,14 @@ float *SUMA_ADO_DatumXYZ(SUMA_ALL_DO *ado, int isel, char *variant)
             if (SO->NodeDim > 2) fv[icall][2] = *ff;++ff;
          }
          break; }
-      case SDSET_type: {
+      case CDOM_type: {
+         SUMA_S_Err("Not ready: 1- find domain from index.\n"
+                    "           2- find index on domain\n"
+                    "           3- return XYZ\n");
+         return(NULL);
+         break;
+         }
+      case GDSET_type: {
          SUMA_DSET *dset=(SUMA_DSET *)ado;
          if (!variant) {
             SUMA_S_Err("No XYZ without variant on dsets");
@@ -14783,7 +14990,9 @@ char *SUMA_ADO_LDP(SUMA_ALL_DO *ado)
          SUMA_SurfaceObject *SO=(SUMA_SurfaceObject *)ado;
          return(SO->LocalDomainParentID);
          break; }
-      case SDSET_type: {
+      case ANY_DSET_type:
+      case MD_DSET_type:
+      case GDSET_type: {
          SUMA_DSET *dset = (SUMA_DSET *)ado;
          return(SDSET_ID(dset)); /* itself */
          break; }
@@ -14797,6 +15006,25 @@ char *SUMA_ADO_LDP(SUMA_ALL_DO *ado)
          }
          return(SUMA_ADO_LDP((SUMA_ALL_DO *)dset));
          break; }
+      case CDOM_type: {
+         SUMA_S_Warn("Not sure if this will apply yet.");
+         return(NULL);
+         break; }
+      default:
+         return(NULL);
+   }
+   return(NULL);
+}
+
+SUMA_CIFTI_SAUX *SUMA_ADO_CSaux(SUMA_ALL_DO *ado) 
+{
+   static char FuncName[]={"SUMA_ADO_CSaux"};
+   
+   if (!ado) return(NULL);
+   switch (ado->do_type) {
+      case CDOM_type:
+         return((SUMA_CIFTI_SAUX *)SUMA_ADO_Saux(ado));
+         break;
       default:
          return(NULL);
    }
@@ -14809,7 +15037,7 @@ SUMA_GRAPH_SAUX *SUMA_ADO_GSaux(SUMA_ALL_DO *ado)
    
    if (!ado) return(NULL);
    switch (ado->do_type) {
-      case SDSET_type:
+      case GDSET_type:
       case GRAPH_LINK_type:   
          return((SUMA_GRAPH_SAUX *)SUMA_ADO_Saux(ado));
          break;
@@ -14888,7 +15116,10 @@ void *SUMA_ADO_Saux(SUMA_ALL_DO *ado)
       case SO_type: 
          return((void *)SDO_SSAUX((SUMA_SurfaceObject *)ado));
          break;
-      case SDSET_type:
+      case CDOM_type:
+         return((void *)CDO_CSAUX((SUMA_CIFTI_DO *)ado));
+         break;
+      case GDSET_type:
          return((void *)SDSET_GSAUX((SUMA_DSET *)ado));
          break;
       case GRAPH_LINK_type: {
@@ -14919,7 +15150,17 @@ SUMA_DSET *SUMA_ADO_Dset(SUMA_ALL_DO *ado)
       case SO_type: 
          return(NULL);
          break;
-      case SDSET_type:
+      case CDOM_type:
+         SUMA_S_Note("Decide what should be done here. A CDOM is created from a "
+                     "certain CIFTI dataset that one could return. However it "
+                     "is envisioned that multiple CIFTI datasets can share the "
+                     "same CIFTI domain so then which dset to return in that "
+                     "instance. For now, let us return NULL");
+         return(NULL);
+         break; 
+      case ANY_DSET_type:
+      case MD_DSET_type:
+      case GDSET_type:
          return((SUMA_DSET *)ado);
          break;
       case GRAPH_LINK_type: {

@@ -352,6 +352,7 @@ void SUMA_cb_createSurfaceCont(Widget w, XtPointer data, XtPointer callData);
 void SUMA_cb_createSurfaceCont_SO(Widget w, XtPointer data, XtPointer callData);
 void SUMA_cb_createSurfaceCont_TDO(Widget w, XtPointer data, XtPointer callData);
 void SUMA_cb_createSurfaceCont_VO(Widget w, XtPointer data, XtPointer callData);
+void SUMA_cb_createSurfaceCont_CO(Widget w, XtPointer data, XtPointer callData);
 void SUMA_cb_createSurfaceCont_GLDO(Widget w, XtPointer data, 
                                      XtPointer callData);
 void SUMA_cb_createSurfaceCont_MDO(Widget w, XtPointer data, 
@@ -621,6 +622,9 @@ SUMA_Boolean SUMA_InitializeColPlaneShell_TDO(SUMA_ALL_DO *ado,
                                              SUMA_OVERLAYS *ColPlane);
 SUMA_Boolean SUMA_InitializeColPlaneShell_VO(SUMA_ALL_DO *ado,
                                              SUMA_OVERLAYS *ColPlane);
+SUMA_Boolean SUMA_InitializeColPlaneShell_CO (
+                  SUMA_ALL_DO *ado, 
+                  SUMA_OVERLAYS *ColPlane);
 SUMA_Boolean SUMA_InitializeColPlaneShell_MDO (SUMA_ALL_DO *ado, 
                                                SUMA_OVERLAYS *ColPlane);
 SUMA_Boolean SUMA_UpdateColPlaneShellAsNeeded(SUMA_ALL_DO *SO);
@@ -644,7 +648,8 @@ int SUMA_ApplyVisualState(NI_element *nel, SUMA_SurfaceViewer *csv);
 void SUMA_SaveVisualState(char *fname, void *csvp);
 void SUMA_LoadSegDO (char *s, void *csvp);
 SUMA_Boolean SUMA_LoadVolDO (char *fname, 
-                        SUMA_DO_CoordUnits coord_type, SUMA_VolumeObject **VOp);
+                        SUMA_DO_CoordUnits coord_type, SUMA_VolumeObject **VOp,
+			byte PutVOinList);
 int SUMA_Set_VO_Slice_Params(char *params, SUMA_VolumeObject *VO);
 void SUMA_SiSi_I_Insist(void);
 void SUMA_BuildMenuReset(int nchar);
@@ -661,6 +666,7 @@ SUMA_Boolean SUMA_Init_SurfCont_SurfParam_SO(SUMA_SurfaceObject *SO);
 SUMA_Boolean SUMA_Init_SurfCont_SurfParam_GLDO(SUMA_ALL_DO *ado);
 SUMA_Boolean SUMA_Init_SurfCont_SurfParam_TDO(SUMA_ALL_DO *ado);
 SUMA_Boolean SUMA_Init_SurfCont_SurfParam_VO(SUMA_ALL_DO *ado);
+SUMA_Boolean SUMA_Init_SurfCont_SurfParam_CO(SUMA_ALL_DO *ado);
 SUMA_Boolean SUMA_Init_SurfCont_SurfParam_MDO(SUMA_ALL_DO *ado);
 SUMA_Boolean SUMA_Init_SurfCont_SurfParam_ADO(SUMA_ALL_DO *ado);
 int SUMA_NodeNeighborAlongScreenDirection(SUMA_SurfaceViewer *sv,

@@ -120,6 +120,7 @@ typedef enum {
    SUMA_LABEL_TABLE_OBJECT,
    SUMA_GRAPH_BUCKET,
    SUMA_TRACT_BUCKET,
+   SUMA_CIFTI_BUCKET,
    SUMA_N_DSET_TYPES
 } SUMA_DSET_TYPE; /*!<  Type of data set ( should be called Object, not DSET ) 
                         When you add a new element, modify functions
@@ -201,6 +202,7 @@ typedef enum {
    SUMA_EDGE_P1_INDEX,        /* First point (Graph Node) defining an edge */
    SUMA_EDGE_P2_INDEX,        /* Second point defining an edge */
    
+   SUMA_MD_NODE_INDEX, /*!< Index col. into a Multiple Domain object a la CIFTI*/
    
    SUMA_N_COL_TYPES           /* MAX number of col types */
 }  SUMA_COL_TYPE; /*!<  Column types.
@@ -234,7 +236,9 @@ typedef enum {
 #define SUMA_IS_DATUM_INDEX_COL(ctp) (((ctp)==SUMA_NODE_INDEX || \
                                  (ctp)==SUMA_EDGE_P1_INDEX || \
                                  (ctp)==SUMA_EDGE_P2_INDEX ) ? 1:0)
-#define SUMA_DATUM_INDEX_CTP2COL(ctp) ( (ctp)==SUMA_NODE_INDEX ? 0 : \
+#define SUMA_IS_MD_DATUM_INDEX_COL(ctp) (((ctp)==SUMA_NODE_INDEX) ? 1 : 0)
+#define SUMA_DATUM_INDEX_CTP2COL(ctp) ( ((ctp)==SUMA_NODE_INDEX || \
+                                         (ctp)==SUMA_MD_NODE_INDEX) ? 0 : \
                                     ( (ctp)==SUMA_EDGE_P1_INDEX ? 1: \
                                        ( (ctp)==SUMA_EDGE_P2_INDEX ? 2:-1 ) )  )
                                     
@@ -267,8 +271,10 @@ typedef enum { NOT_SET_type = -1,
                NBSP_type, PL_type, VO_type,
                NBT_type, SBT_type, DBT_type, /*!< Those three will 
                                                    likely not be used */
-               NIDO_type, SDSET_type, TRACT_type,
-               GRAPH_LINK_type, MASK_type, DIR_type, ODIR_type, PNT_type,
+               NIDO_type, ANY_DSET_type, GDSET_type, MD_DSET_type, TRACT_type,
+               GRAPH_LINK_type, MASK_type, DIR_type, ODIR_type, 
+               PNT_type,
+               CDOM_type, /* The domain of a CIFTI beast */
                N_DO_TYPES } SUMA_DO_Types;   
 
 #define iDO_isSO(i) ( ((i)<0 || (i)>=SUMAg_N_DOv) ? 0: \
@@ -362,6 +368,38 @@ typedef struct {
                            can be used by niml. Fields are a reflection 
                            of those in SUMA_DRAWN_ROI*/
 
+typedef struct { /* A structure to contain information about a domain
+                    over which a subset of a dataset is defined.
+                    This structure was introduced to support CIFTI data */   
+   /* The following variables are named after those in CIFTI's documentation for
+      BrainModel Element */
+      int IndexOffset; /* The number of the first row in dset corresponding to
+                       the first datum over this domain  */
+      int IndexCount; /* How many consecutive rows in dset correspond to this 
+                      domain*/
+      int Max_N_Data; /* Maximum number of data points in domain 
+                         SO->N_Node, DSET_NVOX(dset) */                
+      SUMA_DO_Types ModelType; /* Is this a surface, volume, etc...*/
+      SUMA_SO_SIDE  ModelSide; /* Which hemisphere? ...*/
+      int Range[4];  /* min , max , imin, imax
+                     min, and max are the minimum and maximum node indices
+                     present in the full index list for this domain.
+                     imin and imax are the rows into the full index list
+                     where these min and max indices are found */
+      char *Source;
+      char *edset_id; /* ID to elementary dataset defining that part of 
+      	             the parent multi domain dataset that is 
+      	             defined over this one domain only. 
+		     'edset' is an elementary (single domain) dataset. */
+} SUMA_DSET_DOMAIN;
+/* Get the pointer to the beginning of the data indices for domain dom */
+
+#define SUMA_DOMAIN_INDICES(dset,dom) ((( (dset) && \
+                                 (dset)->inel && \
+                                 (dset)->inel->vec[0] && \
+                                 IndexOffset >= 0)) ? \
+                                dset->inel->vec[0]+IndexOffset:NULL)
+
 typedef enum { SUMA_NO_PTR_TYPE, 
                SUMA_LINKED_DSET_TYPE, /*!< For pointers to SUMA_DSET */
                SUMA_LINKED_OVERLAY_TYPE, /*!< For pointers to SUMA_OVERLAYS */
@@ -378,8 +416,8 @@ typedef enum { MAT_UNKNOWN=-2, MAT_NA = -1, MAT_HEEHAW = 0 /* not set */,
                MAT_FULL = 1, MAT_TRI, MAT_TRI_DIAG, MAT_SPARSE 
               } SUMA_SQ_MATRIX_SHAPES; 
 
-typedef enum { SURF_DSET, GRAPH_DSET, TRACT_DSET, VOLUME_DSET } 
-                                                   SUMA_DSET_FLAVORS;
+typedef enum { SURF_DSET, GRAPH_DSET, TRACT_DSET, VOLUME_DSET, 
+      	       CIFTI_DSET, MD_DSET} SUMA_DSET_FLAVORS;
 typedef enum { SUMA_ELEM_DAT=0, /* Nodes of surface, points of tracts, 
                                  edges of graph */
                SUMA_LEV1_DAT, /* data at the tract level*/
@@ -408,6 +446,10 @@ typedef struct { /* Something to hold auxiliary datasets structs */
    long int N_all_nodes; /* Total number of nodes stored in nodelist of the
                             graph dataset */
    SUMA_DSET_FLAVORS isGraph;
+   
+   SUMA_DSET_DOMAIN **doms; /* domains over which the dataset 
+                               (only CIFTI for now) is defined */
+   int N_doms;              /* Number of domains          */
 } SUMA_DSET_AUX;
 
 /*!   
@@ -1643,10 +1685,14 @@ SUMA_Boolean SUMA_CopyDsetAttributes ( SUMA_DSET *src, SUMA_DSET *dest,
 /* A quick way to check graphinity. Use SUMA_isGraphDset for safety */
 #define SUMA_isGraphDset_fast(dset) ( ((dset)->Aux->isGraph==GRAPH_DSET) ) 
 #define SUMA_isTractDset_fast(dset) ( ((dset)->Aux->isGraph==TRACT_DSET) ) 
+#define SUMA_isCIFTIDset_fast(dset) ( ((dset)->Aux->isGraph==CIFTI_DSET) ) 
+#define SUMA_isMD_Dset_fast(dset) ( ((dset)->Aux->isGraph==MD_DSET) ) 
 byte SUMA_isGraphDset(SUMA_DSET *dset);
 byte SUMA_isGraphDsetNgr(NI_group *ngr);
 byte SUMA_isTractDset(SUMA_DSET *dset);
 byte SUMA_isTractDsetNgr(NI_group *ngr);
+byte SUMA_isCIFTIDset(SUMA_DSET *dset);
+byte SUMA_isCIFTIDsetNgr(NI_group *ngr);
 SUMA_Boolean SUMA_Add_Dset_Aux(SUMA_DSET *dset);
 SUMA_Boolean SUMA_NewDsetGrp (SUMA_DSET *dset, SUMA_DSET_TYPE dtp, 
                            char* MeshParent_idcode, 
@@ -1666,6 +1712,7 @@ int SUMA_RemoveNgrHist(NI_group *ngr);
 int SUMA_RemoveDsetHist(SUMA_DSET *dset);
 int SUMA_AddNelHist(NI_element *nel, char *CallingFunc, int N_arg, char **arg);
 void SUMA_FreeDset(void *dset);
+SUMA_Boolean SUMA_FreeDsetContent (SUMA_DSET *dset);
 SUMA_DSET * SUMA_FindDset_ns (char *idcode_str, DList *DsetList);
 SUMA_DSET * SUMA_FindDset2_ns (char *idcode_str, DList *DsetList, char *itype);
 DListElmt * SUMA_FindDsetEl_ns (char *idcode, DList *DsetList);
@@ -1985,6 +2032,10 @@ int SUMA_init_GISET_setup(NI_stream nsg , NI_element *nel, GICOR_setup *giset,
                           int bmode);   /* 17 Aug 2012 [rickr] */
 int SUMA_PopulateDsetsFromGICORnel(NI_element *nel, GICOR_setup *giset, 
                                    SUMA_DSET **sdsetv);
+const char *SUMA_ObjectTypeCode2ObjectTypeName(SUMA_DO_Types dd);
+SUMA_DO_Types SUMA_ObjectTypeName2ObjectTypeCode(char *cc);
+#define SUMA_otn2otc SUMA_ObjectTypeName2ObjectTypeCode
+#define SUMA_otc2otn SUMA_ObjectTypeCode2ObjectTypeName
 
 /************************ GRAPH Dset functions  ******************** */
 
@@ -2034,5 +2085,15 @@ int SUMA_GDSET_Max_Edge_Index(SUMA_DSET *dset);
 char *SUMA_GDSET_Node_Label(SUMA_DSET *dset, int psel);
 char *SUMA_GDSET_Edge_Label(SUMA_DSET *dset, int isel, char *pref, char *sep);
 
-
+/************************ CIFTI Dset functions ******************** */
+SUMA_Boolean SUMA_CIFTI_Set_Domains(SUMA_DSET *dset, int N_doms, 
+                                    int *dind, int *dindoff, int *dn,
+                                    SUMA_DO_Types *dtp, char **dsrcs);
+SUMA_DSET *SUMA_CIFTI_2_edset(SUMA_DSET *dset, int i, byte *colmask, 
+      	             	      DList *DsetList, int allowreplace);
+SUMA_Boolean SUMA_CIFTI_NgrFromDomains(SUMA_DSET *dset);
+SUMA_Boolean SUMA_CIFTI_DomainsFromNgr(SUMA_DSET *dset, DList *DsetList, 
+      	             	      	       int allowreplace, SUMA_DSET **ret_edset);
+SUMA_Boolean SUMA_CIFTI_free_MD_data(SUMA_DSET *dset);
+SUMA_Boolean SUMA_CIFTI_Free_Doms(SUMA_DSET *dset);
 #endif
