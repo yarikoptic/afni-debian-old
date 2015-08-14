@@ -237,6 +237,27 @@ float SUMA_sv_auto_fov(SUMA_SurfaceViewer *sv)
                }
                avgdim /= 3.0;
                break; }
+            case CDOM_type: {
+               xyzr = SUMA_CIFTI_DO_XYZ_Range(
+	             	(SUMA_CIFTI_DO*)SUMAg_DOv[Vis_IDs[i]].OP, NULL);
+               if (minv[0] > maxv[0]) { /* init */
+                  for (k=0; k<3; ++k) {
+                     minv[k] = xyzr[2*k];
+                     maxv[k] = xyzr[2*k+1];
+                  }
+               } else {
+                  for (k=0; k<3; ++k) {
+                     if (xyzr[2*k] < minv[k])  minv[k] = xyzr[2*k];
+                     if (xyzr[2*k+1] > maxv[k]) maxv[k] = xyzr[2*k+1];
+                  }
+               }
+               avgdim = 0.0;
+               for (k=0;k<3;++k) { 
+                  if (maxv[k] - minv[k] > mxdim) mxdim = maxv[k] - minv[k];
+                  avgdim += maxv[k] - minv[k];
+               }
+               avgdim /= 3.0;
+               break; }
             case MASK_type: {
                SUMA_MaskDO *mo=
                      (SUMA_MaskDO *)SUMAg_DOv[Vis_IDs[i]].OP;
@@ -1469,7 +1490,7 @@ SUMA_Boolean SUMA_ADO_FillColorList_Params(SUMA_ALL_DO *ADO,
          SUMA_LHv("Filling a color list for surface %s (%s).\n", 
                   SO->Label, SO->idcode_str);
          } break;
-      case SDSET_type: {
+      case GDSET_type: {
          SUMA_DSET *dset=(SUMA_DSET *)ADO;
          if (!SUMA_isGraphDset(dset)) {
             SUMA_S_Err("Dataset should be graph type");
@@ -1486,6 +1507,7 @@ SUMA_Boolean SUMA_ADO_FillColorList_Params(SUMA_ALL_DO *ADO,
             SUMA_RETURN(SUMA_ADO_FillColorList_Params(
                                     (SUMA_ALL_DO *)dset, N_points, idcode));
          } break;
+      case CDOM_type:
       case MASK_type:
       case TRACT_type:
       case VO_type: {
@@ -1628,10 +1650,12 @@ SUMA_Boolean SUMA_FillColorList (SUMA_SurfaceViewer *sv, SUMA_ALL_DO *ADO)
    /* make sure idcode is not in the list already */
    for (i=0; i<sv->N_ColList; ++i) {
       if (strcmp (idcode, sv->ColList[i]->idcode_str) == 0) {
-         if (ADO->do_type != SDSET_type && 
+         if (ADO->do_type != GDSET_type &&
+             ADO->do_type != CDOM_type && 
              ADO->do_type != TRACT_type &&
              ADO->do_type != VO_type &&
-             ADO->do_type != MASK_type) {
+             ADO->do_type != MASK_type 
+             ) {
             SUMA_S_Err("idcode is already in sv->ColList, \n"
                        "This is an error for a SurfaceObject, though I doubt\n"
                        "it is of serious consequence. Type is question is %s\n"
@@ -1759,6 +1783,47 @@ GLfloat * SUMA_GetColorList (SUMA_SurfaceViewer *sv, char *DO_idstr)
       ++i;
    }
    
+   #if 0 
+   /* This should be deleted, but is left for Rick's joy at the moment.
+   In the first pass, a CIFTI DO got its own colorplane and the colorization
+   was done for the entire multi domain data set then to colorize a sub-domain
+   the color list pointer was offset by the total number of data in sub-domains
+   preceding it. That scheme however proved problematic when going back and forth
+   between sub-domains and the whole dataset because datum indices in a 
+   multi-domain dataset are not unique. 
+   So this approach was scrapped in favor of dealing only with elementary
+   datasets and domains */
+   if (!Found) { /* Perhaps this DO is part of a CIFTI conglomorate */
+      SUMA_CIFTI_DO *CO=NULL;
+      int ksub;
+      if ((CO = SUMA_find_CIFTI_subdom_container(DO_idstr, &ksub, NULL, 0))) {
+      	 /* search again to find the pointer to the colorlist of the entire 
+	 CIFTI domain */
+	 Found = NOPE;
+      	 i = 0;
+      	 while (!Found && i < sv->N_ColList) {
+      	    if (strcmp (ADO_ID((SUMA_ALL_DO *)CO), 
+	                sv->ColList[i]->idcode_str) == 0) {
+               Found = YUP;
+	    } else ++i;
+	 }
+         if (Found) {
+	    GLfloat *glc=NULL;
+	    SUMA_LH(
+	       "Found CIFTI container's colorlist for id %s, offset of 4*%d",
+	            DO_idstr, SUMA_CIFTI_SubDomFullOffset(CO, ksub));
+	    
+	    /* Now return the pointer offset to the sub-domain */
+	    glc = SUMA_GetColorListPtr(sv->ColList[i])+
+	             	      	       4*SUMA_CIFTI_SubDomFullOffset(CO, ksub);
+	    SUMA_RETURN(glc);
+	 } else {
+	    SUMA_LH("Found cobwebs");
+	 }
+      }
+   }
+   #endif
+      
    if (!Found) {
       SUMA_S_Err("DO_idstr %s was not found.\n", DO_idstr);
       SUMA_RETURN (NULL);
@@ -1770,6 +1835,7 @@ GLfloat * SUMA_GetColorList (SUMA_SurfaceViewer *sv, char *DO_idstr)
 
 }
 
+/* Return the color list structure for a particular object */
 SUMA_COLORLIST_STRUCT * SUMA_GetColorListStruct (SUMA_SurfaceViewer *sv, 
                                                  char *DO_idstr)
 {
@@ -2006,7 +2072,12 @@ SUMA_Boolean SUMA_SetLocalRemixFlag (char *DO_idcode_str, SUMA_SurfaceViewer *sv
             }  
          }
          break;
-      case SDSET_type:
+      case CDOM_type:
+         SUMA_S_Err("Is this needed (perhaps once we have isotopic COs ? "
+                    "If so then do it");
+         SUMA_RETURN (NOPE);
+         break;
+      case GDSET_type:
          dset = (SUMA_DSET *)pp;
          for (k=0; k < sv->N_DO; ++k) {
             ado2 = (SUMA_ALL_DO *)SUMAg_DOv[sv->RegistDO[k].dov_ind].OP;
@@ -2131,6 +2202,7 @@ SUMA_Boolean SUMA_SetRemixFlag (char *DO_idcode_str, SUMA_SurfaceViewer *SVv,
          }
          break; }
       case VO_type:
+      case CDOM_type:
       case MASK_type:
       case TRACT_type: {
          SUMA_ALL_DO *ADO = (SUMA_ALL_DO*)pp;
@@ -2172,7 +2244,7 @@ SUMA_Boolean SUMA_SetRemixFlag (char *DO_idcode_str, SUMA_SurfaceViewer *SVv,
             }
          }
          break; }
-      case SDSET_type: {
+      case GDSET_type: {
          SUMA_DSET *dset = (SUMA_DSET *)pp;
           
          if (!dset) {
@@ -2767,7 +2839,16 @@ SUMA_Boolean SUMA_UpdateRotaCenter (
             NewCenter[2] += VO_NVOX(VO)*xyzr[2];
             TotWeight += VO_NVOX(VO);
             break; }
-         default:
+         case CDOM_type: {
+	    int kkk;
+	    xyzr = SUMA_ADO_Center((SUMA_ALL_DO *)dov[do_id].OP, NULL);
+            kkk = SUMA_ADO_N_Datum((SUMA_ALL_DO *)dov[do_id].OP);
+            NewCenter[0] += kkk*xyzr[0];
+            NewCenter[1] += kkk*xyzr[1];
+            NewCenter[2] += kkk*xyzr[2];
+            TotWeight += kkk;
+            break; }
+	 default:
             if (SUMA_is_iDO_Selectable(do_id)) {
                static int nwarn=0;
                if (!nwarn) {
@@ -3194,7 +3275,8 @@ int *SUMA_ViewState_Membs(SUMA_ViewState *VS, SUMA_DO_Types *ttv,
                Membs[N_Membs++] = VS->MembDO[ii].dov_ind; 
                Membs[N_Membs]=-1;/* a plug, if uN_Membs is NULL*/
             break;
-         case TRACT_type:
+         case CDOM_type:
+	 case TRACT_type:
          case MASK_type:
          case VO_type:
                if (!Membs) Membs = (int *)
@@ -3203,7 +3285,7 @@ int *SUMA_ViewState_Membs(SUMA_ViewState *VS, SUMA_DO_Types *ttv,
                Membs[N_Membs]=-1;/* a plug, if uN_Membs is NULL*/
             break;
          default:
-            SUMA_S_Err("Not ready for this type");
+            SUMA_S_Err("Not ready for type %d (%s)", tt, SUMA_otc2otn(tt));
             break;
         } }
    } ++jj;}
@@ -3647,7 +3729,8 @@ SUMA_SurfaceViewer *SUMA_BestViewerForADO(SUMA_ALL_DO *ado)
          sv = &(SUMAg_SVv[0]);
          break; }
       case GRAPH_LINK_type:
-      case SDSET_type:
+      case GDSET_type:
+      case CDOM_type:
       case VO_type:
       case MASK_type:
       case TRACT_type:
@@ -3763,6 +3846,7 @@ int SUMA_Which_iDO_State(int dov_id, SUMA_SurfaceViewer *cSV, int addifmissing)
    do {
       if (do_all) cSV = &(SUMAg_SVv[iic]);
       is = SUMA_WhichState (SUMA_iDO_state(dov_id), cSV, SUMA_iDO_group(dov_id));
+      SUMA_LHv("is %d, addifmissing %d", is, addifmissing);
       if (is < 0 && addifmissing) { /* add state, it is a new one */
          SUMA_LHv("For DO %s, type %s\n    State:%s to be added, group %s\n", 
                   iDO_label(dov_id), iDO_typename(dov_id),
@@ -3902,6 +3986,7 @@ SUMA_Boolean SUMA_RegisterSpecSO (SUMA_SurfSpecFile *Spec,
          case TRACT_type:
          case MASK_type:
          case VO_type:
+	 case CDOM_type:
          case GRAPH_LINK_type:
             is = SUMA_WhichState (SUMA_iDO_state(i), csv,SUMA_iDO_group(i));
             if (is < 0) {
@@ -4000,6 +4085,7 @@ SUMA_Boolean SUMA_RegisterSpecSO (SUMA_SurfSpecFile *Spec,
          case MASK_type:
          case VO_type:
          case GRAPH_LINK_type:
+	 case CDOM_type:
             is = SUMA_WhichState (SUMA_iDO_state(i), csv,SUMA_iDO_group(i));
             if (is < 0) {
                SUMA_S_Errv("This should not be.\n"
@@ -5296,7 +5382,7 @@ SUMA_STANDARD_VIEWS SUMA_BestStandardView (  SUMA_SurfaceViewer *sv,
    SUMA_SurfaceObject *SO = NULL;
    char *variant=NULL;
    SUMA_DO_Types ttv[10]={SO_type, GRAPH_LINK_type, TRACT_type, 
-                          VO_type, MASK_type, NOT_SET_type};
+                          VO_type, CDOM_type, MASK_type, NOT_SET_type};
    SUMA_SO_SIDE side=SUMA_NO_SIDE;
    SUMA_Boolean LocalHead = NOPE;
    
@@ -5332,6 +5418,7 @@ SUMA_STANDARD_VIEWS SUMA_BestStandardView (  SUMA_SurfaceViewer *sv,
             } 
             break;
          case VO_type:
+         case CDOM_type:
          case MASK_type:
          case TRACT_type:
             maxdim = 3;
@@ -5476,7 +5563,7 @@ SUMA_Boolean SUMA_SetupSVforDOs (SUMA_SurfSpecFile *Spec, SUMA_DO *DOv,
    SUMA_SurfaceObject *SO;
    SUMA_Axis *EyeAxis;
    SUMA_DO_Types ttv[10]={SO_type, GRAPH_LINK_type, TRACT_type, 
-                          MASK_type, VO_type, NOT_SET_type};
+                          MASK_type, VO_type, CDOM_type, NOT_SET_type};
    int EyeAxis_ID, *MembDOs=NULL, N_MembDOs=0;
    int haveSpec=0;
    SUMA_Boolean LocalHead = NOPE;
@@ -5518,7 +5605,6 @@ SUMA_Boolean SUMA_SetupSVforDOs (SUMA_SurfSpecFile *Spec, SUMA_DO *DOv,
       SUMA_S_Err("Failed in SUMA_RegisterSpecSO.");
       SUMA_RETURN(NOPE);
    } 
-   SUMA_LH("Done.");
 
    /* register all SOs of the first state if no state is current
       or register all surfaces if they are of the current state and group
@@ -5535,7 +5621,7 @@ SUMA_Boolean SUMA_SetupSVforDOs (SUMA_SurfSpecFile *Spec, SUMA_DO *DOv,
       multi-group business.
    */   
    if (!SUMA_IS_GOOD_STATE(cSV->State)) {
-      SUMA_LHv("Looking for something better than %s\n", cSV->State);
+      SUMA_LHv("Looking for something better than %s\n", CNS(cSV->State));
       ws = SUMA_FirstGoodState(cSV);
    } else {
       ws =  SUMA_WhichState (cSV->State, cSV, cSV->CurGroupName) ;
@@ -5548,7 +5634,7 @@ SUMA_Boolean SUMA_SetupSVforDOs (SUMA_SurfSpecFile *Spec, SUMA_DO *DOv,
 
    /* Make sure we have something */
    do {
-      SUMA_LHv("Seeking members of state %s\n", cSV->VSv[ws].Name);
+      SUMA_LHv("Seeking members of state %s\n", CNS(cSV->VSv[ws].Name) );
       MembDOs = SUMA_ViewState_Membs(&(cSV->VSv[ws]), ttv, &N_MembDOs);
       if (!N_MembDOs) ++ws;
    } while (!N_MembDOs && ws < cSV->N_VSv);
@@ -5586,6 +5672,7 @@ SUMA_Boolean SUMA_SetupSVforDOs (SUMA_SurfSpecFile *Spec, SUMA_DO *DOv,
                "No further action needed here");
             break;
          case MASK_type:
+         case CDOM_type:
          case VO_type:
             SUMA_LH(
                "Registration was done after loading in object\n"
@@ -6396,7 +6483,7 @@ SUMA_ALL_DO *SUMA_findany_ADO_WithSurfContWidget(int *dov_id,
    static char FuncName[]={"SUMA_findany_ADO_WithSurfContWidget"};
    SUMA_ALL_DO *ado=NULL;
    SUMA_DO_Types ttv[N_DO_TYPES] = { SO_type, GRAPH_LINK_type, 
-                                     VO_type, TRACT_type,  
+                                     VO_type, TRACT_type, CDOM_type, 
                                      NOT_SET_type };
    int ii, tt;
    void *pp;
@@ -6437,10 +6524,10 @@ SUMA_ALL_DO *SUMA_SurfCont_GetcurDOp(SUMA_X_SurfCont *SurfCont)
                ADO_TNAME(ado), SurfCont->prv_variant);
       switch (ado->do_type) {
          case GRAPH_LINK_type:
-            SUMA_S_Err("This should not be, you should have put the GDSET here");
+            SUMA_S_Err("This should not be, See SUMA_SurfCont_SetcurDOp");
             return(NULL);
             break;
-         case SDSET_type:
+         case GDSET_type:
             return((SUMA_ALL_DO *)SUMA_find_Dset_GLDO((SUMA_DSET *)ado, 
                                                  SurfCont->prv_variant,NULL));
             break;
@@ -6474,11 +6561,15 @@ SUMA_Boolean SUMA_SurfCont_SetcurDOp(SUMA_X_SurfCont *SurfCont, SUMA_ALL_DO *ado
                   *(SurfCont->prv_curDOp), SurfCont->prv_variant);
          return(YUP);
          break;
-      case SDSET_type:
+      case GDSET_type:
          SUMA_S_Err( "You should not set the current DOp to a DO that has\n"
                      "ambiguous rendering\n");
          return(NOPE);
          break;
+         SUMA_S_Err("Have to figure out this machinery");
+         return(NOPE);
+         break;
+      case CDOM_type:
       case TRACT_type:
          *(SurfCont->prv_curDOp) = (void *)ado;
          return(YUP);

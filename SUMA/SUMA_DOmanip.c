@@ -294,13 +294,18 @@ SUMA_Boolean SUMA_Free_Displayable_Object (SUMA_DO *dov)
       case NIDO_type:
          SUMA_free_NIDO((SUMA_NIDO*)dov->OP);
          break;
+      case CDOM_type:
+         SUMA_FreeCIFTIObject((SUMA_CIFTI_DO *)dov->OP);
+         break;
       case NBT_type:
       case SBT_type:
       case DBT_type:
          /* those types are not used */
          SUMA_S_Warnv("Type %d should not be in  use!\n", dov->ObjectType);
          break;
-      case SDSET_type:
+      case GDSET_type:
+      case MD_DSET_type:
+      case ANY_DSET_type:
          SUMA_FreeDset(dov->OP);
          break;
       case TRACT_type:
@@ -596,6 +601,10 @@ SUMA_Boolean SUMA_RegisterDO(int dov_id, SUMA_SurfaceViewer *cSVu)
    
    SUMA_ENTRY;
    
+   if (LocalHead) {
+      SUMA_DUMP_TRACE("at RegisterDO");
+   }
+   
    if (dov_id < 0) {
       SUMA_S_Err("A negative dov_id!");
       SUMA_DUMP_TRACE("Negative dov_id bro? What gives?");
@@ -778,9 +787,10 @@ SUMA_Boolean SUMA_RegisterDO(int dov_id, SUMA_SurfaceViewer *cSVu)
             break;
          case MASK_type:
          case VO_type:
+	 case CDOM_type:
          case TRACT_type:
             {
-            SUMA_ALL_DO *ADO=(SUMA_ALL_DO *)(SUMAg_DOv[dov_id].OP);
+	    SUMA_ALL_DO *ADO=(SUMA_ALL_DO *)(SUMAg_DOv[dov_id].OP);
             SUMA_LHv("With ADO %s, Anat Correctedness %s\n", 
                      ADO_LABEL(ADO),
                      SUMA_isDO_AnatCorrect(&(SUMAg_DOv[dov_id]))?"YES":"NO");
@@ -1010,101 +1020,6 @@ SUMA_Boolean SUMA_UnRegisterDO(int dov_id, SUMA_SurfaceViewer *cSV)
    SUMA_RETURN(YUP); 
 }
 
-const char *SUMA_ObjectTypeCode2ObjectTypeName(SUMA_DO_Types dd) 
-{
-   static char FuncName[]={"SUMA_ObjectTypeCode2ObjectTypeName"};
-   switch (dd) {
-      case NOT_SET_type:
-         return("NOT_SET_type");
-         break;
-      case not_DO_type:
-         return("not_DO");
-         break;
-      case SO_type:
-         return("Surface");
-         break;
-      case AO_type:
-         return("Axis");
-         break;
-      case ROIdO_type:
-         return("ROI_drawn");
-         break;
-      case ROIO_type:
-         return("ROI");
-         break;
-      case GO_type:
-         return("GO");
-         break;
-      case LS_type:
-         return("Line_Segment");
-         break;
-      case NBLS_type:
-         return("Node_Based_Line_Segment");
-         break;
-      case OLS_type:
-         return("Oriented_Line_Segment");
-         break;
-      case ODIR_type:
-         return("Oriented_Direction");
-         break;
-      case DIR_type:
-         return("Direction");
-         break;
-      case PNT_type:
-         return("Point");
-         break;
-      case NBOLS_type:
-         return("Oriented_Node_Based_Line_Segment");
-         break;
-      case NBV_type:
-         return("Node_Based_Vector");
-         break;
-      case ONBV_type:
-         return("Oriented_Node_Based_Vector");
-         break;
-      case SP_type:
-         return("Sphere");
-         break;
-      case NBSP_type:
-         return("Node_Based_Sphere");
-         break;
-      case PL_type:
-         return("Plane");
-         break;
-      case VO_type:
-         return("VO");
-         break;
-      case NBT_type:
-         return("NBT");
-         break;
-      case SBT_type:
-         return("SBT");
-         break;
-      case SDSET_type:
-         return("SDSET");
-         break;
-      case DBT_type:
-         return("DBT");
-         break;
-      case NIDO_type:
-         return("NIDO");
-         break;
-      case TRACT_type:
-         return("TRACT");
-         break;
-      case MASK_type:
-         return("MASK");
-         break;
-      case GRAPH_LINK_type:
-         return("GRAPH_LINK");
-         break;
-      case N_DO_TYPES:
-         return("Number_Of_DO_Types");
-         break;
-      default:
-         return("WhatTheWhat!");
-   }
-}
 
 char *SUMA_DOv_Info (SUMA_DO *dov, int N_dov, int detail)
 {
@@ -1113,7 +1028,8 @@ char *SUMA_DOv_Info (SUMA_DO *dov, int N_dov, int detail)
    SUMA_COL_TYPE ctp;
    char *s=NULL, stmp[200];
    SUMA_SurfaceObject *so_op=NULL;   
-   SUMA_VolumeObject *vo_op=NULL;   
+   SUMA_VolumeObject *vo_op=NULL; 
+   SUMA_CIFTI_DO *co=NULL;  
    SUMA_STRING *SS=NULL;
    SUMA_Boolean LocalHead = NOPE;
    SUMA_ENTRY;
@@ -1130,6 +1046,16 @@ char *SUMA_DOv_Info (SUMA_DO *dov, int N_dov, int detail)
                      "DOv ID: %d\n\tName: %s\n"
                      "\tType: %d (%s), Axis Attachment %d\n",
                      i,  SUMA_CHECK_NULL_STR(vo_op->Label), 
+                     dov[i].ObjectType, 
+                     SUMA_ObjectTypeCode2ObjectTypeName(dov[i].ObjectType), 
+                     dov[i].CoordType);
+               break;
+            case CDOM_type:
+               co = (SUMA_CIFTI_DO *)dov[i].OP;
+               SS = SUMA_StringAppend_va(SS,
+                     "DOv ID: %d\n\tName: %s\n"
+                     "\tType: %d (%s), Axis Attachment %d\n",
+                     i,  SUMA_CHECK_NULL_STR(co->Label), 
                      dov[i].ObjectType, 
                      SUMA_ObjectTypeCode2ObjectTypeName(dov[i].ObjectType), 
                      dov[i].CoordType);
@@ -1750,6 +1676,7 @@ int SUMA_whichDO(char *idcode, SUMA_DO *dov, int N_dov)
    SUMA_GraphLinkDO *gldo =NULL;
    SUMA_TractDO *tdo = NULL;
    SUMA_MaskDO *mdo=NULL;
+   SUMA_CIFTI_DO *CO=NULL;
    SUMA_Boolean LocalHead=NOPE;
    
    SUMA_ENTRY;
@@ -1828,7 +1755,13 @@ int SUMA_whichDO(char *idcode, SUMA_DO *dov, int N_dov)
                SUMA_RETURN (i);
             }
             break;
-         default:
+         case CDOM_type:
+	    CO = (SUMA_CIFTI_DO *)dov[i].OP;
+	    if (strcmp(idcode, CO->idcode_str)== 0) {
+               SUMA_RETURN (i);
+            }
+            break;
+	 default:
             SUMA_S_Warnv("Object type %d (%s) not checked.\n", 
                dov[i].ObjectType,
                SUMA_ObjectTypeCode2ObjectTypeName(dov[i].ObjectType));
@@ -2153,7 +2086,11 @@ void *SUMA_find_any_object(char *idcode_str, SUMA_DO_Types *do_type)
    if (!idcode_str) SUMA_RETURN(PP);
    if (do_type) *do_type = NOT_SET_type;
    if ((PP = SUMA_FindDset_s(idcode_str, SUMAg_CF->DsetList))) {
-      if (do_type) *do_type = SDSET_type;
+      if (do_type) {
+         if (SUMA_isGraphDset((SUMA_DSET *)PP)) *do_type = GDSET_type;
+	 if (SUMA_isMD_Dset((SUMA_DSET *)PP)) *do_type = MD_DSET_type;
+         else *do_type = ANY_DSET_type;
+      }
       SUMA_RETURN(PP);
    } else if ((PP = SUMA_findSOp_inDOv (idcode_str, SUMAg_DOv, SUMAg_N_DOv))){
       if (do_type) *do_type = SO_type;
@@ -2786,15 +2723,20 @@ SUMA_Boolean SUMA_isRelated( SUMA_ALL_DO *ado1, SUMA_ALL_DO *ado2 , int level)
          SUMA_RETURN(SUMA_isRelated_SO((SUMA_SurfaceObject *)ado1,
                                        (SUMA_SurfaceObject *)ado2,level));
          break;
-      case SDSET_type:
+      case GDSET_type:
       case GRAPH_LINK_type:
-         if (ado2->do_type != SDSET_type && ado2->do_type != GRAPH_LINK_type) 
+         if (ado2->do_type != GDSET_type && ado2->do_type != GRAPH_LINK_type) 
                                                          SUMA_RETURN(NOPE); 
          if ((p1=SUMA_ADO_Parent_idcode(ado1)) && 
              (p2=SUMA_ADO_Parent_idcode(ado2)) &&
              !strcmp(p1,p2)) {
             SUMA_RETURN(YUP);
          }
+         SUMA_RETURN(NOPE);
+         break;
+      case CDOM_type:
+         SUMA_S_Err("Fill me with love. Some day we might have 'isotopic' CIFTI "
+                    "domains. Let us leave complications alone for now");
          SUMA_RETURN(NOPE);
          break;
       case VO_type:

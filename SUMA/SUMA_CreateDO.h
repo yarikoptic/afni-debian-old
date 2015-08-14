@@ -46,7 +46,6 @@ typedef struct {
     UT_hash_handle hh;  /* keep it named 'hh' for same reasons  */
 }  SUMA_NGR_INDEX_HASH_DATUM;
 
-
 /*! Graph dataset Auxiliary structure for SUMA's use */
 typedef struct {
    DList *DisplayUpdates;
@@ -94,6 +93,20 @@ typedef struct {
    float *Range;  /* Min Max of X, Y, and Z of all points */
 } SUMA_TRACT_SAUX;
 
+/*! A CIFTI object's Auxiliary structure for SUMA's use */
+typedef struct {
+   DList *DisplayUpdates;
+   SUMA_X_SurfCont *DOCont;/*!< Displayable object controller */
+   SUMA_PICK_RESULT *PR;
+   SUMA_OVERLAYS **Overlays;
+   int N_Overlays;
+   SUMA_Boolean *isColored; /*!< is the datum receiving color? Not masked say 
+                                 by thresholds etc. */
+   
+   float *Center; /* Geometric center of all points */
+   float *Range;  /* Min Max of X, Y, and Z of all points */
+} SUMA_CIFTI_SAUX;
+
 /*! A Mask object's Auxiliary structure for SUMA's use */
 typedef struct {
    DList *DisplayUpdates;
@@ -139,6 +152,15 @@ typedef struct {
                                  by thresholds etc. */
    DList *slcl; /* Rendered slices, top slice rendered last */
    DList *vrslcl;
+   
+   char *State; /* Normally the state of a volume is ANY_ANATOMICAL,
+      	           but when it is a domain of a CIFTI object, we will
+		   change its state to reflect that fact. If we don't
+		   do that, the volume itself would get registered
+		   (and therefore displayed) in any anatomically correct state 
+		   with complete disregard for its lineage. We want to
+		   display the volume only when the CIFTI object is being
+		   displayed. */ 
    int ShowAxSlc;
    int ShowSaSlc;
    int ShowCoSlc;
@@ -156,6 +178,9 @@ typedef struct {
 #define SDSET_GOVERLAY(dset) (( (dset) && (dset)->Aux && (dset)->Aux->Saux &&   \
                                SUMA_isGraphDset(dset) ) ? \
                   ((SUMA_GRAPH_SAUX *)(dset)->Aux->Saux)->Overlay:NULL )
+#define SDSET_COVERLAY(dset) (( (dset) && (dset)->Aux && (dset)->Aux->Saux &&   \
+                               SUMA_isCIFTIDset(dset) ) ? \
+                  ((SUMA_CIFTI_SAUX *)(dset)->Aux->Saux)->Overlay:NULL )
                   
 #define SDSET_GMATSO(dset) (( (dset) && (dset)->Aux && (dset)->Aux->Saux &&   \
                                SUMA_isGraphDset(dset) ) ? \
@@ -171,6 +196,7 @@ typedef struct {
                                  tbi >= 0 && tbi < (tdo)->net->N_tbv) ? \
                                                    (tdo)->net->tbv[tbi] : NULL )
 #define TDO_TSAUX(tdo) ( (tdo) ? (SUMA_TRACT_SAUX *)(tdo)->Saux:NULL )
+#define CDO_CSAUX(cdo) ( (cdo) ? (SUMA_CIFTI_SAUX *)(cdo)->Saux:NULL )
 #define VDO_VSAUX(vo) ( (vo) ? (SUMA_VOL_SAUX *)(vo)->Saux:NULL )
 #define SDO_SSAUX(so) ( (so) ? (SUMA_SURF_SAUX *)(so)->Saux:NULL )
 #define MDO_MSAUX(mo) ( (mo) ? (SUMA_MASK_SAUX *)(mo)->Saux:NULL )
@@ -217,8 +243,10 @@ void SUMA_Free_SSaux(void *vSaux);
 void SUMA_Free_TSaux(void *vSaux);
 void SUMA_Free_MSaux(void *vSaux);
 void SUMA_Free_VSaux(void *vSaux);
+void SUMA_Free_CSaux(void *vSaux);
 void SUMA_Free_Saux_DisplayUpdates_datum(void *ddd);
 SUMA_Boolean SUMA_AddTractSaux(SUMA_TractDO *tdo);
+SUMA_Boolean SUMA_AddCIFTISaux(SUMA_CIFTI_DO *cdo);
 float SUMA_TDO_tract_length(SUMA_TractDO *tdo, int tt);
 SUMA_Boolean SUMA_AddVolSaux(SUMA_VolumeObject *vo);
 void SUMA_Free_SliceListDatum(void *data);
@@ -236,6 +264,8 @@ int SUMA_GDSET_GMATRIX_CellPixSize(SUMA_DSET *dset, SUMA_SurfaceViewer *sv,
                                    float *Sz);
 float *SUMA_GDSET_NodeList(SUMA_DSET *dset, int *N_Node, int recompute,    
                            int **ind, char *thisvariant); 
+float *SUMA_CDOM_NodeList(SUMA_CIFTI_DO *CO, int *N_Node, int recompute, 
+                           int **ind);
 NI_element * SUMA_SO_NIDO_Node_Texture (  SUMA_SurfaceObject *SO, SUMA_DO* dov, 
                                           int N_do, SUMA_SurfaceViewer *sv );
 SUMA_NEW_SO_OPT *SUMA_NewNewSOOpt(void);
@@ -308,6 +338,8 @@ SUMA_Boolean SUMA_Free_Surface_Object (SUMA_SurfaceObject *SO);
 SUMA_Boolean SUMA_FreeDrawMasks(SUMA_DRAW_MASKS * DW);
 SUMA_Boolean SUMA_EmptyDrawMasks(SUMA_DRAW_MASKS * DW);
 SUMA_VolumeObject *SUMA_FreeVolumeObject(SUMA_VolumeObject *VO);
+SUMA_CIFTI_DO *SUMA_FreeCIFTIObject(SUMA_CIFTI_DO *CO); 
+SUMA_CIFTI_DO *SUMA_CreateCIFTIObject(char *Label);
 void SUMA_Print_Surface_Object(SUMA_SurfaceObject *SO, FILE *Out);
 char *SUMA_VisX_XformType2Name(SUMA_VISX_XFORM_TYPE tt);
 char *SUMA_VisX_Info(SUMA_VIS_XFORM VisX, int N_Node, char *mumble);
@@ -418,6 +450,8 @@ char * SUMA_VE_Headname(SUMA_VolumeElement **VE, int ivo);
 SUMA_Boolean SUMA_VE_Set_Dims(SUMA_VolumeElement **VE, int ive);
 float *SUMA_TDO_Points_Center(SUMA_TractDO *tdo, float *here);
 float *SUMA_TDO_XYZ_Range(SUMA_TractDO *tdo, float *here);
+float *SUMA_SDO_XYZ_Range(SUMA_SurfaceObject *so, float *here);
+float *SUMA_CIFTI_DO_XYZ_Range(SUMA_CIFTI_DO *co, float *here);
 float *SUMA_VO_XYZ_Range(SUMA_VolumeObject *VO, float *here);
 float *SUMA_MDO_XYZ_Range(SUMA_MaskDO *MDO, float *here);
 SUMA_SphereDO * SUMA_Alloc_SphereDO (int N_n, char *Label, char *parent_idcode, 

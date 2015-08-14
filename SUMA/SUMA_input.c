@@ -3109,7 +3109,7 @@ int SUMA_Up_Key(SUMA_SurfaceViewer *sv, char *key, char *caller)
    SUMA_KEY_COMMON;
    
    SUMA_KEY_SWITCH;
-   
+
    w = sv->X->GLXAREA;
    /* do the work */
    switch (k) {
@@ -7395,8 +7395,11 @@ SUMA_PICK_RESULT *SUMA_WhatWasPicked(SUMA_SurfaceViewer *sv, GLubyte *colid,
                PR->PickXYZ[0]=fv[0]; PR->PickXYZ[1]=fv[1]; PR->PickXYZ[2]=fv[2];
             }                        
             break; }
-         case SDSET_type:
-            SUMA_S_Err("I don't expect dsets to be picked");
+         case GDSET_type:
+            SUMA_S_Err("I don't expect graph dsets to be picked directly");
+            break;
+         case CDOM_type:
+            SUMA_S_Err("CIFTI not picked on buffer");
             break;
          case VO_type:
             SUMA_S_Err("VOs not picked on buffer....");
@@ -7565,7 +7568,13 @@ SUMA_Boolean SUMA_ADO_StorePickResult(SUMA_ALL_DO *ado, SUMA_PICK_RESULT **PRP)
          Saux->PR = *PRP; *PRP = NULL;
          SUMA_RETURN(YUP);
          break; }
-      case SDSET_type: {
+      case CDOM_type: {
+         SUMA_CIFTI_SAUX *Saux = SUMA_ADO_CSaux(ado);
+         SUMA_free_PickResult(Saux->PR);
+         Saux->PR = *PRP; *PRP = NULL;
+         SUMA_RETURN(YUP);
+         break; }
+      case GDSET_type: {
          SUMA_DSET *dset=(SUMA_DSET *)ado;
          SUMA_GRAPH_SAUX *Saux = SDSET_GSAUX(dset);
          /* Is the selection type changed? If so, then
@@ -7649,7 +7658,11 @@ SUMA_PICK_RESULT * SUMA_ADO_GetPickResult(SUMA_ALL_DO *ado, char *primitive)
          SUMA_SURF_SAUX *Saux = SUMA_ADO_SSaux(ado);
          SUMA_RETURN(Saux->PR);
          break; }
-      case SDSET_type: {
+      case CDOM_type: {
+         SUMA_CIFTI_SAUX *Saux = SUMA_ADO_CSaux(ado);
+         SUMA_RETURN(Saux->PR); 
+         break; }
+      case GDSET_type: {
          SUMA_DSET *dset=(SUMA_DSET *)ado;
          SUMA_GRAPH_SAUX *Saux = SDSET_GSAUX(dset);
          SUMA_RETURN(Saux->PR);
@@ -7736,12 +7749,23 @@ char *SUMA_Pick_Colid_List_Info (DList *pick_colid_list)
                                           cod->i0, cod->i1);
          vv = SUMA_Picked_reference_object(cod, &do_type);
          switch (do_type) {
-            case SDSET_type:
+            case MD_DSET_type:
                dset = (SUMA_DSET *)vv;
                SS = SUMA_StringAppend_va(SS,
                         "     Reference object is a %s dataset labeled %s "
                         "(reference type %s)\n",
-                        SUMA_isGraphDset(dset) ? "Graph":"Surface-based",
+                        "Multi Domain",
+                        SDSET_LABEL(dset),
+                        SUMA_ObjectTypeCode2ObjectTypeName(cod->ref_do_type));
+               break;
+            case ANY_DSET_type:
+	    case GDSET_type:
+               dset = (SUMA_DSET *)vv;
+               SS = SUMA_StringAppend_va(SS,
+                        "     Reference object is a %s dataset labeled %s "
+                        "(reference type %s)\n",
+                        SUMA_isCIFTIDset(dset) ? "CIFTI" : 
+                              (SUMA_isGraphDset(dset) ? "Graph":"Surface-based"),
                         SDSET_LABEL(dset),
                         SUMA_ObjectTypeCode2ObjectTypeName(cod->ref_do_type));
                break;
@@ -7764,6 +7788,13 @@ char *SUMA_Pick_Colid_List_Info (DList *pick_colid_list)
             case TRACT_type:
                SS = SUMA_StringAppend_va(SS,
                         "     Reference object is a tract object labeled %s "
+                        "(reference type %s)\n",
+                        SUMA_ADO_Label(ado),
+                        SUMA_ObjectTypeCode2ObjectTypeName(cod->ref_do_type));
+               break;
+            case CDOM_type:
+               SS = SUMA_StringAppend_va(SS,
+                        "     Reference object is a CIFTI DO labeled %s "
                         "(reference type %s)\n",
                         SUMA_ADO_Label(ado),
                         SUMA_ObjectTypeCode2ObjectTypeName(cod->ref_do_type));
@@ -11673,8 +11704,11 @@ void SUMA_JumpIndex (char *s, void *data)
       case SO_type:
          SUMA_JumpIndex_SO (s, sv, (SUMA_SurfaceObject *)ado);
          break;
-      case SDSET_type:
+      case GDSET_type:
          SUMA_JumpIndex_GDSET (s, sv, (SUMA_DSET *)ado, variant);
+         break;
+      case CDOM_type:
+         SUMA_JumpIndex_CO (s, sv, (SUMA_CIFTI_DO *)ado);
          break;
       case GRAPH_LINK_type: {
          SUMA_GraphLinkDO *gldo=(SUMA_GraphLinkDO *)ado;
@@ -12164,6 +12198,33 @@ void SUMA_JumpIndex_TDO (char *s, SUMA_SurfaceViewer *sv,
    
    SUMA_RETURNe;
 
+}
+
+/* Jump to a certain datum on a CIFTI object */
+void SUMA_JumpIndex_CO (char *s, SUMA_SurfaceViewer *sv, 
+                        SUMA_CIFTI_DO *co)
+{
+   static char FuncName[]={"SUMA_JumpIndex_CO"};
+   DList *list=NULL;
+   SUMA_ALL_DO *ado = (SUMA_ALL_DO *)co;
+   DListElmt *el=NULL, *Location=NULL;
+   SUMA_EngineData *ED = NULL;
+   float fv3[3], fv15[15];
+   int it, iv15[15], iv3[3], nv = 0, *dims=NULL;
+   char stmp[64];
+   SUMA_DSET *dset=NULL;
+   SUMA_Boolean revert_on_err = YUP;
+   SUMA_Boolean LocalHead = NOPE; 
+
+   SUMA_ENTRY;
+   
+   SUMA_LH("Called");
+   
+   SUMA_S_Err("Not implemented, see SUMA_JumpIndex_VO and SUMA_JumpIndex_SO "
+              "for inspiration. You will need to determine the domain of "
+              "the index before jumping anyway");
+              
+   SUMA_RETURNe;
 }
 
 /* Jump to a certain point on a volume object */

@@ -2317,8 +2317,13 @@ void SUMA_display_one(SUMA_SurfaceViewer *csv, SUMA_DO *dov)
                break;
             case SO_type:
                break;
-            case SDSET_type: /* Should not be in DO list */
+            case ANY_DSET_type:
+            case MD_DSET_type:
+	    case GDSET_type: /* Should not be in DO list */
                SUMA_S_Warn("Should not have such objects as registrered DOs");
+               break;
+            case CDOM_type:
+               SUMA_S_Err("Needs implementation");
                break;
             case AO_type:
                if (csv->ShowEyeAxis){
@@ -2485,8 +2490,21 @@ void SUMA_display_one(SUMA_SurfaceViewer *csv, SUMA_DO *dov)
             case DBT_type:
                /* those types are not used */
                break;
-            case SDSET_type:
+            case ANY_DSET_type:
+            case MD_DSET_type:
+	    case GDSET_type:
                SUMA_S_Warn("Should not have type in DO list to be rendered");
+               break;
+            case CDOM_type:
+               #if 0
+	          /* A CIFTI DO is not drawn directly, not any more */
+	       if (!SUMA_Draw_CIFTI_DO (
+                     (SUMA_CIFTI_DO *)dov[sRegistDO[i].dov_ind].OP, csv)) {
+                  fprintf( SUMA_STDERR, 
+                           "Error %s: Failed in SUMA_Draw_CIFTI_DO.\n", 
+                           FuncName);
+               }
+	       #endif
                break;
             case MASK_type:
                if (!SUMA_DrawMaskDO (
@@ -6584,6 +6602,8 @@ int SUMA_OpenCloseSurfaceCont(Widget w,
    Get a listing of all surfaces in the surface controller notebook pages
    You'll have to change the returned pointer someday to allow 
    for other objects that may have a page in Notebook... 
+   
+   I think this function needs to be updated to include tracts, volumes, and CIFTI datasets.
 */
 SUMA_ALL_DO **SUMA_DOsInSurfContNotebook(Widget NB)
 {
@@ -6616,7 +6636,9 @@ SUMA_ALL_DO **SUMA_DOsInSurfContNotebook(Widget NB)
       
       for (j=0; j<SUMAg_N_DOv; ++j) {
          if (SUMAg_DOv[j].ObjectType == SO_type ||
-             SUMAg_DOv[j].ObjectType == SDSET_type) {
+             SUMAg_DOv[j].ObjectType == GDSET_type ||
+             SUMAg_DOv[j].ObjectType == TRACT_type ||
+             SUMAg_DOv[j].ObjectType == VO_type) {
             DOt = (SUMA_ALL_DO *)SUMAg_DOv[j].OP;
             SurfCont = SUMA_ADO_Cont(DOt);
             if (DOt && SurfCont) {
@@ -6647,13 +6669,22 @@ SUMA_ALL_DO **SUMA_DOsInSurfContNotebook(Widget NB)
                      }
                   }
                } else {
-                  SUMA_LHv("Surface %s has no current SO in its controller\n"
+                  SUMA_LHv("Surface %s has no current DO set in its controller\n"
                         "This should mean its controller has never been open\n",
                          SUMA_ADO_Label(DOt));
                }
             } else {
                SUMA_LHv("Surface %s has no controller open yet\n", 
                         DOt?SUMA_ADO_Label(DOt):"NULL");
+            }
+         } else {
+            switch(SUMAg_DOv[j].ObjectType) {
+               case CDOM_type:
+                  SUMA_LH("%s objects are no longer to get their own controller",
+		    SUMA_ObjectTypeCode2ObjectTypeName(SUMAg_DOv[j].ObjectType));
+                  break;
+               default:
+                  break;
             }
          }
       }
@@ -6752,7 +6783,11 @@ int SUMA_viewSurfaceCont(Widget w, SUMA_ALL_DO *ado,
       SUMA_RETURN(0);
    }
    
-   
+   if (ado->do_type == CDOM_type) {
+      SUMA_LH("I thought we decided to not have a separate "
+      	      "controller for CIFTI_DO!");
+      SUMA_RETURN(0);
+   }
    if (!sv) {
       SUMA_LHv("Got to get me an sv for %s\n", SUMA_ADO_Label(ado));
       if (!(sv = SUMA_BestViewerForADO(ado))) {
@@ -7549,7 +7584,13 @@ void SUMA_cb_createSurfaceCont(Widget w, XtPointer data, XtPointer callData)
       case SO_type:
          SUMA_cb_createSurfaceCont_SO(w, data, callData);
          break; 
-      case SDSET_type:
+      case CDOM_type:
+         SUMA_LH("No longer planning on separate controllers for CIFTI");
+	 #if 0
+	 SUMA_cb_createSurfaceCont_CO(w, (XtPointer)ado,  callData);
+         #endif
+	 break;
+      case GDSET_type:
          SUMA_S_Err("Cannot create a controller for a dataset"
                     "with no rendering variant");
          SUMA_RETURNe;
@@ -10300,6 +10341,34 @@ void SUMA_cb_createSurfaceCont_TDO(Widget w, XtPointer data,
    SUMA_RETURNe;
 }
 
+void SUMA_cb_createSurfaceCont_CO(Widget w, XtPointer data, XtPointer callData)
+{
+   static char FuncName[] = {"SUMA_cb_createSurfaceCont_CO"};
+   Widget tl, pb, form, 
+          rc_left, rc_right, rc_mamma, rc_gmamma, tls=NULL;
+   Display *dpy;
+   SUMA_ALL_DO *ado;
+   SUMA_CIFTI_DO *co;
+   char *slabel, *lbl30, *sss=NULL;
+   XmString xmstmp; 
+   SUMA_X_SurfCont *SurfCont=NULL;
+   SUMA_OVERLAYS *curColPlane=NULL, *over0=NULL;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   
+   ado = (SUMA_ALL_DO *)data;
+   if (ado->do_type != CDOM_type) {
+      SUMA_S_Errv("Calling me with (%s) other than VO_type type,\n" 
+                  "I don't like that, call me with VO",
+                  SUMA_ObjectTypeCode2ObjectTypeName(ado->do_type));
+      SUMA_RETURNe;
+   }
+   
+   SUMA_S_Err("CIFTI objects do not have their own controller");
+   
+   SUMA_RETURNe;  
+}
 
 void SUMA_cb_createSurfaceCont_VO(Widget w, XtPointer data, XtPointer callData)
 {
@@ -11331,7 +11400,10 @@ SUMA_Boolean SUMA_Init_SurfCont_SurfParam(SUMA_ALL_DO *ado)
       case SO_type:
          SUMA_RETURN(SUMA_Init_SurfCont_SurfParam_SO((SUMA_SurfaceObject *)ado));
          break;
-      case SDSET_type:
+      case CDOM_type:
+         SUMA_RETURN(SUMA_Init_SurfCont_SurfParam_CO(ado));
+         break;
+      case GDSET_type:
          SUMA_S_Err("Should not send me DOs that can't be displayed \n"
                     "without variant info");
          SUMA_RETURN(NOPE);
@@ -11675,6 +11747,12 @@ SUMA_Boolean SUMA_Init_SurfCont_SurfParam_VO(SUMA_ALL_DO *ado)
    return(SUMA_Init_SurfCont_SurfParam_ADO(ado));
 }
 
+SUMA_Boolean SUMA_Init_SurfCont_SurfParam_CO(SUMA_ALL_DO *ado)
+{
+   static char FuncName[]={"SUMA_Init_SurfCont_SurfParam_CO"};
+   return(SUMA_Init_SurfCont_SurfParam_ADO(ado));
+}
+
 SUMA_Boolean SUMA_Init_SurfCont_SurfParam_MDO(SUMA_ALL_DO *ado)
 {
    static char FuncName[]={"SUMA_Init_SurfCont_SurfParam_MDO"};
@@ -11924,7 +12002,7 @@ SUMA_Boolean SUMA_InitializeDrawROIWindow (SUMA_DRAWN_ROI *DrawnROI)
 /*!
    \brief Initializes the widgets in the color plane shell window based on the SUMA_OVERLAYS structue
 */
-SUMA_Boolean SUMA_InitializeColPlaneShell (
+SUMA_Boolean SUMA_InitializeColPlaneShell(
                   SUMA_ALL_DO *ado, 
                   SUMA_OVERLAYS *colPlane)
 {
@@ -11948,10 +12026,13 @@ SUMA_Boolean SUMA_InitializeColPlaneShell (
          SUMA_RETURN(SUMA_InitializeColPlaneShell_SO(
                               (SUMA_SurfaceObject *)ado, colPlane));
          break;
-      case SDSET_type:
+      case GDSET_type:
          SUMA_S_Err("No init for a DO that cannot be dispalyed\n"
                     "without variant");
          SUMA_RETURN(NOPE);
+         break;
+      case CDOM_type:
+         SUMA_RETURN(SUMA_InitializeColPlaneShell_CO(ado, colPlane));
          break;
       case GRAPH_LINK_type: {
          SUMA_GraphLinkDO *gldo=(SUMA_GraphLinkDO *)ado;
@@ -12028,8 +12109,9 @@ SUMA_Boolean SUMA_InitializeColPlaneShell_SO (
          }
       }
       if (!SOpar) {
-         SUMA_SL_Warn(  "No parent for dset found.\n"
-                        "Proceeding with next best option.");
+         SUMA_SL_Warn(  "No domain parent for dset %s found.\n"
+                        "Proceeding with next best option.", 
+			SDSET_LABEL(ColPlane->dset_link));
          SOpar = SO;
       }
       
@@ -12405,6 +12487,41 @@ SUMA_Boolean SUMA_InitializeColPlaneShell_TDO (
 }
 
 /*!
+   This function mirrors SUMA_InitializeColPlaneShell_SO or _VO
+   but it is for CIFTI objects  
+*/
+SUMA_Boolean SUMA_InitializeColPlaneShell_CO (
+                  SUMA_ALL_DO *ado, 
+                  SUMA_OVERLAYS *ColPlane)
+{
+   static char FuncName[] = {"SUMA_InitializeColPlaneShell_CO"};
+   char sbuf[SUMA_MAX_LABEL_LENGTH];
+   double range[2];
+   int loc[2], i;
+   SUMA_OVERLAYS *curColPlane=NULL;
+   SUMA_X_SurfCont *SurfCont=NULL;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   
+   SUMA_LH("Called with ColPlane %p", ColPlane);
+   
+   SurfCont = SUMA_ADO_Cont(ado);
+   curColPlane = SUMA_ADO_CurColPlane(ado);
+   
+   if (!ado || !SurfCont) {
+      SUMA_S_Err("NULL input, what gives?");
+      SUMA_RETURN(NOPE);
+   }
+
+   SUMA_S_Err("Place Holder, nothing yet. See comparable functions for "
+              "_VO and _SO");
+              
+   SUMA_RETURN(NOPE);
+}
+
+
+/*!
    This function mirrors SUMA_InitializeColPlaneShell_SO
    but it is for volume objects  
 */
@@ -12681,9 +12798,10 @@ SUMA_Boolean SUMA_UpdateColPlaneShellAsNeeded(SUMA_ALL_DO *ado)
             }
          }
          break;
-      case SDSET_type:
+      case GDSET_type:
          SUMA_S_Warn("This should not happen in this modern day and age");
          break;
+      case CDOM_type:
       case VO_type:
       case TRACT_type:
       case MASK_type:
@@ -15269,7 +15387,8 @@ SUMA_Boolean SUMA_Remixedisplay (SUMA_ALL_DO *ADO)
       case VO_type:
       case MASK_type:
       case TRACT_type:
-      case SDSET_type:
+      case CDOM_type:
+      case GDSET_type:
          idcode = SUMA_ADO_idcode(ADO);
          break;
       case GRAPH_LINK_type: {

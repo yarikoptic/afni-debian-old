@@ -201,6 +201,7 @@ SUMA_Boolean SUMA_ADO_isLabel(SUMA_ALL_DO *ado, char *lbl);
 char *SUMA_ADO_sLabel(SUMA_ALL_DO *ado);
 char * SUMA_ADO_idcode(SUMA_ALL_DO *ado);
 char * SUMA_ADO_Parent_idcode(SUMA_ALL_DO *ado);
+SUMA_CIFTI_SAUX *SUMA_ADO_CSaux(SUMA_ALL_DO *ado);
 SUMA_GRAPH_SAUX *SUMA_ADO_GSaux(SUMA_ALL_DO *ado);
 SUMA_TRACT_SAUX *SUMA_ADO_TSaux(SUMA_ALL_DO *ado);
 SUMA_MASK_SAUX *SUMA_ADO_MSaux(SUMA_ALL_DO *ado);
@@ -423,6 +424,7 @@ void SUMA_CreateXhairWidgets(Widget parent, SUMA_ALL_DO *ado);
 void SUMA_CreateXhairWidgets_SO(Widget parent, SUMA_ALL_DO *ado);
 void SUMA_CreateXhairWidgets_GLDO(Widget parent, SUMA_ALL_DO *ado);
 void SUMA_CreateXhairWidgets_TDO(Widget parent, SUMA_ALL_DO *ado);
+void SUMA_CreateXhairWidgets_CO(Widget parent, SUMA_ALL_DO *ado);
 void SUMA_CreateXhairWidgets_VO(Widget parent, SUMA_ALL_DO *ado);
 void SUMA_CreateXhairWidgets_MDO(Widget parent, SUMA_ALL_DO *ado);
 SUMA_Boolean SUMA_UpdateXhairField(SUMA_SurfaceViewer *sv);
@@ -463,6 +465,8 @@ void SUMA_set_cmap_options_GLDO(SUMA_ALL_DO *ado, SUMA_Boolean NewDset,
                                 SUMA_Boolean NewMap);
 void SUMA_set_cmap_options_VO(SUMA_ALL_DO *ado, SUMA_Boolean NewDset,
                                 SUMA_Boolean NewMap);
+void SUMA_set_cmap_options_CO(SUMA_ALL_DO *ado, SUMA_Boolean NewDset,
+                           SUMA_Boolean NewMap);
 void SUMA_cb_Cmap_Load(Widget w, XtPointer data, XtPointer client_data);
 SUMA_COLOR_MAP *SUMA_LoadCmapFile_eng(char *filename);
 void SUMA_LoadCmapFile (char *filename, void *data);

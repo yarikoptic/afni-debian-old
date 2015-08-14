@@ -830,7 +830,7 @@ SUMA_SurfaceObject * SUMA_Load_Surface_Object_eng (
    SUMA_SureFit_struct *SF;
    SUMA_FreeSurfer_struct *FS;
    SUMA_SO_File_Type gSO_FT;
-   char *tname=NULL;
+   char *tname=NULL, *psv=NULL, *pname=NULL;
    int i1=0, par=0;
    SUMA_SurfaceObject *SO;
    
@@ -845,18 +845,29 @@ SUMA_SurfaceObject * SUMA_Load_Surface_Object_eng (
       tname = ((SUMA_SFname*)SO_FileName_vp)->name_coord;   
    } else {
       tname = (char *)SO_FileName_vp;
+      /* A little ugly, but check if this is a template name */
+      i1 = SUMA_is_predefined_SO_name(tname, &par, NULL, &psv, &pname);
+      if (i1 ==  4 ) {
+         tname = pname;
+         VolParName = psv;
+      } else {
+         SUMA_ifree(pname); SUMA_ifree(psv);
+      }
    }
    if (tname) {
       gSO_FT = SUMA_GuessSurfFormatFromExtension(tname, NULL);
       if (SO_FT <= SUMA_FT_NOT_SPECIFIED && gSO_FT > SO_FT) {
          SUMA_S_Notev( "Surface type not specified.\n"
                        "Format appears to be %s\n"
-                       "based of filename extension.\n",
+                       "based on filename extension.\n",
                        SUMA_SurfaceTypeString(gSO_FT));
          SO_FT = gSO_FT;
       }
+      if (i1 == 4) { /* Have template surface, adopt format */
+         SO_FT = gSO_FT; 
+      }
       if (  gSO_FT > SUMA_FT_NOT_SPECIFIED && 
-            gSO_FT != SO_FT ) {
+            gSO_FT != SO_FT && !pname) {
          SUMA_S_Warnv("Warning Warning MSB!!!\n"
                       "Surface file name's (%s) extension indcates a\n"
                       "surface of type %s and conflicts with specified\n"
@@ -899,6 +910,7 @@ SUMA_SurfaceObject * SUMA_Load_Surface_Object_eng (
          break;
       default:
          SUMA_error_message(FuncName, "SO_FileType not supported", 0);
+         SUMA_ifree(pname); SUMA_ifree(psv);
          SUMA_RETURN (NULL);
          break;
    } /* SO_FT*/
@@ -909,25 +921,29 @@ SUMA_SurfaceObject * SUMA_Load_Surface_Object_eng (
       case SUMA_CMAP_SO:
          /* nothing to do here */
          SUMA_SL_Err("Don't know how to read those from disk:");
+         SUMA_ifree(pname); SUMA_ifree(psv);
          SUMA_RETURN(NULL);
       
       case SUMA_FT_NOT_SPECIFIED:
          fprintf (SUMA_STDERR,"Error %s: No File Type specified.\n", FuncName);
+         SUMA_ifree(pname); SUMA_ifree(psv);
          SUMA_RETURN(NULL);
       
       case SUMA_N_SO_FILE_TYPE:
          fprintf (SUMA_STDERR,
                   "Error %s: This should not happen (SUMA_N_SO_FILE_TYPE)\n", 
                   FuncName);
+         SUMA_ifree(pname); SUMA_ifree(psv);
          SUMA_RETURN(NULL);
       
       case SUMA_STL:
-         if (!SUMA_STL_Read ((char *)SO_FileName_vp, SO)) {
+         if (!SUMA_STL_Read (tname, SO)) {
             fprintf (SUMA_STDERR,
                      "Error %s: Failed in SUMA_STL_Read.\n", FuncName);
+            SUMA_ifree(pname); SUMA_ifree(psv);
             SUMA_RETURN(NULL);
          }
-         SUMA_NEW_ID(SO->idcode_str,(char *)SO_FileName_vp); 
+         SUMA_NEW_ID(SO->idcode_str,tname); 
          
          /* change coordinates to align them with volparent data set, 
             if possible */
@@ -951,12 +967,13 @@ SUMA_SurfaceObject * SUMA_Load_Surface_Object_eng (
          SO->normdir = 0;  /* not set */
          break;
       case SUMA_PLY:
-         if (!SUMA_Ply_Read ((char *)SO_FileName_vp, SO)) {
+         if (!SUMA_Ply_Read (tname, SO)) {
             fprintf (SUMA_STDERR,
                      "Error %s: Failed in SUMA_Ply_Read.\n", FuncName);
+            SUMA_ifree(pname); SUMA_ifree(psv);
             SUMA_RETURN(NULL);
          }
-         SUMA_NEW_ID(SO->idcode_str,(char *)SO_FileName_vp); 
+         SUMA_NEW_ID(SO->idcode_str,tname); 
          
          /* change coordinates to align them with volparent data set, 
             if possible */
@@ -980,12 +997,13 @@ SUMA_SurfaceObject * SUMA_Load_Surface_Object_eng (
          SO->normdir = 0;  /* not set */
          break;
       case SUMA_MNI_OBJ:
-         if (!SUMA_MNI_OBJ_Read ((char *)SO_FileName_vp, SO)) {
+         if (!SUMA_MNI_OBJ_Read (tname, SO)) {
             fprintf (SUMA_STDERR,
                      "Error %s: Failed in SUMA_MNI_OBJ_Read.\n", FuncName);
+            SUMA_ifree(pname); SUMA_ifree(psv);
             SUMA_RETURN(NULL);
          }
-         SUMA_NEW_ID(SO->idcode_str,(char *)SO_FileName_vp); 
+         SUMA_NEW_ID(SO->idcode_str,tname); 
          
          /* change coordinates to align them with 
             volparent data set, if possible */
@@ -1010,12 +1028,13 @@ SUMA_SurfaceObject * SUMA_Load_Surface_Object_eng (
          SO->normdir = 0;  /* not set */
          break;
       case SUMA_OPENDX_MESH:
-         if (!SUMA_OpenDX_Read_SO ((char *)SO_FileName_vp, SO)) {
+         if (!SUMA_OpenDX_Read_SO (tname, SO)) {
             fprintf (SUMA_STDERR,
                      "Error %s: Failed in SUMA_OpenDX_Read_SO.\n", FuncName);
+            SUMA_ifree(pname); SUMA_ifree(psv);
             SUMA_RETURN(NULL);
          }
-         SUMA_NEW_ID(SO->idcode_str,(char *)SO_FileName_vp); 
+         SUMA_NEW_ID(SO->idcode_str,tname); 
          
          /* change coordinates to align them with volparent data set, 
             if possible */
@@ -1041,8 +1060,9 @@ SUMA_SurfaceObject * SUMA_Load_Surface_Object_eng (
          break;
      case SUMA_OBJ_MESH:
          { 
-            if (!(SUMA_OBJ_Read_SO((char *)SO_FileName_vp, SO, NULL))) {
-               SUMA_S_Err("Failed to read %s", (char *)SO_FileName_vp);
+            if (!(SUMA_OBJ_Read_SO(tname, SO, NULL))) {
+               SUMA_S_Err("Failed to read %s", tname);
+               SUMA_ifree(pname); SUMA_ifree(psv);
                SUMA_RETURN(NULL);
             }
             /* Don't change ID here, that is done inside SUMA_OBJ_Read_SO */     
@@ -1070,7 +1090,7 @@ SUMA_SurfaceObject * SUMA_Load_Surface_Object_eng (
          }
          break;
      case SUMA_PREDEFINED:
-         i1 = SUMA_is_predefined_SO_name((char *)SO_FileName_vp, &par, 
+         i1 = SUMA_is_predefined_SO_name(tname, &par, 
                                          NULL, NULL, NULL);
          switch(i1) {
             case 1:
@@ -1083,11 +1103,12 @@ SUMA_SurfaceObject * SUMA_Load_Surface_Object_eng (
                break;
             default:
                SUMA_S_Errv("Not ready for typ %d on %s\n",
-                           i1, (char *)SO_FileName_vp);
+                           i1, tname);
+               SUMA_ifree(pname); SUMA_ifree(psv);
                SUMA_RETURN(NULL);         
                break;
          }
-         SO->Name = SUMA_StripPath((char *)SO_FileName_vp);
+         SO->Name = SUMA_StripPath(tname);
          SO->FileType = SUMA_PREDEFINED;
          /* change coordinates to align them with volparent data set, 
             if possible */
@@ -1113,7 +1134,7 @@ SUMA_SurfaceObject * SUMA_Load_Surface_Object_eng (
          break;
          
      case SUMA_BRAIN_VOYAGER:
-         if (0 && SUMA_GuessSurfFormatFromExtension((char *)SO_FileName_vp,     
+         if (0 && SUMA_GuessSurfFormatFromExtension(tname,     
                                                          NULL)==SUMA_GIFTI) {
             /* Allowing for cases where BrainVoyager.gii surfaces are in the same
             coordinate system as their native format and so will require
@@ -1128,21 +1149,23 @@ SUMA_SurfaceObject * SUMA_Load_Surface_Object_eng (
             SUMA_S_Warn("This should not be used regularly.\n"
                         "Surfaces will not display in the proper place\n"
                         "in SUMA.\n");
-            if (!SUMA_GIFTI_Read ((char *)SO_FileName_vp, SO, 1)) {
+            if (!SUMA_GIFTI_Read (tname, SO, 1)) {
                fprintf (SUMA_STDERR,
                      "Error %s: Failed in SUMA_GIFTI_Read.\n", FuncName);
+               SUMA_ifree(pname); SUMA_ifree(psv);
                SUMA_RETURN(NULL);
             }
             SO->FileType = SUMA_BRAIN_VOYAGER;
          } else {
-            if (!SUMA_BrainVoyager_Read ((char *)SO_FileName_vp, SO, 1, 1)) {
+            if (!SUMA_BrainVoyager_Read (tname, SO, 1, 1)) {
                fprintf (SUMA_STDERR,
                         "Error %s: Failed in SUMA_BrainVoyager_Read.\n", 
                         FuncName);
+               SUMA_ifree(pname); SUMA_ifree(psv);
                SUMA_RETURN(NULL);
             }
          }
-         SUMA_NEW_ID(SO->idcode_str,(char *)SO_FileName_vp); 
+         SUMA_NEW_ID(SO->idcode_str,tname); 
          
          /* change coordinates to align them with volparent data set, 
             if possible */
@@ -1169,12 +1192,13 @@ SUMA_SurfaceObject * SUMA_Load_Surface_Object_eng (
          break;
       
       case SUMA_BYU:
-         if (!SUMA_BYU_Read ((char *)SO_FileName_vp, SO, 1, 1)) {
+         if (!SUMA_BYU_Read (tname, SO, 1, 1)) {
             fprintf (SUMA_STDERR,
                      "Error %s: Failed in SUMA_BYU_Read.\n", FuncName);
+            SUMA_ifree(pname); SUMA_ifree(psv);
             SUMA_RETURN(NULL);
          }
-         SUMA_NEW_ID(SO->idcode_str,(char *)SO_FileName_vp); 
+         SUMA_NEW_ID(SO->idcode_str,tname); 
          
          /* change coordinates to align them with volparent data set, 
             if possible */
@@ -1201,12 +1225,13 @@ SUMA_SurfaceObject * SUMA_Load_Surface_Object_eng (
          break;
       
       case SUMA_GIFTI:
-         if (!SUMA_GIFTI_Read ((char *)SO_FileName_vp, SO, 1)) {
+         if (!SUMA_GIFTI_Read (tname, SO, 1)) {
             fprintf (SUMA_STDERR,
                      "Error %s: Failed in SUMA_GIFTI_Read.\n", FuncName);
+            SUMA_ifree(pname); SUMA_ifree(psv);
             SUMA_RETURN(NULL);
          }
-         SUMA_NEW_ID(SO->idcode_str,(char *)SO_FileName_vp); 
+         SUMA_NEW_ID(SO->idcode_str,tname); 
          
          /* change coordinates to align them with volparent data set, 
             if possible */
@@ -1233,7 +1258,7 @@ SUMA_SurfaceObject * SUMA_Load_Surface_Object_eng (
          break;
                
       case SUMA_INVENTOR_GENERIC:
-         SO_FileName = (char *)SO_FileName_vp;
+         SO_FileName = tname;
          /* You need to split name into path and name ... */
 	      if ( debug )
             fprintf(stdout,"%s\n", SO_FileName);
@@ -1250,12 +1275,14 @@ SUMA_SurfaceObject * SUMA_Load_Surface_Object_eng (
          SO->NodeList = SUMA_IV_XYZextract (SO_FileName, &(SO->N_Node), 0);
          if (SO->NodeList == NULL) {
             SUMA_error_message(FuncName,"SUMA_IV_XYZextract failed!",0);
+            SUMA_ifree(pname); SUMA_ifree(psv);
             SUMA_RETURN(NULL);
          }
          SO->FaceSetList = SUMA_IV_FaceSetsextract (SO_FileName, 
                                                    &(SO->N_FaceSet));
          if (SO->FaceSetList == NULL) {
             SUMA_error_message(FuncName,"SUMA_IV_FaceSetsextract failed!",0);
+            SUMA_ifree(pname); SUMA_ifree(psv);
             SUMA_RETURN(NULL);
          }
          SO->FaceSetDim = 3; /*This must also be automated */
@@ -1272,6 +1299,7 @@ SUMA_SurfaceObject * SUMA_Load_Surface_Object_eng (
          if (FS == NULL) {
             fprintf( SUMA_STDERR,
                      "Error %s: Failed to allocate for FS\n", FuncName);
+            SUMA_ifree(pname); SUMA_ifree(psv);
             SUMA_RETURN (NULL);
          }
          /* add a couple of lines to appease the optimation gods...         */
@@ -1288,6 +1316,7 @@ SUMA_SurfaceObject * SUMA_Load_Surface_Object_eng (
                fprintf( SUMA_STDERR,
                         "Error %s: Failed in SUMA_FreeSurfer_Read.\n",
                         FuncName);
+               SUMA_ifree(pname); SUMA_ifree(psv);
                SUMA_RETURN (NULL);
             }
          } else if (SO->FileFormat == SUMA_BINARY_BE) {
@@ -1295,10 +1324,12 @@ SUMA_SurfaceObject * SUMA_Load_Surface_Object_eng (
                fprintf( SUMA_STDERR,
                         "Error %s: Failed in SUMA_FreeSurfer_Read.\n", 
                         FuncName);
+               SUMA_ifree(pname); SUMA_ifree(psv);
                SUMA_RETURN (NULL);
             }
          } else {
             SUMA_SL_Err("Format not supported.");
+            SUMA_ifree(pname); SUMA_ifree(psv);
             SUMA_RETURN (NULL);
          }
 	 if ( debug > 1)
@@ -1339,11 +1370,12 @@ SUMA_SurfaceObject * SUMA_Load_Surface_Object_eng (
          if (!SUMA_Free_FreeSurfer (FS)) {
             fprintf( SUMA_STDERR,
                      "Error %s: Failed in SUMA_Free_FreeSurfer.\n", FuncName);
+            SUMA_ifree(pname); SUMA_ifree(psv);
             SUMA_RETURN (NULL);
          }
          
          /* create the IDcode */
-         SUMA_NEW_ID(SO->idcode_str, (char *)SO_FileName_vp);
+         SUMA_NEW_ID(SO->idcode_str, tname);
          if (LocalHead) 
             fprintf (SUMA_STDERR, 
                      "%s: Assigned idcode_str:%s:.\n", FuncName, SO->idcode_str);
@@ -1364,11 +1396,13 @@ SUMA_SurfaceObject * SUMA_Load_Surface_Object_eng (
          if (!SUMA_filexists(SF_FileName->name_coord)) {
             fprintf(SUMA_STDERR,"Error %s: Could not find %s\n", 
                      FuncName, SF_FileName->name_coord);
+            SUMA_ifree(pname); SUMA_ifree(psv);
             SUMA_RETURN (NULL);
          }
          if (!SUMA_filexists(SF_FileName->name_topo)) {
             fprintf(SUMA_STDERR,"Error %s: Could not find %s\n", 
                      FuncName, SF_FileName->name_topo);
+            SUMA_ifree(pname); SUMA_ifree(psv);
             SUMA_RETURN (NULL);
          }
          
@@ -1376,6 +1410,7 @@ SUMA_SurfaceObject * SUMA_Load_Surface_Object_eng (
             SUMA_SLP_Err("Failed to read 1D file");
             if (SO->NodeList) SUMA_free(SO->NodeList);
             if (SO->FaceSetList) SUMA_free(SO->FaceSetList);
+            SUMA_ifree(pname); SUMA_ifree(psv);
             SUMA_RETURN (NULL);
          }
                   
@@ -1416,6 +1451,7 @@ SUMA_SurfaceObject * SUMA_Load_Surface_Object_eng (
          if (SF == NULL) {
             fprintf( SUMA_STDERR,
                      "Error %s: Failed to allocate for SF\n", FuncName);
+            SUMA_ifree(pname); SUMA_ifree(psv);
             SUMA_RETURN (NULL);
          }
          SF->NodeList= NULL;
@@ -1440,6 +1476,7 @@ SUMA_SurfaceObject * SUMA_Load_Surface_Object_eng (
                                        SF)) {
             fprintf( SUMA_STDERR,
                      "Error %s: Failed in SUMA_SureFit_Read_Coord.\n", FuncName);
+            SUMA_ifree(pname); SUMA_ifree(psv);
             SUMA_RETURN (NULL);
          }
          /* copy the pertinent data to SO */
@@ -1454,6 +1491,7 @@ SUMA_SurfaceObject * SUMA_Load_Surface_Object_eng (
          if (!SUMA_SureFit_Read_Topo (SF_FileName->name_topo, SF)) {
             fprintf( SUMA_STDERR,
                      "Error %s: Failed in SUMA_SureFit_Read_Topo.\n", FuncName);
+            SUMA_ifree(pname); SUMA_ifree(psv);
             SUMA_RETURN (NULL);
          }
          
@@ -1514,6 +1552,7 @@ SUMA_SurfaceObject * SUMA_Load_Surface_Object_eng (
          if (!SUMA_Free_SureFit (SF)) {
             fprintf( SUMA_STDERR,
                      "Error %s: Failed in SUMA_Free_SureFit.\n", FuncName);
+            SUMA_ifree(pname); SUMA_ifree(psv);
             SUMA_RETURN (NULL);
          }
          
@@ -1524,6 +1563,7 @@ SUMA_SurfaceObject * SUMA_Load_Surface_Object_eng (
    if (SO->N_Node <=0 || SO->N_FaceSet<=0) {
       SUMA_SL_Crit("0 nodes or 0 facesets.\nProceed I will not.\n");
       SUMA_Free_Surface_Object (SO);
+      SUMA_ifree(pname); SUMA_ifree(psv);
       SUMA_RETURN (NULL);
    }
 
@@ -1544,10 +1584,12 @@ SUMA_SurfaceObject * SUMA_Load_Surface_Object_eng (
 
    if (!SUMA_PrepSO_GeomProp_GL (SO)) {
       SUMA_SL_Err("Failed to set surface's properties");
+      SUMA_ifree(pname); SUMA_ifree(psv);
       SUMA_RETURN (NULL);
    }
    
       
+   SUMA_ifree(pname); SUMA_ifree(psv);
    SUMA_RETURN (SO);
    
 }/*SUMA_Load_Surface_Object_eng*/
@@ -4271,15 +4313,19 @@ SUMA_Boolean SUMA_LoadSpec_eng (
             SUMA_LoadMaskDO (Spec->DO_name[i], NULL );
             break; }
          case VO_type: {
-            SUMA_LoadVolDO (Spec->DO_name[i], GL_REPLACE, NULL); 
+            SUMA_LoadVolDO (Spec->DO_name[i], SUMA_WORLD, NULL,1); 
             break; }
-         case SDSET_type:
+         case GDSET_type:
             SUMA_LHv("Loading graph dset %s\n",Spec->DO_name[i]);
             /* Expecting it to be a graph dset */
             if (!(SUMA_LoadDsetOntoSO_eng(Spec->DO_name[i], 
                                           NULL, 1, 1, 1, NULL))) {
                SUMA_S_Errv("Failed to load %s\n", Spec->DO_name[i]);
             }
+            break;
+         case CDOM_type:
+            SUMA_LoadCIFTIDO (Spec->DO_name[i], 
+                              SUMA_WORLD, NULL, 1, 1, 1, 1, NULL);
             break;
          default:
             SUMA_S_Errv("Bad or unexpected type %s for %s\n",
@@ -6339,5 +6385,642 @@ SUMA_SurfSpecFile *SUMA_IO_args_2_spec(SUMA_GENERIC_ARGV_PARSE *ps, int *nspec)
                "%s: About to return, have %d spec files.\n", FuncName, *nspec);
    }
    SUMA_RETURN(spec);
+}
+
+/* 
+Current state of loading CIFTI
+
+Load dset, 
+Prep domains
+Breakup dset into parts and load them individually onto their respective domains
+need some sort of unifying 'yoking' marker for dsets, domains, and overlays so that when user touches them it is known that user is dealing with CIFTI object
+
+Yoking can be done much like how left/right yoking in suma is handled, except there should be no guess work involved.
+
+Note that 'what' the user clicked on involve knowing the domain overwhich they clicked in conjunction with the data displayed on that domain. -- do we need this distinction?
+*/
+SUMA_Boolean SUMA_LoadCIFTIDO (char *fname, 
+                        SUMA_DO_CoordUnits coord_type, SUMA_DSET **odset, 
+                        int OkAdopt, int SetupOverlay, int LaunchDisplay, 
+                        int MakeOverlayCurrent, SUMA_OVERLAYS **used_over)
+{
+   static char FuncName[]={"SUMA_LoadCIFTIDO"};
+   SUMA_CIFTI_SAUX *CSaux=NULL;
+   SUMA_DSET *cdset=NULL, *sddset=NULL;
+   SUMA_CIFTI_DO *CO = NULL;
+   SUMA_ALL_DO *asdo = NULL;
+   SUMA_DSET_FORMAT tff = SUMA_NIML;
+   DList *list=NULL;
+   SUMA_LIST_WIDGET *LW=NULL;
+   SUMA_DSET *dsetpre = NULL;
+   SUMA_OVERLAYS *NewColPlane = NULL,  *colplanepre = NULL;
+   int OverInd=-1, OKdup=-1, loc[2], pre_exist=0, isd=0;
+   char *dsetcmap=NULL;
+   SUMA_X_SurfCont *SurfCont=NULL;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+
+   if (!fname) SUMA_RETURN(NOPE);
+   if (coord_type != SUMA_NORM_SCREEN_UNIT &&
+       coord_type != SUMA_WORLD) coord_type = SUMA_WORLD;
+       
+   if (!(cdset = SUMA_LoadDset_eng( fname, &tff, 1 ))) {
+      SUMA_S_Errv("Failed to open %s\n", fname);
+      SUMA_free(fname); fname = NULL;
+      SUMA_RETURN(NOPE);
+   }     
+
+   if (!SUMA_isCIFTIDsetNgr(cdset->ngr)) {
+      SUMA_S_Err("All is bad that starts bad, or is it?\nNot a CIFTIcle.");
+      SUMA_RETURN(NOPE);
+   }
+      
+   /* Swaps ?*/
+   if (odset) {
+      if (*odset == NULL) {
+         *odset = cdset;
+      } else {
+         /* Replace any existing parts of *odset, with those from cdset */
+         if (!SUMA_FreeDsetContent(*odset)) {
+            SUMA_S_Err("Failed to free dset content");
+            SUMA_RETURN(NOPE);
+         }
+         (*odset)->ngr = cdset->ngr; cdset->ngr = NULL;
+         SUMA_FreeDset(cdset);
+         cdset = *odset; 
+      }
+   } 
+
+   /* Does this dset have a built in colormap?
+      If it does, then loadit into SCM */
+   if (!SUMA_Insert_Cmap_of_Dset(cdset)) {
+      SUMA_S_Err("Failed to insert Cmap");
+      SUMA_FreeDset(cdset); cdset = NULL;
+      
+      SUMA_RETURN(NOPE);
+   }
+
+
+   /* Get domains info from Ngr and create elementary dsets*/
+   if (!(SUMA_CIFTI_DomainsFromNgr( cdset, SUMAg_CF->DsetList,
+      	             	      	    SUMAg_CF->Allow_Dset_Replace, NULL))) {
+      SUMA_S_Err("Failed to get domains from Ngr");
+      SUMA_FreeDset(cdset);
+      SUMA_RETURN(NOPE);
+   }
+   
+   /* Can we pile onto an existing domain? (think multiple
+      datasets over the same surface)                     */
+   
+   CO = NULL;
+   if (OkAdopt && (CO = SUMA_CIFTI_find_matching_domain(cdset, NULL, -1))) {
+      SUMA_LH("Adopting CO");
+   } else {
+      SUMA_LH("Create CO from cdset");
+      if (!(CO=SUMA_CIFTI_DO_from_dset(cdset))) {
+         SUMA_S_Err("Failed to create DO from dset");
+         SUMA_FreeDset(cdset);
+         SUMA_RETURN(NOPE);
+      }
+   }
+
+   SUMA_LH("Do we really need a separate controller for CIFTI?"
+      	   "Leave it for now, kill CSaux later if we stick with"
+	   "current setup...");
+   if (!(CSaux = CDO_CSAUX(CO))) {
+      SUMA_S_Warn("That is weird, should this happen?");
+      if (!SUMA_AddCIFTISaux(CO)) {
+         SUMA_S_Err("Failed to create Saux struct");
+         SUMA_RETURN(NOPE);   
+      }   
+      CSaux = CDO_CSAUX(CO);
+   }
+   
+   /* add the dset to the list SUMAg_CF->DsetList, the elementary datasets were
+      added inside SUMA_CIFTI_DomainsFromNgr */
+   dsetpre = cdset;
+   if (LocalHead) {
+      fprintf( SUMA_STDERR,
+               "%s: New dset (%s) has pointer %p\n", 
+               FuncName, SDSET_LABEL(cdset), cdset); 
+   }
+   if (!SUMA_InsertDsetPointer(  &cdset, SUMAg_CF->DsetList, 
+                                 SUMAg_CF->Allow_Dset_Replace)) {
+      SUMA_SLP_Err("Failed to add new dset to list");
+      /* is there not a function to replace a dset yet? */
+      SUMA_FreeDset(cdset); cdset = NULL;
+      SUMA_RETURN(NOPE);
+   }
+   if (LocalHead) {
+      fprintf( SUMA_STDERR,
+               "%s: Now dset (%s) is  pointer %p\n", 
+               FuncName, SDSET_LABEL(cdset), cdset); 
+   }
+   
+   /* 
+   Note that there is currently no solid way
+   of attaching a dataset to a displayable object.
+   That has not been needed so far. There is a meek 
+   attempt to do something with SUMA_SetParent_DsetToLoad()
+   but only for surface-based datasets, and ONLY for generating
+   an ID that is based on a combo of filename and parent surface.
+   
+   Should we need to find the DO that defines the domain of 
+   a particular CIFTI dataset, we might need to write a function
+   to search which CDOM_type object contains an overlay for the 
+   dataset in question.
+   */
+   
+   /* There is no one overlay a CIFTI dataset (or should there be a shell 
+   overlay at some point that mereley points to each of the subdomains?
+   I don't know if that is needed yet. For now I will create a separate
+   overlay for each of the elementary datasets */
+   if (SetupOverlay) {
+      if (cdset != dsetpre) { /* dset was pre-existing in the list */
+      	 pre_exist = 1;
+      } else pre_exist = 0;
+   
+      
+      SUMA_LH("Setting up overlay for %d CIFTI elmentary datasets",
+      	       cdset->Aux->N_doms);
+      
+      for (isd=0; isd<cdset->Aux->N_doms; ++isd) {
+      	 OverInd = -1; 
+      	 {
+         asdo = SUMA_CIFTI_subdom_ado(CO, isd);
+	 if (!(sddset = DSET_FIND(cdset->Aux->doms[isd]->edset_id))) {
+	    SUMA_S_Err("Should have found that dset (id %s), "
+	               "returning with potential leaks!", 
+		       cdset->Aux->doms[isd]->edset_id);
+	    SUMA_RETURN(NOPE);
+	 }
+	 if (pre_exist) { /* Parent dset was pre-existing in the list, 
+	             	     assuming the 
+	             	     same for all elementrary datasets */
+            if (LocalHead) {
+               fprintf( SUMA_STDERR,
+                        "%s: assuming dset %s (%dth from %s) (%p) pre-existing, "
+                        "finding its pre-existing overlays.\n", 
+                        FuncName, SDSET_LABEL(sddset), isd,
+			SDSET_LABEL(cdset), sddset); 
+            }
+            if (!(colplanepre = SUMA_Fetch_OverlayPointerByDset (
+                                           asdo, sddset, &OverInd))) {
+               SUMA_SLP_Err("Failed to fetch existing dset's "
+                            "overlay pointer");
+               SUMA_RETURN(NOPE);
+            }
+            /* Here you'd remove coord bias if you end up using it */
+            /* and set flag to recompute clusters if you support clustering */
+            OKdup = 1;
+         } else { /* cdset and therefore its babies are considered new */
+            SUMA_LH("New overlay for %s", SDSET_LABEL(sddset));
+            colplanepre = NULL;
+            /* The overlay index for that plane is SO->N_Overlays */
+            OverInd = SUMA_ADO_N_Overlays(asdo);
+            OKdup = 0;
+         }
+
+         /* set up the colormap for this dset */
+	 if (!(NewColPlane = SUMA_CreateOverlayPointer ( SDSET_FILENAME(sddset), 
+                                                   sddset, ADO_ID(asdo), 
+                                                   colplanepre))) {
+	    SUMA_S_Err("Failed in SUMA_CreateOverlayPointer for %s\n",
+	               SDSET_LABEL(sddset));
+            SUMA_RETURN(NOPE);
+         }
+
+            if (SetupOverlay < 0) {
+               SUMA_LH("Have not pondered how to do 'background' for the "
+                       "volume part of a CIFTI domain...");
+               NewColPlane->isBackGrnd = YUP;
+            } else NewColPlane->isBackGrnd = NOPE;     
+
+            /* Add this plane to Overlays */
+            SUMA_LH("Adding new plane to Overlays");
+            if (!SUMA_AddNewPlane (asdo, NewColPlane, SUMAg_DOv, 
+                                   SUMAg_N_DOv, OKdup)) {
+               SUMA_SL_Err("Failed in SUMA_AddNewPlane");
+               SUMA_FreeOverlayPointer(NewColPlane);
+               SUMA_S_Warn("Usually I would delete loaded dset, "
+	             	   "but here I would have to delete elementary beasts "
+			   "also. Leaving it out for now");
+
+               SUMA_RETURN(NOPE);
+            }
+      	 }
+
+      	 /* Match old settings? */
+      	 SUMA_LH("Settings");
+      	 if (colplanepre == NewColPlane) { /* old col plane found for this dset*/
+            /* Don't change settings. Before Aug 2012, it would reset as below */
+      	 } else if ((SurfCont = SUMA_ADO_Cont(asdo)) &&
+                 SUMA_PreserveOverlaySettings(SurfCont->curColPlane,
+                                              NewColPlane)) {
+                           /* attempt to preserve current situation */
+            SUMA_OVERLAYS *settingPlane = NULL;
+            settingPlane = SurfCont->curColPlane;
+            NewColPlane->GlobalOpacity = settingPlane->GlobalOpacity;
+            NewColPlane->ShowMode = settingPlane->ShowMode;
+            NewColPlane->OptScl->BrightFact = settingPlane->OptScl->BrightFact;
+            NewColPlane->OptScl->find = settingPlane->OptScl->find;
+            NewColPlane->OptScl->tind = settingPlane->OptScl->tind;
+            NewColPlane->OptScl->bind = settingPlane->OptScl->bind;
+            NewColPlane->OptScl->UseThr = settingPlane->OptScl->UseThr;
+            NewColPlane->OptScl->UseBrt = settingPlane->OptScl->UseBrt;
+            NewColPlane->OptScl->ThrMode = settingPlane->OptScl->ThrMode;
+            NewColPlane->OptScl->ThreshRange[0] = 
+                                	  settingPlane->OptScl->ThreshRange[0];
+            NewColPlane->OptScl->ThreshRange[1] = 
+                                	  settingPlane->OptScl->ThreshRange[1];
+            NewColPlane->OptScl->BrightRange[0] = 
+                                	  settingPlane->OptScl->BrightRange[0];
+            NewColPlane->OptScl->BrightRange[1] = 
+                                	  settingPlane->OptScl->BrightRange[1];
+            NewColPlane->OptScl->BrightMap[0] = 
+                                	  settingPlane->OptScl->BrightMap[0];
+            NewColPlane->OptScl->BrightMap[1] = 
+                                	  settingPlane->OptScl->BrightMap[1];
+            NewColPlane->SymIrange = settingPlane->SymIrange;
+            NewColPlane->OptScl->IntRange[0] = settingPlane->OptScl->IntRange[0];
+            NewColPlane->OptScl->IntRange[1] = settingPlane->OptScl->IntRange[1];
+            dsetcmap = NI_get_attribute(sddset->ngr,"SRT_use_this_cmap");
+            if (dsetcmap) {
+               SUMA_STRING_REPLACE(NewColPlane->cmapname, dsetcmap);
+            } else {
+               SUMA_STRING_REPLACE(NewColPlane->cmapname, 
+                                   settingPlane->cmapname);
+            }         
+            NewColPlane->OptScl->Clusterize = settingPlane->OptScl->Clusterize;
+            NewColPlane->OptScl->ClustOpt->AreaLim = 
+               settingPlane->OptScl->ClustOpt->AreaLim;
+            NewColPlane->OptScl->ClustOpt->DistLim = 
+               settingPlane->OptScl->ClustOpt->DistLim;
+	 } else {
+            SUMA_LH("New settings");
+            /* set the opacity, index column and the range */
+            NewColPlane->GlobalOpacity = YUP;
+            NewColPlane->ShowMode = SW_SurfCont_DsetViewCol;
+            if (!colplanepre) {/* only set this if first time creating plane*/
+               NewColPlane->OptScl->BrightFact = 0.8;
+            }
+            NewColPlane->OptScl->find = 0;
+            NewColPlane->OptScl->tind = 0;
+            NewColPlane->OptScl->bind = 0;
+            SUMA_GetDsetColRange(sddset, 0, NewColPlane->OptScl->IntRange, loc);
+            if (NewColPlane->SymIrange) {
+               NewColPlane->OptScl->IntRange[0] = 
+        	  -fabs(SUMA_MAX_PAIR( NewColPlane->OptScl->IntRange[0],
+                                       NewColPlane->OptScl->IntRange[1]));
+               NewColPlane->OptScl->IntRange[1] = 
+        	  -NewColPlane->OptScl->IntRange[0];
+            }
+
+            /* stick a colormap onto that plane ? */
+            dsetcmap = NI_get_attribute(sddset->ngr,"SRT_use_this_cmap");
+            if (dsetcmap) {
+               SUMA_STRING_REPLACE(NewColPlane->cmapname, dsetcmap);
+            } else {
+               /* don't worry, there's a default one */
+            }
+	 }
+	 if (NewColPlane->OptScl->Clusterize) 
+            NewColPlane->OptScl->RecomputeClust = 1;
+	 /* colorize the plane */
+	 SUMA_LH("Colorizing Plane");
+	 SUMA_ColorizePlane(NewColPlane);
+
+	 /* SUMA_Show_ColorOverlayPlanes(&NewColPlane, 1, 1); */
+
+	 if (SurfCont && MakeOverlayCurrent) 
+            SurfCont->curColPlane = SUMA_ADO_Overlay(asdo, OverInd); 
+      }
+   }
+      
+   for (isd=0; isd<cdset->Aux->N_doms; ++isd) {
+      asdo = SUMA_CIFTI_subdom_ado(CO, isd);
+      if (!(sddset = DSET_FIND(cdset->Aux->doms[isd]->edset_id))) {
+	 SUMA_S_Err("Should had found that dset, returning with potential  "
+	            "leaks!");
+	 SUMA_RETURN(NOPE);
+      }
+      /* Need to get OverInd again */
+      if (!(SUMA_Fetch_OverlayPointerByDset ( asdo, sddset, &OverInd))) {
+         SUMA_SLP_Err("How can this possibly happen?");
+         SUMA_RETURN(NOPE);
+      }      
+      if ((SurfCont = SUMA_ADO_Cont(asdo)) && LaunchDisplay) {
+	 SUMA_LHv("Remix Redisplay %s\n", ADO_LABEL(asdo));
+	 /* remix-redisplay  for surface */
+	 if (!SUMA_Remixedisplay (asdo)) {
+            SUMA_RETURN(NOPE);
+	 }
+      	 
+	 SUMA_LH("Refreshing Dset list");            
+	 /*update the list widget if open */
+	 LW = SurfCont->SwitchDsetlst;
+	 if (LW) {
+            if (!LW->isShaded) SUMA_RefreshDsetList (asdo);  
+	 } 
+
+	 SUMA_LH("Refreshing sub-brick selectors");            
+	 /* if lists for switching sub-bricks are not shaded, update them too */
+	 if (SurfCont->SwitchIntMenu) {
+            if ((LW = SurfCont->SwitchIntMenu->lw) && !LW->isShaded) {
+               SUMA_DsetColSelectList(asdo, 0, 0, 1);
+            }
+            if ((LW = SurfCont->SwitchThrMenu->lw) && !LW->isShaded) {
+               SUMA_DsetColSelectList(asdo, 1, 0, 1);
+            }
+            if ((LW = SurfCont->SwitchBrtMenu->lw) && !LW->isShaded) {
+               SUMA_DsetColSelectList(asdo, 2, 0, 1);
+            }
+
+            if (LocalHead) 
+               fprintf (SUMA_STDERR,
+	       
+                	"%s: Updating Dset frame, OverInd=%d\n", 
+                	FuncName, OverInd);
+            /* update the Dset frame */
+            if (OverInd >= 0)        
+               SUMA_InitializeColPlaneShell(asdo, 
+                                            SUMA_ADO_Overlay(asdo, OverInd));
+	 }
+      }
+   }
+
+   if (used_over) {
+      SUMA_S_Warn( "Not sure how to use this for CIFTI, at the moment have"
+      	          "multiple overlays per CO, returning last thing in hand.");
+      *used_over = SUMA_ADO_Overlay(asdo, OverInd);
+   }
+   
+   SUMA_RETURN(YUP);
+      
+}
+
+/* Create CIFTI displayable object from the CIFTI dataset 
+In the current incarnation (Tuesday Aug. 11 2015), the CIFTI DO
+will not be a fully fledged DO such as a surface or a volume. It 
+is a bucket that contains references to "elementary" DOs (to parallel
+what happens to a multi-domain CIFTI dataset). It does not look like
+it will get its own controller. I am no longer seeing the need for 
+that.
+*/
+SUMA_CIFTI_DO * SUMA_CIFTI_DO_from_dset(SUMA_DSET *cdset)
+{
+   static char FuncName[]={"SUMA_CIFTI_DO_from_dset"};
+   int k;
+   char *ss=NULL;
+   SUMA_ALL_DO *ado=NULL;
+   SUMA_CIFTI_DO *CO=NULL;
+   SUMA_DSET *sddset=NULL;
+   SUMA_Boolean LocalHead = NOPE;
+   
+   SUMA_ENTRY;
+   
+   if (!SUMA_isCIFTIDset(cdset)) {
+      SUMA_S_Err("Not for this you don't");
+      SUMA_RETURN(NULL);
+   }
+   if (!cdset || !cdset->Aux || !cdset->Aux->N_doms) {
+      SUMA_S_Err("Junk in the house");
+      SUMA_RETURN(NULL);
+   }
+   ss = SUMA_ar_string("DO_", ADO_LABEL((SUMA_ALL_DO *)cdset),"",0);
+   CO = SUMA_CreateCIFTIObject(ss); SUMA_ifree(ss);
+   
+   if (CO->N_subdoms < 0) CO->N_subdoms = 0;
+   for (k=0; k<cdset->Aux->N_doms; ++k) {
+      if (!cdset->Aux->doms[k]->Source) {
+         SUMA_S_Err("Null source");
+         SUMA_FreeCIFTIObject(CO);
+         SUMA_RETURN(NULL);
+      }      
+      
+      SUMA_LH("Loading source[%d]=%s", k, cdset->Aux->doms[k]->Source); 
+      switch (cdset->Aux->doms[k]->ModelType) {
+         case SO_type: {
+	    ado = (SUMA_ALL_DO *)
+               SUMA_Load_Surface_Object_eng(
+                     cdset->Aux->doms[k]->Source, 
+                     SUMA_FT_NOT_SPECIFIED, SUMA_FF_NOT_SPECIFIED,
+                     NULL, 2);
+	    SUMA_SurfaceObject *SO=(SUMA_SurfaceObject *)ado;
+	    if (!SUMA_ADO_Label(ado)) {
+	       SO->Label = SUMA_copy_string(cdset->Aux->doms[k]->Source);
+	    }
+	    SUMA_ifree(SO->State);
+	    SO->State = SUMA_copy_string("ANY_ANATOMICAL");
+	    SUMA_ifree(SO->Group);
+	    SO->Group = SUMA_copy_string("ANY");
+	    if (1) {
+	       SUMA_LH("Adding CO %s SOs to objects list", 
+	             	ADO_LABEL((SUMA_ALL_DO *)CO));
+	       if (!SUMA_PrepAddmappableSO(SO, SUMAg_DOv, &SUMAg_N_DOv, 
+	             	      	           1, SUMAg_CF->DsetList)) {
+                  SUMA_SL_Err("Failed in SUMA_PrepAddmappableSO.");
+                  SUMA_FreeCIFTIObject(CO); CO = NULL;
+        	  SUMA_RETURN(NULL);
+               }
+	    }
+	    /* make domain parent of matching dset be SO */
+	    if (!(sddset = DSET_FIND(cdset->Aux->doms[k]->edset_id))) {
+	       SUMA_S_Err("Should have found that dset (id %s)!", 
+		       cdset->Aux->doms[k]->edset_id);
+	    } else {
+	       NI_set_attribute(sddset->ngr, 
+	             	        "domain_parent_idcode", ADO_ID(ado));
+            }
+	    break; }
+         case VO_type: {
+            SUMA_VolumeObject *VO=NULL;
+	    SUMA_VOL_SAUX *VSaux = NULL;
+            SUMA_LH("This requires some additional thinking:\n"
+                        "1-All is needed for the volume is the grid.\n"
+                        "  So might want to have LoadVolDO create a \n"
+                        "  dummy volume from just a grid string (AFNI has\n"
+                        "  such utilities.\n"
+                        "  The actual data in the volume is now loaded by\n"
+                        "  default but it is useless because it is \n"
+                        "  to be trumped by the data in the CIFTI dataset.\n"
+                        "2-Even if loading volume, might want to have an\n"
+                        "  autocrop at loading option. See AFNI convenience\n"
+                        "  function: THD_autobbox()\n The smaller the grid \n"
+			"  the faster the volume rendering.\n");
+            if (SUMA_LoadVolDO(cdset->Aux->doms[k]->Source, SUMA_WORLD, &VO, 1)){
+	       ado = (SUMA_ALL_DO *)VO; 
+               /* Change the state of the volume so that it is no longer 
+	       of the default ANY_ANATOMICAL state. (See comment for string
+	       'State' definition in SUMA_VOL_SAUX */
+	       if (!(VSaux = SUMA_ADO_VSaux(ado))){
+	          SUMA_S_Err("No VSaux?");
+		  SUMA_FreeCIFTIObject(CO); CO = NULL;
+		  SUMA_RETURN(NULL);
+	       }
+	       SUMA_ifree(VSaux->State);
+	       VSaux->State = SUMA_copy_string("ANY_ANATOMICAL");
+	       VO = NULL;
+
+	       VSaux->ShowVrSlc = 1; /* easier for debugging */
+            } 
+            break; }
+         default:
+            SUMA_S_Err("Not ready for domain %d (%s) with CIFTI",
+               cdset->Aux->doms[k]->ModelType,
+               SUMA_ObjectTypeCode2ObjectTypeName(
+                                             cdset->Aux->doms[k]->ModelType));
+            SUMA_FreeCIFTIObject(CO); CO = NULL;
+            SUMA_RETURN(NULL);
+            break;
+      }
+      if (!ado) {
+         SUMA_S_Err("Failed to load %s\n", cdset->Aux->doms[k]->Source);
+         SUMA_FreeCIFTIObject(CO); CO = NULL;
+         SUMA_RETURN(NULL);     
+      } else {
+        ++CO->N_subdoms;
+         CO->subdoms_id = (char **)SUMA_realloc(CO->subdoms_id, 
+                                                CO->N_subdoms*sizeof(char *));
+         CO->subdoms_id[CO->N_subdoms-1] = SUMA_copy_string(ADO_ID(ado)); 
+	 ado = NULL;
+      }
+   }
+   
+   if (1) {
+      SUMA_LH("Adding CO %s to objects list", ADO_LABEL((SUMA_ALL_DO *)CO));
+      if (!SUMA_AddDO(SUMAg_DOv, &(SUMAg_N_DOv), (void *)CO,  
+               CDOM_type, SUMA_WORLD)) {
+         fprintf(SUMA_STDERR,"Error %s: Error Adding DO\n", FuncName);
+         SUMA_FreeCIFTIObject(CO); CO = NULL;
+         SUMA_RETURN(NULL);
+      }
+   }
+
+   
+   SUMA_RETURN(CO);
+}
+
+/* Search all DOs for a CIFTIObject that can be the domain
+for a certain CIFTI dataset.
+
+For now, subdomains indices do not have to match. Might want to
+enforce that. */
+SUMA_CIFTI_DO *SUMA_CIFTI_find_matching_domain(SUMA_DSET *cdset, 
+                                               SUMA_DO *dov, int N_dov) 
+{
+   static char FuncName[]={"SUMA_CIFTI_find_matching_domain"};
+   SUMA_CIFTI_DO *CO=NULL;
+   int i, f, k;
+   char *sid;
+   
+   SUMA_ENTRY;
+   
+   if (!dov) { dov = SUMAg_DOv; N_dov = SUMAg_N_DOv; }
+   
+   for (i=0; i<N_dov; ++i) {
+      if (dov[i].ObjectType == CDOM_type) {
+         CO = (SUMA_CIFTI_DO *)dov[i].OP;
+         for (f=0,k=0; k<cdset->Aux->N_doms; ++k) {
+            sid = SUMA_CIFTI_find_sub_domain(CO, 
+                                 cdset->Aux->doms[k]->ModelType,
+                                 cdset->Aux->doms[k]->ModelSide,
+                                 cdset->Aux->doms[k]->Max_N_Data, NULL);
+            if (sid) {++f;}
+         }
+         if (f == cdset->Aux->N_doms) {
+            SUMA_RETURN(CO);
+         }
+      }
+   }
+   SUMA_RETURN(NULL);
+}
+
+/* Search the sub-domains of a CIFTIObject to match desired parameters */
+char *SUMA_CIFTI_find_sub_domain(SUMA_CIFTI_DO *CO, SUMA_DO_Types ModelType,
+                               SUMA_SO_SIDE ModelSide,
+                               int Max_N_Data,
+                               int *k)
+{
+   static char FuncName[]={"SUMA_CIFTI_find_sub_domain"};
+   char *sid = NULL;
+   int i;
+   SUMA_ALL_DO *ado=NULL;
+   
+   SUMA_ENTRY;
+   if (k) *k = -1;
+   
+   for (i=0; i<CO->N_subdoms; ++i) {
+      ado = SUMA_CIFTI_subdom_ado(CO, i);
+      if ( ado->do_type == ModelType &&
+          (    ModelType != SO_type || 
+               ModelSide == ((SUMA_SurfaceObject *)(ado))->Side ) &&
+          Max_N_Data == SUMA_ADO_N_Datum(ado) ) {
+         if (k) *k = i;
+         SUMA_RETURN(ADO_ID((SUMA_ALL_DO*)CO));   
+      }
+   }
+   
+   SUMA_RETURN(NULL);
+}
+
+/* Search all displayable objects for a CIFTI object containing a particular 
+   domain. */
+SUMA_CIFTI_DO *SUMA_find_CIFTI_subdom_container(char *SD_id, int *ksubdom, 
+      	             	      	                SUMA_DO *dov, int N_dov)
+{
+   static char FuncName[]={"SUMA_find_CIFTI_subdom_container"};
+   int i, k;
+   SUMA_CIFTI_DO *CO=NULL;
+   
+   SUMA_ENTRY;
+   
+   if (!dov) {
+      dov = SUMAg_DOv;
+      N_dov = SUMAg_N_DOv;
+   }
+   
+   for (i=0; i<N_dov; ++i) {
+      switch (dov[i].ObjectType) {
+      	 case CDOM_type:
+	    CO = (SUMA_CIFTI_DO *)dov[i].OP;
+	    for (k=0; k<CO->N_subdoms; ++k) {
+	       if (CO->subdoms_id[k] && !strcmp(SD_id, CO->subdoms_id[k])) {
+	          /* got it */
+		  if (ksubdom) *ksubdom = k;
+		  SUMA_RETURN(CO);
+	       }
+	    }
+	    break;
+      }
+   }
+   
+   SUMA_RETURN(NULL);
+}
+
+int SUMA_CIFTI_SubDomFullOffset(SUMA_CIFTI_DO *CO, int ksub)
+{
+   static char FuncName[]={"SUMA_CIFTI_SubDomFullOffset"};
+   int i, N=0;
+   
+   for (i=1; i<=ksub; ++i) {
+      N += SUMA_ADO_N_Datum(SUMA_CIFTI_subdom_ado(CO,i-1));
+   }
+   return(N);
+}
+
+SUMA_ALL_DO *SUMA_CIFTI_subdom_ado(SUMA_CIFTI_DO *CO, int ksub)
+{
+   static char FuncName[]={"SUMA_CIFTI_subdom_ado"};
+   SUMA_ALL_DO *ado=NULL;
+   
+   SUMA_ENTRY;
+   
+   if (CO && ksub >=0 && ksub < CO->N_subdoms && CO->subdoms_id[ksub]) {
+      ado = SUMA_whichADOg(CO->subdoms_id[ksub]);
+   }
+   
+   SUMA_RETURN(ado);
 }
 

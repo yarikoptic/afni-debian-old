@@ -2990,21 +2990,29 @@ SUMA_SO_File_Type SUMA_GuessSurfFormatFromExtension_core(char *Name,
    static char FuncName[]={"SUMA_GuessSurfFormatFromExtension_core"};
    SUMA_SO_File_Type form=SUMA_FT_NOT_SPECIFIED;
    int tp=0;
+   char *pname=NULL;
    
    SUMA_ENTRY;
    if (!Name) { SUMA_RETURN(form); }
+   if (pdsname && *pdsname) {
+      SUMA_S_Err("Bad init for pdsname");
+      SUMA_RETURN(form);
+   }
    if ( (tp = SUMA_is_predefined_SO_name(Name, NULL, 
-                                          pdspec, pdsv, pdsname)) ) {  
+                                          pdspec, pdsv, &pname)) ) {  
+      fprintf(stderr,"tp=%d\n", tp);
       switch(tp) {
          case 1:
          case 2: 
+            if (pdsname) *pdsname=pname;
+            else SUMA_ifree(pname);
             SUMA_RETURN(SUMA_PREDEFINED);
             break;
          case 3:
             /* Spec file, not for here */
             break;
          case 4: /* pre-existing template file */
-            Name = *pdsname; /* format TBD below */
+            Name = pname; /* format TBD below */
             break;   
       }
    }
@@ -3028,7 +3036,9 @@ SUMA_SO_File_Type SUMA_GuessSurfFormatFromExtension_core(char *Name,
          SUMA_isExtension(Name, ".go")) form =  SUMA_BYU;
    else if (  SUMA_isExtension(Name, ".cmap")) form = SUMA_CMAP_SO;
    
-   
+   if (pdsname) *pdsname=pname;
+   else SUMA_ifree(pname);
+    
    SUMA_RETURN(form);
 }
 
@@ -3453,6 +3463,7 @@ char *SUMA_help_IO_Args(SUMA_GENERIC_ARGV_PARSE *opt)
    if (opt->accept_do) {
       SS = SUMA_StringAppend (SS, 
 " Specifying displayable objects:\n"
+"    -cdset CDSET: Load and display a CIFTI dataset\n"
 "    -gdset GDSET: Load and display a graph dataset\n"
 "    -tract TRACT: Load and display a tractography dataset\n"      
 "    -vol VOL: Load and display a volume\n"      
@@ -4115,10 +4126,11 @@ SUMA_GENERIC_ARGV_PARSE *SUMA_Parse_IO_Args (int argc, char *argv[],
                (  (strcmp(argv[kar], "-tract") == 0) ||
                   (strcmp(argv[kar], "-gdset") == 0) ||
                   (strcmp(argv[kar], "-vol") == 0)   ||
+                  (strcmp(argv[kar], "-cdset") == 0) ||
                   (strcmp(argv[kar], "-mask") == 0) )) {
 			   if (kar+1 >= argc)  {
 		  		   fprintf (SUMA_STDERR,
-                        "need 1 argument after -tract/-gdset/-vol \n");
+                     "need 1 argument after -tract/-cdset/-gdset/-vol/-mask \n");
 				   exit (1);
 			   }
             do {
@@ -4126,7 +4138,7 @@ SUMA_GENERIC_ARGV_PARSE *SUMA_Parse_IO_Args (int argc, char *argv[],
                /* do we have a - as the first char ? */
                if (argv[kar][0] == '-') {
                   fprintf (SUMA_STDERR,
-                       "no option should directly follow -tract/-gdset/-vol \n");
+              "no option should directly follow -tract/-cdset/-gdset/-vol \n");
 				      exit (1);
                }
 			      if (ps->N_DO+1 < SUMA_MAX_DO_ON_COMMAND) {
@@ -4134,7 +4146,9 @@ SUMA_GENERIC_ARGV_PARSE *SUMA_Parse_IO_Args (int argc, char *argv[],
                           if ((strcmp(argv[kar-1], "-tract") == 0)) {
                      ps->DO_type[ps->N_DO] = TRACT_type;
                   }  else if ((strcmp(argv[kar-1], "-gdset") == 0)) {
-                     ps->DO_type[ps->N_DO] = SDSET_type;
+                     ps->DO_type[ps->N_DO] = GDSET_type;
+                  }  else if ((strcmp(argv[kar-1], "-cdset") == 0)) {
+                     ps->DO_type[ps->N_DO] = CDOM_type;
                   }  else if ((strcmp(argv[kar-1], "-vol") == 0)) {
                      ps->DO_type[ps->N_DO] = VO_type;
                   } else if ((strcmp(argv[kar-1], "-mask") == 0)) {
@@ -4454,9 +4468,10 @@ SUMA_GENERIC_ARGV_PARSE *SUMA_Parse_IO_Args (int argc, char *argv[],
             } else {
                tmp_i = SUMA_copy_string(argv[kar]);
             }
-            
-            SUMA_LHv("accept_i %d (argv[%d]=%s), brk = %d, tmp_i=%s\n", 
-                     ps->accept_i, kar, argv[kar], brk, tmp_i);
+            SUMA_LHv(
+               "accept_i %d (argv[%d]=%s), brk = %d, tmp_i=%s, pdsname=%s\n", 
+                ps->accept_i, kar, argv[kar], brk, tmp_i, 
+                SUMA_CHECK_NULL_STR(pdsname));
             if (!brk && ( (strcmp(tmp_i, "-i_bv") == 0) || 
                         (strcmp(tmp_i, "-i_BV") == 0) ) ) {
                ps->arg_checked[kar]=1;
