@@ -49,8 +49,18 @@
 
 afni_history_struct rickr_history[] = {
 
- { 13,  Aug, 2015, RCR, "afni-general", MICRO, TYPE_BUG_FIX,
-   "suma_datasets.c: comment out call to SUMA_CIFTI_2_edset for now",
+ { 19,  Aug, 2015, RCR, "gen_ss_review_table.py", MINOR, TYPE_NEW_OPT,
+   "add -show_missing, to show all missing labels from all files",
+   NULL
+ } ,
+
+ { 14,  Aug, 2015, RCR, "afni-general", MICRO, TYPE_BUG_FIX,
+   "SUMA_CIFTI_2_edset: use 'no suma' version: SUMA_WriteDset_ns",
+   NULL
+ } ,
+
+ { 13,  Aug, 2015, RCR, "afni-general", MICRO, TYPE_ENHANCE,
+   "megrged cifti-toy branch from Ziad, for viewing CIFTI dataset in suma",
    NULL
  } ,
 
