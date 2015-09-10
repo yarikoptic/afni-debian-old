@@ -656,6 +656,7 @@ g_eg_uvar.tcat_dset       = 'pb00.FT.r01.tcat+orig.HEAD'
 g_eg_uvar.enorm_dset      = 'motion_FT_enorm.1D'
 g_eg_uvar.censor_dset     = 'motion_FT_censor.1D'
 g_eg_uvar.motion_dset     = 'dfile_rall.1D'
+g_eg_uvar.volreg_dset     = 'pb02.FT.r01.volreg+tlrc.HEAD'
 g_eg_uvar.outlier_dset    = 'outcount_rall.1D'
 g_eg_uvar.gcor_dset       = 'out.gcor.1D'
 g_eg_uvar.mask_corr_dset  = 'out.mask_ae_corr.txt'
@@ -681,6 +682,7 @@ g_uvar_dict = {
  'censor_dset'      :'set motion_censor file',
  'enorm_dset'       :'set motion_enorm file',
  'motion_dset'      :'set motion parameter file',
+ 'volreg_dset'      :'set first volreg dataset',
  'outlier_dset'     :'set outcount_rall file',
  'gcor_dset'        :'set gcor_dset file',
  'mask_corr_dset'   :'set anat/EPI correlation file',
@@ -793,9 +795,13 @@ g_history = """
    0.42 Jul 29, 2015:
         - do not allow _REMLvar stats dset (previously blocked only _REMLvar+)
    0.43 Sep  1, 2015: track errts dset, and possibly use it for voxel dims
+   0.44 Sep  2, 2015:
+        - some option vars were over-written
+        - add volreg_dset to uvar_dict
+   0.45 Sep  3, 2015: change: have stats dset default to REML, if it exists
 """
 
-g_version = "gen_ss_review_scripts.py version 0.43, Sep 1, 2015"
+g_version = "gen_ss_review_scripts.py version 0.45, Sep 3, 2015"
 
 g_todo_str = """
    - figure out template_space (should we output 3dinfo -space?)
@@ -982,7 +988,7 @@ class MyInterface:
                errs += 1
                continue
 
-         # uvar requires at least 2 parameters, name and value
+         # cvar requires at least 2 parameters, name and value
          elif opt.name == '-cvar':
             val, err = uopts.get_string_list('', opt=opt)
             if val == None or err: return -1
@@ -1100,9 +1106,10 @@ class MyInterface:
       verb = self.cvars.verb
 
       # check if already set
-      if self.uvars.is_not_empty('xmat_regress'):
+      uname = 'xmat_regress'
+      if self.uvars.is_not_empty(uname):
          if self.cvars.verb > 3:
-            print '-- already set: xmat_regress = %s' % self.uvars.xmat_regress
+            print '-- already set: %s = %s' % (uname,self.uvars.val(uname))
          # have cvar, check dsets
          if self.dsets.is_empty('xmat_ad'):
             return self.set_xmat_dset_from_name(self.uvars.xmat_regress)
@@ -1578,6 +1585,7 @@ class MyInterface:
       if self.uvars.is_not_empty('enorm_dset'):
          if self.cvars.verb > 3:
             print '-- already set: enorm_dset = %s' % self.uvars.enorm_dset
+         return 0
 
       gstr = 'motion_%s_enorm.1D' % self.uvars.subj
       if os.path.isfile(gstr):
@@ -1603,6 +1611,7 @@ class MyInterface:
       if self.uvars.is_not_empty('motion_dset'):
          if self.cvars.verb > 3:
             print '-- already set: motion_dset = %s' % self.uvars.motion_dset
+         return 0
 
       gstr = 'dfile_rall.1D'
       if not os.path.isfile(gstr): gstr = 'dfile.rall.1D'
@@ -1631,6 +1640,7 @@ class MyInterface:
       if self.uvars.is_not_empty('outlier_dset'):
          if self.cvars.verb > 3:
             print '-- already set: outlier_dset = %s' % self.uvars.outlier_dset
+         return 0
 
       gstr = 'outcount_rall.1D'
       if not os.path.isfile(gstr): gstr = 'outcount.rall.1D'
@@ -1656,6 +1666,7 @@ class MyInterface:
       if self.uvars.is_not_empty('mask_dset'):
          if self.cvars.verb > 3:
             print '-- already set: mask_dset = %s' % self.uvars.mask_dset
+         return 0
 
       gstr = 'full_mask?%s+%s.HEAD' % (self.uvars.subj, self.uvars.final_view)
       glist = glob.glob(gstr)
@@ -1675,6 +1686,7 @@ class MyInterface:
       if self.uvars.is_not_empty('tsnr_dset'):
          if self.cvars.verb > 3:
             print '-- already set: tsnr_dset = %s' % self.uvars.tsnr_dset
+         return 0
 
       gstr = 'TSNR?%s+%s.HEAD' % (self.uvars.subj, self.uvars.final_view)
       glist = glob.glob(gstr)
@@ -1697,6 +1709,7 @@ class MyInterface:
       if self.uvars.is_not_empty('errts_dset'):
          if self.cvars.verb > 3:
             print '-- already set: errts_dset = %s' % self.uvars.errts_dset
+         return 0
 
       gind = 0
       gstr = 'errts?%s*anaticor+%s.HEAD' \
@@ -1723,7 +1736,7 @@ class MyInterface:
             print '\n   '.join(glist)
          # if multiple and have REML use it
          for ind, gname in enumerate(glist):
-            if gname.find('_REML') > 0:
+            if UTIL.dset_prefix_endswith(gname, '_REML'):
                gind = ind
                break
 
@@ -1739,6 +1752,7 @@ class MyInterface:
       if self.uvars.is_not_empty('gcor_dset'):
          if self.cvars.verb > 3:
             print '-- already set: gcor_dset = %s' % self.uvars.gcor_dset
+         return 0
 
       gstr = 'out.gcor.1D'
 
@@ -1768,9 +1782,11 @@ class MyInterface:
       """set uvars.mask_corr_dset"""
 
       # check if already set
-      if self.uvars.is_not_empty('mask_corr_dset'):
+      uname = 'mask_corr_dset'
+      if self.uvars.is_not_empty(uname):
          if self.cvars.verb > 3:
-            print '-- already set: mask_corr_dset = %s' % self.uvars.mask_corr_dset
+            print '-- already set: %s = %s' % (uname, self.uvars.val(uname))
+         return 0
 
       gstr = 'out.mask_ae_corr.txt'
 
@@ -1789,6 +1805,7 @@ class MyInterface:
       if self.uvars.is_not_empty('volreg_dset'):
          if self.cvars.verb > 3:
             print '-- already set: volreg_dset = %s' % self.uvars.volreg_dset
+         return 0
 
       glist = self.glob_slist_per_view(                                 \
                 ['pb??.*.r01.volreg+%s.HEAD', 'pb*r001*volreg+%s.HEAD', \
@@ -1845,7 +1862,7 @@ class MyInterface:
    def guess_stats_dset(self):
       """set uvars.stats_dset (check against dsets.xmat_ad)
 
-         ** try to use a _REML dset if a 3dD one is not found
+         ** try to use a _REML dset if one is found
 
          return 0 on success
       """
@@ -1896,10 +1913,11 @@ class MyInterface:
          if self.cvars.verb > 3:
             print '-- found %d potential stats dsets: %s' % (len(dlist), dlist)
          sset = ''
-         # take the first one without any '_REML', else take the first one
+         # take the first one with '_REML', else take the first one
          for dfile in dlist:
-            if not dfile.find('_REML'):
+            if UTIL.dset_prefix_endswith(dfile, '_REML'):
                sset = dfile
+               break
          if not sset: sset = dlist[0]
 
       self.uvars.stats_dset = sset
