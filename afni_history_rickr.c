@@ -49,8 +49,19 @@
 
 afni_history_struct rickr_history[] = {
 
- {  9,  Sep, 2015, RCR, "afni_system_check.py", MICRO, TYPE_BUG_FIX,
-   "fix sequence of program check from exec dir",
+ { 11,  Sep, 2015, RCR, "3dBandpass", MICRO, TYPE_MODIFY,
+   "do not propagate scalars",
+   NULL
+ } ,
+
+ { 11,  Sep, 2015, RCR, "afni-general", MICRO, TYPE_BUG_FIX,
+   "edt_floatize.c: for NIFTI float->float with scale factors, apply them",
+   "Also, fix determination of when to convert.\n"
+   "Thanks to Pengmin (MB) for noting this problem."
+ } ,
+
+ { 10,  Sep, 2015, RCR, "afni_proc.py", MICRO, TYPE_BUG_FIX,
+   "fix resulting aligned SurfVol if input is NIFTI",
    NULL
  } ,
 

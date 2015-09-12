@@ -2094,8 +2094,9 @@ def cmd_surf_align(proc):
     if proc.surf_anat_has_skull == 'yes': sstr = ' -strip_skull surf_anat'
     else: sstr = ''
 
-    # the new surf_sv will be the aligned one
-    newsv = proc.surf_sv.new(new_pref='${subj}_SurfVol_Alnd_Exp')
+    # the new surf_sv will be the aligned one 
+    # (convert from anat_final rather than old surf_vol)
+    newsv = proc.anat_final.new(new_pref='${subj}_SurfVol_Alnd_Exp')
     newsv.path = ''
 
     cmd = '# align the surface anatomy with the current experiment anatomy\n' \
@@ -6308,13 +6309,14 @@ g_help_string = """
            Like example #9, but also regress eroded white matter and CSF
            averages.  The WMe and CSFe signals come from the Classes dataset,
            created by 3dSeg via the -mask_segment_anat and -mask_segment_erode
-           options.
+           options.  Align to minimum outlier volume.
 
                 afni_proc.py -subj_id subj123                                \\
                   -dsets epi_run1+orig.HEAD                                  \\
                   -copy_anat anat+orig                                       \\
                   -blocks despike tshift align tlrc volreg blur mask regress \\
                   -tcat_remove_first_trs 3                                   \\
+                  -volreg_align_to MIN_OUTLIER                               \\
                   -volreg_align_e2a                                          \\
                   -volreg_tlrc_warp                                          \\
                   -mask_segment_anat yes                                     \\
@@ -6358,6 +6360,8 @@ g_help_string = """
        Example 11. Resting state analysis (now even more modern :).
            
          o Yes, censor (outliers and motion) and despike.
+         o Register EPI volumes to the one which has the minimum outlier
+              fraction (so hopefully the least motion).
          o Use non-linear registration to MNI template.
          o No bandpassing.
          o Use fast ANATICOR method (slightly different from default ANATICOR).
@@ -6385,6 +6389,7 @@ g_help_string = """
                   -tcat_remove_first_trs 2                                   \\
                   -tlrc_base MNI_caez_N27+tlrc                               \\
                   -tlrc_NL_warp                                              \\
+                  -volreg_align_to MIN_OUTLIER                               \\
                   -volreg_align_e2a                                          \\
                   -volreg_tlrc_warp                                          \\
                   -regress_ROI_PC FSvent 3                                   \\
