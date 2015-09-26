@@ -49,6 +49,31 @@
 
 afni_history_struct rickr_history[] = {
 
+ { 25,  Sep, 2015, RCR, "suma", MICRO, TYPE_MODIFY,
+   "volume rendering is no longer the default for SUMA_VO_InitSlices",
+   "So Do_06_VISdti_SUMA_visual_ex1.tcsh defaults to showing 3 volume slices."
+ } ,
+
+ { 24,  Sep, 2015, RCR, "ccalc", MICRO, TYPE_MODIFY,
+   "make dependency on libmri explicit",
+   "Some of these operations are for building on Fedora 22."
+ } ,
+
+ { 24,  Sep, 2015, RCR, "afni-general", MICRO, TYPE_ENHANCE,
+   "inline func with static vars should be static",
+   "Fails to link in Fedora 22."
+ } ,
+
+ { 24,  Sep, 2015, RCR, "vol2surf", MICRO, TYPE_ENHANCE,
+   "restrict THD_extract_series error messages (e.g. for RGB datasets)",
+   "Requested by P Taylor."
+ } ,
+
+ { 24,  Sep, 2015, RCR, "afni_proc.py", MICRO, TYPE_ENHANCE,
+   "allow 3dD to proceed with only extra_stim_files",
+   NULL
+ } ,
+
  { 16,  Sep, 2015, RCR, "suma", MICRO, TYPE_MODIFY,
    "w/dglen SUMA_find_any_object: fixed loss of isGraphDset result",
    NULL
