@@ -41,7 +41,7 @@ extern int newuoa_(integer *n, integer *npt, doublereal *x,
 
 #define SC_BOX  1
 #define SC_BALL 2
-#define SC_DIAM 3  /* not used */
+#define SC_L4   4  /* L4 ball [27 Oct 2015] */
 
 static int     scalx = 0    ;  /* whether to use scaling and constraints */
 static double *sxmin = NULL ;  /* smallest allowed value */
@@ -70,13 +70,24 @@ static void xreduce( int n , double *x )
      else                                                    x[ii] = PRED01(x[ii]) ;
    }
    if( scalx == SC_BALL ){
-     float rad=0.0 ;
+     double rad=0.0 ;
      for( ii=0 ; ii < n ; ii++ ) rad += (x[ii]-0.5)*(x[ii]-0.5) ;
      if( rad > 0.25 ){
        rad = 0.25 / rad ;
        for( ii=0 ; ii < n ; ii++ ) x[ii] = 0.5 + (x[ii]-0.5)*rad ;
      }
    }
+#if 0
+   if( scalx == SC_L4 ){
+     double rad=0.0 , xx ;
+     for( ii=0 ; ii < n ; ii++ ){ xx = x[ii]-0.5; rad += xx*xx*xx*xx; }
+     if( rad > 0.0625 ){
+       rad = 0.0625 / rad ;
+       for( ii=0 ; ii < n ; ii++ ) x[ii] = 0.5 + (x[ii]-0.5)*rad ;
+     }
+   }
+#endif
+   return ;
    return ;
 }
 
@@ -119,6 +130,28 @@ int calfun_(integer *n, doublereal *x, doublereal *fun)
      }
 
      val = userfun( (int)(*n) , sx ) ;           /* input = scaled x[] */
+
+#if 0
+   } else if( scalx == SC_L4 ){
+     int ii ; double rad=0.0 , xx ;
+
+     for( ii=0 ; ii < *n ; ii++ ){
+       if( !isfinite(x[ii]) || x[ii] < -9.9 || x[ii] > 9.9 ){
+         fprintf(stderr,"** ERROR: calfun[%d]=%g --> 0\n",ii,x[ii]) ; x[ii] = 0.5 ;
+       }
+       xx = x[ii]-0.5 ; rad += xx*xx*xx*xx ;
+     }
+     if( rad <= 0.0625 ){             /* inside the ball */
+       for( ii=0 ; ii < *n ; ii++ )
+         sx[ii] = sxmin[ii] + sxsiz[ii]*x[ii] ;
+     } else {                         /* outside the ball */
+       rad = 0.0625 / rad ;
+       for( ii=0 ; ii < *n ; ii++ )
+         sx[ii] = sxmin[ii] + sxsiz[ii]*(0.5 + (x[ii]-0.5)*rad) ;
+     }
+
+     val = userfun( (int)(*n) , sx ) ;           /* input = scaled x[] */
+#endif
 
    } else if( mapx ){      /* in this case, the parameters given as input */
      int ii ;              /* are just a subset of all the parameters, so */
@@ -217,6 +250,9 @@ static int con_meth = SC_BOX ;
 
 void powell_newuoa_set_con_box (void){ con_meth = SC_BOX ; }
 void powell_newuoa_set_con_ball(void){ con_meth = SC_BALL; }
+void powell_newuoa_set_con_L4  (void){ con_meth = SC_L4  ; }
+int  powell_newuoa_get_con     (void){ return con_meth ;   }
+void powell_newuoa_set_con     (int c){ con_meth = c ;     }
 
 /*---------------------------------------------------------------------------*/
 /*! Similar to powell_newuoa(), but with constraints on the variables,
@@ -323,8 +359,8 @@ int powell_newuoa_con( int ndim , double *x , double *xbot , double *xtop ,
      x[ii] = sxmin[ii] + x01[ii] * sxsiz[ii] ;
 
    if( verb ){
-     fprintf(stderr," +   param:") ;
-     for( ii=0 ; ii < ndim ; ii++ ) fprintf(stderr," %.3f",PRED01(x01[ii])) ;
+     fprintf(stderr," +   output param:") ;
+     for( ii=0 ; ii < ndim ; ii++ ) fprintf(stderr," %g",x[ii]) ;
      fprintf(stderr,"\n") ;
    }
 
@@ -445,11 +481,7 @@ int powell_newuoa_constrained( int ndim, double *x, double *cost ,
         (c) then scale that 0..1 value back to the 'true' value
             before calling ufunc() to evaluate objective function. -------*/
 
-#if 1
-   scalx = con_meth ;
-#else
-   scalx = SC_BOX ;                  /* signal to calfun_() to apply scaling */
-#endif
+   scalx = con_meth ;                /* signal to calfun_() to apply scaling */
    sxmin = (double *)malloc(sizeof(double)*ndim) ;  /* copy xbot for calfun_ */
    sxsiz = (double *)malloc(sizeof(double)*ndim) ;  /* = xtop - xbot */
    sx    = (double *)malloc(sizeof(double)*ndim) ;  /* workspace for calfun_ */

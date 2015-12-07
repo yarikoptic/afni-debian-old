@@ -146,6 +146,19 @@ static char comsep = ';' ;         /* command separator: 22 Feb 2007 */
 
 static int recursed_ondot = 0 ;  /* 18 Feb 2007 */
 
+/* ---------------------------------------------------------------------- */
+/* just display the AFNI version                      26 Oct 2015 [rickr] */
+/* (since writing to stdout, do not interfere with print-and-exit funcs)  */
+void show_AFNI_version(void) 
+{
+#ifdef SHSTRING
+     printf( "Precompiled binary " SHSTRING ": " __DATE__ " (Version " AVERZHN ")\n" ) ;
+#else
+     printf( "Compile date = " __DATE__ " " __TIME__ " (Version " AVERZHN ")\n") ;
+#endif
+}
+
+
 /********************************************************************
    Print out some help information and then quit quit quit
 *********************************************************************/
@@ -1120,22 +1133,6 @@ ENTRY("AFNI_parse_args") ;
          narg++ ; continue ;  /* go to next arg */
       }
 
-      /* -list_ports list and quit */
-      if( strncmp(argv[narg],"-list_ports", 8) == 0) {
-         show_ports_list(); exit(0);
-      }
-
-      /* -available_npb and quit */
-      if( strcmp(argv[narg],"-available_npb") == 0) {
-         fprintf(stdout,
-                 "\nFirst available npb: %d\n",get_available_npb());
-         exit(0);
-      }
-      if( strncmp(argv[narg],"-available_npb_quiet", 17) == 0) {
-         fprintf(stdout,"%d\n",get_available_npb());
-         exit(0);
-      }
-
       /* -port_number and quit */
       if( strncmp(argv[narg],"-port_number", 8) == 0) {
          int pp = 0;
@@ -1520,6 +1517,7 @@ void AFNI_sigfunc_alrm(int sig)
      "If you have tears, prepare to shed them now"                   ,
      "Man, those solar neutrinos are killing me"                     ,
      "Are you ready for the explosion of Eta Carinae?"               ,
+     "He who will deceive will always fin a willing victim"          ,
      "Remember -- AFNI is free, but worth at least 1000 times more"  ,
      "Remember -- Nothing is always absolutely so"                   ,
      "Remember -- 90% of everything is cr*p"                         ,
@@ -1616,7 +1614,12 @@ void AFNI_sigfunc_alrm(int sig)
      "He knows not his own strength, that has not met adversity"     ,
      "Weigh the meaning, and look not at the words"                  ,
      "Statistics are no substitute for judgment"                     ,
+     "There's never enough time to do all the nothing you want"      ,
+     "When life gives you lemons, throw them right back at it"       ,
+     "Happiness isn't good enough for me; I demand euphoria"         ,
 
+     "Life's a lot more fun when you aren't responsible for your actions"             ,
+     "I'm not dumb. I just have command of thoroughly useless algorithms"             ,
      "A software's reach should exceed its CPU, or what's a supercomputer for?"       ,
      "There are 2 kinds of statistics: those you compute and those you just make up"  ,
      "It is the mark of a truly intelligent person to be moved by statistics"         ,
@@ -1798,13 +1801,10 @@ int main( int argc , char *argv[] )
 
    /** Check for -version [15 Aug 2003] **/
 
-   if( check_string("-ver",argc,argv) || check_string("--ver",argc,argv) ){
-#ifdef SHSTRING
-     printf( "Precompiled binary " SHSTRING ": " __DATE__ " (Version " AVERZHN ")\n" ) ;
-#else
-     printf( "Compile date = " __DATE__ " " __TIME__ " (Version " AVERZHN ")\n") ;
-#endif
-     dienow++ ;
+
+   if( check_string("-ver",argc,argv) || check_string("--ver",argc,argv) ) {
+      show_AFNI_version() ;
+      dienow++ ;
    }
 
    /** MOTD output **/
@@ -1868,11 +1868,30 @@ int main( int argc , char *argv[] )
      AFNI_list_papers(NULL) ; dienow++ ;
    }
 
+   /* getting text output, should be early      23 Oct 2015 [rickr] */
+
+   if( check_string("-available_npb_quiet", argc, argv) ) {
+      fprintf(stdout,"%d\n",get_available_npb());
+      dienow++ ;
+   } else if( check_string("-available_npb", argc, argv) ) {
+      fprintf(stdout,
+              "\nFirst available npb: %d\n",get_available_npb());
+      dienow++ ;
+   }
+
+   /* -list_ports list and quit */
+   if( check_string("-list_ports", argc, argv) ) {
+      show_ports_list(); dienow++ ;
+   }
+
    /*** if ordered, die right now ***/
 
    if( dienow ) exit(0) ;  /* farewell, cruel world */
 
    /***----- otherwise, perhaps become all detached from reality -----***/
+
+   /* no version until after quick exit checks      23 Oct 2015 [rickr] */
+   if( ! check_string("-q",argc,argv) ) show_AFNI_version() ;
 
    /* Since AFNI_DETACH is applied before machdep() or other my_getenv
       calls, -D cannot be used to apply this env var, so add an option.
@@ -2169,6 +2188,7 @@ STATUS("start XtAppMainLoop") ;
    XtAppMainLoop(MAIN_app) ;  /* never returns */
    AFexit(0) ;                /* should never be reached */
 }
+
 
 #undef HUBERIZE
 #ifdef HUBERIZE
@@ -7185,7 +7205,9 @@ void AFNI_check_for_multiple_vedits( Three_D_View *im3d )
    static int first=1 ;
    Three_D_View *qq3d ; int qq ;
 
-   if( !first || !IM3D_OPEN(im3d) ) return ;
+ENTRY("AFNI_check_for_multiple_vedits") ;
+
+   if( !first || !IM3D_OPEN(im3d) ) EXRETURN ;
 
    for( qq=0 ; qq < MAX_CONTROLLERS ; qq++ ){
      qq3d = GLOBAL_library.controllers[qq] ;
@@ -7206,7 +7228,7 @@ void AFNI_check_for_multiple_vedits( Three_D_View *im3d )
 #undef MCMESS
      }
    }
-   return ;
+   EXRETURN ;
 }
 
 /*------------------------------------------------------------------------*/
@@ -7307,6 +7329,7 @@ DUMP_IVEC3("  new_id",new_id) ;
        ihave               && im3d->vinfo->func_visible && !doflash ){
      int changed=0 ;
      if( VEDIT_good(im3d->vedset) ){
+       STATUS("starting vedit") ;
        im3d->vedset.ival = im3d->vinfo->fim_index ;
        switch( VEDIT_CODE(im3d->vedset) ){
          case VEDIT_CLUST:  /* params 2,3,6 set in afni_cluster.c */
@@ -7322,9 +7345,11 @@ DUMP_IVEC3("  new_id",new_id) ;
          changed = AFNI_vedit( im3d->fim_now , im3d->vedset , mmm ) ;
        }
        if( !DSET_VEDIT_good(im3d->fim_now) ){
+         STATUS("vedit not completed") ;
          UNCLUSTERIZE(im3d) ;
        } else if( changed ){
          mri_cluster_detail *cld ; int nc ; char *rrr ;
+         STATUS("vedit completed") ;
          VEDIT_cluster_helpize(im3d);
          if( im3d->vwid->func->clu_rep != NULL ){
            free(im3d->vwid->func->clu_rep); im3d->vwid->func->clu_rep = NULL;
@@ -7335,6 +7360,7 @@ DUMP_IVEC3("  new_id",new_id) ;
          im3d->vwid->func->clu_list = mri_clusterize_array(1) ;
          AFNI_cluster_dispize(im3d,0);  /* display the results */
          AFNI_check_for_multiple_vedits(im3d) ;  /* 24 Jul 2014 */
+         STATUS("vedit processed") ;
        }
        IM3D_CLEAR_THRSTAT(im3d) ;  /* 12 Jun 2014 */
      } else {

@@ -258,6 +258,11 @@ typedef struct { float a,b,c ; } float_triple ;
 typedef struct { float a,b,c,d ; } float_quad ;
 #endif
 
+#ifndef TYPEDEF_float_quint
+#define TYPEDEF_float_quint
+typedef struct { float a,b,c,d,e ; } float_quint ;  /* 02 Nov 2015 */
+#endif
+
 #ifndef TYPEDEF_double_pair
 #define TYPEDEF_double_pair
 typedef struct { double a,b ; } double_pair ;
@@ -271,6 +276,11 @@ typedef struct { double a,b,c ; } double_triple ;
 #ifndef TYPEDEF_double_quad
 #define TYPEDEF_double_quad
 typedef struct { double a,b,c,d ; } double_quad ;
+#endif
+
+#ifndef TYPEDEF_double_quint
+#define TYPEDEF_double_quint
+typedef struct { double a,b,c,d,e ; } double_quint ;
 #endif
 
 /*-------*/
@@ -2026,6 +2036,12 @@ extern THD_fvec3 mri_estimate_FWHM_12dif( MRI_IMAGE * , byte * ) ;
 extern THD_fvec3 mri_estimate_FWHM_12dif_MAD( MRI_IMAGE * , byte * ) ; /* 24 Mar 2010 */
 
 extern THD_fvec3 mri_FWHM_1dif_mom12( MRI_IMAGE * , byte * ) ; /* 11 Aug 2015 */
+
+extern MCW_cluster * mri_estimate_ACF( MRI_IMAGE *im, byte *mask, float radius ) ; /* 09 Nov 2015 */
+extern MCW_cluster * THD_estimate_ACF( THD_3dim_dataset *dset,
+                                       byte *mask, int demed, int unif, float radius ) ;
+extern float_quad ACF_cluster_to_modelE( MCW_cluster *acf, float dx, float dy, float dz ) ;
+extern MRI_IMAGE * ACF_get_1D(void) ;
 
 void mri_fwhm_setfester( THD_fvec3 (*func)(MRI_IMAGE *, byte *) ) ;
 

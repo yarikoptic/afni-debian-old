@@ -2702,9 +2702,9 @@ def anat_mask_command(proc, block):
                    % (proc.mask_epi.pv(), proc.mask_anat.pv())
             cmd = cmd + rcmd
 
-            rcmd = "# note Pearson correlation of masks, as well\n"   \
-                   "3ddot -demean %s %s \\\n"                         \
-                   "      |& tee out.mask_ae_corr.txt\n\n"            \
+            rcmd = "# note Dice coefficient of masks, as well\n"      \
+                   "3ddot -dodice %s %s \\\n"                         \
+                   "      |& tee out.mask_ae_dice.txt\n\n"            \
                    % (proc.mask_epi.pv(), proc.mask_anat.pv())
             cmd = cmd + rcmd
 
@@ -3486,6 +3486,11 @@ def db_cmd_regress(proc, block):
         if newcmd: cmd = cmd + newcmd
 
     # ----------------------------------------
+    # last censoring is done, so possibly generate keep_trs as $ktrs
+    newcmd = get_keep_trs_cmd(proc)
+    if newcmd: cmd += newcmd
+
+    # ----------------------------------------
     # regress anything from anat_followers.
     if block.opts.find_opt('-regress_ROI_PC'):
         err, newcmd = db_cmd_regress_pc_followers(proc, block)
@@ -4088,9 +4093,11 @@ def db_cmd_reml_exec(proc, block, short=0):
        rv, cmd = db_cmd_regress_anaticor(proc, block)
        if rv: return ''
        aopts = '-dsort %s ' % proc.aic_lset.shortinput()
+       astr = '%s# (include ANATICOR regressors via -dsort)\n' % istr
     else:
        cmd = ''
        aopts = ''
+       astr = ''
 
     # see if the user has provided other 3dREMLfit options
     opt = block.opts.find_opt('-regress_opts_reml')
@@ -4098,7 +4105,8 @@ def db_cmd_reml_exec(proc, block, short=0):
     else: reml_opts = ' '.join(UTIL.quotize_list(opt.parlist, '', 1))
 
     cmd +='%s# -- execute the 3dREMLfit script, written by 3dDeconvolve --\n' \
-          '%stcsh -x stats.REML_cmd %s%s\n' % (istr, istr, aopts, reml_opts)
+          '%s'                                                                \
+          '%stcsh -x stats.REML_cmd %s%s\n' % (istr,astr, istr,aopts, reml_opts)
     if not proc.surf_anat: proc.errts_reml = proc.errts_pre_3dd + '_REML'
 
     # if 3dDeconvolve fails, terminate the script
@@ -4249,7 +4257,8 @@ def db_cmd_regress_anaticor(proc, block):
     if rad <= 0.0: return 1, ''
 
     # init command
-    cmd = '# %sANATICOR: generate local %s time series averages\n' \
+    cmd = '# --------------------------------------------------\n' \
+          '# %sANATICOR: generate local %s time series averages\n' \
           % (fstr, roilab)
 
     # create or note catenated volreg dataset
@@ -4264,7 +4273,8 @@ def db_cmd_regress_anaticor(proc, block):
               '       -expr "a*bool(b)" -datum float -prefix %s\n\n' \
               % (vall, mset.shortinput(), vmask)
 
-       cmd += '3dmerge -1blur_fwhm %g -doall -prefix %s %s%s\n\n'    \
+       cmd += '# generate ANATICOR voxelwise regressors via blur\n'  \
+              '3dmerge -1blur_fwhm %g -doall -prefix %s %s%s\n\n'    \
               % (rad, rset.out_prefix(), vmask, proc.view)
     else:
        cmd += "3dLocalstat -stat mean -nbhd 'SPHERE(%g)' -prefix %s \\\n" \
@@ -4289,11 +4299,13 @@ def db_cmd_regress_anaticor(proc, block):
 
 def get_keep_trs_cmd(proc):
     # sub-brick selection, in case of censoring
-    if proc.censor_file:
+    # (only return this once)
+    if proc.censor_file and proc.keep_trs == '':
+       c1 = '1d_tool.py -infile %s \\\n'                        \
+            '%22s -show_trs_uncensored encoded' % (proc.censor_file, ' ')
        cs = '# note TRs that were not censored\n'               \
-            'set keep_trs = `1d_tool.py -infile %s %s`\n\n'     \
-            % (proc.xmat, '-show_trs_uncensored encoded')
-       proc.keep_trs = '"[$keep_trs]"'
+            'set ktrs = `%s`\n\n' % c1
+       proc.keep_trs = '"[$ktrs]"'
     else:
        cs = ''
 
@@ -4446,10 +4458,11 @@ def db_cmd_tsnr(proc, comment, signal, noise, view,
     else:               suff = name_qual + suff
 
     cmd  = comment + feh_str
-    cmd += "%s3dTstat -mean -prefix rm.signal%s %s%s\n"           \
-           "%s"                                                   \
-           "%s3dTstat -stdev -prefix rm.noise%s %s%s\n"           \
-           % (istr, suff, signal, vsuff, detcmd, istr, suff, noise, vsuff)
+    cmd += "%s3dTstat -mean -prefix rm.signal%s %s%s%s\n"       \
+           "%s"                                                 \
+           "%s3dTstat -stdev -prefix rm.noise%s %s%s%s\n"       \
+           % (istr, suff, signal, vsuff, proc.keep_trs, detcmd,
+              istr, suff, noise,  vsuff, proc.keep_trs)
 
     cmd += "%s3dcalc -a rm.signal%s%s \\\n"     \
            "%s       -b rm.noise%s%s %s \\\n"   \
@@ -4702,17 +4715,10 @@ def db_cmd_regress_pc_followers(proc, block):
     else:                c1str = ''
  
     clist.append('# catenate runs%s\n' % c1str)
-    clist.append('3dTcat -prefix %s_rall %s_r*%s.HEAD\n'%(tpre,tpre,proc.view))
+    clist.append('3dTcat -prefix %s_rall %s_r*%s.HEAD\n\n' \
+                 % (tpre,tpre,proc.view) )
     tpre += '_rall'
 
-    if proc.censor_file:
-       c1 = '1d_tool.py -infile %s \\\n' \
-            '%22s -show_trs_uncensored encoded' % (proc.censor_file, ' ')
-       clist.append('set ktrs = `%s`\n' % c1)
-       select = '"[$ktrs]"'
-    else: select = ''
-
-    clist.append('\n')
     for pcind, pcentry in enumerate(roipcs):
        label = pcentry[0]
        num_pc = pcentry[1]
@@ -4732,7 +4738,7 @@ def db_cmd_regress_pc_followers(proc, block):
               '3dpc -mask %s -pcsave %d -prefix %s \\\n' \
               '     %s%s%s\n'                            \
               % (c1str, label, cname.shortinput(),
-                 num_pc, pcpref, tpre, proc.view, select))
+                 num_pc, pcpref, tpre, proc.view, proc.keep_trs))
        pcname = '%s_vec.1D' % pcpref
 
        # append pcfiles to orts list
