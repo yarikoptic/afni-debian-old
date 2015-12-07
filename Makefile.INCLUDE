@@ -97,7 +97,8 @@ PROGRAMS = afni to3d from3d abut 3dclust nsize 3dinfo 3dproject 3dmerge count   
            3dNormalityTest 3dmask_tool FIRdesign help_format 2perm 3dClustCount \
            column_cat 3dUnifize 3dNwarpCat 3dQwarp 3dLocalHistog 3dNwarpAdjust  \
            3dNwarpFuncs 3dTproject afni_open 3dConformist 3dNwarpXYZ 3dTRfix    \
-           3dToyProg 3dRankizer nifti1_tool gifti_tool cifti_tool \
+           3dToyProg 3dRankizer nifti1_tool gifti_tool cifti_tool images_equal  \
+           uniq_images                                                          \
            $(EXTRAS)
 
 PROGRAMS_NOPLUG = afni to3d from3d abut 3dclust nsize 3dinfo 3dproject 3dmerge      \
@@ -133,7 +134,8 @@ PROGRAMS_NOPLUG = afni to3d from3d abut 3dclust nsize 3dinfo 3dproject 3dmerge  
                   apsearch 3dNormalityTest 3dmask_tool 2perm 3dClustCount           \
                   3dUnifize 3dNwarpCat 3dQwarp 3dLocalHistog 3dNwarpAdjust 3dTRfix  \
                   3dNwarpFuncs 3dTproject  afni_open   3dConformist 3dNwarpXYZ      \
-                  3dToyProg nifti1_tool gifti_tool cifti_tool    \
+                  3dToyProg nifti1_tool gifti_tool cifti_tool images_equal          \
+                  uniq_images                                                       \
                   $(EXTRAS)
 
 # For CYGWIN (look for "exe" to find various places below)
@@ -168,7 +170,8 @@ PROGRAMS_EXE = afni.exe to3d from3d abut 3dclust nsize 3dinfo 3dproject 3dmerge 
                1dFlagMotion 3dTsort 1dTsort 3dTfitter afni_history 1dUpsample     \
                3dTcorrMap 3dABoverlap 3dRank 3dFFT 3dTcorr1D 3dClustSim 3dTRfix   \
                3dRetinoPhase 3dMaskToASCII 3dttest++ 3dDTtoDWI niccc 3dXYZcat     \
-               column_cat GLTsymtest nifti1_tool gifti_tool cifti_tool
+               column_cat GLTsymtest nifti1_tool gifti_tool cifti_tool            \
+               images_equal uniq_images
 
 SCRIPTS = @4Daverage @CommandGlobb @GetAfniOrient @DTI_studio_reposition          \
           @GetAfniPrefix @NoExt @UpdateAfni @RenamePanga @2dwarper                \
@@ -375,6 +378,12 @@ imcutup:imcutup.c
 
 imcat:imcat.c
 	$(CC) -o imcat imcat.c $(INFLAGS) $(LFLAGS) $(LLIBS)
+
+images_equal:images_equal.c
+	$(CC) -o images_equal images_equal.c $(INFLAGS) $(LFLAGS) $(LLIBS)
+
+uniq_images:uniq_images.c
+	$(CC) -o uniq_images uniq_images.c $(INFLAGS) $(LFLAGS) $(LLIBS)
 
 Vecwarp:Vecwarp.c
 	$(CC) -o Vecwarp Vecwarp.c $(INFLAGS) $(LFLAGS) $(LLIBS)
@@ -1378,6 +1387,14 @@ AlphaSim:AlphaSim.o
 3dRBFdset:3dRBFdset.o mri_rbfinterp.o
 	$(RM) $@
 	$(CCOMP) -o 3dRBFdset 3dRBFdset.o $(LFLAGS) $(LLIBS)
+
+3dDegreeCentrality.o:3dDegreeCentrality.c
+	$(RM) $@
+	$(CCOMP) -c 3dDegreeCentrality.c $(INFLAGS)
+
+3dDegreeCentrality:3dDegreeCentrality.o
+	$(RM) $@
+	$(CCOMP) -o 3dDegreeCentrality 3dDegreeCentrality.o $(LFLAGS) $(LLIBS)
 
 3dAutoTcorrelate.o:3dAutoTcorrelate.c
 	$(RM) $@
@@ -2896,11 +2913,11 @@ qqq.o:qqq.c
 qqq:qqq.o
 	$(CC) -o qqq qqq.o $(INFLAGS) $(LFLAGS) -lmrix -lcoxplot  $(LLIBS)
 
-warping.o:warping.c
-	$(CCFAST) -c warping.c $(INFLAGS)
+warping_test.o:warping_test.c
+	$(CCFAST) -c warping_test.c $(INFLAGS)
 
-warping:warping.o
-	$(CC) -o warping warping.o $(INFLAGS) $(LFLAGS) $(LLIBS)
+warping_test:warping_test.o
+	$(CC) -o warping_test warping_test.o $(INFLAGS) $(LFLAGS) $(LLIBS)
 
 mri_gwarp.o:mri_gwarp.c
 	$(CCFAST) -c mri_gwarp.c $(INFLAGS)

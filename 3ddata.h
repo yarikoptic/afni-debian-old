@@ -4809,8 +4809,9 @@ typedef struct FD_brick {
 #define STATUS_TMASK(sss,fdb)                                   \
  do{ if( fdb != NULL ) STATUSp(sss,fdb->tmask) ; } while(0)
 
-#define DESTROY_FD_BRICK(fdb) \
- do{ FD_brick *_jj=fdb; if( _jj != NULL ){ mri_free(_jj->tmask); myXtFree(_jj); } } while(0)
+#define DESTROY_FD_BRICK(fdb)       \
+ do{ FD_brick *_jj=(FD_brick *)fdb; \
+     if( _jj != NULL ){ mri_free(_jj->tmask); myXtFree(_jj); fdb=NULL; } } while(0)
 
 /*! rotate the three numbers (a,b,c) to (b,c,a) into (na,nb,nc) */
 
@@ -5684,6 +5685,7 @@ extern float THD_covariance( int n, float *x , float *y );
 extern float THD_ktaub_corr   ( int,float *,float *) ;  /* 29 Apr 2010 */
 extern float THD_eta_squared  ( int,float *,float *) ;  /* 25 Jun 2010 */
 extern double THD_eta_squared_masked(int,float *,float *,byte *);/* 16 Jun'11 */
+extern float THD_dice_coef_f_masked(int,float *,float *,byte *);/* 28 Jul'15 */
 extern THD_3dim_dataset * THD_Tcorr1D(THD_3dim_dataset *xset,
                               byte *mask, int nmask,
                               MRI_IMAGE *ysim,

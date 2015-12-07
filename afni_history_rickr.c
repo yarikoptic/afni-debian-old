@@ -49,6 +49,67 @@
 
 afni_history_struct rickr_history[] = {
 
+ { 17,  Nov, 2015, RCR, "afni-general", MICRO, TYPE_GENERAL,
+   "rename g_info to g_dicom_ctrl to avoid FreeBSD build conflict",
+   "Thanks to J Bacon for noting the conflict."
+ } ,
+
+ {  6,  Nov, 2015, RCR, "to3d", MICRO, TYPE_ENHANCE,
+   "allow for single volumes beyond 2^31-1 bytes",
+   "Done for Z Saad."
+ } ,
+
+ {  6,  Nov, 2015, RCR, "@Align_Centers", MICRO, TYPE_NEW_OPT,
+   "add option -cm_no_amask; like -cm but without -automask",
+   NULL
+ } ,
+
+ {  4,  Nov, 2015, RCR, "1d_tool.py", MICRO, TYPE_NEW_OPT,
+   "add -slice_order_to_times",
+   "This converts a list of slice indices (sorted by acq time)\n"
+   "to slice times (ordered by index)."
+ } ,
+
+ { 28,  Oct, 2015, RCR, "gen_ss_review_table.py", MICRO, TYPE_ENHANCE,
+   "make 'a/E mask Dice coef' parent of 'mask correlation'",
+   NULL
+ } ,
+
+ { 28,  Oct, 2015, RCR, "gen_ss_review_scripts.py", MICRO, TYPE_ENHANCE,
+   "look for dice coef file ae_dice, as well ae_corr",
+   NULL
+ } ,
+
+ { 28,  Oct, 2015, RCR, "afni_proc.py", MINOR, TYPE_MODIFY,
+   "output anat/EPI Dice coefficient, rather than correlation",
+   NULL
+ } ,
+
+ { 28,  Oct, 2015, RCR, "3ddot", MINOR, TYPE_NEW_OPT,
+   "add -dodice, to get the Dice coefficient",
+   NULL
+ } ,
+
+ { 26,  Oct, 2015, RCR, "afni_proc.py", MINOR, TYPE_MODIFY,
+   "compute TSNR restricted to uncensored TRs",
+   NULL
+ } ,
+
+ { 26,  Oct, 2015, RCR, "afni", MICRO, TYPE_MODIFY,
+   "move version to show_AFNI_version and call on -ver",
+   NULL
+ } ,
+
+ { 23,  Oct, 2015, RCR, "afni", MICRO, TYPE_MODIFY,
+   "move version output after some text requests",
+   NULL
+ } ,
+
+ { 21,  Oct, 2015, RCR, "afni_util.py", MICRO, TYPE_NEW_OPT,
+   "added -exec",
+   NULL
+ } ,
+
  { 25,  Sep, 2015, RCR, "suma", MICRO, TYPE_MODIFY,
    "volume rendering is no longer the default for SUMA_VO_InitSlices",
    "So Do_06_VISdti_SUMA_visual_ex1.tcsh defaults to showing 3 volume slices."

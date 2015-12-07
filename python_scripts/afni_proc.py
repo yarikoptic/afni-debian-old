@@ -494,14 +494,17 @@ g_history = """
     4.52 Sep 10, 2015: fix resulting aligned SurfVol if input is NIFTI
     4.53 Sep 17, 2015: clarify incorrect dgrid error for anat follower
     4.54 Sep 24, 2015: allow 3dD to proceed with only extra_stim_files
+    4.55 Oct 26, 2015: avoid censored TRs in TSNR computation
+    4.56 Oct 28, 2015: output anat/epi mask Dice coef, rather than corr
 """
 
-g_version = "version 4.54, September 24, 2015"
+g_version = "version 4.56, October 28, 2015"
 
 # version of AFNI required for script execution
 # prev: g_requires_afni =  "1 Apr 2015" # 1d_tool.py uncensor from 1D
 # prev: g_requires_afni = "23 Jul 2015" # 3dREMLfit -dsort
-g_requires_afni = "1 Sep 2015" # gen_ss_review_scripts.py -errts_dset
+# prev: g_requires_afni = "1 Sep 2015" # gen_ss_review_scripts.py -errts_dset
+g_requires_afni = "28 Oct 2015" # 3ddot -dodice
 
 g_todo_str = """todo:
   - add option to block anat from anat followers?
@@ -649,7 +652,7 @@ class SubjProcSream:
         self.errts_reml = ''            # prefix for any REML errts
         self.errts_cen  = 0             # flag: current errts has censored
                                         #       TRs removed
-        self.keep_trs   = ''            # maybe becomes '"[$keep_trs]"'
+        self.keep_trs = ''              # might become '"[$ktrs]"'
         self.align_ebase= None          # external EPI for align_epi_anat.py
         self.align_epre = 'ext_align_epi' # copied align epi base prefix
         self.rm_rm      = 1             # remove rm.* files (user option)

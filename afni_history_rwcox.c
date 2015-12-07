@@ -43,7 +43,57 @@
 
 afni_history_struct rwcox_history[] = {
 /*=====BELOW THIS LINE=====*/
-  { 22 , SEP , 2015 , RWC , "3dDeconvolve" , MICRO , TYPE_NEW_ENV ,
+  { 23 , NOV , 2015 , RWC , "many" , MICRO , TYPE_GENERAL ,
+   "Tiny edits to eliminate compiler warnings from icc" ,
+   "For example, change format '%ld' to '%lld' for numerous int64_t\n"
+   "printouts in nifti/cifti codes.  Change 'finite()' to 'isfinite()'." } ,
+
+ { 10 , NOV , 2015 , RWC , "3dFWHMx" , MAJOR , TYPE_NEW_OPT ,
+   "-ACF option to compute spatial autocorrelation function" ,
+   "For enhancing 3dClustSim, et cetera." } ,
+
+ { 30 , OCT , 2015 , RWC , "images_equal" , MICRO , TYPE_NEW_PROG ,
+   "Tests if 2 input 2D image files are equal." ,
+   NULL } ,
+
+ { 28 , OCT , 2015 , RWC , "3dQwarp" , MICRO , TYPE_MODIFY ,
+   "Allow minpatch to go as low as 5." ,
+   "Of course, such a small patch will be VERY slow indeed.  Also, bring out\n"
+   "of hiding the '-ballopt' option, which changes the optimization strategy\n"
+   "somewhat -- allowing for larger displacments in the incremental warps." } ,
+
+ { 26 , OCT , 2015 , RWC , "afni Clusterize" , MAJOR , TYPE_ENHANCE ,
+   "Allow user to use multiple (up to 4) Aux datasets for Plot/Save" ,
+   NULL } ,
+
+ { 15 , OCT , 2015 , RWC , "afni Clusterize" , MICRO , TYPE_MODIFY ,
+   "Switch F-stat from using 1-sided to 2-sided tables." ,
+   "To keep Chen Gang happy." } ,
+
+ { 15 , OCT , 2015 , RWC , "afni Clusterize" , MICRO , TYPE_MODIFY ,
+   "Modify linkRbrain stuff to NOT use unseen clusters" ,
+   NULL } ,
+
+ { 14 , OCT , 2015 , RWC , "afni Clusterize" , MICRO , TYPE_GENERAL ,
+   "Add toggle button to turn individual clusters on/off" ,
+   "Hope it doesn't interfere with something else!  It's tricky modifying\n"
+   "the functional overlay." } ,
+
+ { 13 , OCT , 2015 , RWC , "3dGroupInCorr" , MICRO , TYPE_MODIFY ,
+   "Finally fixed -clust option to correspond to new 3dClustSim output" ,
+   "That is, 9 NIML files instead of 3." } ,
+
+ { 7 , OCT , 2015 , RWC , "afni GUI" , MICRO , TYPE_GENERAL ,
+   "Attempt to fix 'crash on re-open controller' problem" ,
+   "Happened when Clusterize was used in A, then B opened, B closed, B\n"
+   "re-opened -- boom.  Set deleted FD_bricks to NULL seems to help. \n"
+   "Fingers crossed." } ,
+
+ { 1 , OCT , 2015 , RWC , "AFNI clusterize" , MICRO , TYPE_MODIFY ,
+   "Made showing linkRbrain button default now" ,
+   "setenv AFNI_LINKRBRAIN NO to turn this button off" } ,
+
+ { 22 , SEP , 2015 , RWC , "3dDeconvolve" , MICRO , TYPE_NEW_ENV ,
    "AFNI_USE_ERROR_FILE = NO turns off creation of 3dDeconvolve.err" ,
    NULL } ,
 
