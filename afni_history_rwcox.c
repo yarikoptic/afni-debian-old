@@ -43,7 +43,36 @@
 
 afni_history_struct rwcox_history[] = {
 /*=====BELOW THIS LINE=====*/
-  { 23 , NOV , 2015 , RWC , "many" , MICRO , TYPE_GENERAL ,
+  { 8 , DEC , 2015 , RWC , "afni Clusterize" , MINOR , TYPE_MODIFY ,
+   "Add Write button to save just one cluster to a dataset" ,
+   NULL } ,
+
+ { 8 , DEC , 2015 , RWC , "3dttest++" , MICRO , TYPE_MODIFY ,
+   "Allow constant value with -singletonA instead of a dataset" ,
+   "Allows user to test -setB against a nonzero constant." } ,
+
+ { 7 , DEC , 2015 , RWC , "3dttest++" , MINOR , TYPE_NEW_OPT ,
+   "Add -resid option, to save residuals." ,
+   NULL } ,
+
+ { 1 , DEC , 2015 , RWC , "3dClustSim" , MAJOR , TYPE_NEW_OPT ,
+   "Added -acf option!" ,
+   "Non-Gaussian spherically symmetric AutoCorrelation Function (ACF) for\n"
+   "the noise.  Uses FFTs to create the noise fields, via #include-d file\n"
+   "mri_radial_random_field.c and #include-d csfft_OMP.c (thread-safe FFTs).\n"
+   "This method in 3dFWHMx and 3dClustSim will be the favored cluster\n"
+   "thresholding analysis going forward." } ,
+
+ { 30 , NOV , 2015 , RWC , "csfft_OMP" , MICRO , TYPE_GENERAL ,
+   "Thread-safe version of csfft function, for use with OpenMP" ,
+   "Meant to be #include-d into the main source file." } ,
+
+ { 27 , NOV , 2015 , RWC , "3dFHWMx" , MICRO , TYPE_MODIFY ,
+   "OpenMP-ize the FWHM and ACF calculations (across sub-bricks)" ,
+   "Also, working on spherical non-Gaussian convolution by FFTs in\n"
+   "mri_radial_random_field.c" } ,
+
+ { 23 , NOV , 2015 , RWC , "many" , MICRO , TYPE_GENERAL ,
    "Tiny edits to eliminate compiler warnings from icc" ,
    "For example, change format '%ld' to '%lld' for numerous int64_t\n"
    "printouts in nifti/cifti codes.  Change 'finite()' to 'isfinite()'." } ,
