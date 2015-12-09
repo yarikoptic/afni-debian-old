@@ -196,7 +196,7 @@ SCRIPTS = @4Daverage @CommandGlobb @GetAfniOrient @DTI_studio_reposition        
           @Install_TSrestMovieDemo @Install_AfniRetinoDemo                        \
           @Install_FATCAT_DEMO @Install_RSFMRI_Motion_Group_Demo                  \
           @Install_MEICA_Demo @T1scale 3dMVM @compute_gcor 3dLME                  \
-          @Install_ClustScat_Demo @Install_FATMVM_DEMO                            \
+          @Install_ClustScat_Demo @Install_FATMVM_DEMO @GradFlipTest              \
           @move.to.series.dirs @toMNI_Awarp @toMNI_Qwarpar @simulate_motion	    \
           @afni.run.me 3dRprogDemo @ExamineGenFeatDists rPkgsInstall 	         \
           @Install_DBSproc @Install_3dPFM_Demo 3dPFM @diff.files @diff.tree
@@ -659,6 +659,10 @@ dsetdup:dsetdup.o
 	$(RM) $@
 	$(CC) -o 3dDFT 3dDFT.o $(LFLAGS) $(LLIBS)
 
+csfft_cache:csfft_cache.o
+	$(RM) $@
+	$(CC) -o csfft_cache csfft_cache.o $(LFLAGS) $(LLIBS)
+
 3dRetinoPhase:3dRetinoPhase.o
 	$(RM) $@
 	$(CC) -o 3dRetinoPhase 3dRetinoPhase.o $(LFLAGS) $(LLIBS)
@@ -1101,10 +1105,6 @@ RSFgen:RSFgen.o
 	$(RM) $@
 	$(CC) -o 3dFWHM 3dFWHM.o $(LFLAGS) $(LLIBS)
 
-3dFWHMx:3dFWHMx.o
-	$(RM) $@
-	$(CC) -o 3dFWHMx 3dFWHMx.o $(LFLAGS) $(LLIBS)
-
 3dMannWhitney:3dMannWhitney.o
 	$(RM) $@
 	$(CC) -o 3dMannWhitney 3dMannWhitney.o $(LFLAGS) $(LLIBS)
@@ -1216,6 +1216,22 @@ qwarpobj: $(QWARPOBJ)
 
 ## ------- Things to be compiled or linked with OpenMP -------
 
+qqqOMP.o: qqqOMP.c
+	$(RM) $@
+	$(CCOMP) -c qqqOMP.c $(INFLAGS)
+
+qqqOMP:qqqOMP.o
+	$(RM) $@
+	$(CCOMP) -o qqqOMP qqqOMP.o $(LFLAGS) $(LLIBS)
+
+3dFWHMx.o: 3dFWHMx.c mri_fwhm.c
+	$(RM) $@
+	$(CCOMP) -c 3dFWHMx.c $(INFLAGS)
+
+3dFWHMx:3dFWHMx.o
+	$(RM) $@
+	$(CCOMP) -o 3dFWHMx 3dFWHMx.o $(LFLAGS) $(LLIBS)
+
 3dUnifize.o: 3dUnifize.c
 	$(RM) $@
 	$(CCOMP) -c 3dUnifize.c $(INFLAGS)
@@ -1296,7 +1312,7 @@ AlphaSim:AlphaSim.o
 	$(RM) $@
 	$(CCOMP) -o AlphaSim AlphaSim.o $(LFLAGS) $(LLIBS)
 
-3dClustSim.o:3dClustSim.c zgaussian.c
+3dClustSim.o:3dClustSim.c zgaussian.c mri_radial_random_field.c
 	$(RM) $@
 	$(CCOMP) -c 3dClustSim.c $(INFLAGS)
 
