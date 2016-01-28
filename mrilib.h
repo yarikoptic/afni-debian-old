@@ -1296,6 +1296,7 @@ extern void memplot_to_RGB_sef( MRI_IMAGE *im , MEM_plotdata *mp ,
 
 extern void memplot_to_jpg( char * , MEM_plotdata * ) ; /* 05 Dec 2007 */
 extern void memplot_to_png( char * , MEM_plotdata * ) ;
+extern void memplot_to_pnm( char * , MEM_plotdata * ) ; /* 06 Jan 2015 */
 
 extern void memplot_to_mri_set_dothick( int ) ;         /* 30 Apr 2012 */
 extern void memplot_to_mri_set_dofreee( int ) ;         /* 30 Apr 2012 */
@@ -1405,6 +1406,7 @@ typedef struct { int nar ; double *ar , dx,x0 ; } doublevec ;
 
 extern float  interp_floatvec ( floatvec  *fv , float  x ) ;
 extern double interp_doublevec( doublevec *dv , double x ) ;
+extern void mri_write_floatvec( char *fname , floatvec *fv ) ; /* 21 Jan 2016 */
 
 extern float interp_inverse_floatvec( floatvec *fv , float y ) ;
 
@@ -1437,6 +1439,22 @@ typedef struct { int nvec ; intvec *ivar ; } intvecvec ;
   do{ int ni = (iv)->nar ;                                     \
       RESIZE_intvec((iv),ni+(jv)->nar) ;                       \
       memcpy( (iv)->ar+ni, (jv)->ar, sizeof(int)*(jv)->nar ) ; \
+  } while(0)
+
+/*----------*/  /* 20 Jan 2016 */
+
+typedef struct { int nar ; int64_t *ar ; } int64vec ;
+#define KILL_int64vec(iv)                      \
+  do{ if( (iv) != NULL ){                      \
+        if( (iv)->ar != NULL ) free((iv)->ar); \
+        free(iv); (iv) = NULL;                 \
+  } } while(0)
+
+
+#define MAKE_int64vec(iv,n)                                \
+  do{ (iv) = (int64vec *)malloc(sizeof(int64vec)) ;        \
+      (iv)->nar = (n) ;                                    \
+      (iv)->ar  = (int64_t *)calloc(sizeof(int64_t),(n)) ; \
   } while(0)
 
 /*----------*/

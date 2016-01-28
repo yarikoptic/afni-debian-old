@@ -43,7 +43,30 @@
 
 afni_history_struct rwcox_history[] = {
 /*=====BELOW THIS LINE=====*/
-  { 30 , DEC , 2015 , RWC , "3dBlurToFWHM" , MINOR , TYPE_NEW_OPT ,
+
+ { 26, JAN , 2016 , RWC , "1dNLfit" , MINOR , TYPE_NEW_PROG ,
+   "1D file nonlinear fitting" ,
+   "Uses the 'calc' parser to define the function to fit.\n"
+   "Mostly for the convenience of The Bob." } ,
+
+  { 22 , JAN , 2016 , RWC , "1deval" , MICRO , TYPE_NEW_OPT ,
+   "Fixed value assignments, as in '-a=3.7'" ,
+   "For my convenience" } ,
+
+ { 6 , JAN , 2016 , RWC , "1dplot" , MICRO , TYPE_NEW_OPT ,
+   "new -pnm option, to save to PNM image format" ,
+   "To make it easier to manipulate results in scripts (e.g., pnmcat)." } ,
+
+ { 5 , JAN , 2016 , RWC , "@get.afni.version" , MICRO , TYPE_NEW_PROG ,
+   "Script to fetch source for a particular AFNI version tag" ,
+   NULL } ,
+
+ { 31 , DEC , 2015 , RWC , "3dttest++" , MICRO , TYPE_BUG_FIX ,
+   "Don't allow -resid and -zskip at the same time" ,
+   "Because sorting out the residuals back to their proper places would\n"
+   "be hard, if some inputs were skipped." } ,
+
+ { 30 , DEC , 2015 , RWC , "3dBlurToFWHM" , MINOR , TYPE_NEW_OPT ,
    "add -acf option, to estimate FWHM via the ACF method" ,
    NULL } ,
 
