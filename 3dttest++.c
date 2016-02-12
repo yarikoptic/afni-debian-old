@@ -2,7 +2,7 @@
 
 /*------------------------------- prototypes, etc. ---------------------------*/
 
-/* funcs to do the t-tests on sets of numbers */
+/*----- funcs to do the t-tests on sets of numbers -----*/
 
 void regress_toz( int numA , float *zA ,
                   int numB , float *zB , int opcode ,
@@ -11,10 +11,12 @@ void regress_toz( int numA , float *zA ,
                   float *xB , float *psinvB , float *xtxinvB ,
                   float *outvec , float *workspace             ) ;
 
+/*-----*/
+
 float_pair ttest_toz( int numx, float *xar, int numy, float *yar, int opcode,
                       float *xres, float *yres ) ;
 
-/* similar funcs for the case of -singletonA */
+/*----- similar funcs for the case of -singletonA -----*/
 
 void regress_toz_singletonA( float zA ,
                              int numB , float *zB ,
@@ -23,17 +25,19 @@ void regress_toz_singletonA( float zA ,
                              float *xB , float *psinvB , float *xtxinvB ,
                              float *outvec , float *workspace             ) ;
 
+/*-----*/
+
 float_pair ttest_toz_singletonA( float xar, int numy, float *yar, float *xres, float *yres ) ;
 
-/* convert t-stat to z-score */
+/*----- convert t-stat to z-score -----*/
 
 double GIC_student_t2z( double tt , double dof ) ;
 
-/* setup the covariates matrices */
+/*----- setup the covariates matrices -----*/
 
 void TT_matrix_setup( int kout ) ;  /* 30 Jul 2010 */
 
-/* macro to truncate labels */
+/*----- macro to truncate labels -----*/
 
 #undef  MAX_LABEL_SIZE
 #define MAX_LABEL_SIZE 12
@@ -42,7 +46,7 @@ void TT_matrix_setup( int kout ) ;  /* 30 Jul 2010 */
 #define LTRUNC(ss) \
  do{ if( strlen(ss) > MAX_LABEL_SIZE ){(ss)[MAX_LABEL_SIZE] = '\0'; }} while(0)
 
-/* macro for some memory usage info */
+/*----- macro for some memory usage info -----*/
 
 #undef MEMORY_CHECK
 #ifdef USING_MCW_MALLOC
@@ -126,12 +130,13 @@ static byte *mask   = NULL ;
 static int  nmask   = 0 ;
 static int  nvox    = 0 ;
 static int  nmask_hits = 0 ;
+static char *name_mask = NULL ; /* 10 Feb 2016 */
 
 static int ttest_opcode = 0 ;  /* 0=pooled, 1=unpooled, 2=paired */
 
 static int               ndset_AAA=0 , nval_AAA=0 ;
 static char              *snam_AAA=NULL , *lnam_AAA=NULL ;
-static char             **name_AAA=NULL ;
+static char             **name_AAA=NULL ;  /* argv names for input datasets */
 static char             **labl_AAA=NULL ;
 static THD_3dim_dataset **dset_AAA=NULL ;
 static MRI_vectim      *vectim_AAA=NULL ;
@@ -149,6 +154,10 @@ static int do_randomsign   = 0 ;     /* 31 Dec 2015 */
 static int *randomsign_AAA = NULL ;
 static int *randomsign_BBB = NULL ;
 static int num_randomsign  = 0 ;     /* 02 Feb 2016 */
+
+static int       do_clustsim = 0 ;   /* 10 Feb 2016 */
+static int      num_clustsim = 0 ;
+static char *prefix_clustsim = NULL ;
 
 static int dofsub          = 0    ;  /* 19 Jan 2016 */
 
@@ -823,6 +832,33 @@ void display_help_menu(void)
       "                of random sign flipping, so you will get 1000 times the\n"
       "                as many output sub-bricks as usual. This is intended for\n"
       "                for use with simulations such as '3dClustSim -inset'.\n"
+      "\n"
+      " -clustsim   = With this option, after the commanded t-tests are done, then:\n"
+      "                (a) the residuals from '-resid' are used with '-randomsign' to\n"
+      "                    simulate about 10000 null 3D results, and then\n"
+      "                (b) 3dClustSim is run with those to generate cluster-threshold\n"
+      "                    tables, and then\n"
+      "                (c) 3drefit is used to pack those tables into the main output\n"
+      "                    dataset, and then\n"
+      "                (d) the temporary files created in this process are deleted.\n"
+      "               The goal is to provide a method for cluster-level statistical\n"
+      "               inference in the output dataset, to be used with the AFNI GUI\n"
+      "               Clusterize controls.\n"
+      "              ++ If you want to keep the 3dClustSim table .1D files, use this\n"
+      "                 option in the form '-Clustsim'.\n"
+      "              ++ Since the simulations are done with '-toz' active, it would\n"
+      "                 make sense for you to use '-toz' when you use '-clustsim'.\n"
+      "              ++ '-clustsim' will not work with less than 7 datasets in each\n"
+      "                 input set -- in particular, it doesn't work with '-singletonA'.\n"
+      "\n"
+      " -prefix_clustsim cc = Use 'cc' for the prefix for the '-clustsim' temporary\n"
+      "                       files, rather than a randomly generated prefix.\n"
+      "                       You might find this useful if scripting.  This option\n"
+      "                       must be used AFTER '-clustsim'.\n"
+      "                      ++ The default randomly generated prefix will start with\n"
+      "                         'TT.' and be followed by 11 alphanumeric characters,\n"
+      "                         as in 'TT.Sv0Ghrn4uVg'.  To mimic this, you might\n"
+      "                         use '-prefix_clustsim TT.Zhark'.\n"
 #if 0 /*** hidden from user ***/
       "\n"
       " -dofsub ss  = Subtract 'ss' from the normal degrees of freedom used.\n"
@@ -1277,6 +1313,62 @@ int is_possible_filename( char * fname )
 }
 
 /*----------------------------------------------------------------------------*/
+/* Start a job in a thread.  Save process id for later use. */
+
+static int   njob   = 0 ;
+static pid_t *jobid = NULL ;
+
+void start_job( char *cmd )   /* 10 Feb 2016 */
+{
+   pid_t newid ;
+
+   if( cmd == NULL || *cmd == '\0' ) return ;
+
+   newid = fork() ;
+
+   if( newid == (pid_t)-1 ){  /*--- fork failed -- should never happen ---*/
+
+     int qq ;
+     ERROR_message("----- Failure to fork for cmd = '%s'") ;
+     for( qq=0 ; qq < njob ; qq++ ){
+       ERROR_message("  Killing fork-ed job %d (pid=%u)",
+                        qq , (unsigned int)jobid[qq]   ) ;
+       kill( jobid[qq] ,SIGTERM   ) ; NI_sleep(10) ;
+       waitpid( jobid[qq] , NULL , 0 ) ;
+     }
+     ERROR_exit("Program exits -- sorry :-(") ;
+
+   } else if( newid > 0 ){    /*--- fork worked -- we are the original ---*/
+
+     jobid = (pid_t *)realloc( jobid , sizeof(pid_t)*(njob+1) ) ;
+     jobid[njob++] = newid ;
+     return ;
+
+   }
+
+   /*--- we are the child -- run the command, then die die die ---*/
+
+   system(cmd) ;
+   _exit(0) ;
+}
+
+/*----------------------------------------------------------------------------*/
+/* Wait for all started jobs to finish. */
+
+void wait_for_jobs(void)     /* 10 Feb 2016 */
+{
+   int qq ;
+
+   if( njob <= 0 || jobid == NULL ) return ;
+   for( qq=0 ; qq < njob ; qq++ )
+     waitpid( jobid[qq] , NULL , 0 ) ;
+
+   free(jobid) ; jobid = NULL ; njob = 0 ;
+   return ;
+}
+
+/*----------------------------------------------------------------------------*/
+/* Dis is de mayne porgam - RW Xoc */
 
 int main( int argc , char *argv[] )
 {
@@ -1302,7 +1394,7 @@ int main( int argc , char *argv[] )
    /*--- record things for posterity, et cetera ---*/
 
    mainENTRY("3dttest++ main"); machdep(); AFNI_logger("3dttest++",argc,argv);
-   PRINT_VERSION("3dttest++") ; AUTHOR("The Bob++") ;
+   PRINT_VERSION("3dttest++") ; AUTHOR("Zhark++") ;
 
 #if defined(USING_MCW_MALLOC) && !defined(USE_OMP)
    enable_mcw_malloc() ;
@@ -1395,12 +1487,50 @@ int main( int argc , char *argv[] )
      if( strcmp(argv[nopt],"-randomsign") == 0 ){  /* 31 Dec 2015 */
        do_randomsign++ ;
        nopt++ ;
-       if( isdigit(argv[nopt][0]) ){
+       if( nopt < argc && isdigit(argv[nopt][0]) ){
          num_randomsign = (int)strtod(argv[nopt],NULL) ; nopt++ ;
        } else {
          num_randomsign = 1 ;
        }
        continue ;
+     }
+
+     /*----- -clustsim njob [10 Feb 2016] -----*/
+
+     if( strcasecmp(argv[nopt],"-clustsim") == 0 ){
+       char *uuu ;
+       if( do_clustsim )
+         ERROR_message("Why do you use -clustsim more than once?!") ;
+       do_clustsim = 1 ; if( argv[nopt][1] == 'C' ) do_clustsim = 2 ;
+       nopt++ ;
+       if( nopt < argc && isdigit(argv[nopt][0]) ){
+         num_clustsim = (int)strtod(argv[nopt],NULL) ; nopt++ ;
+         if( num_clustsim > 99 ){
+           ERROR_message("value after -clustsim is > 99") ; num_clustsim = 99 ;
+         } else if( num_clustsim < 1 ){
+           ERROR_message("value after -clustsim is < 1" ) ; num_clustsim = 1 ;
+         }
+       } else {
+         num_clustsim = AFNI_get_ncpu() ;
+       }
+       INFO_message("Number of -clustsim threads set to %d",num_clustsim) ;
+       uuu = UNIQ_idcode_11() ;
+       prefix_clustsim = (char *)malloc(sizeof(char)*32) ;
+       sprintf(prefix_clustsim,"TT.%s",uuu) ; free(uuu) ;
+       continue ;
+     }
+
+     /*----- -prefixclustim cc [11 Feb 2016] -----*/
+
+     if( strcasecmp(argv[nopt],"-prefix_clustsim") == 0 ){
+       if( ! do_clustsim )
+         ERROR_message("-prefix_clustsim comes before -clustsim??") ;
+       if( ++nopt >= argc )
+         ERROR_exit("Need argument after '%s'",argv[nopt-1]) ;
+       prefix_clustsim = strdup(argv[nopt]) ;
+       if( !THD_filename_ok(prefix_clustsim) )
+         ERROR_exit("-prefix_clustsim '%s' is not acceptable",prefix_clustsim) ;
+       nopt++ ; continue ;
      }
 
      /*----- dofsub -----*/
@@ -1470,6 +1600,7 @@ int main( int argc , char *argv[] )
        if( ++nopt >= argc )
          ERROR_exit("Need argument after '%s'",argv[nopt-1]) ;
        bvec = THD_create_mask_from_string(argv[nopt]) ;
+       name_mask = strdup(argv[nopt]) ;  /* 10 Feb 2016 */
        if( bvec == NULL )
          ERROR_exit("Can't create mask from '-mask' option") ;
        mask = bvec->ar ; nmask = bvec->nar ;
@@ -1882,6 +2013,12 @@ int main( int argc , char *argv[] )
    if( brickwise && do_randomsign )          /* 02 Feb 2016 */
      ERROR_exit("You can't use -brickwise and -randomsign together!") ;
 
+   if( brickwise && do_clustsim )            /* 10 Feb 2016 */
+     ERROR_exit("You can't use -brickwise and -clustsim together!") ;
+
+   if( do_randomsign && do_clustsim )        /* 10 Feb 2016 */
+     ERROR_exit("You can't use -randomsign and -clustsim together!") ;
+
    if( do_randomsign && num_randomsign > 1 ) /* 02 Feb 2016 */
      brickwise_num = num_randomsign ;
 
@@ -1892,6 +2029,14 @@ int main( int argc , char *argv[] )
      ERROR_exit("You can't use -nomeans and -notests together! (Duh)") ;
 
    if( debug ) INFO_message("brickwise_num set to %d",brickwise_num) ;
+
+   if( do_clustsim ){
+     do_resid = 1 ;
+     if( prefix_resid == NULL ){
+       prefix_resid = (char *)malloc(sizeof(char)*(strlen(prefix_clustsim)+32)) ;
+       sprintf(prefix_resid,"%s.resid.nii",prefix_clustsim) ;
+     }
+   }
 
    twosam = (nval_BBB > 1) ; /* 2 sample test? */
 
@@ -1996,6 +2141,11 @@ int main( int argc , char *argv[] )
      ERROR_exit("You can't use -randomsign with nval_AAA=%d < 7",nval_AAA) ;
    if( do_randomsign && nval_BBB > 0 && nval_BBB < 7 )
      ERROR_exit("You can't use -randomsign with nval_BBB=%d < 7",nval_BBB) ;
+
+   if( do_clustsim && nval_AAA < 7 )
+     ERROR_exit("You can't use -clustsim with nval_AAA=%d < 7",nval_AAA) ;
+   if( do_clustsim && nval_BBB > 0 && nval_BBB < 7 )
+     ERROR_exit("You can't use -clustsim with nval_BBB=%d < 7",nval_BBB) ;
 
 #ifdef ALLOW_RANK
    if( do_ranks && !twosam ){
@@ -2454,7 +2604,10 @@ LABELS_ARE_DONE:  /* target for goto above */
    vstep = (nmask_hits > 6666) ? nmask_hits/50 : 0 ;
    if( brickwise_num > 1 ){
      vstep = 0 ; bstep = brickwise_num/50 ; if( bstep == 0 ) bstep = 1 ;
-     fprintf(stderr,"++ t-test group:") ;
+     if( do_randomsign )
+       fprintf(stderr,"++ t-test randomsign:") ;
+     else
+       fprintf(stderr,"++ t-test brickwise:") ;
    } else {
      bstep =0 ;
    }
@@ -2760,11 +2913,108 @@ LABELS_ARE_DONE:  /* target for goto above */
      ININFO_message("%s test: results are %s - %s",
                     ttest_opcode == 2 ? "paired":"2-sample", snam_PPP,snam_MMM) ;
 
+   /*--------------------------------------------------------------*/
+   /*------------ Cluster Simulation now [10 Feb 2016] ------------*/
+
+   if( do_clustsim ){
+     char fname[128] , *cmd , *ccc ; int qq,pp , nper ; double ct1,ct2 ;
+
+     cmd = (char *)malloc(sizeof(char)*8192) ;
+     nper = 10000 / num_clustsim + 1 ;
+
+     /* loop to start jobs */
+
+     INFO_message("================ Starting -clustsim calculations ================") ;
+     ININFO_message("===== temporary files will have prefix %s =====",prefix_clustsim) ;
+     ININFO_message("===== running %d -randomsign job%s (%d iterations per job) =====",
+                    num_clustsim , (num_clustsim > 1)?"s":"\0" , nper ) ;
+     ct1 = COX_clock_time() ;
+
+     for( pp=0 ; pp < num_clustsim ; pp++ ){
+
+       /* run 3dttest++ with the residuals as input */
+
+       sprintf( cmd , "3dttest++ -DAFNI_AUTOMATIC_FDR=NO -DAFNI_DONT_LOGFILE=YES"
+                      " -randomsign %d -no1sam -nomeans -toz" , nper ) ;
+       if( name_mask != NULL )
+         sprintf( cmd+strlen(cmd) , " -mask %s",name_mask) ;
+
+       if( nval_BBB == 0 ){  /* only -setA */
+         sprintf( cmd+strlen(cmd) , " -setA %s" , prefix_resid ) ;
+       } else {
+         sprintf( cmd+strlen(cmd) , " -setA %s'[0..%d]' -setB %s'[%d..$]'" ,
+                                    prefix_resid , nval_AAA-1 ,
+                                    prefix_resid , nval_AAA    ) ;
+       }
+
+       /* let only job #0 print progress to the screen */
+
+       sprintf( cmd+strlen(cmd) , " -prefix %s.%03d.nii" , prefix_clustsim , pp ) ;
+       if( pp > 0 ) strcat(cmd," >& /dev/null") ;
+
+       start_job( cmd ) ; if( pp > 0 ) NI_sleep(66) ;
+     }
+
+     /* wait until all jobs stop */
+
+     wait_for_jobs() ;
+
+     ct2 = COX_clock_time() ;
+     ININFO_message("===== jobs have finished (%.2f s elapsed) =====",ct2-ct1) ;
+     ct1 = ct2 ;
+
+     /* run 3dClustSim using the outputs from the above as the simulations */
+
+     sprintf(fname,"%s.CSim.cmd",prefix_clustsim) ;
+     sprintf( cmd , "3dClustSim -DAFNI_DONT_LOGFILE=YES"
+                    " -inset %s.???.nii -prefix %s.CSim -LOTS -both -cmd %s" ,
+                    prefix_clustsim , prefix_clustsim , fname ) ;
+     if( name_mask != NULL )
+       sprintf( cmd+strlen(cmd) , " -mask %s",name_mask) ;
+
+     ININFO_message("===== starting 3dClustSim =====") ;
+     system(cmd) ;
+
+     /* load the 3drefit command from 3dClustSim */
+
+     ccc = AFNI_suck_file(fname) ;
+     if( ccc == NULL )
+       ERROR_exit("===== 3dClustSim command failed :-((( =====") ;
+
+     /* crop whitespace off the end */
+
+     for( qq=strlen(ccc)-1 ; qq > 0 && isspace(ccc[qq]) ; qq-- ) ccc[qq] = '\0' ;
+     if( strlen(ccc) > 8190 ) cmd = (char *)realloc(cmd,strlen(ccc)+2048) ;
+
+     /* and run 3drefit */
+
+     ININFO_message("===== 3drefit-ing 3dClustSim results into %s =====",DSET_HEADNAME(outset)) ;
+     sprintf(cmd,"%s %s",ccc,DSET_HEADNAME(outset)) ;
+     system(cmd) ;
+
+     if( do_clustsim == 1 ){
+       ININFO_message("===== deleting temp files %s.* =====",prefix_clustsim) ;
+       sprintf(cmd,"\\rm %s.*",prefix_clustsim) ;
+     } else {
+       ININFO_message("===== deleting temp files %s.*.nii %s.*.niml =====",prefix_clustsim,prefix_clustsim) ;
+       sprintf(cmd,"\\rm %s.*.nii %s.*.niml",prefix_clustsim,prefix_clustsim) ;
+     }
+     system(cmd) ;
+
+     /* et viola */
+
+     free(ccc) ; free(cmd) ;
+     ININFO_message("=============== -clustsim work is finished :-) ===============") ;
+   }
+
+   /*--- e finito ------------------------------------------------------------*/
+
    exit(0) ;
 
-} /* end of main program */
+} /*---------- end of main program -------------------------------------------*/
 
-/*---------------------------------------------------------------------------*/
+/*----------------------------------------------------------------------------*/
+/*----- macros for regression matrix elements -----*/
 
 #undef  PA
 #undef  PB
@@ -2779,6 +3029,8 @@ LABELS_ARE_DONE:  /* target for goto above */
 #undef  xtxB
 #define xtxA(i) xtxinvA[(i)+(i)*mm] /* diagonal elements */
 #define xtxB(i) xtxinvB[(i)+(i)*mm]
+
+/*----- Macros for the t-test functions -----*/
 
 #undef  VBIG
 #define VBIG 1.0e+24f
@@ -2973,10 +3225,12 @@ ENTRY("regress_toz") ;
     xtxinvB = (mcov+1) X (mcov+1) matrix = inv[xB'xB]
 *//*-------------------------------------------------------------------------*/
 
-        /* off diagonal elements */
+        /*----- off diagonal elements -----*/
+
 #define xtxBij(i,j) xtxinvB[(i)+(j)*mm]
 
-        /* variance(singleton) / variance(group) */
+        /*----- variance(singleton) / variance(group) -----*/
+
 #define SINGLETON_VARIANCE_RATIO singleton_variance_ratio
 
 void regress_toz_singletonA( float zA ,
@@ -3048,7 +3302,7 @@ ENTRY("regress_toz_singletonA") ;
 }
 
 /*----------------------------------------------------------------------------*/
-/*! Various sorts of t-tests; output = Z-score.
+/*! Various sorts of simple t-tests; output = Z-score.
    - numx = number of points in the first sample (must be > 1)
    - xar  = array with first sample
    - numy = number of points in the second sample
@@ -3386,7 +3640,7 @@ lab5:
 /*----------------------------------------------------------------------*/
 
 #undef  ZMAX
-#define ZMAX 13.0
+#define ZMAX 13.0  /* largest allowed z-score == 1 sided p=6e-36 */
 
 double GIC_student_t2z( double tt , double dof )
 {
@@ -3406,6 +3660,7 @@ double GIC_student_t2z( double tt , double dof )
 }
 
 /*===========================================================================*/
+/* center covariates in the regression matrices */
 
 void TT_centerize(void)
 {
@@ -3460,6 +3715,7 @@ ENTRY("TT_centerize") ;
 }
 
 /*===========================================================================*/
+/* make the regression matrices for covariates */
 
 void TT_matrix_setup( int kout )
 {
