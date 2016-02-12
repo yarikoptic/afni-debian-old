@@ -5708,9 +5708,13 @@ if(PRINT_TRACING)
 STATUS("reading timeseries files") ;
 
       /* 27 Jan 2000: allow skipping *.1D files from dataset directories */
+      /* 10 Feb 2016:broke sometime - allow skipping */
+      if(GLOBAL_argopt.read_1D)
+         GLOBAL_library.timeseries = THD_get_many_timeseries(qlist);
+      else 
+         GLOBAL_library.timeseries = NULL;
 
-      GLOBAL_library.timeseries =
-        THD_get_many_timeseries( (GLOBAL_argopt.read_1D) ? qlist : NULL ) ;
+/*      THD_get_many_timeseries( (GLOBAL_argopt.read_1D) ? qlist : NULL ) ;*/
 
       REFRESH ;
 
