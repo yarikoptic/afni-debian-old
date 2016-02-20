@@ -49,6 +49,21 @@
 
 afni_history_struct rickr_history[] = {
 
+ { 19,  Feb, 2016, RCR, "afni_system_check.py", MINOR, TYPE_ENHANCE,
+   "add many tests and summarize potential issues",
+   NULL
+ } ,
+
+ { 17,  Feb, 2016, RCR, "afni_util.py", MICRO, TYPE_ENHANCE,
+   "add function affine_to_params_6: where input is 12 element sub-matrix",
+   NULL
+ } ,
+
+ { 16,  Feb, 2016, RCR, "@update.afni.binaries", MICRO, TYPE_ENHANCE,
+   "add -ver and initial version reporting",
+   NULL
+ } ,
+
  { 10,  Feb, 2016, RCR, "@ANATICOR", MICRO, TYPE_BUG_FIX,
    "fixed -radius option parsing",
    "Thanks to A Frithsen for noting the problem."
