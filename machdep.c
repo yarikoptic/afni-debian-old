@@ -61,9 +61,11 @@ void machdep()
 
 int AFNI_get_ncpu(void)  /* 11 Feb 2016 */
 {
-   int32_t nnn ;
+   int32_t nnn=0 ;
 
+#ifdef _SC_NPROCESSORS_CONF
    nnn = sysconf(_SC_NPROCESSORS_CONF) ;
+#endif
 
 #ifdef USE_SYSCTL
    if( nnn < 1 )
@@ -171,7 +173,7 @@ char * GetAfniImageViewer(void)
 
 void init_rand_seed( long int seed )
 {
-   if( seed == 0 ) seed = (long)time(NULL)+(long)getpid() ;
+   if( seed == 0 ) seed = (long)time(NULL)+37*(long)getpid() ;
    srand48(seed) ;
 }
 
