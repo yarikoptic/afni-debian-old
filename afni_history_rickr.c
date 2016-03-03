@@ -49,6 +49,21 @@
 
 afni_history_struct rickr_history[] = {
 
+ {  1,  Mar, 2016, RCR, "GIFTI", MICRO, TYPE_BUG_FIX,
+   "applied R Vincent fix for GIFTI datasets with Windows-style newlines",
+   NULL
+ } ,
+
+ {  1,  Mar, 2016, RCR, "tokens", MINOR, TYPE_NEW_PROG,
+   "program to extract valid text entries from a file",
+   NULL
+ } ,
+
+ { 29,  Feb, 2016, RCR, "3dANOVA3", MICRO, TYPE_ENHANCE,
+   "show prior options to any 'Unrecognized command line option'",
+   "Added disp_strings() to libmri.a."
+ } ,
+
  { 24,  Feb, 2016, RCR, "uber_subject.py", MINOR, TYPE_ENHANCE,
    "replace tlrc_no_ss with anat_has_skull toggle and move to anat block",
    NULL
