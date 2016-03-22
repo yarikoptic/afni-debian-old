@@ -49,8 +49,23 @@
 
 afni_history_struct rickr_history[] = {
 
- { 17,  Mar, 2016, RCR, "afni-general", MICRO, TYPE_BUG_FIX,
-   "bail on NULL in old Atlas_Dset_Name_to_Atlas_Code()",
+ { 21,  Mar, 2016, RCR, "gen_ss_review_scripts.py", MICRO, TYPE_BUG_FIX,
+   "get slightly more accurate motion ave via 3dTstat -nzmean",
+   NULL
+ } ,
+
+ { 21,  Mar, 2016, RCR, "3dANOVA", MICRO, TYPE_ENHANCE,
+   "allow for up to 666 observations",
+   "Consider changing this to use a string_list or something similar."
+ } ,
+
+ { 21,  Mar, 2016, RCR, "GLTsymtest", MICRO, TYPE_NEW_OPT,
+   "added -badonly, to avoid screen clutter from many good GLTs",
+   NULL
+ } ,
+
+ { 21,  Mar, 2016, RCR, "uber_subject.py", MICRO, TYPE_ENHANCE,
+   "run GLTsymtest on specified GLTs",
    NULL
  } ,
 
